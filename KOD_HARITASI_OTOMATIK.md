@@ -3,16 +3,16 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 761
-Toplam satir: 194318
-Uc nokta: 232
-test:* scripti: 123
+Kod dosyasi: 786
+Toplam satir: 205098
+Uc nokta: 237
+test:* scripti: 128
 
 ## 1 · Dosyalar ve satir sayilari
 
 | Dosya | Satir |
 |---|---|
-| `backend/prisma/schema.prisma` | 2090 |
+| `backend/prisma/schema.prisma` | 2162 |
 | `backend/scripts/ceviri-gecis-izni.ts` | 476 |
 | `backend/scripts/ceviri-suzgec-olcum.ts` | 96 |
 | `backend/scripts/derleme-kapisi.js` | 68 |
@@ -26,7 +26,7 @@ test:* scripti: 123
 | `backend/src/altyapi/auth/auth.controller.ts` | 191 |
 | `backend/src/altyapi/auth/auth.module.ts` | 64 |
 | `backend/src/altyapi/auth/auth.service.ts` | 502 |
-| `backend/src/altyapi/auth/capabilities.helper.ts` | 157 |
+| `backend/src/altyapi/auth/capabilities.helper.ts` | 158 |
 | `backend/src/altyapi/auth/decorators/current-user.decorator.ts` | 9 |
 | `backend/src/altyapi/auth/decorators/firma-rolu.decorator.ts` | 18 |
 | `backend/src/altyapi/auth/decorators/kapali-hesap-izinli.decorator.ts` | 34 |
@@ -186,15 +186,15 @@ test:* scripti: 123
 | `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts` | 1120 |
 | `backend/src/ozellik/giris/excel-grid/sheet-discipline.ts` | 61 |
 | `backend/src/ozellik/giris/excel-grid/standart-sema.ts` | 361 |
-| `backend/src/ozellik/imha/imha-listesi.ts` | 626 |
+| `backend/src/ozellik/imha/imha-listesi.ts` | 637 |
 | `backend/src/ozellik/imha/imha.job.ts` | 149 |
 | `backend/src/ozellik/imha/imha.module.ts` | 25 |
 | `backend/src/ozellik/imha/imha.servisi.ts` | 505 |
 | `backend/src/ozellik/imha/saklama-sureleri.ts` | 75 |
 | `backend/src/ozellik/kutuphane/admin/admin-kurumsal-giris.controller.ts` | 136 |
-| `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | 288 |
+| `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | 271 |
 | `backend/src/ozellik/kutuphane/admin/admin.module.ts` | 22 |
-| `backend/src/ozellik/kutuphane/admin/admin.service.ts` | 2228 |
+| `backend/src/ozellik/kutuphane/admin/admin.service.ts` | 2175 |
 | `backend/src/ozellik/kutuphane/admin/dto/firma-rol.dto.ts` | 14 |
 | `backend/src/ozellik/kutuphane/admin/dto/kullanicilar-sorgusu.dto.ts` | 48 |
 | `backend/src/ozellik/kutuphane/brands/brands.controller.ts` | 101 |
@@ -225,37 +225,50 @@ test:* scripti: 123
 | `backend/src/ozellik/kutuphane/materials/materials.service.ts` | 67 |
 | `backend/src/ozellik/kutuphane/silme-etkisi.ts` | 74 |
 | `backend/src/ozellik/kutuphane/utils/import-fidelity.ts` | 468 |
-| `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | 202 |
-| `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | 1342 |
+| `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | 245 |
+| `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | 1422 |
 | `backend/src/ozellik/odeme/abonelik/ceviri-kota.servisi.ts` | 610 |
 | `backend/src/ozellik/odeme/abonelik/ceviri-kotasi.ts` | 393 |
 | `backend/src/ozellik/odeme/abonelik/deneme-hakki.servisi.ts` | 84 |
 | `backend/src/ozellik/odeme/abonelik/deneme-hakki.ts` | 151 |
 | `backend/src/ozellik/odeme/abonelik/dto/abonelik-basla.dto.ts` | 66 |
-| `backend/src/ozellik/odeme/abonelik/dto/abonelik-degistir.dto.ts` | 26 |
+| `backend/src/ozellik/odeme/abonelik/dto/abonelik-degistir.dto.ts` | 35 |
 | `backend/src/ozellik/odeme/abonelik/erisim.guard.ts` | 152 |
-| `backend/src/ozellik/odeme/abonelik/erisim.servisi.ts` | 512 |
+| `backend/src/ozellik/odeme/abonelik/erisim.servisi.ts` | 526 |
 | `backend/src/ozellik/odeme/abonelik/fiyat.controller.ts` | 53 |
 | `backend/src/ozellik/odeme/abonelik/iyzico-donus.controller.ts` | 80 |
 | `backend/src/ozellik/odeme/abonelik/kart-kapatma.ts` | 64 |
-| `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | 548 |
-| `backend/src/ozellik/odeme/abonelik/paket-degisimi.servisi.ts` | 612 |
+| `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | 536 |
+| `backend/src/ozellik/odeme/abonelik/paket-degisimi.servisi.ts` | 766 |
 | `backend/src/ozellik/odeme/abonelik/paket-degisimi.ts` | 417 |
-| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 1449 |
+| `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 1501 |
+| `backend/src/ozellik/odeme/abonelik/yonetici/dto/yonetici-dusur.dto.ts` | 27 |
+| `backend/src/ozellik/odeme/abonelik/yonetici/dto/yonetici-oneri.dto.ts` | 26 |
+| `backend/src/ozellik/odeme/abonelik/yonetici/paket-onerisi.servisi.ts` | 605 |
+| `backend/src/ozellik/odeme/abonelik/yonetici/paket-onerisi.ts` | 194 |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-abonelik.controller.ts` | 107 |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-abonelik.servisi.ts` | 166 |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-dusurme.servisi.ts` | 345 |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-islemi.ts` | 227 |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-paket-epostalari.ts` | 161 |
 | `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | 165 |
-| `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 375 |
+| `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 373 |
+| `backend/src/ozellik/odeme/dunning/kisit-gunu.ts` | 64 |
 | `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 339 |
-| `backend/src/ozellik/odeme/fatura/fatura.servisi.ts` | 446 |
-| `backend/src/ozellik/odeme/fatura/muhasebe.adaptor.ts` | 304 |
+| `backend/src/ozellik/odeme/eposta/yonetim-bildirimi.ts` | 186 |
+| `backend/src/ozellik/odeme/fatura/fatura-kesim-epostasi.ts` | 177 |
+| `backend/src/ozellik/odeme/fatura/fatura.servisi.ts` | 531 |
+| `backend/src/ozellik/odeme/fatura/muhasebe.adaptor.ts` | 425 |
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | 96 |
 | `backend/src/ozellik/odeme/havale/havale.servisi.ts` | 310 |
 | `backend/src/ozellik/odeme/iyzico/imza.ts` | 206 |
 | `backend/src/ozellik/odeme/iyzico/iyzico-hata.filter.ts` | 108 |
-| `backend/src/ozellik/odeme/iyzico/iyzico-tarihi.ts` | 45 |
+| `backend/src/ozellik/odeme/iyzico/iyzico-tarihi.ts` | 46 |
 | `backend/src/ozellik/odeme/iyzico/iyzico.client.ts` | 598 |
-| `backend/src/ozellik/odeme/odeme.module.ts` | 121 |
-| `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | 160 |
-| `backend/src/ozellik/odeme/webhook/webhook.isleyici.ts` | 151 |
+| `backend/src/ozellik/odeme/iyzico/tahsilat-kaniti.ts` | 140 |
+| `backend/src/ozellik/odeme/odeme.module.ts` | 126 |
+| `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | 162 |
+| `backend/src/ozellik/odeme/webhook/webhook.isleyici.ts` | 152 |
 | `backend/src/ozellik/odeme/yapilandirma.ts` | 78 |
 | `backend/src/ozellik/panel/panel.controller.ts` | 36 |
 | `backend/src/ozellik/panel/panel.module.ts` | 11 |
@@ -291,7 +304,7 @@ test:* scripti: 123
 | `backend/test/ceviri-gorunum-cikti-test.ts` | 775 |
 | `backend/test/ceviri-karar-test.ts` | 188 |
 | `backend/test/ceviri-kota-uygulama-test.ts` | 1194 |
-| `backend/test/ceviri-kotasi-test.ts` | 304 |
+| `backend/test/ceviri-kotasi-test.ts` | 307 |
 | `backend/test/ceviri-sahte-db.ts` | 273 |
 | `backend/test/cikti-dil-test.ts` | 91 |
 | `backend/test/cikti-test-yardimci.ts` | 338 |
@@ -299,7 +312,7 @@ test:* scripti: 123
 | `backend/test/conversion-test.ts` | 261 |
 | `backend/test/d1-marka-silme-capraz-tenant-test.ts` | 235 |
 | `backend/test/deneme-geri-sayim-test.ts` | 449 |
-| `backend/test/deneme-hakki-test.ts` | 1091 |
+| `backend/test/deneme-hakki-test.ts` | 1107 |
 | `backend/test/deploy-olcum-test.ts` | 154 |
 | `backend/test/dn-koprusu-test.ts` | 342 |
 | `backend/test/dunning-toparlandi-test.ts` | 963 |
@@ -310,13 +323,13 @@ test:* scripti: 123
 | `backend/test/export-format-test.ts` | 441 |
 | `backend/test/export-live-sim-test.ts` | 421 |
 | `backend/test/fallback-ad-kilidi-test.ts` | 185 |
-| `backend/test/fatura-kimligi-kapisi-test.ts` | 896 |
+| `backend/test/fatura-kimligi-kapisi-test.ts` | 899 |
 | `backend/test/faz0-gs7-probe.ts` | 74 |
-| `backend/test/faz2-kullanici-yonetimi-test.ts` | 622 |
+| `backend/test/faz2-kullanici-yonetimi-test.ts` | 625 |
 | `backend/test/faz3-eposta-parola-test.ts` | 883 |
 | `backend/test/faz4-firma-teklif-test.ts` | 322 |
 | `backend/test/faz5-kvkk-hukuki-test.ts` | 503 |
-| `backend/test/faz7-ekip-test.ts` | 2188 |
+| `backend/test/faz7-ekip-test.ts` | 2189 |
 | `backend/test/faz7-kurumsal-test.ts` | 1959 |
 | `backend/test/faz7-mfa-test.ts` | 1566 |
 | `backend/test/faz7-oidc-test.ts` | 653 |
@@ -334,7 +347,7 @@ test:* scripti: 123
 | `backend/test/guvenlik-paket1-test.ts` | 509 |
 | `backend/test/guvenlik-turu-2-test.ts` | 381 |
 | `backend/test/guvenlik-uclari-test.ts` | 461 |
-| `backend/test/havale-iyzico-cakismasi-test.ts` | 1615 |
+| `backend/test/havale-iyzico-cakismasi-test.ts` | 1678 |
 | `backend/test/hesap-dogrulugu-test.ts` | 913 |
 | `backend/test/iliskisel-alan-suzgeci-test.ts` | 171 |
 | `backend/test/imha-test.ts` | 1165 |
@@ -342,7 +355,7 @@ test:* scripti: 123
 | `backend/test/index-engine-test.ts` | 1774 |
 | `backend/test/iscilik-satir-silme-test.ts` | 127 |
 | `backend/test/iyzico-imza-basligi-test.ts` | 235 |
-| `backend/test/iyzico-zaman-asimi-test.ts` | 1019 |
+| `backend/test/iyzico-zaman-asimi-test.ts` | 1031 |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | 131 |
 | `backend/test/kaucuk-izolasyon-test.ts` | 244 |
 | `backend/test/kd11-toplam-yollari-test.ts` | 172 |
@@ -363,9 +376,11 @@ test:* scripti: 123
 | `backend/test/matching-regression.ts` | 281 |
 | `backend/test/matching-unit-test.ts` | 713 |
 | `backend/test/migration-zinciri-test.ts` | 753 |
-| `backend/test/mutabakat-deneme-test.ts` | 655 |
+| `backend/test/miras-erisimi-test.ts` | 647 |
+| `backend/test/mutabakat-deneme-test.ts` | 664 |
 | `backend/test/mutabakat-kayip-tahsilat-test.ts` | 1380 |
-| `backend/test/odeme-imha-test.ts` | 854 |
+| `backend/test/odeme-bekliyor-geri-sayim-test.ts` | 728 |
+| `backend/test/odeme-imha-test.ts` | 862 |
 | `backend/test/odeme-onyukleme-test.ts` | 419 |
 | `backend/test/olcu-anahtari-cakismasi-test.ts` | 449 |
 | `backend/test/onceden-fiyatli-test.ts` | 163 |
@@ -373,7 +388,7 @@ test:* scripti: 123
 | `backend/test/ortam-degiskenleri-test.ts` | 254 |
 | `backend/test/p2-2-sheets-indeks-test.ts` | 169 |
 | `backend/test/paket-aciklama-duzelt-test.ts` | 183 |
-| `backend/test/paket-degisimi-test.ts` | 1406 |
+| `backend/test/paket-degisimi-test.ts` | 1427 |
 | `backend/test/panel-ozet-test.ts` | 507 |
 | `backend/test/pano18-para-birimi-test.ts` | 172 |
 | `backend/test/para-birimi-yazim-test.ts` | 355 |
@@ -383,7 +398,7 @@ test:* scripti: 123
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 833 |
+| `backend/test/regression-all.ts` | 888 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 882 |
@@ -396,16 +411,19 @@ test:* scripti: 123
 | `backend/test/tam-ad-surgunu-test.ts` | 190 |
 | `backend/test/tam-zincir.ts` | 104 |
 | `backend/test/uc-kapisi-davranis-test.ts` | 349 |
-| `backend/test/uc-kapisi.ts` | 510 |
+| `backend/test/uc-kapisi.ts` | 515 |
 | `backend/test/urun-degil-test.ts` | 89 |
 | `backend/test/varyant-surukleme-test.ts` | 189 |
 | `backend/test/vitrin-test.ts` | 336 |
+| `backend/test/webhook-tahsilat-dogrulama-test.ts` | 1112 |
 | `backend/test/yardimci/sahte-oidc-saglayici.ts` | 244 |
 | `backend/test/yardimci/uc-envanteri.ts` | 162 |
 | `backend/test/yonetici-eposta-kodu-test.ts` | 407 |
+| `backend/test/yonetici-paket-test.ts` | 2202 |
+| `backend/test/yonetim-epostalari-test.ts` | 1147 |
 | `backend/test/yuzey-genisletme-test.ts` | 193 |
 | `frontend/app/(protected)/abonelik/donus/page.tsx` | 138 |
-| `frontend/app/(protected)/abonelik/page.tsx` | 808 |
+| `frontend/app/(protected)/abonelik/page.tsx` | 841 |
 | `frontend/app/(protected)/dashboard/page.tsx` | 241 |
 | `frontend/app/(protected)/dwg-workspace/page.tsx` | 112 |
 | `frontend/app/(protected)/firma/ekip/kurumsal-giris/page.tsx` | 576 |
@@ -414,7 +432,7 @@ test:* scripti: 123
 | `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | 488 |
 | `frontend/app/(protected)/labor-firms/page.tsx` | 287 |
 | `frontend/app/(protected)/labor/page.tsx` | 293 |
-| `frontend/app/(protected)/layout.tsx` | 268 |
+| `frontend/app/(protected)/layout.tsx` | 272 |
 | `frontend/app/(protected)/library/brand/[brandId]/page.tsx` | 528 |
 | `frontend/app/(protected)/library/electrical-brands/page.tsx` | 420 |
 | `frontend/app/(protected)/library/mechanical-brands/page.tsx` | 325 |
@@ -430,11 +448,11 @@ test:* scripti: 123
 | `frontend/app/(protected)/quotes/new/page.tsx` | 2330 |
 | `frontend/app/(protected)/quotes/page.tsx` | 330 |
 | `frontend/app/admin/brands/page.tsx` | 903 |
-| `frontend/app/admin/denetim/page.tsx` | 275 |
+| `frontend/app/admin/denetim/page.tsx` | 294 |
 | `frontend/app/admin/layout.tsx` | 94 |
 | `frontend/app/admin/page.tsx` | 16 |
 | `frontend/app/admin/stats/page.tsx` | 528 |
-| `frontend/app/admin/users/page.tsx` | 642 |
+| `frontend/app/admin/users/page.tsx` | 647 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
 | `frontend/app/davet-kabul/page.tsx` | 261 |
 | `frontend/app/dev/grid-test/page.tsx` | 227 |
@@ -459,26 +477,27 @@ test:* scripti: 123
 | `frontend/components/dwg-diameter-engine/types.ts` | 79 |
 | `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | 152 |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | 36 |
-| `frontend/components/dwg-metraj/DiameterEditPopup.tsx` | 121 |
 | `frontend/components/dwg-metraj/DwgUploader.tsx` | 643 |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | 484 |
 | `frontend/components/dwg-metraj/constants.ts` | 28 |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | 169 |
-| `frontend/components/dwg-metraj/index.ts` | 12 |
+| `frontend/components/dwg-metraj/index.ts` | 11 |
 | `frontend/components/dwg-metraj/types.ts` | 59 |
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | 118 |
 | `frontend/components/dwg-metraj/unit-detection.ts` | 79 |
 | `frontend/components/dwg-tagging/BucketPanel.tsx` | 144 |
 | `frontend/components/dwg-tagging/index.ts` | 12 |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | 110 |
-| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 1989 |
+| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 2003 |
 | `frontend/components/dwg-viewer/aci-colors.ts` | 38 |
+| `frontend/components/dwg-viewer/canli-cap.test.ts` | 288 |
+| `frontend/components/dwg-viewer/canli-cap.ts` | 97 |
 | `frontend/components/dwg-viewer/index.ts` | 6 |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | 54 |
 | `frontend/components/dwg-viewer/segment-length.ts` | 48 |
 | `frontend/components/dwg-viewer/types.ts` | 76 |
 | `frontend/components/dwg-viewer/useViewport.ts` | 233 |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 1076 |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 1038 |
 | `frontend/components/dwg-workspace/LayerInfoSidebar.tsx` | 213 |
 | `frontend/components/dwg-workspace/LayerVisibilityPanel.tsx` | 229 |
 | `frontend/components/dwg-workspace/MetrajSummaryPanel.tsx` | 153 |
@@ -488,7 +507,7 @@ test:* scripti: 123
 | `frontend/components/dwg-workspace/sprinkler-bayatlik.test.ts` | 64 |
 | `frontend/components/dwg-workspace/sprinkler-bayatlik.ts` | 51 |
 | `frontend/components/dwg-workspace/types.ts` | 71 |
-| `frontend/components/dwg-workspace/useWorkspaceState.ts` | 437 |
+| `frontend/components/dwg-workspace/useWorkspaceState.ts` | 357 |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | 60 |
 | `frontend/lib/indeks-sagligi.test.ts` | 75 |
 | `frontend/lib/indeks-sagligi.ts` | 64 |
@@ -530,10 +549,10 @@ test:* scripti: 123
 | `frontend/ortak/kabuk/components/layout/kapali-durum.ts` | 80 |
 | `frontend/ortak/kabuk/components/layout/kirinti-etiketi.ts` | 84 |
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | 676 |
-| `frontend/ortak/lib/api.ts` | 293 |
+| `frontend/ortak/lib/api.ts` | 297 |
 | `frontend/ortak/lib/kimlik-hata-metinleri.ts` | 149 |
-| `frontend/ortak/lib/oturum.test.ts` | 172 |
-| `frontend/ortak/lib/oturum.ts` | 129 |
+| `frontend/ortak/lib/oturum.test.ts` | 261 |
+| `frontend/ortak/lib/oturum.ts` | 182 |
 | `frontend/ortak/lib/parola-kurali.ts` | 23 |
 | `frontend/ortak/lib/utils.ts` | 16 |
 | `frontend/ortak/seo/arama-paylasim.test.ts` | 238 |
@@ -608,7 +627,7 @@ test:* scripti: 123
 | `frontend/ozellik/kimlik/ZorunluKurulumSihirbazi.tsx` | 166 |
 | `frontend/ozellik/kimlik/dogrulama-bekleniyor.test.ts` | 178 |
 | `frontend/ozellik/kimlik/giris-dali.test.ts` | 290 |
-| `frontend/ozellik/kimlik/hesabim/AbonelikSekmesi.tsx` | 310 |
+| `frontend/ozellik/kimlik/hesabim/AbonelikSekmesi.tsx` | 335 |
 | `frontend/ozellik/kimlik/hesabim/EkipErisimiSekmesi.tsx` | 109 |
 | `frontend/ozellik/kimlik/hesabim/FirmaSekmesi.tsx` | 367 |
 | `frontend/ozellik/kimlik/hesabim/GuvenlikSekmesi.tsx` | 157 |
@@ -648,6 +667,7 @@ test:* scripti: 123
 | `frontend/ozellik/odeme/ErisimKapisi.tsx` | 109 |
 | `frontend/ozellik/odeme/FiyatKartlari.tsx` | 142 |
 | `frontend/ozellik/odeme/IyzicoFormu.tsx` | 36 |
+| `frontend/ozellik/odeme/OneriSeridi.tsx` | 168 |
 | `frontend/ozellik/odeme/VitrinBolumKarti.tsx` | 45 |
 | `frontend/ozellik/odeme/VitrinSaglayici.tsx` | 176 |
 | `frontend/ozellik/odeme/abonelik-ozeti.test.ts` | 658 |
@@ -666,17 +686,22 @@ test:* scripti: 123
 | `frontend/ozellik/odeme/ozellik-kapisi.test.ts` | 162 |
 | `frontend/ozellik/odeme/ozellik-kapisi.ts` | 64 |
 | `frontend/ozellik/odeme/paket-bicim.test.ts` | 129 |
-| `frontend/ozellik/odeme/paket-bicim.ts` | 295 |
-| `frontend/ozellik/odeme/paket-degisimi.test.ts` | 210 |
+| `frontend/ozellik/odeme/paket-bicim.ts` | 301 |
+| `frontend/ozellik/odeme/paket-degisimi.test.ts` | 216 |
 | `frontend/ozellik/odeme/paket-degisimi.ts` | 115 |
+| `frontend/ozellik/odeme/paket-onerisi.test.ts` | 134 |
+| `frontend/ozellik/odeme/paket-onerisi.ts` | 92 |
 | `frontend/ozellik/odeme/paket-rozeti.test.ts` | 224 |
 | `frontend/ozellik/odeme/sozlesme-onayi.test.ts` | 83 |
 | `frontend/ozellik/odeme/sozlesme-onayi.ts` | 31 |
 | `frontend/ozellik/odeme/telefon-bicim.test.ts` | 150 |
 | `frontend/ozellik/odeme/telefon-bicim.ts` | 105 |
-| `frontend/ozellik/odeme/turkce-metin.test.ts` | 584 |
+| `frontend/ozellik/odeme/turkce-metin.test.ts` | 598 |
 | `frontend/ozellik/odeme/vitrin-metinleri.ts` | 176 |
 | `frontend/ozellik/odeme/vitrin.test.ts` | 344 |
+| `frontend/ozellik/odeme/yonetici/YoneticiPaketPenceresi.tsx` | 427 |
+| `frontend/ozellik/odeme/yonetici/yonetici-paket.test.ts` | 298 |
+| `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
 | `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4536 |
@@ -963,8 +988,8 @@ test:* scripti: 123
 | `backend/src/ozellik/kutuphane/materials/materials.controller.ts` | `./materials.service` `./dto/create-material.dto` `./dto/create-material-price.dto` `../../../altyapi/auth/guards/jwt-auth.guard` `../../../altyapi/auth/guards/roles.guard` `../../../altyapi/auth/decorators/roles.decorator` `../../odeme/abonelik/erisim.guard` `../../odeme/abonelik/erisim.servisi` |
 | `backend/src/ozellik/kutuphane/materials/materials.module.ts` | `@nestjs/common` `./materials.service` `./materials.controller` `../../odeme/odeme.module` |
 | `backend/src/ozellik/kutuphane/materials/materials.service.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `./dto/create-material.dto` `./dto/create-material-price.dto` |
-| `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | `@nestjs/common` `../../../altyapi/auth/guards/jwt-auth.guard` `@nestjs/throttler` `../../../altyapi/auth/guards/firma-rol.guard` `../../../altyapi/auth/guards/kullanici-hiz-siniri.guard` `../../../altyapi/auth/decorators/firma-rolu.decorator` `../../../altyapi/auth/decorators/current-user.decorator` `../../../altyapi/auth/kimlik` `./erisim.servisi` `./satinalma.servisi` `./deneme-hakki.servisi` `./paket-degisimi.servisi` `./dto/abonelik-basla.dto` `./dto/abonelik-degistir.dto` |
-| `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `@prisma/client` `../eposta/eposta.servisi` `../dunning/dunning.metinleri` `./paket-degisimi` `./kart-kapatma` |
+| `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | `@nestjs/common` `../../../altyapi/auth/guards/jwt-auth.guard` `@nestjs/throttler` `../../../altyapi/auth/guards/firma-rol.guard` `../../../altyapi/auth/guards/kullanici-hiz-siniri.guard` `../../../altyapi/auth/decorators/firma-rolu.decorator` `../../../altyapi/auth/decorators/current-user.decorator` `../../../altyapi/auth/kimlik` `./erisim.servisi` `./satinalma.servisi` `./deneme-hakki.servisi` `./paket-degisimi.servisi` `./yonetici/paket-onerisi.servisi` `./dto/abonelik-basla.dto` `./dto/abonelik-degistir.dto` |
+| `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `@prisma/client` `../eposta/eposta.servisi` `../eposta/yonetim-bildirimi` `../dunning/dunning.metinleri` `./paket-degisimi` `./kart-kapatma` |
 | `backend/src/ozellik/odeme/abonelik/ceviri-kota.servisi.ts` | `@prisma/client` `../../../altyapi/db/prisma.service` `../../../altyapi/auth/kimlik` `../../../altyapi/auth/eposta-dogrulama` `../../giris/ai/ceviri-katmani` |
 | `backend/src/ozellik/odeme/abonelik/ceviri-kotasi.ts` | `@nestjs/common` |
 | `backend/src/ozellik/odeme/abonelik/deneme-hakki.servisi.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `../../../altyapi/auth/eposta-dogrulama` |
@@ -972,25 +997,36 @@ test:* scripti: 123
 | `backend/src/ozellik/odeme/abonelik/dto/abonelik-basla.dto.ts` | `class-validator` |
 | `backend/src/ozellik/odeme/abonelik/dto/abonelik-degistir.dto.ts` | `class-validator` |
 | `backend/src/ozellik/odeme/abonelik/erisim.guard.ts` | `@nestjs/core` `../../../altyapi/auth/kimlik` `../../../altyapi/auth/decorators/uye-izni.decorator` |
-| `backend/src/ozellik/odeme/abonelik/erisim.servisi.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `@prisma/client` `../../../altyapi/auth/abonelik-erisim` |
+| `backend/src/ozellik/odeme/abonelik/erisim.servisi.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `@prisma/client` `../../../altyapi/auth/abonelik-erisim` `../dunning/kisit-gunu` |
 | `backend/src/ozellik/odeme/abonelik/fiyat.controller.ts` | `@nestjs/common` `@nestjs/throttler` `./satinalma.servisi` |
 | `backend/src/ozellik/odeme/abonelik/iyzico-donus.controller.ts` | `@nestjs/common` `@nestjs/config` `express` `./satinalma.servisi` |
-| `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | `@nestjs/common` `@nestjs/schedule` `../../../altyapi/db/prisma.service` `@prisma/client` `../iyzico/iyzico.client` `../iyzico/imza` `../iyzico/iyzico-tarihi` `../webhook/webhook.isleyici` `./abonelik.servisi` |
-| `backend/src/ozellik/odeme/abonelik/paket-degisimi.servisi.ts` | `@nestjs/config` `@nestjs/schedule` `../../../altyapi/db/prisma.service` `../../../altyapi/auth/hukuki-surum` `../eposta/eposta.servisi` `./abonelik.servisi` `./satinalma.servisi` |
+| `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | `@nestjs/common` `@nestjs/schedule` `../../../altyapi/db/prisma.service` `@prisma/client` `../iyzico/iyzico.client` `../iyzico/imza` `../iyzico/iyzico-tarihi` `../iyzico/tahsilat-kaniti` `../webhook/webhook.isleyici` `./abonelik.servisi` |
+| `backend/src/ozellik/odeme/abonelik/paket-degisimi.servisi.ts` | `node:async_hooks` `@nestjs/config` `@nestjs/schedule` `@prisma/client` `../../../altyapi/db/prisma.service` `../../../altyapi/auth/hukuki-surum` `../eposta/eposta.servisi` `./abonelik.servisi` `./satinalma.servisi` |
 | `backend/src/ozellik/odeme/abonelik/paket-degisimi.ts` | `@prisma/client` `./deneme-hakki` `./ceviri-kotasi` `../iyzico/iyzico-tarihi` |
 | `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | `@nestjs/config` `@nestjs/schedule` `../../../altyapi/db/prisma.service` `../iyzico/iyzico.client` `./abonelik.servisi` `./kart-kapatma` `./ceviri-kotasi` `./deneme-hakki` `./deneme-hakki.servisi` `../eposta/eposta.servisi` `../../../altyapi/auth/hukuki-surum` |
-| `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | `@nestjs/common` `@nestjs/config` `@nestjs/schedule` `../../../altyapi/db/prisma.service` `@prisma/client` `../iyzico/iyzico.client` `../abonelik/abonelik.servisi` `../eposta/eposta.servisi` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/dto/yonetici-dusur.dto.ts` | `class-validator` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/dto/yonetici-oneri.dto.ts` | `class-validator` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/paket-onerisi.servisi.ts` | `@nestjs/config` `@prisma/client` `../../../../altyapi/db/prisma.service` `../../../firma/uyelik-kurallari` `../../eposta/eposta.servisi` `../paket-degisimi` `./yonetici-islemi` `./yonetici-paket-epostalari` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/paket-onerisi.ts` | `@prisma/client` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-abonelik.controller.ts` | `@nestjs/common` `@nestjs/throttler` `../../../../altyapi/auth/guards/jwt-auth.guard` `../../../../altyapi/auth/guards/roles.guard` `../../../../altyapi/auth/guards/kullanici-hiz-siniri.guard` `../../../../altyapi/auth/decorators/roles.decorator` `../../../../altyapi/auth/decorators/current-user.decorator` `./yonetici-abonelik.servisi` `./yonetici-dusurme.servisi` `./paket-onerisi.servisi` `./dto/yonetici-dusur.dto` `./dto/yonetici-oneri.dto` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-abonelik.servisi.ts` | `@nestjs/common` `../../../../altyapi/db/prisma.service` `../../../firma/uyelik-kurallari` `../paket-degisimi` `./paket-onerisi` `./paket-onerisi.servisi` `./yonetici-islemi` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-dusurme.servisi.ts` | `@nestjs/config` `@prisma/client` `../../../../altyapi/db/prisma.service` `../../../firma/uyelik-kurallari` `../../eposta/eposta.servisi` `../paket-degisimi` `./yonetici-islemi` `./yonetici-paket-epostalari` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-islemi.ts` | `@prisma/client` `../ceviri-kotasi` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-paket-epostalari.ts` | `../../eposta/eposta.servisi` `../ceviri-kotasi` `../paket-degisimi` |
+| `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | `@nestjs/common` `@nestjs/config` `@nestjs/schedule` `../../../altyapi/db/prisma.service` `@prisma/client` `../iyzico/iyzico.client` `../abonelik/abonelik.servisi` `../eposta/eposta.servisi` `./kisit-gunu` |
 | `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | `@nestjs/common` `@nestjs/config` `nodemailer` |
-| `backend/src/ozellik/odeme/fatura/fatura.servisi.ts` | `@nestjs/common` `@nestjs/schedule` `../../../altyapi/db/prisma.service` `@prisma/client` `../eposta/eposta.servisi` |
-| `backend/src/ozellik/odeme/fatura/muhasebe.adaptor.ts` | `@nestjs/common` `@nestjs/config` |
+| `backend/src/ozellik/odeme/eposta/yonetim-bildirimi.ts` | `@nestjs/common` `@prisma/client` `./eposta.servisi` |
+| `backend/src/ozellik/odeme/fatura/fatura-kesim-epostasi.ts` | `./muhasebe.adaptor` `../dunning/dunning.metinleri` |
+| `backend/src/ozellik/odeme/fatura/fatura.servisi.ts` | `@nestjs/common` `@nestjs/schedule` `../../../altyapi/db/prisma.service` `@prisma/client` `../eposta/eposta.servisi` `../eposta/yonetim-bildirimi` `../dunning/dunning.metinleri` |
+| `backend/src/ozellik/odeme/fatura/muhasebe.adaptor.ts` | `@nestjs/common` `@nestjs/config` `../../../altyapi/db/prisma.service` `../eposta/eposta.servisi` `../eposta/yonetim-bildirimi` `./fatura-kesim-epostasi` |
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | `@nestjs/common` `./havale.servisi` `../../../altyapi/auth/guards/jwt-auth.guard` `../../../altyapi/auth/guards/roles.guard` `../../../altyapi/auth/decorators/roles.decorator` `../../../altyapi/auth/decorators/current-user.decorator` |
 | `backend/src/ozellik/odeme/havale/havale.servisi.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `@prisma/client` `../abonelik/abonelik.servisi` `../fatura/fatura.servisi` `../eposta/eposta.servisi` `../dunning/dunning.metinleri` |
 | `backend/src/ozellik/odeme/iyzico/imza.ts` | `node:crypto` |
 | `backend/src/ozellik/odeme/iyzico/iyzico-hata.filter.ts` | `express` `./iyzico.client` |
 | `backend/src/ozellik/odeme/iyzico/iyzico.client.ts` | `@nestjs/common` `@nestjs/config` `../yapilandirma` `node:crypto` |
-| `backend/src/ozellik/odeme/odeme.module.ts` | `@nestjs/common` `@nestjs/core` `./iyzico/iyzico-hata.filter` `./abonelik/iyzico-donus.controller` `@nestjs/config` `@nestjs/schedule` `./iyzico/iyzico.client` `./webhook/webhook.controller` `./webhook/webhook.isleyici` `./abonelik/abonelik.servisi` `./abonelik/erisim.servisi` `./abonelik/satinalma.servisi` `./abonelik/deneme-hakki.servisi` `./abonelik/paket-degisimi.servisi` `./abonelik/abonelik.controller` `./abonelik/fiyat.controller` `./abonelik/ceviri-kota.servisi` `./abonelik/mutabakat.job` `./dunning/dunning.servisi` `./fatura/fatura.servisi` `./havale/havale.servisi` `./havale/havale.controller` `./eposta/eposta.servisi` |
-| `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | `@nestjs/config` `../../../altyapi/db/prisma.service` `./webhook.isleyici` `../yapilandirma` |
-| `backend/src/ozellik/odeme/webhook/webhook.isleyici.ts` | `@nestjs/common` `@nestjs/schedule` `../../../altyapi/db/prisma.service` `../abonelik/abonelik.servisi` `../fatura/fatura.servisi` `../dunning/dunning.servisi` |
+| `backend/src/ozellik/odeme/odeme.module.ts` | `@nestjs/common` `@nestjs/core` `./iyzico/iyzico-hata.filter` `./abonelik/iyzico-donus.controller` `@nestjs/config` `@nestjs/schedule` `./iyzico/iyzico.client` `./webhook/webhook.controller` `./webhook/webhook.isleyici` `./abonelik/abonelik.servisi` `./abonelik/erisim.servisi` `./abonelik/satinalma.servisi` `./abonelik/deneme-hakki.servisi` `./abonelik/paket-degisimi.servisi` `./abonelik/abonelik.controller` `./abonelik/yonetici/yonetici-abonelik.controller` `./abonelik/yonetici/yonetici-abonelik.servisi` `./abonelik/yonetici/yonetici-dusurme.servisi` `./abonelik/yonetici/paket-onerisi.servisi` `./abonelik/fiyat.controller` `./abonelik/ceviri-kota.servisi` `./abonelik/mutabakat.job` `./dunning/dunning.servisi` `./fatura/fatura.servisi` `./havale/havale.servisi` `./havale/havale.controller` `./eposta/eposta.servisi` |
+| `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | `@nestjs/config` `../../../altyapi/db/prisma.service` `./webhook.isleyici` `../yapilandirma` `../iyzico/iyzico-tarihi` |
+| `backend/src/ozellik/odeme/webhook/webhook.isleyici.ts` | `@nestjs/common` `@nestjs/schedule` `../../../altyapi/db/prisma.service` `../abonelik/abonelik.servisi` `../fatura/fatura.servisi` `../dunning/dunning.servisi` `../iyzico/iyzico-tarihi` |
 | `backend/src/ozellik/odeme/yapilandirma.ts` | `@nestjs/common` `@nestjs/config` |
 | `backend/src/ozellik/panel/panel.controller.ts` | `@nestjs/common` `./panel.servisi` `../../altyapi/auth/guards/jwt-auth.guard` `../../altyapi/auth/decorators/current-user.decorator` `../../altyapi/auth/kimlik` `../../altyapi/auth/decorators/kapali-hesap-izinli.decorator` |
 | `backend/src/ozellik/panel/panel.module.ts` | `@nestjs/common` `./panel.servisi` `./panel.controller` |
@@ -1095,8 +1131,10 @@ test:* scripti: 123
 | `backend/test/matching-regression.ts` | `@prisma/client` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/tag-generator` `../src/ozellik/eslestirme/matching/normalizer` |
 | `backend/test/matching-unit-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` |
 | `backend/test/migration-zinciri-test.ts` | `@electric-sql/pglite` `node:fs` `node:path` `../src/ozellik/kutuphane/library/library-sheet-builder` |
+| `backend/test/miras-erisimi-test.ts` | `node:fs` `node:path` `@nestjs/common` `@prisma/client` `../src/ozellik/odeme/abonelik/satinalma.servisi` `../src/ozellik/odeme/abonelik/abonelik.servisi` |
 | `backend/test/mutabakat-deneme-test.ts` | `node:crypto` `@nestjs/common` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/odeme/abonelik/satinalma.servisi` `reflect-metadata` |
 | `backend/test/mutabakat-kayip-tahsilat-test.ts` | `node:crypto` `@nestjs/common` `@nestjs/config` `../src/ozellik/odeme/iyzico/iyzico-tarihi` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/odeme/abonelik/paket-degisimi` `../src/ozellik/odeme/webhook/webhook.isleyici` `../src/ozellik/odeme/fatura/fatura.servisi` `../src/ozellik/odeme/dunning/dunning.servisi` `reflect-metadata` |
+| `backend/test/odeme-bekliyor-geri-sayim-test.ts` | `node:crypto` `../src/altyapi/auth/abonelik-erisim` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/abonelik/mutabakat.job` `../src/ozellik/odeme/dunning/dunning.servisi` `../src/ozellik/odeme/abonelik/satinalma.servisi` `reflect-metadata` |
 | `backend/test/odeme-imha-test.ts` | `node:fs` `node:path` `@nestjs/config` `@prisma/client` `../src/ozellik/odeme/abonelik/satinalma.servisi` `../src/ozellik/odeme/abonelik/deneme-hakki.servisi` |
 | `backend/test/odeme-onyukleme-test.ts` | `reflect-metadata` |
 | `backend/test/olcu-anahtari-cakismasi-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/tag-generator` `../src/ozellik/eslestirme/matching/normalizer` `../src/ozellik/eslestirme/matching/conversion` |
@@ -1131,12 +1169,15 @@ test:* scripti: 123
 | `backend/test/urun-degil-test.ts` | `../src/ozellik/eslestirme/matching/index/line-parser` |
 | `backend/test/varyant-surukleme-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `backend/test/vitrin-test.ts` | `@nestjs/common` `@prisma/client` `../src/ozellik/odeme/abonelik/erisim.guard` `../src/ozellik/kutuphane/brands/brands.service` `../src/ozellik/kutuphane/brands/brands.controller` `../src/altyapi/auth/abonelik-erisim` `../src/altyapi/auth/decorators/kapali-hesap-izinli.decorator` `reflect-metadata` `../../frontend/ozellik/odeme/erisim-durumu` |
+| `backend/test/webhook-tahsilat-dogrulama-test.ts` | `node:crypto` `@nestjs/common` `@nestjs/config` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/odeme/abonelik/satinalma.servisi` `../src/ozellik/odeme/webhook/webhook.controller` `../src/ozellik/odeme/webhook/webhook.isleyici` `../src/ozellik/odeme/fatura/fatura.servisi` `../src/ozellik/odeme/dunning/dunning.servisi` `../src/ozellik/odeme/iyzico/imza` `reflect-metadata` |
 | `backend/test/yardimci/sahte-oidc-saglayici.ts` | `node:crypto` `jsonwebtoken` `../../src/altyapi/auth/kurumsal/oidc-istemci` |
 | `backend/test/yardimci/uc-envanteri.ts` | `typescript` `fs` `path` |
 | `backend/test/yonetici-eposta-kodu-test.ts` | `node:fs` `node:path` `../src/altyapi/auth/mfa/meydan-okuma` `../src/altyapi/auth/mfa/mfa-karari` `../src/altyapi/auth/mfa/mfa-epostalari` `../src/ozellik/odeme/eposta/eposta.servisi` `@nestjs/config` |
+| `backend/test/yonetici-paket-test.ts` | `node:crypto` `node:fs` `node:path` `@nestjs/common` `@prisma/client` `../src/ozellik/odeme/abonelik/paket-degisimi` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/abonelik/paket-degisimi.servisi` `../src/ozellik/odeme/abonelik/yonetici/yonetici-dusurme.servisi` `../src/ozellik/odeme/abonelik/yonetici/yonetici-abonelik.servisi` `../src/ozellik/odeme/abonelik/yonetici/paket-onerisi.servisi` `../src/ozellik/odeme/abonelik/abonelik.controller` `../src/altyapi/auth/decorators/kapali-hesap-izinli.decorator` `../src/ozellik/odeme/iyzico/iyzico.client` |
+| `backend/test/yonetim-epostalari-test.ts` | `node:fs` `node:path` `node:crypto` `@nestjs/common` `@nestjs/core` `@nestjs/config` `@prisma/client` `../src/altyapi/db/prisma.service` `../src/ozellik/odeme/eposta/eposta.servisi` `../src/ozellik/odeme/fatura/fatura.servisi` `reflect-metadata` |
 | `backend/test/yuzey-genisletme-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `frontend/app/(protected)/abonelik/donus/page.tsx` | `react` `next/link` `@/ortak/lib/api` `@/ortak/contexts/CapabilitiesContext` |
-| `frontend/app/(protected)/abonelik/page.tsx` | `react` `@/ortak/lib/api` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/odeme/paket-bicim` `@/ozellik/odeme/DenemeSatiri` `@/ozellik/firma/ekip/koltuk-metinleri` `@/ozellik/odeme/abonelik-ozeti` `@/ozellik/odeme/IyzicoFormu` |
+| `frontend/app/(protected)/abonelik/page.tsx` | `react` `@/ortak/lib/api` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/odeme/paket-bicim` `@/ozellik/odeme/DenemeSatiri` `@/ozellik/odeme/OneriSeridi` `@/ozellik/firma/ekip/koltuk-metinleri` `@/ozellik/odeme/abonelik-ozeti` `@/ozellik/odeme/IyzicoFormu` |
 | `frontend/app/(protected)/dashboard/page.tsx` | `react` `next/navigation` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/contexts/CapabilitiesContext` `@/ortak/kabuk/components/dashboard/QuickStart` `@/ozellik/teklif/dashboard/RecentQuotes` `@/ortak/kabuk/components/dashboard/QuickAccess` |
 | `frontend/app/(protected)/dwg-workspace/page.tsx` | `next/navigation` `next/dynamic` `lucide-react` `next/link` `@/components/dwg-metraj/types` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/odeme/dwg-kapisi` |
 | `frontend/app/(protected)/firma/ekip/kurumsal-giris/page.tsx` | `react` `next/link` `next/navigation` `lucide-react` `@/ortak/lib/api` `@/ortak/hooks/use-confirm` `@/ortak/hooks/use-toast` `@/ortak/lib/kimlik-hata-metinleri` `@/ozellik/kimlik/kurumsal-baslat` `@/ozellik/firma/ekip/ekip-parcalari` |
@@ -1164,7 +1205,7 @@ test:* scripti: 123
 | `frontend/app/admin/layout.tsx` | `@/ortak/kabuk/components/layout/Altbilgi` `react` `next/navigation` `@/ozellik/kutuphane/admin/AdminSidebar` |
 | `frontend/app/admin/page.tsx` | `react` `next/navigation` |
 | `frontend/app/admin/stats/page.tsx` | `react` `@/ortak/ui/button` `@/ortak/ui/badge` `@/ortak/ui/card` `@/ozellik/kutuphane/ai-butce` |
-| `frontend/app/admin/users/page.tsx` | `react` `next/link` `@/ortak/lib/api` `@/ortak/ui/input` `@/ortak/ui/button` `@/ortak/ui/badge` `@/ortak/ui/card` `@/ortak/hooks/use-confirm` `@/ortak/hooks/use-toast` `@/ozellik/odeme/paket-bicim` |
+| `frontend/app/admin/users/page.tsx` | `react` `next/link` `@/ortak/lib/api` `@/ortak/ui/input` `@/ortak/ui/button` `@/ortak/ui/badge` `@/ortak/ui/card` `@/ortak/hooks/use-confirm` `@/ortak/hooks/use-toast` `@/ozellik/odeme/paket-bicim` `@/ozellik/odeme/yonetici/YoneticiPaketPenceresi` |
 | `frontend/app/cerez-politikasi/page.tsx` | `next` `@/ozellik/hukuki/HukukiSayfa` `@/ozellik/hukuki/metinler` |
 | `frontend/app/davet-kabul/page.tsx` | `react` `next/navigation` `@/ortak/lib/api` `@/ozellik/kimlik/kurumsal-baslat` `@/ortak/lib/oturum` `@/ozellik/kimlik/GirisDaliEkrani` `@/ortak/lib/kimlik-hata-metinleri` `@/ortak/ui/parola-alani` `@/ortak/lib/parola-kurali` |
 | `frontend/app/dev/grid-test/page.tsx` | `react` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/types` |
@@ -1188,14 +1229,15 @@ test:* scripti: 123
 | `frontend/components/dwg-diameter-engine/types.ts` | `@/components/dwg-metraj/types` `@/components/dwg-workspace/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
 | `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | `react` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/components/dwg-metraj` `@/components/dwg-workspace/types` `./types` |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | `react` |
-| `frontend/components/dwg-metraj/DiameterEditPopup.tsx` | `react` `lucide-react` `./types` `./diameter-colors` |
 | `frontend/components/dwg-metraj/DwgUploader.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ortak/lib/api` `./types` `./unit-detection` `@/components/dwg-workspace` |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ozellik/fiyat/sayi-alani` `./types` |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | `./constants` |
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | `vitest` |
 | `frontend/components/dwg-tagging/BucketPanel.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `./useTaggingStore` |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | `zustand` `zustand/middleware` `@/components/dwg-metraj/diameter-colors` |
-| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | `react` `rbush` `lucide-react` `@/ortak/lib/api` `./types` `@/components/dwg-metraj/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./segment-length` `./useViewport` `./aci-colors` |
+| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | `react` `rbush` `lucide-react` `@/ortak/lib/api` `./types` `@/components/dwg-metraj/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./segment-length` `./canli-cap` `./useViewport` `./aci-colors` |
+| `frontend/components/dwg-viewer/canli-cap.test.ts` | `node:fs` `node:path` `typescript` `vitest` `./canli-cap` `../dwg-metraj/constants` `../dwg-metraj/types` |
+| `frontend/components/dwg-viewer/canli-cap.ts` | `../dwg-metraj/types` |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | `vitest` `./segment-length` |
 | `frontend/components/dwg-viewer/useViewport.ts` | `react` `./types` |
 | `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | `react` `lucide-react` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/api` `@/components/dwg-viewer` `@/components/dwg-metraj` `@/components/dwg-metraj/types` `./LayerInfoSidebar` `./LayerVisibilityPanel` `./MetrajSummaryPanel` `./useWorkspaceState` `./onay-revizyon` `./sprinkler-bayatlik` `./types` `@/components/dwg-tagging` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
@@ -1243,8 +1285,8 @@ test:* scripti: 123
 | `frontend/ortak/kabuk/components/layout/Sidebar.tsx` | `next/navigation` `next/link` `@/ortak/lib/utils` `@/ozellik/odeme/paket-bicim` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/firma/ekip/uye-izni-kapisi` |
 | `frontend/ortak/kabuk/components/layout/kirinti-etiketi.ts` | `react` |
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | `vitest` |
-| `frontend/ortak/lib/api.ts` | `axios` |
-| `frontend/ortak/lib/oturum.test.ts` | `vitest` `node:fs` `node:path` `./oturum` |
+| `frontend/ortak/lib/api.ts` | `axios` `./oturum` |
+| `frontend/ortak/lib/oturum.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ortak/lib/utils.ts` | `clsx` `tailwind-merge` |
 | `frontend/ortak/seo/arama-paylasim.test.ts` | `node:fs` `node:path` `typescript` `vitest` |
 | `frontend/ortak/seo/arama-paylasim.ts` | `next` |
@@ -1308,7 +1350,7 @@ test:* scripti: 123
 | `frontend/ozellik/kimlik/ZorunluKurulumSihirbazi.tsx` | `react` `@/ortak/lib/api` `@/ortak/lib/kimlik-hata-metinleri` `./KurulumAnahtari` `./KurtarmaKodlariEkrani` |
 | `frontend/ozellik/kimlik/dogrulama-bekleniyor.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/kimlik/giris-dali.test.ts` | `vitest` `fs` `path` `../../ortak/lib/oturum` `./KurulumAnahtari` |
-| `frontend/ozellik/kimlik/hesabim/AbonelikSekmesi.tsx` | `next/link` `lucide-react` `@/ortak/lib/api` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/odeme/abonelik-ozeti` `@/ozellik/odeme/paket-bicim` `@/ozellik/odeme/paket-degisimi` `./hesap-tipleri` `./hesabim-ui` |
+| `frontend/ozellik/kimlik/hesabim/AbonelikSekmesi.tsx` | `react` `next/link` `lucide-react` `@/ortak/lib/api` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/odeme/abonelik-ozeti` `@/ozellik/odeme/paket-bicim` `@/ozellik/odeme/paket-degisimi` `@/ozellik/odeme/paket-onerisi` `./hesap-tipleri` `./hesabim-ui` |
 | `frontend/ozellik/kimlik/hesabim/EkipErisimiSekmesi.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/firma/ekip/izin-metinleri` `@/ozellik/firma/ekip/kisi-metinleri` `./hesabim` `./hesabim-ui` `./IzinDurumListesi` |
 | `frontend/ozellik/kimlik/hesabim/FirmaSekmesi.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/lib/utils` `./hesap-tipleri` |
 | `frontend/ozellik/kimlik/hesabim/GuvenlikSekmesi.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/ui/parola-alani` `@/ortak/lib/parola-kurali` `../IkiAdimliGirisKarti` `../SirketHesabiKarti` `./hesap-tipleri` |
@@ -1341,6 +1383,7 @@ test:* scripti: 123
 | `frontend/ozellik/odeme/ErisimKapisi.tsx` | `react` `next/link` `next/navigation` `@/ortak/contexts/CapabilitiesContext` `./erisim-durumu` `./VitrinBolumKarti` |
 | `frontend/ozellik/odeme/FiyatKartlari.tsx` | `react` `next/link` `@/ortak/lib/api` `./paket-bicim` |
 | `frontend/ozellik/odeme/IyzicoFormu.tsx` | `react` `./iyzico-form` |
+| `frontend/ozellik/odeme/OneriSeridi.tsx` | `react` `@/ortak/lib/api` `./paket-bicim` `./paket-onerisi` |
 | `frontend/ozellik/odeme/VitrinBolumKarti.tsx` | `next/link` `lucide-react` `./vitrin-metinleri` |
 | `frontend/ozellik/odeme/VitrinSaglayici.tsx` | `next/link` `@/ortak/lib/api` `@/ortak/contexts/CapabilitiesContext` `./erisim-durumu` `./paket-bicim` |
 | `frontend/ozellik/odeme/abonelik-ozeti.test.ts` | `vitest` `node:fs` `node:path` `typescript` `../kimlik/hesabim/hesabim` `../teklif/ceviri-kota` |
@@ -1359,11 +1402,16 @@ test:* scripti: 123
 | `frontend/ozellik/odeme/paket-bicim.ts` | `./paket-degisimi` |
 | `frontend/ozellik/odeme/paket-degisimi.test.ts` | `node:fs` `node:path` `vitest` |
 | `frontend/ozellik/odeme/paket-degisimi.ts` | `../teklif/ceviri-kota` `./paket-bicim` |
+| `frontend/ozellik/odeme/paket-onerisi.test.ts` | `node:fs` `node:path` `vitest` `./paket-bicim` `./paket-onerisi` |
+| `frontend/ozellik/odeme/paket-onerisi.ts` | `../teklif/ceviri-kota` `./paket-bicim` `./paket-degisimi` |
 | `frontend/ozellik/odeme/paket-rozeti.test.ts` | `vitest` `node:fs` `node:path` `./paket-bicim` |
 | `frontend/ozellik/odeme/sozlesme-onayi.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/odeme/telefon-bicim.test.ts` | `vitest` `node:fs` `node:path` `./fatura-kimligi` |
 | `frontend/ozellik/odeme/turkce-metin.test.ts` | `node:fs` `node:path` `typescript` `vitest` `./fatura-kimligi` `./telefon-bicim` `./dwg-kapisi` `./paket-bicim` |
 | `frontend/ozellik/odeme/vitrin.test.ts` | `node:fs` `node:path` `react` `react-dom/server` `typescript` `vitest` `./paket-bicim` `./VitrinBolumKarti` |
+| `frontend/ozellik/odeme/yonetici/YoneticiPaketPenceresi.tsx` | `react` `lucide-react` `@/ortak/lib/api` `@/ortak/ui/button` `@/ortak/ui/badge` `@/ortak/hooks/use-toast` `../paket-bicim` `../../teklif/ceviri-kota` |
+| `frontend/ozellik/odeme/yonetici/yonetici-paket.test.ts` | `node:fs` `node:path` `vitest` |
+| `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | `../../teklif/ceviri-kota` `../paket-bicim` |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | `react` `react-dom` |
 | `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | `react` `react-dom` `ag-grid-react` `ag-grid-community` `./types` `./oneri-cekince` `./useFillHandle` `./discount-utils` `./CustomDropdown` `./fill-down` `./yapistir` `./kopyala` `./isaret` `@/ozellik/tablo/parse-material-text` `@/ozellik/fiyat/pricing` `./satir-terfi` `@/ozellik/fiyat/sayi-alani` `@/ozellik/fiyat/para-sutun-genisligi` `./build-material-context` `./aday-ayirt-edicilik` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `ag-grid-community/styles/ag-grid.css` `ag-grid-community/styles/ag-theme-alpine.css` `./fill-handle.css` |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | `react` |
@@ -1541,9 +1589,6 @@ test:* scripti: 123
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | `POST /admin/users/:id/mfa-sifirla` |
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | `DELETE /admin/users/:id` |
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | `GET /admin/denetim` |
-| `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | `GET /admin/users/:id/subscriptions` |
-| `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | `POST /admin/users/:id/subscriptions` |
-| `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | `DELETE /admin/users/:userId/subscriptions/:subId` |
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | `GET /admin/settings` |
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | `PATCH /admin/settings` |
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | `POST /admin/reindex-products` |
@@ -1618,11 +1663,16 @@ test:* scripti: 123
 | `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | `GET /abonelik/durum` |
 | `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | `POST /abonelik/basla` |
 | `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | `POST /abonelik/degistir` |
+| `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | `POST /abonelik/oneri/:oneriId/reddet` |
 | `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | `POST /abonelik/donus` |
 | `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | `POST /abonelik/kart-guncelle` |
 | `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | `POST /abonelik/iptal` |
 | `backend/src/ozellik/odeme/abonelik/fiyat.controller.ts` | `GET /fiyatlar` |
 | `backend/src/ozellik/odeme/abonelik/iyzico-donus.controller.ts` | `POST /abonelik/iyzico-donus` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-abonelik.controller.ts` | `GET /yonetim/abonelik/:firmaId` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-abonelik.controller.ts` | `POST /yonetim/abonelik/:firmaId/dusur` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-abonelik.controller.ts` | `POST /yonetim/abonelik/:firmaId/oneri` |
+| `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-abonelik.controller.ts` | `POST /yonetim/abonelik/:firmaId/oneri/:oneriId/geri-cek` |
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | `GET /yonetim/havale` |
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | `POST /yonetim/havale/teklif` |
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | `POST /yonetim/havale/:id/fatura` |
@@ -1659,6 +1709,9 @@ test:* scripti: 123
  *   yorum bloklarındaki örnekleri de sayıyor, sınıf düzeyi dekoratörleri
  *   metot düzeyindekilerden ayıramıyor, `@UseGuards(...` |
 | `backend/test/yardimci/uc-envanteri.ts` | `GET /x/y` |
+| `backend/test/yonetici-paket-test.ts` | `POST /yonetim/abonelik/oneri/:oneriId/reddet` |
+| `backend/test/yonetici-paket-test.ts` | `POST /yonetim/abonelik/degistir` |
+| `backend/test/yonetici-paket-test.ts` | `POST /yonetim/abonelik/degistir` |
 | `frontend/ozellik/kimlik/kapali-hesap-akisi.test.ts` | `DELETE /:id` |
 | `frontend/ozellik/kimlik/kapali-hesap-akisi.test.ts` | `GET /` |
 | `frontend/ozellik/kimlik/kapali-hesap-akisi.test.ts` | `GET /:id` |
@@ -1762,8 +1815,10 @@ test:* scripti: 123
 | `backend/package.json` | `test:kisisel-liste` | `ts-node test/kisisel-liste-izolasyon-test.ts` |
 | `backend/package.json` | `test:odeme` | `ts-node test/odeme-onyukleme-test.ts` |
 | `backend/package.json` | `test:havale-iyzico` | `ts-node test/havale-iyzico-cakismasi-test.ts` |
+| `backend/package.json` | `test:yonetim-epostalari` | `ts-node test/yonetim-epostalari-test.ts` |
 | `backend/package.json` | `test:migration` | `ts-node test/migration-zinciri-test.ts` |
 | `backend/package.json` | `test:erisim` | `ts-node test/erisim-kapisi-test.ts` |
+| `backend/package.json` | `test:odeme-bekliyor-geri-sayim` | `ts-node test/odeme-bekliyor-geri-sayim-test.ts` |
 | `backend/package.json` | `test:guvenlik2` | `ts-node test/guvenlik-turu-2-test.ts` |
 | `backend/package.json` | `test:firma-ekseni` | `ts-node test/firma-ekseni-test.ts` |
 | `backend/package.json` | `test:ortam` | `ts-node test/ortam-degiskenleri-test.ts` |
@@ -1779,6 +1834,7 @@ test:* scripti: 123
 | `backend/package.json` | `test:deneme-hakki` | `ts-node test/deneme-hakki-test.ts` |
 | `backend/package.json` | `test:mutabakat-deneme` | `ts-node test/mutabakat-deneme-test.ts` |
 | `backend/package.json` | `test:mutabakat-kayip-tahsilat` | `ts-node test/mutabakat-kayip-tahsilat-test.ts` |
+| `backend/package.json` | `test:webhook-tahsilat-dogrulama` | `ts-node test/webhook-tahsilat-dogrulama-test.ts` |
 | `backend/package.json` | `test:abonelik-erisim` | `ts-node test/abonelik-erisim-test.ts` |
 | `backend/package.json` | `test:faz7-yetki` | `ts-node test/faz7-yetki-test.ts` |
 | `backend/package.json` | `test:faz7-totp` | `ts-node test/faz7-totp-test.ts` |
@@ -1796,7 +1852,9 @@ test:* scripti: 123
 | `backend/package.json` | `test:uc-kapisi-davranis` | `ts-node test/uc-kapisi-davranis-test.ts` |
 | `backend/package.json` | `test:eposta-kodu` | `ts-node test/yonetici-eposta-kodu-test.ts` |
 | `backend/package.json` | `test:paket-degisimi` | `ts-node test/paket-degisimi-test.ts` |
+| `backend/package.json` | `test:miras-erisimi` | `ts-node test/miras-erisimi-test.ts` |
 | `backend/package.json` | `test:vitrin` | `ts-node test/vitrin-test.ts` |
+| `backend/package.json` | `test:yonetici-paket` | `ts-node test/yonetici-paket-test.ts` |
 | `frontend/package.json` | `test:e2e` | `playwright test` |
 | `frontend/package.json` | `test:e2e-golden` | `node test/e2e-golden/run.mjs` |
 

@@ -535,6 +535,18 @@ function sahteDb() {
         Object.assign(satir, data);
         return dolu();
       },
+      // Degisimin son yazimi KOSULLU (`updateMany`): `where` GERCEKTEN
+      // uygulanir (`in` ve NULL kolon dahil); tutmazsa count 0 -> cekirdek 409.
+      updateMany: async ({ where, data }: any) => {
+        const tutar = Object.entries(where).every(([k, v]: [string, any]) =>
+          v !== null && typeof v === 'object' && Array.isArray(v.in)
+            ? v.in.includes(satir[k])
+            : (satir[k] ?? null) === v,
+        );
+        if (!tutar) return { count: 0 };
+        Object.assign(satir, data);
+        return { count: 1 };
+      },
     },
     paketSurumu: {
       findUnique: async ({ where }: any) => surumler.find((s) => s.id === where.id) ?? null,

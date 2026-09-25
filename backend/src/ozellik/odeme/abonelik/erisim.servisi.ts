@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
-import { AbonelikDurumu } from '@prisma/client';
+import { AbonelikDurumu, OdemeYontemi } from '@prisma/client';
 import {
   kapaliHesapMetni,
   type KapaliHesapDurumu,
 } from '../../../altyapi/auth/kapali-hesap';
 import { abonelikErisimi } from '../../../altyapi/auth/abonelik-erisim';
+import { kisitlamayaKalanGun } from '../dunning/kisit-gunu';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -333,11 +334,24 @@ export class ErisimServisi {
 
       case AbonelikDurumu.ODEME_BEKLIYOR: {
         // Tolerans süresi: erişim tam açık ama uyarı görünür.
+        // ── GERİ SAYIM KISITLAMA GÜNÜNE (24.09.2026, Emre kararı) ───────────
+        // ⚠ `erisimSonu`na SAYILMAZ: o ödenmiş dönemin sonudur ve tahsilat
+        // başarısız olunca ZATEN geçmiştir (yenilemede `endPeriod` = çekim
+        // anı). Ölçüldü: Hesabım "−1, −3, −9 gün kaldı" yazarken dunning
+        // e-postası aynı gün kısıtlamaya kalan günü sayıyordu. Sayı artık
+        // e-postayla AYNI fonksiyondan (`kisit-gunu.ts`). Merdivenin HİÇ
+        // taramadığı satırda kısıt planlanmamıştır → sayı YOK: KART dışı
+        // (24.09'a dek eski kart aboneliğinin başarısız çekimi havaleye geçmiş
+        // satırı da ODEME_BEKLIYOR yapıyordu — o veri durabilir; sayaç 0'da
+        // donardı) ve `ilkBasarisizlik` boş (yardımcı null döner).
         return {
           ...temel,
           erisimVar: e.erisimVar,
           saltOkunur: e.saltOkunur,
-          kalanGun: ab.kisitlandi ? null : this.gunFarki(ab.erisimSonu, simdi),
+          kalanGun:
+            ab.kisitlandi || ab.odemeYontemi !== OdemeYontemi.KART
+              ? null
+              : kisitlamayaKalanGun(ab.ilkBasarisizlik, simdi.getTime()),
           uyari: {
             seviye: 'uyari',
             baslik: 'Ödemeniz alınamadı',

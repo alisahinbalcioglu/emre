@@ -28,6 +28,7 @@ import type { EdgeSegment } from '@/components/dwg-metraj/types';
 import { diameterToColor } from '@/components/dwg-metraj/diameter-colors';
 import { isUnassignedDiameter, UNASSIGNED_LABEL } from '@/components/dwg-metraj/constants';
 import { resolveHoverLength } from './segment-length';
+import { canliCapliVarlik, sabitSecimGecersiz } from './canli-cap';
 import { useViewport } from './useViewport';
 import { aciToColor } from './aci-colors';
 
@@ -596,6 +597,12 @@ export default function DxfCanvasViewer({
       setSelectedLine(null);
     }
   }, [hiddenLayers, dimmedLayers, hovered, selectedLine]);
+
+  // Sabit secimin segmenti diziden dustuyse (layer onaylandi / yeniden
+  // hesaplandi) secim gecersiz — kutu tiklama anindaki bayat capa donmesin.
+  useEffect(() => {
+    if (sabitSecimGecersiz(selectedLine, allEdgeSegments)) setSelectedLine(null);
+  }, [selectedLine, allEdgeSegments]);
 
   // ─── Render — sahne cache (statik katman) + overlay, RAF ile ─────
   useEffect(() => {
@@ -1681,6 +1688,13 @@ export default function DxfCanvasViewer({
 
   const cursorClass = eraseMode ? 'cursor-cell' : (hovered ? 'cursor-pointer' : 'cursor-crosshair');
 
+  // Bilgi kutusu varligi: selectedLine/hovered tiklama anindaki fotograftir,
+  // tiklama capi o fotograftan SONRA yazar/siler — cap/miras canli okunur.
+  const tooltipEntity = useMemo(() => {
+    const ent = selectedLine ?? hovered;
+    return ent ? canliCapliVarlik(ent, allEdgeSegments) : null;
+  }, [selectedLine, hovered, allEdgeSegments]);
+
   return (
     <div className={`flex flex-col rounded-xl border border-slate-700 overflow-hidden bg-slate-950 ${className}`}>
       <div
@@ -1825,9 +1839,9 @@ export default function DxfCanvasViewer({
         </div>
 
         {/* Tooltip — hover ya da selected uzerinde */}
-        {(selectedLine || hovered) && cursorScreen && (
+        {tooltipEntity && cursorScreen && (
           <Tooltip
-            entity={selectedLine ?? hovered!}
+            entity={tooltipEntity}
             screenX={cursorScreen.x}
             screenY={cursorScreen.y}
             pinned={!!selectedLine}

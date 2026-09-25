@@ -230,6 +230,12 @@ const EKRANLAR = [
   'ozellik/odeme/paket-bicim.ts',
   // 23.09 — paket değişimi: onay penceresi ve bekleyen değişim cümleleri.
   'ozellik/odeme/paket-degisimi.ts',
+  // 24.09 (A2) — yönetici "Paket işlemleri" penceresi ve yardımcı metinleri.
+  'ozellik/odeme/yonetici/yonetici-paket.ts',
+  'ozellik/odeme/yonetici/YoneticiPaketPenceresi.tsx',
+  // 24.09 (A2 Blok 2) — müşterinin paket önerisi şeridi ve metinleri.
+  'ozellik/odeme/OneriSeridi.tsx',
+  'ozellik/odeme/paket-onerisi.ts',
   'ozellik/odeme/abonelik-ozeti.ts',
   'ozellik/odeme/fatura-kimligi.ts',
   'ozellik/odeme/telefon-bicim.ts',
@@ -514,8 +520,16 @@ describe('Paket adı: müşteriye görünen hiçbir yerde "Core" yok (iç kod de
       .filter((y) => !y.startsWith('app/admin/'))
       .flatMap((y) => hamSeviyeBasimlari(dosya(y)).map((b) => `${y}${b}`));
     expect(bulunan).toEqual([]);
-    // FIXTURE KANITI: dedektör gerçek kodda çalışıyor — hariç tutulan panel kodu basıyor
-    expect(hamSeviyeBasimlari(dosya('app/admin/users/page.tsx')).length).toBeGreaterThan(0);
+    // FIXTURE KANITI: dedektör çalışıyor. ⚠ 24.09 (A2): kanıt eskiden yönetici
+    // kullanıcılar sayfasındaki eski abonelik listesinin `{s.level}` basımıydı;
+    // o liste (erişim vermeyen eski kişi-başı tablo) KALDIRILDI. Kanıt artık
+    // üretim kodundan BAĞIMSIZ sabit örnek: bir ekran değişince dedektörün
+    // "çalıştığı" kanıtı sessizce kaybolmasın. Öznitelik değeri SAYILMAZ.
+    const ornek = ayristir(
+      'ornek.tsx',
+      'const X = () => <div>{u.tier}<b>{level}</b><i title={tier}>x</i></div>;',
+    );
+    expect(hamSeviyeBasimlari(ornek)).toEqual([':1 {u.tier}', ':1 {level}']);
   });
 
   // ⚠ 2.15: ÇAĞRI `seviyeAdi` DEĞİL `paketRozeti`. Gerekçe: seviye `null`

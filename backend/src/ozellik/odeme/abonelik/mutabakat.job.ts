@@ -5,6 +5,7 @@ import { AbonelikDurumu, Prisma } from '@prisma/client';
 import { IyzicoAbonelikDetayi, IyzicoClient } from '../iyzico/iyzico.client';
 import type { AbonelikWebhookGovdesi } from '../iyzico/imza';
 import { iyzicoTarihi } from '../iyzico/iyzico-tarihi';
+import { odenmisSiparisMi } from '../iyzico/tahsilat-kaniti';
 import { AZAMI_DENEME as WEBHOOK_AZAMI_DENEME } from '../webhook/webhook.isleyici';
 import { AbonelikServisi, iyzicoDurumunuYorumla } from './abonelik.servisi';
 
@@ -115,7 +116,8 @@ export function denemeSuruyorMu(
  *  KURAL (Emre kararı 24.09 — "yeniden oynat + kanıtsız terfi yok"):
  *   1. KANIT iyzico'nun KENDİ sipariş listesidir, webhook gövdesi değil (bkz.
  *      `tahsilatBasarili` güvenlik notu): `orderStatus: 'SUCCESS'` VE en az bir
- *      SUCCESS ödeme denemesi olan sipariş ödenmiştir (`odenmisSiparisMi`).
+ *      SUCCESS ödeme denemesi olan sipariş ödenmiştir (`odenmisSiparisMi`,
+ *      `iyzico/tahsilat-kaniti.ts` — tahsilat webhook'uyla TEK kural).
  *      Yalnız iyzico ACTIVE derken aranır.
  *   2. Ödenmiş siparişin dönem sonu `erisimSonu`ndan SONRAYSA tahsilat
  *      kaybolmuştur: bu iş `WebhookOlayi`na `kaynak: 'mutabakat'` satırı yazar,
@@ -165,24 +167,20 @@ export function denemeSuruyorMu(
  *   · Kilitli müşteri iptal ederse: yenilemesi ödenmiş ama webhook'u kaybolmuş
  *     müşteri "doğrulanıyor" ekranında iptal ederse satır IPTAL, sonra
  *     SONA_ERDI olur; iyzico CANCELED der — o dönem ne verilir ne faturalanır.
- *   · Tahsilat yolu kanıtı yalnız VARLIKLA ister: `tahsilatBasarili` siparişi
- *     iyzico'nun listesinde arar, SUCCESS olduğuna bakmaz (webhook'un kendi
- *     açığı; oynatma zaten yalnız ödenmiş siparişi yazar) — ayrı iş.
- *   · Tarihler tahsilat yolunda `new Date(...)` ile okunur
- *     (`tahsilatBasarili` → `endPeriod`, `webhook.isleyici` → `startPeriod`,
- *     bu işin İPTAL dalı → `endDate`): bugün sayı geldiği için doğru;
- *     rakam-dizesinde olay işlenemez (sessiz değil) — `iyzicoTarihi`ne
- *     geçmeleri ayrı iş. İPTAL dalındaki `endDate`in anlamı (dönem sonu mu,
- *     iptal anı mı) ÖLÇÜLMEDİ.
+ *   · İPTAL dalındaki `endDate`in anlamı (dönem sonu mu, iptal anı mı)
+ *     ÖLÇÜLMEDİ (okuma 24.09'dan beri `iyzicoTarihi`nden geçer).
  *   · iyzico kodu HİÇ döndüremezse (ör. sandbox → canlı anahtar geçişinde eski
  *     kodlar) SONA_ERDI + 'ACTIVE' satır her gece hata yazar ve yeniden alım
  *     kapısı kapalı kalır — geçiş adımı `iyzicoDurum`u temizlemeli.
  *   · Havale onayı kart aboneliğine bakmaz: iyzico'su açık bir firmaya havale
  *     satılırsa kart da çekilmeye devam eder (bu işten ÖNCE de vardı) — ayrı iş.
- *   · iyzico'nun DOĞRULAMADIĞI başarısızlık olayı (ör. imzasız sahte webhook)
- *     ödemesi tam müşteriyi ODEME_BEKLIYOR'a atar; eskiden bu iş çıplak
- *     ACTIVE ile ertesi gece geri alıyordu, kural 5 artık almıyor (Emre
- *     24.09 kabul etti) — `tahsilatBasarisiz`in iyzico'dan doğrulaması ayrı iş.
+ *   · ✓ KAPANDI 24.09 (`test:webhook-tahsilat-dogrulama`): tahsilat yolu
+ *     artık aynı kanıtı ister (`tahsilatBasarili` ödenmemiş siparişi
+ *     reddeder); `tahsilatBasarisiz` iyzico'dan doğrular
+ *     (`tahsilatBasarisizligiKarari` — kanıtsız bildirim durumu değiştirmez,
+ *     böylece kural 5'in geri almadığı sahte ret artık hiç yazılmaz); tahsilat
+ *     yolundaki tarih okumaları (`endPeriod`, `startPeriod`, bu işin `endDate`i,
+ *     gövdenin `iyziEventTime`ı) `iyzicoTarihi`nden geçer.
  *   · (KAPANDI 24.09, `995736a`) "Toparlandı" e-postası hiç gitmiyordu:
  *     dunning düzeltmesi dunning'den çıkışı sıfırlamanın kendisinden bildirir
  *     (`dunningdenCikti`). İşleyici olay kaynağına göre dallanmadığı için
@@ -208,24 +206,12 @@ export const MUTABAKAT_KAYNAGI = 'mutabakat';
 const BASARILI_TAHSILAT: AbonelikWebhookGovdesi['iyziEventType'] = 'subscription.order.success';
 
 /**
- * ⚠ Deneme alanının ADI: 20.08 tutanağı `paymentStatus` gösteriyor, istemci
- * tipi (`IyzicoOdemeDenemesi`) `paymentAttemptStatus` diyor. İkisi de okunur —
- * ikisi de iyzico'nun kendi verisidir; yalnız birini okumak, adı yanlışsa her
- * ödemeyi "kanıtsız" sayardı.
+ * Ödendi mi? (kural 1) — kural `iyzico/tahsilat-kaniti.ts`e TAŞINDI (24.09):
+ * başarılı tahsilat webhook'u (`AbonelikServisi.tahsilatBasarili`) da AYNI
+ * kanıtı ister; servis bu dosyayı içe aktaramaz (döngü). Burada yeniden dışa
+ * verilir — iki yol TEK fonksiyonu okur (`test:webhook-tahsilat-dogrulama` S1).
  */
-function basariliOdemeDenemesiMi(d: unknown): boolean {
-  if (!d || typeof d !== 'object') return false;
-  const x = d as Record<string, unknown>;
-  return x.paymentStatus === 'SUCCESS' || x.paymentAttemptStatus === 'SUCCESS';
-}
-
-/** Ödendi mi? `orderStatus: 'SUCCESS'` VE en az bir SUCCESS ödeme denemesi (kural 1). SAF. */
-export function odenmisSiparisMi(s: unknown): boolean {
-  if (!s || typeof s !== 'object') return false;
-  const o = s as Record<string, unknown>;
-  if (o.orderStatus !== 'SUCCESS') return false;
-  return Array.isArray(o.paymentAttempts) && o.paymentAttempts.some(basariliOdemeDenemesiMi);
-}
+export { odenmisSiparisMi };
 
 /**
  * `erisimSonu`nu UZATAN ödenmiş siparişler, dönem sonuna göre ESKİDEN YENİYE
@@ -445,14 +431,15 @@ export class MutabakatJob {
       return false;
     }
 
+    // İptal edildiyse ödenmiş dönemin sonuna kadar erişim sürsün. `endDate`
+    // TEK çözücüden (24.09): rakam-dizesi `new Date` ile Invalid Date olup
+    // iptali yazdırmıyordu; çözülemeyen değer yokmuş gibi — tarih UYDURULMAZ.
+    const iptalSonu = hedef === AbonelikDurumu.IPTAL ? iyzicoTarihi(detay.endDate) : null;
     await this.abonelikServisi.durumDegistir(abonelikId, hedef, {
       aciklama: `Mutabakat: iyzico durumu ${detay.subscriptionStatus}`,
       aktor: 'mutabakat',
       veri: { iyzicoDurum: detay.subscriptionStatus },
-      // İptal edildiyse ödenmiş dönemin sonuna kadar erişim sürsün
-      ...(hedef === AbonelikDurumu.IPTAL && detay.endDate
-        ? { erisimSonu: new Date(detay.endDate) }
-        : {}),
+      ...(iptalSonu ? { erisimSonu: iptalSonu } : {}),
     });
 
     // ⚠ FAZ 6.12a (16.09) — İKİZİ UNUTMA: webhook yolu (tahsilatBasarisiz)
@@ -476,8 +463,9 @@ export class MutabakatJob {
    * Kaybolmuş tahsilatı webhook işleyicisinin kuyruğuna yazar (kural 2-4).
    * İşleyici dakikalık taramasında `tahsilatBasarili` + fatura + dunning
    * yolunu koşar; bu metot erişime ve faturaya DOKUNMAZ. `tahsilatBasarili`
-   * siparişi iyzico'nun listesinde YENİDEN arar (yalnız varlığını — bkz.
-   * bilinen sınırlar; SUCCESS kanıtını burada `odenmisSiparisMi` verdi).
+   * siparişi iyzico'nun listesinde YENİDEN arar ve AYNI kanıtı ister
+   * (`odenmisSiparisMi`, 24.09) — sipariş arada ödenmiş görünmez olursa
+   * uygulanmaz.
    */
   private async tahsilatiYenidenOynat(
     abonelikId: string,

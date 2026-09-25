@@ -63,6 +63,17 @@ const TIP_ETIKET: Record<string, string> = {
   'abonelik.kaldirildi': 'Abonelik kaldırıldı',
   // Faz 6.9: ORTAK çeviri katmanına yönetici yazımı (her firmanın çıktısını etkiler).
   'ceviri.ortak.duzeltildi': 'Ortak çeviri düzeltildi',
+  // 24.09 (A2): yönetici düşürmesi — niyet (iyzico'dan ÖNCE), sonuç, kurtarma.
+  'paket.dusurme.istendi': 'Paket düşürme istendi',
+  'paket.dusuruldu': 'Paket düşürüldü (dönem sonu)',
+  'paket.dusurme.uygulanmadi': 'Düşürme uygulanmadı (önceki değişim bulundu)',
+  'paket.dusurme.basarisiz': 'Düşürme başarısız (iyzico kabul etmedi)',
+  'paket.dusurme.belirsiz': 'Düşürme sonucu doğrulanamadı',
+  'paket.dusurme.yarim': 'Düşürme yarım kaldı',
+  // 24.09 (A2 Blok 2): müşteri onaylı öneri. Kabul/ret müşterinin işi →
+  // abonelik geçmişinde (`AbonelikOlayi`), burada değil.
+  'paket.oneri.gonderildi': 'Paket önerisi gönderildi',
+  'paket.oneri.geri-cekildi': 'Paket önerisi geri çekildi',
 };
 
 const TIP_RENK: Record<string, 'destructive' | 'info' | 'success' | 'secondary'> = {
@@ -73,6 +84,14 @@ const TIP_RENK: Record<string, 'destructive' | 'info' | 'success' | 'secondary'>
   'abonelik.eklendi': 'success',
   'abonelik.kaldirildi': 'secondary',
   'ceviri.ortak.duzeltildi': 'info',
+  'paket.dusurme.istendi': 'secondary',
+  'paket.dusuruldu': 'info',
+  'paket.dusurme.uygulanmadi': 'destructive',
+  'paket.dusurme.basarisiz': 'destructive',
+  'paket.dusurme.belirsiz': 'destructive',
+  'paket.dusurme.yarim': 'destructive',
+  'paket.oneri.gonderildi': 'info',
+  'paket.oneri.geri-cekildi': 'secondary',
 };
 
 export default function AdminDenetimPage() {

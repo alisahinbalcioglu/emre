@@ -66,6 +66,12 @@ export interface Paket {
    * yoksa kart eski davranışla "Bu paketi seç" der.
    */
   degisim?: DegisimOzeti;
+  /**
+   * 24.09 (A2 Blok 2) — bu pakete geçmeyi öneren BEKLEYEN yönetici önerisi.
+   * Yalnız HEDEF paketin satırında gelir; `not` yalnız firma SAHİBİNE dolu
+   * (üyeye `null`). Önerilen paketi seçmek öneriyi kabul etmektir.
+   */
+  oneri?: { id: string; sonGecerlilik: string; not: string | null };
 }
 
 /** Rakam dizgesine TR binlik ayracı: "12345" → "12.345". Tek yer — `tutarYaz`

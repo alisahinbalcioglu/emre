@@ -767,7 +767,7 @@ async function aBlogu(): Promise<void> {
       oy[0]?.musteriKodu === 'cus-sub-a' && oy[0]?.hamGovde?.kaynak === 'mutabakat' &&
       oy[0]?.hamGovde?.kanit?.orderStatus === 'SUCCESS' && oy[0]?.hamGovde?.kanit?.referenceCode === 'ord-a2',
     JSON.stringify(oy[0]?.hamGovde));
-  check('A7 ⭐ BAĞLANTI: tahsilat yolu siparişi iyzico\'nun listesinde yeniden ARADI (sub-a iki kez soruldu: mutabakat + tahsilatBasarili; o yol yalnız VARLIĞA bakar, SUCCESS kanıtını mutabakat verdi)',
+  check('A7 ⭐ BAĞLANTI: tahsilat yolu siparişi iyzico\'nun listesinde yeniden ARADI (sub-a iki kez soruldu: mutabakat + tahsilatBasarili; 24.09\'dan beri o yol da AYNI ödeme kanıtını ister — `test:webhook-tahsilat-dogrulama`)',
     d.iyz.sorulan.filter((kod) => kod === 'sub-a').length === 2, `sorulan=${d.iyz.sorulan}`);
   const durumOlayi = d.durumOlaylari(ab.id);
   check('A8 iz: durum olayı tahsilat yolundan (aktör webhook, sipariş ord-a2) — mutabakat durumu kendisi DEĞİŞTİRMEDİ',

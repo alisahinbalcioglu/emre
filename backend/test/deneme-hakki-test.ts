@@ -474,7 +474,15 @@ function dunyaKur() {
   const auth = new AuthService(db.prisma, jwtSahte, {} as any, { dogrulamaGonderSessizce: async (_id: string, e: string) => { dogrulamaGiden.push(e); } } as any, new OturumServisi(db.prisma, jwtSahte));
   // 23.09: 4. bağımlılık paket değişimi yolu — bu kapının konusu değil (boş
   // harita → her kart "satin-al"); değişimin kendi kapısı test:paket-degisimi.
-  const controller = new AbonelikController({} as any, satinAlma, denemeHakki, { yollar: async () => new Map() } as any);
+  // 24.09 (A2 Blok 2): 5. bağımlılık bekleyen yönetici önerisi — bu kapının
+  // konusu değil (öneri yok); önerinin kendi kapısı test:yonetici-paket.
+  const controller = new AbonelikController(
+    {} as any,
+    satinAlma,
+    denemeHakki,
+    { yollar: async () => new Map() } as any,
+    { bekleyen: async () => null } as any,
+  );
 
   const firma = (id: string, telefon: string | null = null) => db.ekle('firma', { id, ad: id, telefon });
   const kullanici = (id: string, email: string, firmaId: string, ek: Satir = {}) =>
@@ -616,6 +624,14 @@ async function yollar(): Promise<void> {
     d.kullanici('UB1', 'bora@firmab.com', 'FB');
     d.kullanici('UB2', 'muhasebe@baska-b.com', 'FB', { firmaRol: 'uye' });
     await d.satinAl({ firmaId: 'FB', kullaniciId: 'UB1', eposta: 'bora@firmab.com', telefon: '0533 222 22 22', kod: 'sub-b1' });
+    // ⚠ 24.09 — ret iyzico'dan DOGRULANIR (`tahsilatBasarisiz` →
+    // `tahsilatBasarisizligiKarari`, `test:webhook-tahsilat-dogrulama` F).
+    // Deneme sonu cekimi reddedilince iyzico'nun karsiligi: abonelik UNPAID,
+    // sipariste reddedilmis deneme.
+    d.iyz.detaylar.set('sub-b1', {
+      subscriptionStatus: 'UNPAID',
+      orders: [{ referenceCode: 'ord-b1', orderStatus: 'FAILED', paymentAttempts: [{ paymentStatus: 'FAILURE' }] }],
+    });
     const olay = d.db.ekle('webhookOlayi', {
       tekilAnahtar: 'w-b1', olayTipi: 'subscription.order.failure', hamGovde: {}, abonelikKodu: 'sub-b1', siparisKodu: 'ord-b1',
     });

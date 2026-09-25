@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { IyzicoHataSuzgeci } from './iyzico/iyzico-hata.filter';
 import { IyzicoDonusController } from './abonelik/iyzico-donus.controller';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 
 import { IyzicoClient } from './iyzico/iyzico.client';
@@ -14,13 +14,18 @@ import { SatinAlmaServisi } from './abonelik/satinalma.servisi';
 import { DenemeHakkiServisi } from './abonelik/deneme-hakki.servisi';
 import { PaketDegisimiServisi } from './abonelik/paket-degisimi.servisi';
 import { AbonelikController } from './abonelik/abonelik.controller';
+import { YoneticiAbonelikController } from './abonelik/yonetici/yonetici-abonelik.controller';
+import { YoneticiAbonelikServisi } from './abonelik/yonetici/yonetici-abonelik.servisi';
+import { YoneticiDusurmeServisi } from './abonelik/yonetici/yonetici-dusurme.servisi';
+import { PaketOnerisiServisi } from './abonelik/yonetici/paket-onerisi.servisi';
 import { FiyatController } from './abonelik/fiyat.controller';
 import { CeviriKotaServisi } from './abonelik/ceviri-kota.servisi';
 import { MutabakatJob } from './abonelik/mutabakat.job';
 import { DunningServisi } from './dunning/dunning.servisi';
 import { FaturaServisi } from './fatura/fatura.servisi';
 import {
-  MUHASEBE_ADAPTORU,
+  ElleMuhasebeAdaptoru,
+  MUHASEBE_ADAPTORU_SAGLAYICISI,
   ParasutAdaptoru,
   SahteMuhasebeAdaptoru,
 } from './fatura/muhasebe.adaptor';
@@ -51,6 +56,8 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     IyzicoWebhookController,
     HavaleController,
     AbonelikController,
+    // 24.09 (A2): yonetici paket islemleri — sinif duzeyinde @Roles('admin').
+    YoneticiAbonelikController,
     // ⚠ JWT'siz (Faz 6.1): fiyat sayfası girişsiz ziyaretçiye açıktır. Yalnız
     // OKUR, ThrottlerGuard ile IP başına sınırlı (bkz. controller notu).
     FiyatController,
@@ -74,6 +81,10 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     DenemeHakkiServisi,
     // 23.09: paket degisimi + 10 dk'lik planli gecis taramasi (@Cron).
     PaketDegisimiServisi,
+    // 24.09 (A2): yonetici paneli — ayni cekirdegi (islemciyleDegistir) kullanir.
+    YoneticiAbonelikServisi,
+    YoneticiDusurmeServisi,
+    PaketOnerisiServisi,
     ErisimServisi,
     CeviriKotaServisi,
     MutabakatJob,
@@ -83,18 +94,12 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     EpostaServisi,
     ParasutAdaptoru,
     SahteMuhasebeAdaptoru,
-    {
-      // Geliştirmede sahte adaptör, üretimde Paraşüt.
-      // MUHASEBE_SAGLAYICI=parasut olmadıkça hiçbir yere fatura gitmez.
-      provide: MUHASEBE_ADAPTORU,
-      inject: [ConfigService, ParasutAdaptoru, SahteMuhasebeAdaptoru],
-      useFactory: (
-        config: ConfigService,
-        parasut: ParasutAdaptoru,
-        sahte: SahteMuhasebeAdaptoru,
-      ) =>
-        config.get('MUHASEBE_SAGLAYICI') === 'parasut' ? parasut : sahte,
-    },
+    ElleMuhasebeAdaptoru,
+    // MUHASEBE_SAGLAYICI: "elle" (canlı varsayılanı, compose) → yöneticiye
+    // NES kesim talebi e-postası · "parasut" → Paraşüt · boş/"sahte" → sahte
+    // (geliştirme/test; yalnız günlüğe yazar). Seçim ve kapısı:
+    // `muhasebe.adaptor.ts` → MUHASEBE_ADAPTORU_SAGLAYICISI.
+    MUHASEBE_ADAPTORU_SAGLAYICISI,
   ],
   // ErisimServisi'ni dışa açıyoruz: teklif/metraj modülleriniz
   // yetenek kontrolü için bunu kullanacak.

@@ -34,7 +34,8 @@ export function emptyCapabilities(): UserCapabilities {
  *    (b) `UserSubscription` (level × scope) — capabilities, KISI bazli,
  *    (c) ADIM 2'nin `Abonelik`i — FIRMA bazli.
  *  (a) ile (b) hicbir yerde uzlastirilmiyordu: `admin.updateUserTier`
- *  yalniz tier yazar, `admin.addUserSubscription` yalniz abonelik yazar.
+ *  yalniz tier yazar, `admin.addUserSubscription` yalniz abonelik yazar
+ *  (ikisi de 17.09 / 24.09'da kapatildi; paket artik yalniz abonelikten).
  *  Yani tier='pro' ama aboneligi olmayan (ya da tersi) kullanicilar
  *  uretilebiliyordu ve hangi kapinin hangisini okudugu tesadufiydi.
  *

@@ -11,6 +11,7 @@ import {
   tarihYaz,
   tutarYaz,
 } from './dunning.metinleri';
+import { dunningKisitGunu, kisitlamayaKalanGun } from './kisit-gunu';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -334,9 +335,7 @@ export class DunningServisi {
       kartUrl = `${this.uygulamaUrl}/abonelik/kart?a=${ab.id}`;
     }
 
-    const kisitGunu = Number(
-      process.env.DUNNING_KISIT_GUNU ?? 10,
-    );
+    const kisitGunu = dunningKisitGunu();
     const askiGunu = Number(process.env.DUNNING_ASKI_GUNU ?? 30);
     const temel = ab.ilkBasarisizlik ?? new Date();
     const kisitTarihi = new Date(temel);
@@ -344,13 +343,12 @@ export class DunningServisi {
     const askiTarihi = new Date(temel);
     askiTarihi.setDate(askiTarihi.getDate() + askiGunu);
 
-    const gecenGun = Math.floor((Date.now() - temel.getTime()) / 86_400_000);
-
     const metin = DUNNING_METINLERI[anahtar]({
       firmaAdi: firma.ad,
       paketAdi: ab.paketSurumu.paket.ad,
       tutar: tutarYaz(Number(ab.paketSurumu.tutar), ab.paketSurumu.paraBirimi),
-      kalanGun: Math.max(0, kisitGunu - gecenGun),
+      // Ekran (Hesabım "N gün kaldı") AYNI sayıyı buradan okur — `kisit-gunu.ts`.
+      kalanGun: kisitlamayaKalanGun(temel, Date.now(), kisitGunu),
       kisitTarihi: tarihYaz(
         anahtar === 'sonUyari' ? askiTarihi : kisitTarihi,
       ),

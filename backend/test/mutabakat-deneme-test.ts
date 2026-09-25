@@ -511,13 +511,18 @@ async function wBlogu(): Promise<void> {
   const ab = d.denemeSatiri('F-W', 'sub-w', baslangic);
   const donemBasi = Date.now() - 60_000;
   const donemSonu = donemBasi + 30 * GUN;
-  // ⚠ 24.09: sipariş BİLEREK `paymentAttempts` taşımıyor — bu blok yalnız
-  // WEBHOOK yolunu ölçer. Ödeme denemesi olsaydı gece mutabakatı onu kanıt
-  // sayıp tahsilatı yeniden oynatırdı (satır W0'da yine DENEME kalır, olay
-  // kuyruğa girerdi); o yol `test:mutabakat-kayip-tahsilat` W/D'de ölçülür.
-  d.iyz.detaylar.set('sub-w', iyzicoDetayi('sub-w', 'ACTIVE', { baslangic, gun: 30 }, [
-    { referenceCode: 'ord-w1', orderStatus: 'SUCCESS', startPeriod: donemBasi, endPeriod: donemSonu, price: 1649 },
-  ]));
+  // ⚠ 24.09: gece koşumunda çekim HENÜZ yapılmadı — sipariş WAITING, ödeme
+  // denemesi yok (20.08 tutanağındaki ödenmemiş sipariş biçimi). Bu blok
+  // yalnız WEBHOOK yolunu ölçer: gece mutabakatı ödenmemiş siparişi kanıt
+  // saymaz (oynatma yok; ödenmiş siparişin oynatılması
+  // `test:mutabakat-kayip-tahsilat` W/D'de). Çekimden SONRA sipariş SUCCESS +
+  // başarılı deneme olur ve webhook onu uygular — `tahsilatBasarili` ödenmemiş
+  // siparişi REDDEDER (`test:webhook-tahsilat-dogrulama` B).
+  const siparisW = {
+    referenceCode: 'ord-w1', orderStatus: 'WAITING', startPeriod: donemBasi, endPeriod: donemSonu, price: 1649,
+    paymentAttempts: [] as unknown[],
+  };
+  d.iyz.detaylar.set('sub-w', iyzicoDetayi('sub-w', 'ACTIVE', { baslangic, gun: 30 }, [siparisW]));
   // Ölçüt test edilen fonksiyondan BAĞIMSIZ (dairesel olmasın): ham tarih.
   check('W-FIXTURE denemeSonu hâlâ İLERİDE (mutabakat bu satırı korur)', ab.denemeSonu.getTime() > Date.now(),
     `denemeSonu=${ab.denemeSonu.toISOString()}`);
@@ -526,6 +531,10 @@ async function wBlogu(): Promise<void> {
   check('W0 mutabakat dokunmadı: ACTIVE tek başına kanıt değil', gece === false && ab.durum === 'DENEME',
     `degisti=${gece} durum=${ab.durum}`);
 
+  // iyzico denemenin sonunda çekti: sipariş ödendi, webhook geldi.
+  d.iyz.detaylar.set('sub-w', iyzicoDetayi('sub-w', 'ACTIVE', { baslangic, gun: 30 }, [
+    { ...siparisW, orderStatus: 'SUCCESS', paymentAttempts: [{ paymentId: 37_387_528, paymentStatus: 'SUCCESS' }] },
+  ]));
   await d.abonelik.tahsilatBasarili('sub-w', 'ord-w1');
   check('W1 ⭐ doğrulanmış sipariş → DENEME → AKTIF (kural tahsilat yolunu engellemez)', ab.durum === 'AKTIF',
     `durum=${ab.durum}`);

@@ -127,6 +127,8 @@ model Firma {
   logoMime  String?
 
   abonelik Abonelik?
+  /// A2 Blok 2 (24.09.2026) — yoneticinin paket degisimi onerileri.
+  paketOnerileri PaketDegisimOnerisi[]
 }
 
 enum FirmaRol {
@@ -1423,6 +1425,8 @@ model PaketSurumu {
   /// Bu surume DONEM SONUNDA gecmek uzere planlanmis abonelikler (23.09).
   planliAbonelikler Abonelik[]   @relation("AbonelikPlanliPaketi")
   baslatmalar AbonelikBaslatma[]
+  /// Bu surume gecmeyi oneren yonetici onerileri (A2 Blok 2).
+  oneriler    PaketDegisimOnerisi[]
 
   @@unique([paketId, surumNo])
   @@index([satistaMi])
@@ -1484,6 +1488,17 @@ model Abonelik {
   erisimSonu DateTime
   denemeSonu DateTime?
 
+  /// SATIN ALMANIN KOPRU TARIHI (24.09.2026). Kart satin almasi `erisimSonu`nu
+  /// iyzico'nun gercek donem sonunu bilmeden TAMPONLU bir kopru degerle yazar
+  /// (`donemTarihleriHesapla`: deneme ya da 31 gun + 2 gun tampon); o deger
+  /// burada da tutulur. Ilk basarili tahsilat webhook'u kopruyu iyzico'nun
+  /// `endPeriod`una DUZELTIR, gerekirse KISALTIR — ama YALNIZ `erisimSonu` HALA
+  /// bu degere esitse. Baska her durumda (miras gocunun 365 gunu, havale,
+  /// yonetici, onceki donem) webhook `erisimSonu`nu yalniz UZATIR: kisaltma
+  /// pozitif kanit ister. NULL = duzeltilecek kopru yok (satin almada erisim
+  /// zaten suruyordu ya da kopru ilk tahsilatla kapandi).
+  kopruErisimSonu DateTime?
+
   /// iyzico bagi — HAVALE ile odeyen firmalarda null kalir.
   /// ⚠ BU KOD DEGISKENDIR: paket degisiminde (upgrade/downgrade) iyzico
   /// YENI bir subscriptionReferenceCode uretir, eskisi UPGRADED olur ve
@@ -1532,6 +1547,63 @@ model Abonelik {
   @@index([iyzicoKokKodu])
   // Planli gecis taramasi (10 dk) — yalniz dolu satirlar ilgilenir.
   @@index([paketGecisTarihi])
+}
+
+enum PaketOnerisiDurumu {
+  BEKLIYOR
+  KABUL_EDILDI
+  REDDEDILDI
+  GERI_CEKILDI
+  /// Baska bir degisiklik oneriyi gecersiz kildi (ya da suresi doldu) ve
+  /// bir yazim yolu bunu kaydetti. Okuma yollari kapanisi HESAPLAR
+  /// (`paket-onerisi.ts` `oneriDurumu`), satiri beklemez.
+  KAPANDI
+}
+
+/// ═══════════════════════════════════════════════════════════════════════════
+///  PAKET DEGISIM ONERISI (24.09.2026, yonetici paneli turu A2 Blok 2)
+/// ═══════════════════════════════════════════════════════════════════════════
+/// Emre (23.09): yonetici YUKSELTIRSE musteriye onay baglantisi gider. Oneri
+/// paketi DEGISTIRMEZ: firma SAHIBI A1'in penceresinden (sozlesme onayiyla)
+/// `POST /abonelik/degistir` + `oneriId` ile kabul eder — tek yol, tek cekirdek.
+///
+/// ⚠ "BASKA DEGISIKLIK OLURSA KAPANIR" ANLIK GORUNTUYLE: `kaynak*` alanlari
+/// oneri anindaki abonelik. Etkin paket ya da iyzico ucu farkliysa oneri
+/// KAPANMIS sayilir — degisimi yapan yol (musteri, yonetici, donem sonu
+/// gecisi, yeni satin alma) oneriden HABERSIZ olsa bile. Her yola "oneriyi
+/// kapat" satiri eklemek, birini unutmayi (bu deponun olculmus hatasi) davet
+/// ederdi.
+model PaketDegisimOnerisi {
+  id                  String             @id @default(uuid())
+  /// `onDelete` YAZILMAZ: firma silinmez (FirmaDavet ile ayni gerekce).
+  firmaId             String
+  firma               Firma              @relation(fields: [firmaId], references: [id])
+  /// BEKLIYOR iken `firmaId`, sonuclaninca NULL. Firma basina TEK bekleyen
+  /// oneri kuralinin VERITABANI kilidi: kuyruk tek sureci siralar, bu
+  /// benzersizlik ikinci sureci de durdurur (P2002 → 409). Kismi indeks
+  /// DEGIL — o yalniz SQL'de yasar ve `migrate dev` sapma sanip dusurebilirdi.
+  bekleyenFirmaId     String?            @unique
+  durum               PaketOnerisiDurumu @default(BEKLIYOR)
+  hedefPaketSurumuId  String
+  hedefPaketSurumu    PaketSurumu        @relation(fields: [hedefPaketSurumuId], references: [id])
+  /// Oneri anindaki ETKIN paket ve iyzico ucu (anlik goruntu). FK yok:
+  /// karsilastirma icin kopya (`odenenPaketSurumuId` ile ayni gerekce).
+  kaynakPaketSurumuId String
+  kaynakIyzicoKodu    String?
+  /// IC gerekce — musteriye GOSTERILMEZ (denetim icin).
+  gerekce             String
+  /// Yalniz firma SAHIBINE gosterilir (e-posta + abonelik sayfasi).
+  musteriNotu         String?
+  sonGecerlilik       DateTime
+  olusturanId         String
+  olusturanEposta     String
+  /// Kabul / ret / geri cekme / kapanis ani ve yapan (kapanista NULL).
+  sonuclandi          DateTime?
+  sonuclandiranId     String?
+  kapanisNedeni       String?
+  olusturuldu         DateTime           @default(now())
+
+  @@index([firmaId, olusturuldu])
 }
 
 /// Satin alma NIYETI — barindirilan iyzico formu acildiginda yazilir.

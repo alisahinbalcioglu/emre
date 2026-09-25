@@ -1,6 +1,8 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   BadGatewayException,
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -8,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { AbonelikDurumu, type Prisma } from '@prisma/client';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { HUKUKI_METIN_SURUMU } from '../../../altyapi/auth/hukuki-surum';
 import {
@@ -55,6 +58,65 @@ export interface DegisimSonucu {
   oncekiDegisim: boolean;
 }
 
+export type AbonelikSatiri = Prisma.AbonelikGetPayload<{
+  include: { paketSurumu: { include: { paket: true } } };
+}>;
+export type SurumSatiri = Prisma.PaketSurumuGetPayload<{ include: { paket: true } }>;
+
+/** Basarili (ya da kurtarilmis) degisimin islemciye verilen ozeti. */
+export interface SonucBaglami {
+  firmaId: string;
+  mevcut: AbonelikSatiri;
+  hedef: SurumSatiri;
+  zamanlama: DegisimZamanlamasi;
+  gecis: Date;
+  cumle: string;
+  kurtarma: { iyzicoKodu: string | null; farkliDegisim: boolean } | null;
+}
+
+/**
+ * ── DEGISIMI KIM YAPIYOR? (24.09.2026, A2) ─────────────────────────────────
+ * Tek cekirdek (`degistirSirayla`), iki islemci: musteri (A1) ve yonetici
+ * (A2). Emre: "tek yol" — ayni karar, ayni iyzico cagrisi, ayni kurtarma,
+ * ayni olay tipi. Degisen yalniz: olayin izi (onay mi, yonetici mi), ek
+ * denetim satiri ve bildirim.
+ *
+ * ⚠ Musteri islemcisi A1'in DEGERLERINI AYNEN uretir (aktor = kullanici,
+ * onay izi olay verisinin SONUNDA, ayni e-posta) — A1 testleri degismeden
+ * yesil kalmali.
+ */
+export interface DegisimIslemcisi {
+  /**
+   * Kuyrukta, TAZE satirla, A1 kararindan ONCE. Yonetici kurali burada
+   * uygulanir — ekrandaki siniflandirmaya GUVENILMEZ. Reddetmek icin firlatir.
+   */
+  kontrol?: (b: { ab: AbonelikSatiri | null; yeni: SurumSatiri; simdi: Date }) => Promise<void>;
+  /** iyzico'dan hemen ONCE (niyet denetimi). Firlatirsa iyzico'ya istek GITMEZ. */
+  oncesi?: (b: { mevcut: AbonelikSatiri; yeni: SurumSatiri }) => Promise<void>;
+  /**
+   * Olay `veri`sinin SONUNA eklenecek iz. Baglam verilir: kurtarmada
+   * kaydedilen degisim bu istegin DEGIL, oncekinin olabilir (atif ona gore).
+   */
+  olayEki: (simdi: Date, b: SonucBaglami) => Record<string, unknown>;
+  /** Ana islemde ek yazim: firlatirsa degisimin YEREL yazimi da geri alinir. */
+  txEki?: (tx: Prisma.TransactionClient, b: SonucBaglami) => Promise<void>;
+  /** Basarili yazimdan sonra bildirim. Gonderim denendiyse `true`. */
+  bildir: (b: SonucBaglami) => Promise<boolean>;
+}
+
+/**
+ * ONERI KABULU (A2 Blok 2) — musteri islemcisine eklenen kancalar. Onay
+ * kapisi, iyzico cagrisi, kurtarma ve e-posta AYNEN A1'inkidir; oneri yalniz
+ * kontrol (kuyrukta, iyzico'dan ONCE), iz (olay verisi) ve tuketim (ana
+ * islemde) ekler. Kancalar `PaketOnerisiServisi.kabulKancalari`ndan gelir.
+ */
+export interface OneriKancalari {
+  kontrol: NonNullable<DegisimIslemcisi['kontrol']>;
+  /** Baglam verilir: kurtarmada kaydedilen degisim onerinin DEGIL (atif ona gore). */
+  olayEki: DegisimIslemcisi['olayEki'];
+  txEki: NonNullable<DegisimIslemcisi['txEki']>;
+}
+
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  *  PAKET DEGISIMI — uygulama (23.09.2026, yonetici paneli turu A1)
@@ -98,6 +160,8 @@ export class PaketDegisimiServisi {
 
   /** Firma basina sira (SatinAlmaServisi ile ayni desen; tek surec varsayimi). */
   private readonly firmaSirasi = new Map<string, Promise<unknown>>();
+  /** Bu async akis hangi firmalarin sirasi ICINDE — ic ice cagriyi yakalar. */
+  private readonly siradakiFirmalar = new AsyncLocalStorage<ReadonlySet<string>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -109,9 +173,22 @@ export class PaketDegisimiServisi {
     this.uygulamaUrl = config.get<string>('UYGULAMA_URL') ?? 'https://app.metapricex.com';
   }
 
-  private async firmaSirasiyla<T>(firmaId: string, is: () => Promise<T>): Promise<T> {
+  /**
+   * Firma sirasi — paket degisimi ve oneri islemleri (olustur, geri cek,
+   * reddet) AYNI siradan gecer: kabul ile geri cekme yarisamaz.
+   * ⚠ YALNIZ YAPRAK IS: `is` bu siraya YENIDEN girmemeli (ornegin icinden
+   * `degistir` cagirmamali) — ic ice cagri kendi kuyrugunu bekler ve firma
+   * SONSUZA DEK kilitlenirdi. Bu yuzden ic ice giris SESSIZ KILIT yerine
+   * hemen HATA verir (`siradakiFirmalar`).
+   */
+  async firmaSirasinda<T>(firmaId: string, is: () => Promise<T>): Promise<T> {
+    const icinde = this.siradakiFirmalar.getStore();
+    if (icinde?.has(firmaId)) {
+      throw new Error(`FIRMA SIRASI IC ICE CAGRILDI (firma=${firmaId}): is yaprak degil, kilitlenirdi`);
+    }
+    const baglam = new Set([...(icinde ?? []), firmaId]);
     const onceki = this.firmaSirasi.get(firmaId) ?? Promise.resolve();
-    const bu = onceki.catch(() => undefined).then(is);
+    const bu = onceki.catch(() => undefined).then(() => this.siradakiFirmalar.run(baglam, is));
     const kuyrukSonu = bu.catch(() => undefined);
     this.firmaSirasi.set(firmaId, kuyrukSonu);
     try {
@@ -159,12 +236,16 @@ export class PaketDegisimiServisi {
     return sonuc;
   }
 
-  async degistir(p: {
-    firmaId: string;
-    kullaniciId: string;
-    paketSurumuId: string;
-    sozlesmeOnayi?: boolean;
-  }): Promise<DegisimSonucu> {
+  async degistir(
+    p: {
+      firmaId: string;
+      kullaniciId: string;
+      paketSurumuId: string;
+      sozlesmeOnayi?: boolean;
+    },
+    /** Yonetici onerisinin kabulu (A2 Blok 2); yoksa A1 ile bayt bayt ayni. */
+    oneri?: OneriKancalari,
+  ): Promise<DegisimSonucu> {
     // ⚠ ONAY KAPISI ILK SIRADA (DTO'da da var): servis tek bir ucun ardinda
     // olmayabilir — onaysiz cagri iyzico'ya HICBIR istek gondermeden durur.
     if (p.sozlesmeOnayi !== true) {
@@ -173,14 +254,33 @@ export class PaketDegisimiServisi {
           'Sözleşmesi onayını işaretlemelisiniz.',
       );
     }
-    return this.firmaSirasiyla(p.firmaId, () => this.degistirSirayla(p));
+    const musteri: DegisimIslemcisi = {
+      kontrol: oneri?.kontrol,
+      // ── ONAYIN IZI (satin almadaki 6.4 ile ayni) ──────────────
+      // Zaman SUNUCUDA, surum BACKEND SABITINDEN: istemcinin
+      // "hangi metni onayladim" beyanina guvenilmez. Onay izi verinin
+      // SONUNDA kalir (oneri izi ondan once).
+      olayEki: (simdi, b) => ({
+        ...oneri?.olayEki(simdi, b),
+        sozlesmeOnayiZamani: simdi.toISOString(),
+        sozlesmeSurumu: HUKUKI_METIN_SURUMU,
+      }),
+      txEki: oneri?.txEki,
+      bildir: (b) => this.degisimMailiGonder(b.firmaId, b.cumle),
+    };
+    const r = await this.firmaSirasinda(p.firmaId, () => this.degistirSirayla(p, musteri));
+    return r.sonuc;
   }
 
-  private async degistirSirayla(p: {
-    firmaId: string;
-    kullaniciId: string;
-    paketSurumuId: string;
-  }): Promise<DegisimSonucu> {
+  private async degistirSirayla(
+    p: {
+      firmaId: string;
+      /** Olay `aktor`u: musteri yolunda kullanici, yonetici yolunda yonetici. */
+      kullaniciId: string;
+      paketSurumuId: string;
+    },
+    islemci: DegisimIslemcisi,
+  ): Promise<{ sonuc: DegisimSonucu; bildirildi: boolean }> {
     const simdi = new Date();
     const [ab, yeni] = await Promise.all([
       this.aboneligiGetir(p.firmaId),
@@ -190,6 +290,9 @@ export class PaketDegisimiServisi {
       }),
     ]);
     if (!yeni) throw new NotFoundException('Paket bulunamadı.');
+
+    // Yonetici kurali (varsa) A1 kararindan ONCE ve TAZE satirla.
+    await islemci.kontrol?.({ ab, yeni, simdi });
 
     const yol = paketDegisimYolu(ab, yeni, simdi);
     if (yol.yol === 'satin-al') {
@@ -230,6 +333,10 @@ export class PaketDegisimiServisi {
     let hedef = yeni;
     let zamanlama = yol.zamanlama;
     let kurtarma: { iyzicoKodu: string | null; farkliDegisim: boolean } | null = null;
+
+    // Yonetici yolunda NIYET DENETIMI: iyzico'ya gitmeden once yazilir;
+    // yazilamazsa istek HIC GITMEZ (denetimsiz degisim olmasin).
+    await islemci.oncesi?.({ mevcut, yeni });
 
     let yanit: IyzicoPaketDegisimYaniti;
     try {
@@ -365,11 +472,33 @@ export class PaketDegisimiServisi {
         yeniTutar: hedef.tutar.toFixed(2),
         gecisTarihi: gecis,
       });
+    const baglam: SonucBaglami = {
+      firmaId: p.firmaId,
+      mevcut,
+      hedef,
+      zamanlama,
+      gecis,
+      cumle,
+      kurtarma,
+    };
 
     try {
       await this.prisma.$transaction(async (tx) => {
-        await tx.abonelik.update({
-          where: { id: mevcut.id },
+        // ⚠ KOSULLU YAZIM (inceleme bulgusu M3, 24.09): iptal ve odeme yollari
+        // bu kuyrugu KULLANMAZ. iyzico cagrisi surerken musteri iptal ederse
+        // (`iptalEt` canli ucu bulur, iptal eder, planliyi ve kilidi siler,
+        // IPTAL yazar) kosulsuz yazim IPTAL satirina planli dusurmeyi ve
+        // kilidi GERI koyardi; 10 dk tarama da onu uygulardi. Satir okudugumuz
+        // halde degilse (uc ayni, durum degistirilebilir, kilit yok) HICBIR
+        // SEY yazilmaz — degisim iyzico'da olmus olabilir; asagidaki YARIM
+        // gunlugu ve kurtarma yolu (201402/201403) onu bulur.
+        const yazim = await tx.abonelik.updateMany({
+          where: {
+            id: mevcut.id,
+            iyzicoAbonelikKodu: eskiKod,
+            durum: { in: [AbonelikDurumu.AKTIF, AbonelikDurumu.DENEME] },
+            paketGecisTarihi: null,
+          },
           data: {
             // YUKSELTME: ozellikler HEMEN; donemi ODENMIS paket saklanir —
             // yeni ucret baslamadan iptal gelirse etkin paket ona doner
@@ -396,6 +525,14 @@ export class PaketDegisimiServisi {
             iyzicoSonKontrol: simdi,
           },
         });
+        if (yazim.count !== 1) {
+          throw new ConflictException({
+            kod: 'ABONELIK_DEGISTI',
+            message:
+              'Abonelik bu işlem sırasında değişti (örneğin iptal edildi); paket değişikliği kaydedilmedi. ' +
+              'Sayfayı yenileyip durumu kontrol edin.',
+          });
+        }
         await tx.abonelikOlayi.create({
           data: {
             abonelikId: mevcut.id,
@@ -419,15 +556,13 @@ export class PaketDegisimiServisi {
               yeniIyzicoKodu: yeniKod,
               iyzicoPlanKodu: yanit?.pricingPlanReferenceCode ?? plan.planKodu,
               kurtarma,
-              // ── ONAYIN IZI (satin almadaki 6.4 ile ayni) ──────────────
-              // Zaman SUNUCUDA, surum BACKEND SABITINDEN: istemcinin
-              // "hangi metni onayladim" beyanina guvenilmez.
-              sozlesmeOnayiZamani: simdi.toISOString(),
-              sozlesmeSurumu: HUKUKI_METIN_SURUMU,
+              // Musteri: onayin izi · yonetici: kim, neden (islemci).
+              ...islemci.olayEki(simdi, baglam),
             },
             aktor: p.kullaniciId,
           },
         });
+        await islemci.txEki?.(tx, baglam);
       });
     } catch (e) {
       // iyzico DEGISTI, biz yazamadik. Musteri yeniden denerse eski kod
@@ -457,17 +592,21 @@ export class PaketDegisimiServisi {
     // ── KALICI VERI SAKLAYICISI (6.4 ile ayni gerekce) ─────────────────
     // ⚠ KRITIK DEGIL: posta sunucusu dustu diye iyzico'da gerceklesmis bir
     // degisim geri alinamaz. Ama SESSIZ degil — gunluge yazilir.
-    await this.degisimMailiGonder(p.firmaId, cumle).catch((e) =>
-      this.logger.error(`Paket degisimi maili gonderilemedi (firma ${p.firmaId}): ${e}`),
-    );
+    const bildirildi = await islemci.bildir(baglam).catch((e) => {
+      this.logger.error(`Paket degisimi maili gonderilemedi (firma ${p.firmaId}): ${e}`);
+      return false;
+    });
 
     return {
-      zamanlama,
-      paketGecisTarihi: gecis.toISOString(),
-      yeniPaket: hedefOzet,
-      yeniTutar: hedef.tutar.toFixed(2),
-      mesaj: cumle,
-      oncekiDegisim: kurtarma?.farkliDegisim === true,
+      sonuc: {
+        zamanlama,
+        paketGecisTarihi: gecis.toISOString(),
+        yeniPaket: hedefOzet,
+        yeniTutar: hedef.tutar.toFixed(2),
+        mesaj: cumle,
+        oncekiDegisim: kurtarma?.farkliDegisim === true,
+      },
+      bildirildi,
     };
   }
 
@@ -505,7 +644,7 @@ export class PaketDegisimiServisi {
     }
   }
 
-  private async degisimMailiGonder(firmaId: string, cumle: string): Promise<void> {
+  private async degisimMailiGonder(firmaId: string, cumle: string): Promise<boolean> {
     const firma = await this.prisma.firma.findUnique({
       where: { id: firmaId },
       select: { ad: true, faturaEposta: true, yetkiliEposta: true },
@@ -513,7 +652,7 @@ export class PaketDegisimiServisi {
     const adres = firma?.faturaEposta ?? firma?.yetkiliEposta;
     if (!adres) {
       this.logger.warn(`Paket degisimi maili ATLANDI: firma ${firmaId} icin adres yok`);
-      return;
+      return false;
     }
     await this.eposta.gonder({
       kime: adres,
@@ -528,6 +667,21 @@ export class PaketDegisimiServisi {
       ],
       dugme: { etiket: 'Aboneliğimi gör', url: `${this.uygulamaUrl}/abonelik` },
     });
+    return true;
+  }
+
+  /**
+   * Islemciyle degisim — ⚠ ONAY KAPISI YOKTUR: kapi islemcinin `kontrol`undedir.
+   * Musteri yolu `degistir()`den (sozlesme onayi), yonetici yolu
+   * `YoneticiDusurmeServisi`nden (yonetici kurali) gecer. BASKA CAGIRAN EKLEMEYIN:
+   * yeni bir yol once kendi kapisini `kontrol`e yazmali — tip bunu ZORLAR
+   * (`kontrol` burada zorunlu; kapisiz bir islemci derlenmez).
+   */
+  islemciyleDegistir(
+    p: { firmaId: string; kullaniciId: string; paketSurumuId: string },
+    islemci: DegisimIslemcisi & { kontrol: NonNullable<DegisimIslemcisi['kontrol']> },
+  ): Promise<{ sonuc: DegisimSonucu; bildirildi: boolean }> {
+    return this.firmaSirasinda(p.firmaId, () => this.degistirSirayla(p, islemci));
   }
 
   /**

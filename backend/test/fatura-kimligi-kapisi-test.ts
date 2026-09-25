@@ -252,6 +252,9 @@ function sahteFaturaPrisma(firmaKutusu: { deger: any }) {
           guncellemeler.push(a.data);
           return a.data;
         },
+        // 24.09: `tekFatura` satırı işlemeden önce KİRALAR (koşullu yazma,
+        // `test:yonetim-epostalari` E16). Bu kapının konusu değil: kira alınır.
+        updateMany: async () => ({ count: 1 }),
       },
     } as any,
   };

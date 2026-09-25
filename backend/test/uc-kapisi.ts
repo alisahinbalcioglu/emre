@@ -133,6 +133,8 @@ const UCRETSIZ: Record<string, Muafiyet> = {
   // değiştirir ve bu kural `paketDegisimYolu`nda; kapıya bağlamak ödemesi
   // geciken firmaya "önce ödeyin" yerine "erişiminiz yok" dedirtirdi.
   'POST /abonelik/degistir': ['ODEME', 'Paket yükseltme/düşürme — sözleşme bedelini değiştiren ödeme işlemi; kural karar fonksiyonunda.'],
+  // 24.09 (A2 Blok 2): yönetici önerisinin reddi. Kabul `degistir` + `oneriId`.
+  'POST /abonelik/oneri/:oneriId/reddet': ['ODEME', 'Yönetici paket önerisini reddetme; paketi değiştirmez, ödemesi geciken firma da reddedebilmeli.'],
   'POST /abonelik/donus': ['ODEME', 'iyzico 3-D dönüşü; ödeme burada sonuçlanır.'],
   'POST /abonelik/kart-guncelle': ['ODEME', 'Kartı geçersizleşen firma kartını değiştiremezse hiç ödeyemez.'],
   'POST /abonelik/iptal': ['ODEME', 'İptal hakkı ödeme durumuna bağlanamaz (tüketici hakkı).'],
@@ -224,9 +226,8 @@ const UCRETSIZ: Record<string, Muafiyet> = {
   'POST /admin/users/:id/mfa-sifirla': ['YONETICI', 'Destek: MFA kilidini açma.'],
   'DELETE /admin/users/:id': ['YONETICI', 'Kullanıcı silme (yumuşak).'],
   'GET /admin/denetim': ['YONETICI', 'Denetim kaydı okuma.'],
-  'GET /admin/users/:id/subscriptions': ['YONETICI', 'Abonelik geçmişi.'],
-  'POST /admin/users/:id/subscriptions': ['YONETICI', 'Elle abonelik tanımlama (havale/destek).'],
-  'DELETE /admin/users/:userId/subscriptions/:subId': ['YONETICI', 'Elle abonelik kaldırma.'],
+  // 24.09 (A2): eski kişi-başı `users/:id/subscriptions` uçları KALDIRILDI
+  // (erişim vermiyorlardı, canlıda 0 kullanım); yerine `yonetim/abonelik`.
   'GET /admin/settings': ['YONETICI', 'Platform ayarları.'],
   'PATCH /admin/settings': ['YONETICI', 'Platform ayarlarını değiştirme.'],
   'POST /admin/reindex-products': ['YONETICI', 'Küresel indeks yeniden üretimi.'],
@@ -248,6 +249,10 @@ const UCRETSIZ: Record<string, Muafiyet> = {
   'POST /yonetim/havale/:id/fatura': ['YONETICI', 'Havale faturası kesme.'],
   'POST /yonetim/havale/:id/onayla': ['YONETICI', 'Havale onayı (abonelik açılır).'],
   'POST /yonetim/havale/:id/iptal': ['YONETICI', 'Havale başvurusu iptali.'],
+  'GET /yonetim/abonelik/:firmaId': ['YONETICI', 'Paket işlemleri paneli (A2).'],
+  'POST /yonetim/abonelik/:firmaId/dusur': ['YONETICI', 'Yönetici düşürmesi — müşteri onayısız, dönem sonu (A2).'],
+  'POST /yonetim/abonelik/:firmaId/oneri': ['YONETICI', 'Müşteri onaylı paket önerisi gönderme (A2 Blok 2).'],
+  'POST /yonetim/abonelik/:firmaId/oneri/:oneriId/geri-cek': ['YONETICI', 'Bekleyen paket önerisini geri çekme (A2 Blok 2).'],
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

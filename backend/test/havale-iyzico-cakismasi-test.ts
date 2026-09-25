@@ -841,6 +841,33 @@ async function iBlogu(): Promise<void> {
     }
   }
   {
+    // 24.09 (Emre: "uyarılar e-posta olarak gitmeli"): YONETIM_EPOSTA canlıda
+    // BOŞ. Etkin yönetici hesabı varsa uyarı onun giriş e-postasına gider;
+    // engellenmiş yönetici ve sıradan kullanıcı alıcı DEĞİLDİR. Kural ve
+    // ayrıntılı kapısı: yonetim-bildirimi.ts · `test:yonetim-epostalari`.
+    const eski = process.env.YONETIM_EPOSTA;
+    delete process.env.YONETIM_EPOSTA;
+    try {
+      const d = dunyaKur();
+      d.db.ekle('user', { email: 'kurucu@ornek.test', role: 'admin', status: 'active', deletedAt: null, emailVerified: true, createdAt: new GercekDate(1) });
+      d.db.ekle('user', { email: 'engelli@ornek.test', role: 'admin', status: 'banned', deletedAt: null, emailVerified: true, createdAt: new GercekDate(2) });
+      d.db.ekle('user', { email: 'musteri@ornek.test', role: 'user', status: 'active', deletedAt: null, emailVerified: true, createdAt: new GercekDate(3) });
+      const T0 = GercekDate.now();
+      d.kartliSatir('I3Y', { durum: 'AKTIF', erisimSonu: new GercekDate(T0 + 12 * GUN) });
+      d.iyz.iptaliBoz('sub-I3Y', new IyzicoHatasi('100001', 'Sistem hatası', 500));
+      const g0 = gunluk.length;
+      const sonuc = await onayla(d, 'I3Y', T0);
+      const uyari = d.epostalar.filter((e) => /iptal edilemedi/i.test(e.konu));
+      check('İ3h ⭐ YONETIM_EPOSTA boş + etkin yönetici hesabı → uyarı YÖNETİCİ HESABINA gider (engellenen/müşteri alıcı değil)',
+        sonuc.hata === null && uyari.length === 1 && uyari[0].kime === 'kurucu@ornek.test' &&
+          uyari[0].paragraflar.some((x) => /sub-I3Y/.test(x)) &&
+          !hatalarSonra(g0).some((m) => /YONETICI BILDIRIMI GONDERILEMEDI/.test(m)),
+        `hata=${sonuc.hata} alici=${uyari.map((e) => e.kime).join(',')} iz=${hatalarSonra(g0).join(' · ')}`);
+    } finally {
+      process.env.YONETIM_EPOSTA = eski;
+    }
+  }
+  {
     // Kayıtlı uç iyzico'da UPGRADED (yanıtı kaybolan paket değişimi) → 201403.
     const d = dunyaKur();
     const T0 = GercekDate.now();
@@ -1300,17 +1327,53 @@ async function yBlogu(): Promise<void> {
     const g0 = gunluk.length;
     await d.webhookGonder(govde, T1 + 30 * DAKIKA);
     const o = d.db.tablo('webhookOlayi')[0];
+    // ⚠ 24.09 (webhook tahsilat doğrulaması ile birleşme): ödenmemiş sipariş
+    // artık HAVALE dalına GELMEDEN `tahsilatBasarili`nin tek ödeme kanıtında
+    // (`odenmisSiparisMi`, `test:webhook-tahsilat-dogrulama`) reddedilir —
+    // hata metni o kuralın metnidir. Kanıt önce: yoksa ödenmemiş çekim için
+    // yöneticiye "iade et" yazılabilirdi (Y4b).
     check('Y4 ⭐ doğrulanamayan çekim: olay İŞLENMEDİ (yeniden denenecek), hata sebebi kayıtlı',
-      o?.islendi === false && o?.denemeSayisi === 1 && /dogrulanamadi/.test(String(o?.hata)),
+      o?.islendi === false && o?.denemeSayisi === 1 && /doğrulanamadı: .* ödenmemiş \(orderStatus WAITING/.test(String(o?.hata)),
       `islendi=${o?.islendi} deneme=${o?.denemeSayisi} hata=${o?.hata}`);
     check('Y4b yöneticiye "iade et" YAZILMADI, olay yok, satır değişmedi',
       d.yoneticiye(e0).length === 0 && d.olaylar(/^tahsilat\.cift$/, ab.id).length === 0 &&
         d.oku('Y4').erisimSonu.getTime() === havaleSonu && d.oku('Y4').durum === 'AKTIF',
       `yönetici=${d.yoneticiye(e0).length} olay=${d.olaylar(/^tahsilat\.cift$/, ab.id).length}`);
-    check('Y4c günlükte yalnız işleyicinin "doğrulanamadı" satırı',
-      beklenmeyenHatalar(g0, [/^Webhook .*Havale satirinda kart cekimi dogrulanamadi/]).length === 0 &&
-        hatalarSonra(g0).length === 1,
+    check('Y4c günlükte yalnız ödeme kanıtının ve işleyicinin "doğrulanamadı" satırları',
+      beklenmeyenHatalar(g0, [/^Tahsilat kanıtı YOK: .* ÖDENMEMİŞ/, /^Webhook .*siparişi doğrulanamadı: .* ödenmemiş/]).length === 0 &&
+        hatalarSonra(g0).length === 2,
       hatalarSonra(g0).join(' · '));
+  }
+  {
+    // Y4d (24.09, webhook tahsilat doğrulaması ile birleşme): sipariş SUCCESS
+    // ama iyzico'da BAŞARILI ödeme denemesi YOK (değer ÖLÇÜLMEDİ — kanıtsız
+    // biçim). Tek kanıt kuralı (`odenmisSiparisMi`) HAVALE dalından ÖNCE:
+    // sıra tersine dönerse dalın kendi `orderStatus` denetimi geçer ve
+    // tahsil edildiği kanıtlanmamış para için yöneticiye "iade et" yazılır.
+    // Kurulum Y1'in aynısı; tek fark sipariş denemesinin reddedilmiş olması.
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    const T1 = T0 + 12 * GUN;
+    const ab = d.kartliSatir('Y4d', { durum: 'AKTIF', erisimSonu: new GercekDate(T1) });
+    const govde = d.iyz.donemCekimi('sub-Y4d', { basarili: true, baslangic: T1, bitis: ayEkle(T1, 1), an: T1 });
+    const asilGetir = d.iyz.istemci.abonelikGetir;
+    d.iyz.istemci.abonelikGetir = async (kod: string) => {
+      const detay = await asilGetir(kod);
+      for (const s of detay?.orders ?? []) {
+        if (s.referenceCode === govde?.orderReferenceCode) s.paymentAttempts = [{ paymentAttemptStatus: 'FAILED' }];
+      }
+      return detay;
+    };
+    await d.havaleIleOde('Y4d', T1 + 10 * DAKIKA);
+    const havaleSonu = d.oku('Y4d').erisimSonu.getTime();
+    const e0 = d.epostalar.length;
+    await d.webhookGonder(govde, T1 + 30 * DAKIKA);
+    const o = d.db.tablo('webhookOlayi')[0];
+    check('Y4d ⭐ SUCCESS ama başarılı deneme YOK: yöneticiye "iade et" YAZILMADI, tahsilat.cift yok, satır aynı, olay yeniden denenecek',
+      d.yoneticiye(e0).length === 0 && d.olaylar(/^tahsilat\.cift$/, ab.id).length === 0 &&
+        d.oku('Y4d').erisimSonu.getTime() === havaleSonu && o?.islendi === false &&
+        /doğrulanamadı: .* ödenmemiş \(orderStatus SUCCESS/.test(String(o?.hata)),
+      `yönetici=${d.yoneticiye(e0).length} olay=${d.olaylar(/^tahsilat\.cift$/, ab.id).length} islendi=${o?.islendi} hata=${o?.hata}`);
   }
   {
     // Y5: onayda iptal düştü, iyzico çekti, çift tahsilatta iptal YİNE düştü.

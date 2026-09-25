@@ -8,10 +8,16 @@ import {
   IyzicoSiparis,
 } from '../iyzico/iyzico.client';
 import { EpostaServisi } from '../eposta/eposta.servisi';
+import { yonetimeYaz } from '../eposta/yonetim-bildirimi';
 import { tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
 // Saf modul (Prisma/Nest bilmez) — dongusel import YOK.
 import { iyzicoTarihi } from './paket-degisimi';
 import { KartKapatmaSonucu, kapatmaCumlesi, kartAboneligiKapaliMi } from './kart-kapatma';
+import {
+  odenmisSiparisMi,
+  siparisiBul,
+  tahsilatBasarisizligiKarari,
+} from '../iyzico/tahsilat-kaniti';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -510,7 +516,7 @@ export class AbonelikServisi {
     }
 
     const detay = await this.iyzico.abonelikGetir(abonelikKodu);
-    const siparis = detay.orders?.find((o) => o.referenceCode === siparisKodu);
+    const siparis = siparisiBul(detay.orders, siparisKodu);
 
     // GUVENLIK: WEBHOOK GOVDESI TAHSILAT KANITI DEGILDIR.
     //
@@ -541,6 +547,28 @@ export class AbonelikServisi {
       );
     }
 
+    // ⚠ 24.09 — LISTEDE OLMAK ODENMIS OLMAK DEGILDIR. Varlik denetimi
+    // yetmiyordu: iyzico sonraki donemin siparisini ONCEDEN acar (20.08
+    // tutanagi: ACTIVE abonelikte WAITING, odeme denemesi YOK). O siparisi
+    // anan sahte govde erisimi bir donem uzatiyor, dunning sayaclarini
+    // sifirliyor (KISITLI → AKTIF) ve tahsil edilmemis paraya fatura
+    // aciyordu. Kanit gece mutabakatinin kaniti ile AYNI kuraldir
+    // (`odenmisSiparisMi`, tek kaynak — ikiz yazilmadi). Hata firlatilir:
+    // olay "islendi" damgasi yemez, isleyici yeniden dener (liste gecikmisse
+    // tutar); 5 denemede olurse gercek odemeyi gece mutabakati iyzico'nun
+    // listesinden bulup YENIDEN OYNATIR (mutabakat.job.ts → KAYIP TAHSILAT).
+    // Yani siki kanit gercek odemeyi KAYBETTIRMEZ; bedeli, liste gecikirse
+    // erisimin en gec ertesi gece uzamasidir. Kapi: `test:webhook-tahsilat-dogrulama` B.
+    if (!odenmisSiparisMi(siparis)) {
+      this.logger.error(
+        `Tahsilat kanıtı YOK: abonelik=${abonelikKodu} sipariş=${siparisKodu} listede ama ÖDENMEMİŞ ` +
+          `(orderStatus=${siparis.orderStatus}, başarılı ödeme denemesi yok). Erişim UZATILMADI; olay yeniden denenecek.`,
+      );
+      throw new Error(
+        `iyzico siparişi doğrulanamadı: ${siparisKodu} ödenmemiş (orderStatus ${siparis.orderStatus}; abonelik ${abonelikKodu})`,
+      );
+    }
+
     // ⚠ 24.09 — HAVALEYLE ODENMIS SATIR (Emre karari: "ikisi birden, onay
     // beklemez"). Bu, eski KART aboneliginin cekimidir: musteri o donemi
     // havaleyle ODEDI. Asagidaki olagan yol erisimSonu'nu iyzico'nun
@@ -556,9 +584,12 @@ export class AbonelikServisi {
       return null;
     }
 
-    const donemSonu = siparis.endPeriod
-      ? new Date(siparis.endPeriod)
-      : this.donemSonuHesapla(ab.erisimSonu, ab.paketSurumu.periyot, ab.paketSurumu.periyotAdedi);
+    // Tarih TEK cozucuden (24.09): iyzico ms SAYI yolluyor ama tip `string`
+    // diyor; rakam-dizesi `new Date` ile Invalid Date olurdu. Cozulemeyen
+    // deger EKSIK sayilir (eski davranisin eksik dali).
+    const donemSonu =
+      iyzicoTarihi(siparis.endPeriod) ??
+      this.donemSonuHesapla(ab.erisimSonu, ab.paketSurumu.periyot, ab.paketSurumu.periyotAdedi);
 
     // ⚠ 23.09 — GUNCEL UC MU, ESKI HALKA MI? Paket degisiminden sonra
     // zincirde eski halkalar olur; onlarin bir siparisi icin GEC gelen
@@ -567,15 +598,28 @@ export class AbonelikServisi {
     // soylemez: iyzico durumu ve odenen plan ESKI aboneligindir.
     const guncelUcMu = abonelikKodu === ab.iyzicoAbonelikKodu;
 
-    // ⚠ 23.09 — ESKI HALKA ERISIMI KISALTAMAZ. Eski halkanin gec gelen
-    // siparisi DAHA ERKEN bir donem sonu tasir; onu kosulsuz yazmak odenmis
-    // sureyi geri alirdi. GUNCEL uctan gelen siparis ise olagan kurali KORUR
-    // (erisim = iyzico'nun `endPeriod`u): satin almadaki gecici tamponu
-    // (31+2 gun) ilk tahsilatta duzelten sey budur. Ilk yazim "asla kisaltma"
-    // kuralini HER siparise yaymisti ve o duzeltmeyi sessizce kaldiriyordu
-    // (inceleme bulgusu 3) — kural yalniz ESKI HALKAYA aittir.
+    // ⚠ 24.09 — ERISIM YALNIZ SATIN ALMANIN KOPRUSUNDEN KISALIR.
+    // Varsayilan: yalniz UZAT (donem sonu ileriyse yaz, degilse dokunma).
+    // Tek istisna: satin alma `erisimSonu`na tamponlu bir KOPRU tarih yazdi
+    // (`kopruErisimSonu`, satinalma.servisi `aboneligiAcVeyaGuncelle`) ve o
+    // tarih HALA yerinde — iyzico'nun gercek donem sonu onu duzeltir, gerekirse
+    // kisaltir (31+2 gun → donem sonu; 23.09 inceleme bulgusu 3). Kopru baska
+    // bir yazmayla (havale, yonetici, mutabakat) degistiyse esitlik bozulur:
+    // kanit yoksa kisaltma yok.
+    //
+    // NEDEN: 23.09 kurali guncel uctan gelen HER sipariste `erisimSonu`nu
+    // `endPeriod`a yaziyordu. Miras (goc) firma kartla odeyince satin alma 365
+    // gunu korudu (02.09 karari, `max(mevcut, yeni)`) ama ilk tahsilat —
+    // miras firmaya deneme verilmez, tahsilat satin almadan dakikalar sonra
+    // gelir — onu ~30 gune indirip ~332 gunu siliyordu: odemek, odememekten
+    // kotuydu. ESKI HALKA kurali (23.09) aynen durur: eski halkanin gec gelen
+    // siparisi DAHA ERKEN bir donem sonu tasir ve koprusu olsa bile kisaltmaz.
+    const kopruDuzeltilir =
+      guncelUcMu &&
+      !!ab.kopruErisimSonu &&
+      ab.erisimSonu.getTime() === ab.kopruErisimSonu.getTime();
     const yeniErisimSonu =
-      guncelUcMu || donemSonu > ab.erisimSonu ? donemSonu : ab.erisimSonu;
+      kopruDuzeltilir || donemSonu > ab.erisimSonu ? donemSonu : ab.erisimSonu;
 
     // ⚠ 24.09 — DUNNING DONGUSUNDEN CIKIS SIFIRLAMANIN KENDISINDEN OKUNUR.
     // Asagidaki `sayaclariSifirla` ilkBasarisizlik/denemeSayisi/sonDeneme/
@@ -607,13 +651,23 @@ export class AbonelikServisi {
       aktor: 'webhook',
       erisimSonu: yeniErisimSonu,
       sayaclariSifirla: true,
-      veri: { siparisKodu, iyzicoDurum: detay.subscriptionStatus, guncelUcMu },
+      veri: {
+        siparisKodu,
+        iyzicoDurum: detay.subscriptionStatus,
+        guncelUcMu,
+        // 24.09: erisimin bu tahsilatta nasil degistigi olaydan okunabilsin.
+        oncekiErisimSonu: ab.erisimSonu.toISOString(),
+        kopruDuzeltildi: kopruDuzeltilir,
+      },
     });
 
     await this.prisma.abonelik.update({
       where: { id: ab.id },
       data: {
-        ...(guncelUcMu ? { iyzicoDurum: detay.subscriptionStatus } : {}),
+        // Guncel ucun basarili tahsilati = iyzico gercek donemi bildirdi;
+        // kopru kapanir (duzeltildi ya da uzatildi). Eski halka kopruye
+        // DOKUNMAZ: kopru guncel ucun ilk tahsilatini bekler.
+        ...(guncelUcMu ? { iyzicoDurum: detay.subscriptionStatus, kopruErisimSonu: null } : {}),
         iyzicoSonKontrol: new Date(),
       },
     });
@@ -950,6 +1004,46 @@ export class AbonelikServisi {
       return null;
     }
 
+    // ⚠ 24.09 — GUVENLIK: WEBHOOK GOVDESI BASARISIZLIK KANITI DA DEGILDIR.
+    // Eski hal iyzico'ya HIC sormuyordu: abonelik kodunu anan her govde (uc
+    // acik, imza zorunlu degil) odeyen musteriyi ODEME_BEKLIYOR'a atip
+    // dunning e-postasi gonderiyordu. Gece mutabakati bunu artik geri
+    // ALMIYOR (kanitsiz terfi yok, Emre 24.09) → 10. gun KISITLI, 30. gun
+    // ASKIDA. Karar iyzico'nun KENDI kaydindan (`tahsilatBasarisizligiKarari`,
+    // iyzico/tahsilat-kaniti.ts — sira ve gerekceler orada):
+    //  · ODENMIS  — anilan siparis odenmis (eskimis ya da sahte bildirim):
+    //               durum DEGISMEZ, iz olayi yazilir, dunning bildirimi
+    //               GITMEZ (`null` → isleyici `ilkBildirim` cagirmaz); olay
+    //               islendi sayilir — yeniden denemenin anlami yok.
+    //  · KANITSIZ — hata firlatilir: olay "islendi" damgasi yemez, isleyici
+    //               yeniden dener (iyzico henuz guncellememis olabilir). Ret
+    //               gercekse iyzico UNPAID der; gece mutabakatinin UNPAID dali
+    //               da ODEME_BEKLIYOR + `ilkBasarisizlik` yazar (ikiz yol).
+    // Planli gecis de kanittan SONRA: sahte govde hicbir yazmayi tetiklemez.
+    // Kapi: `test:webhook-tahsilat-dogrulama` F.
+    const detay = await this.iyzico.abonelikGetir(abonelikKodu);
+    const kanit = tahsilatBasarisizligiKarari(detay, siparisKodu);
+    if (kanit.karar === 'ODENMIS') {
+      this.logger.warn(
+        `Başarısız tahsilat bildirimi YOK SAYILDI: abonelik=${abonelikKodu} sipariş=${siparisKodu} — ${kanit.gerekce}`,
+      );
+      await this.olayYaz(ab.id, 'tahsilat.basarisiz.yok.sayildi', {
+        aciklama: `Sipariş ${siparisKodu} iyzico'da ödenmiş — başarısızlık bildirimi uygulanmadı`,
+        veri: { siparisKodu, kanit: kanit.gerekce, iyzicoDurum: detay.subscriptionStatus },
+        aktor: 'webhook',
+      });
+      return null;
+    }
+    if (kanit.karar === 'KANITSIZ') {
+      this.logger.error(
+        `Başarısızlık kanıtı YOK: abonelik=${abonelikKodu} sipariş=${siparisKodu} — ${kanit.gerekce}. ` +
+          `Durum DEĞİŞTİRİLMEDİ; olay yeniden denenecek.`,
+      );
+      throw new Error(
+        `iyzico başarısızlığı doğrulanamadı: ${siparisKodu} (abonelik ${abonelikKodu}; ${kanit.gerekce})`,
+      );
+    }
+
     // ⚠ 23.09 (inceleme bulgusu 7) — IKIZ YOL: vadesi gelen planli dusurme
     // basarili yolda oldugu gibi ONCE uygulanir. Basarisiz yenileme cekimi
     // DUSURULMUS paketin fiyatiydi; 10 dk taramasini beklemek ilk dunning
@@ -969,12 +1063,12 @@ export class AbonelikServisi {
         kosul: { odemeYontemi: OdemeYontemi.KART },
         aciklama: `Tahsilat başarısız (sipariş ${siparisKodu})`,
         aktor: 'webhook',
-        veri: { siparisKodu },
+        veri: { siparisKodu, kanit: kanit.gerekce },
       });
     } else {
       await this.olayYaz(ab.id, 'tahsilat.basarisiz', {
         aciklama: `Sipariş ${siparisKodu}`,
-        veri: { siparisKodu },
+        veri: { siparisKodu, kanit: kanit.gerekce },
         aktor: 'webhook',
       });
     }
@@ -1297,11 +1391,11 @@ export class AbonelikServisi {
   }
 
   /**
-   * Yoneticiye e-posta — `YONETIM_EPOSTA`, fatura servisinin elle mudahale
-   * uyarisiyla AYNI adres. ASLA firlatmaz. Adres, gonderici ya da SMTP yoksa
-   * uyari SESSIZCE kaybolmaz: icerik HATA seviyesinde gunluge yazilir (olay
-   * kaydi cagiranda zaten dusuldu). ⚠ SMTP'siz `gonder` yalniz UYARI basip
-   * doner — o yol burada yakalanir (inceleme bulgusu 8).
+   * Yoneticiye e-posta — fatura servisinin elle mudahale uyarisiyla AYNI
+   * adres cozumu (`yonetim-bildirimi.ts`). ASLA firlatmaz. Adres, gonderici ya
+   * da SMTP yoksa uyari SESSIZCE kaybolmaz: icerik HATA seviyesinde gunluge
+   * yazilir (olay kaydi cagiranda zaten dusuldu). ⚠ SMTP'siz `gonder` yalniz
+   * UYARI basip doner — o yol yardimcida yakalanir (inceleme bulgusu 8).
    */
   private async yoneticiyeYaz(
     firmaId: string,
@@ -1311,31 +1405,17 @@ export class AbonelikServisi {
       .findUnique({ where: { id: firmaId }, select: { ad: true } })
       .catch(() => null);
     const ad = firma?.ad ?? firmaId;
-    const kime = process.env.YONETIM_EPOSTA?.trim();
-    const engel = !kime
-      ? 'YONETIM_EPOSTA tanimli degil'
-      : !this.eposta
-        ? 'e-posta servisi yok'
-        : !this.eposta.yapilandirildiMi()
-          ? 'SMTP yapilandirilmamis'
-          : null;
-    if (engel) {
-      this.logger.error(
-        `YONETICI BILDIRIMI GONDERILEMEDI (${engel}): [${ad}] ${t.konu} — ${t.paragraflar.join(' | ')}`,
-      );
-      return;
-    }
-    await this.eposta
-      .gonder({
-        kime,
+    // 24.09 (Emre: "uyarılar e-posta olarak gitmeli"): adres ORTAK yardımcıdan —
+    // `YONETIM_EPOSTA`, boşsa etkin yönetici hesaplarının giriş e-postası.
+    // Canlıda değişken boştu: bu uyarılar yalnız günlüğe düşüyordu.
+    // Gönderilemezse içerik yine HATA günlüğüne yazılır (bkz. yonetim-bildirimi.ts).
+    await yonetimeYaz(
+      { prisma: this.prisma, eposta: this.eposta, logger: this.logger },
+      {
         konu: `[MetaPriceX] ${t.konu} — ${ad}`,
         baslik: t.baslik,
         paragraflar: [`Firma: ${ad}`, ...t.paragraflar],
-      })
-      .catch((e) =>
-        this.logger.error(
-          `Yonetici bildirimi gonderilemedi (${t.konu}, ${ad}): ${e instanceof Error ? e.message : String(e)}`,
-        ),
-      );
+      },
+    );
   }
 }

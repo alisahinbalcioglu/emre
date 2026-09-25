@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { girisDonusunuSakla } from './oturum';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
@@ -206,6 +207,9 @@ api.interceptors.response.use(
       console.warn('[api] 401 — oturum dusuruldu, /login e yonlendiriliyor. Uc:', err.config?.url);
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      // A2 Blok 2: suresi dolmus oturumla acilan oneri baglantisi girisle
+      // kaybolmasin (yalniz izin listesindeki yol saklanir — `oturum.ts`).
+      girisDonusunuSakla(window.location.pathname + window.location.search);
       window.location.href = '/login';
     }
 

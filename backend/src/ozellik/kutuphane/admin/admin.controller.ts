@@ -124,28 +124,11 @@ export class AdminController {
     return this.adminService.denetimKaydiGetir(hedef, limit ? Number(limit) : undefined);
   }
 
-  @Get('users/:id/subscriptions')
-  getUserSubscriptions(@Param('id') id: string) {
-    return this.adminService.getUserSubscriptions(id);
-  }
-
-  @Post('users/:id/subscriptions')
-  addUserSubscription(
-    @CurrentUser() yonetici: Yonetici,
-    @Param('id') id: string,
-    @Body() body: { level: 'core' | 'pro'; scope: 'mechanical' | 'electrical' | 'mep'; endsAt?: string },
-  ) {
-    return this.adminService.addUserSubscription(yonetici, id, body.level, body.scope, body.endsAt);
-  }
-
-  @Delete('users/:userId/subscriptions/:subId')
-  removeUserSubscription(
-    @CurrentUser() yonetici: Yonetici,
-    @Param('userId') userId: string,
-    @Param('subId') subId: string,
-  ) {
-    return this.adminService.removeUserSubscription(yonetici, userId, subId);
-  }
+  // 24.09.2026 (A2): `GET/POST/DELETE users/:id/subscriptions` KALDIRILDI.
+  // Eski kisi-basi `UserSubscription` tablosuna yaziyorlardi; erisim karari o
+  // tabloyu OKUMAZ — yonetici "yukselttim" sanir, musteri hicbir sey kazanmazdi.
+  // Arayuzden hic cagrilmadilar, canlida 0 denetim olayi (24.09 olcumu).
+  // Paket islemleri: `yonetim/abonelik` (yonetici-abonelik.controller.ts).
 
   @Get('settings')
   getSettings() { return this.adminService.getSettings(); }
