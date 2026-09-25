@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SEVIYE_AD, SEVIYE_ETIKET, donemEki, kotaCumlesi, kotaMetni, sayiYaz, seviyeAdi, tutarYaz } from './paket-bicim';
+import { SEVIYE_AD, SEVIYE_ETIKET, donemEki, kotaCumlesi, kotaMetni, paketListesiGorunumu, sayiYaz, seviyeAdi, tutarYaz } from './paket-bicim';
 
 // Faz 6.1 (13.09): kota başlığı. Satır BAŞLIK, dosya PARANTEZ — ölçümle
 // desteklenen karar (dosya boyu 4–1.766 satır; "ayda 30 çeviri" yanıltır).
@@ -124,5 +126,91 @@ describe('kotaMetni — hangi tavan başlıkta', () => {
       'Abonelik dönemi başına 3.000 satır çeviri',
     );
     expect(kotaMetni({ satir: 3000, dosya: 30 }, { periyot: 'MONTHLY', periyotAdedi: 3 }).baslik).not.toMatch(/^Ayda/);
+  });
+});
+
+// 25.09.2026 — yükleme hatası "satışta paket yok" DEĞİLDİR (gerekçe: `paketListesiGorunumu`).
+describe('paketListesiGorunumu — boş liste cümlesi yalnız BAŞARILI ve boş yanıtta', () => {
+  it('⭐⭐ istek düştü, liste boş → "hata" (kırmızı kutu tek başına kalır)', () => {
+    expect(paketListesiGorunumu({ yukleniyor: false, yuklemeHatasi: true, paketSayisi: 0 })).toBe('hata');
+  });
+
+  it('⭐ istek başarılı, `[]` döndü → "bos"', () => {
+    expect(paketListesiGorunumu({ yukleniyor: false, yuklemeHatasi: false, paketSayisi: 0 })).toBe('bos');
+  });
+
+  it('yükleme sürerken öteki girdilere bakılmaz', () => {
+    for (const yuklemeHatasi of [false, true]) {
+      for (const paketSayisi of [0, 3]) {
+        expect(paketListesiGorunumu({ yukleniyor: true, yuklemeHatasi, paketSayisi })).toBe('yukleniyor');
+      }
+    }
+  });
+
+  it('paket varsa kartlar', () => {
+    expect(paketListesiGorunumu({ yukleniyor: false, yuklemeHatasi: false, paketSayisi: 5 })).toBe('kartlar');
+  });
+
+  it('kartlar varken YENİLEME düşerse önceki kartlar kalır (eski davranış; kırmızı kutu yenilemeyi ister)', () => {
+    expect(paketListesiGorunumu({ yukleniyor: false, yuklemeHatasi: true, paketSayisi: 5 })).toBe('kartlar');
+  });
+});
+
+/**
+ * BAĞLANTI — sayfa bu karara GERÇEKTEN bağlı (karar doğru, çağıran yoksa kusur
+ * aynen yaşar). vitest `@/` takma adını çözmez: kaynak düz metin okunur ve
+ * yorumlar atılır ki kapı yorumu değil KODU ölçsün.
+ */
+describe('abonelik sayfası — yükleme hatasında boş liste cümlesi çizilmez', () => {
+  const kodu = (s: string) =>
+    s.replace(/\r\n/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  const sayfa = kodu(readFileSync(join(__dirname, '..', '..', 'app/(protected)/abonelik/page.tsx'), 'utf8'));
+  const bas = sayfa.indexOf('const paketleriGetir = useCallback(async () => {');
+  const getir = sayfa.slice(bas, sayfa.indexOf('}, []);', bas));
+  const dene = getir.slice(0, getir.indexOf('} catch {'));
+  const yakala = getir.slice(getir.indexOf('} catch {'), getir.indexOf('} finally {'));
+
+  it('FIXTURE KANITI: yükleme fonksiyonu ve try/catch parçaları bulundu', () => {
+    expect(bas).toBeGreaterThan(-1);
+    expect(dene).toContain("api.get<Paket[]>('/abonelik/paketler')");
+    expect(yakala.startsWith('} catch {')).toBe(true);
+    expect(getir).toContain('} finally {');
+  });
+
+  it('⭐ görünüm karardan; karar bayrağı alıyor', () => {
+    expect(sayfa).toMatch(
+      /const paketGorunumu = paketListesiGorunumu\(\{\s*yukleniyor,\s*yuklemeHatasi: paketHatasi,\s*paketSayisi: paketler\.length,\s*\}\);/,
+    );
+  });
+
+  it('⭐⭐ boş liste cümlesi YALNIZ "bos" dalında; "hata" dalı hiçbir şey çizmez', () => {
+    expect(sayfa.split('Şu anda satışta paket bulunmuyor. Lütfen bizimle iletişime geçin.')).toHaveLength(2);
+    expect(sayfa).toMatch(
+      /\{paketGorunumu === 'yukleniyor' \? \([\s\S]{0,200}?\) : paketGorunumu === 'hata' \? \(\s*null\s*\) : paketGorunumu === 'bos' \? \(\s*<div[^>]*>\s*Şu anda satışta paket bulunmuyor\./,
+    );
+  });
+
+  it('⭐ istek düşünce bayrak kalkar, hata metni AYNEN; başarıda bayrak iner', () => {
+    expect(yakala).toContain('setPaketHatasi(true);');
+    expect(yakala).toContain("setHata('Paketler yüklenemedi. Lütfen sayfayı yenileyin.');");
+    expect(dene).toContain('setPaketHatasi(false);');
+    // Başka yazan yok (ör. `finally`de indirilen bayrak kusuru geri getirir).
+    expect(sayfa.split('setPaketHatasi(').length - 1).toBe(2);
+    // Yenileme düşerse eski kartlar kalır: hata yolu listeyi SİLMEZ.
+    expect(yakala).not.toContain('setPaketler(');
+  });
+
+  it('⭐ "hata" dalının dayandığı kırmızı kutu ana görünümde, paket alanının ÜSTÜNDE', () => {
+    const bas = sayfa.indexOf('const paketGorunumu = paketListesiGorunumu(');
+    const son = sayfa.indexOf("{paketGorunumu === 'yukleniyor' ? (");
+    expect(bas).toBeGreaterThan(-1);
+    expect(son).toBeGreaterThan(bas);
+    expect(sayfa.slice(bas, son)).toMatch(/\{hata && \(\s*<div[^>]*>\s*\{hata\}\s*<\/div>\s*\)\}/);
+  });
+
+  it('⭐ dizi olmayan 200 boş liste sayılmaz — listeye yazılmadan hata yoluna düşer', () => {
+    const koruma = dene.indexOf('if (!Array.isArray(data)) throw ');
+    expect(koruma).toBeGreaterThan(-1);
+    expect(koruma).toBeLessThan(dene.indexOf('setPaketler(data);'));
   });
 });
