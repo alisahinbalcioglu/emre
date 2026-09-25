@@ -533,6 +533,16 @@ const SUITES: Suite[] = [
   //    "iade" uyarısı üretir; havaleden sonra müşteri iptali çalışır. Y bloğu
   //    geç/yarış webhook'unu ölçer (A/B/D onu KOŞMAZ). DB/AĞ/iyzico GEREKTİRMEZ.
   { ad: 'Havale ↔ iyzico kart aboneliği: onayda iptal · ret/çift tahsilat · yarış · müşteri iptali · bağlantı (F/İ/A/B/D/Y/M/K/N)', script: 'test:havale-iyzico', zincir: 'Z0' },
+  // ── 25.09.2026 — HAVALE TEKLİFİNİN PAKETİ (Emre kararı: "onayda hemen
+  //    uygula"). ÖLÇÜLDÜ: teklifin paketi hiç saklanmıyordu; satırı olan
+  //    firmada yok sayılıyor, Basic müşteri Pro teklifini ödeyince Basic
+  //    kalıyordu (erişim, koltuk, DWG, fatura kalemi, müşteri e-postası).
+  //    Karttan kalan A1 izleri de havaleyle ödenen paketi sonradan
+  //    değiştiriyordu (planlı düşürme taraması, iptalde "ödenmiş paket",
+  //    kilit olayı). Artık teklif paketi kaydedilir, onay onu etkin paket
+  //    yapar ve izleri siler; kart webhook'u yarışta paketi geri çekmez.
+  //    DB/AĞ/iyzico GEREKTİRMEZ.
+  { ad: 'Havale teklifinin paketi: teklif · onayda paket · düşürme · yenileme · yeni firma · A1 izleri · eski teklif · yarış · geç çekim · yönetici listesi (F/T/K/D/H/Y/P/E/R/W/G)', script: 'test:havale-teklif-paketi', zincir: 'Z0' },
   // ── 24.09.2026 — YÖNETİM E-POSTALARI (Emre: "faturalar ve uyarılar vs. e
   //    posta olarak gitmeli"). Yönetici uyarıları yalnız YONETIM_EPOSTA'ya
   //    gidiyordu ve canlıda değişken BOŞ: çift tahsilat / iptal düşmesi /
