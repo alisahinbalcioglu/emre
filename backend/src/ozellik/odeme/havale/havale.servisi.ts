@@ -77,6 +77,14 @@ export function koltukEpostaCumlesi(k: Pick<HavaleKoltukEtkisi, 'yeniHak' | 'top
  *  `AbonelikServisi` → "HAVALE ↔ KART ABONELİĞİ"; kapısı
  *  `backend/test/havale-iyzico-cakismasi-test.ts`.
  *
+ *  ⚠ DURUM GEÇİŞLERİ (25.09.2026): onay, "fatura kesildi" ve iptal durumu
+ *  işlem dışında okunan satıra göre DEĞİL, tek koşullu UPDATE'le yazar
+ *  (`ONAYLANABILIR`); ONAYLANDI ve IPTAL geri dönülmez. Eskiden aynı havaleye
+ *  iki onay iki kez uzatıyor, onaydan sonra girilen fatura numarası satırı
+ *  bekleyenlere geri çekip ikinci onaya kapı açıyor, onayla yarışan iptal
+ *  ONAYLANDI'yı eziyordu (ölçüldü). Kapısı
+ *  `backend/test/havale-onay-yarisi-test.ts`.
+ *
  *  ⚠ TEKLİFİN PAKETİ (25.09.2026 — Emre kararı: "onayda hemen uygula"):
  *  teklif paketini `HavaleOdemesi.paketSurumuId`de taşır; onay o paketi
  *  aboneliğin ETKİN paketi yapar ve karttan kalan paket değişimi izlerini
@@ -95,6 +103,27 @@ export function koltukEpostaCumlesi(k: Pick<HavaleKoltukEtkisi, 'yeniHak' | 'top
  *  paket uyarı üretmez (`koltukEtkisi`). Kapısı aynı dosya, S bloğu.
  * ═══════════════════════════════════════════════════════════════════════════
  */
+
+/**
+ * ONAYLANABİLİR HAVALE: onay bekleyen durumda VE hiç onaylanmamış. Durum
+ * yazan üç yol (onayın sahiplenmesi, "fatura kesildi", iptal) ve yönetim
+ * listesi (`bekleyenler`) AYNI koşulu okur: listede görünen satır
+ * onaylanabilir olandır. `onaylandi`yı yalnız onay yazar ve hiçbir yol
+ * silmez: durumu 25.09 öncesi "fatura kesildi" kusuruyla geri çekilmiş
+ * onaylı satır da onaylı sayılır. KAPALI liste — şemaya eklenen yeni bir
+ * durum kendiliğinden onaylanabilir OLMAZ.
+ */
+const ONAYLANABILIR: Prisma.HavaleOdemesiWhereInput = {
+  durum: {
+    in: [
+      HavaleDurumu.TEKLIF,
+      HavaleDurumu.FATURA_KESILDI,
+      HavaleDurumu.ODEME_BEKLENIYOR,
+    ],
+  },
+  onaylandi: null,
+};
+
 @Injectable()
 export class HavaleServisi {
   private readonly logger = new Logger(HavaleServisi.name);
@@ -196,21 +225,58 @@ export class HavaleServisi {
     return { ...kayit, paketSurumu: surum, uyari };
   }
 
-  /** 2. Fatura kesildi işaretle (proforma ya da gerçek fatura). */
+  /**
+   * 2. Fatura kesildi işaretle (proforma ya da gerçek fatura).
+   *
+   * ⚠ 25.09 — DURUMU GERİ ÇEKMEZ. Eskiden koşulsuz ODEME_BEKLENIYOR
+   * yazıyordu: onaydan SONRA girilen numara (`elle` muhasebe her tahsilatta
+   * NES'te kesim ister, yönetici kestiği faturanın numarasını sonradan
+   * girer) onaylı havaleyi bekleyenler listesine döndürüyor, ikinci onay
+   * erişimi bir yıl DAHA uzatıyordu; iptal edilmiş teklif de bu yoldan
+   * diriliyordu (ölçüldü). Artık onaylanabilir satırda numara +
+   * ODEME_BEKLENIYOR (eskisi gibi); iptal edilmiş satırda 400; başka her
+   * satırda (onaylı) YALNIZ numara — durum ve onay izi değişmez. İki yazma da
+   * tek koşullu UPDATE: eşzamanlı bir onay commit edilince ilki 0 satır
+   * görür, onaylı satıra yalnız numara yazılır.
+   */
   async faturaKesildi(havaleId: string, faturaNo: string, aktorId: string) {
-    const kayit = await this.prisma.havaleOdemesi.update({
+    // Gövde satır içi tip literaliyle gelir (ValidationPipe DENETLEMEZ):
+    // numarasız istek eskiden durumu yine ilerletiyordu; boş veriyle ikinci
+    // yazma da hiç koşmaz ve onaylı satır yanlış 400'e düşerdi.
+    const no = typeof faturaNo === 'string' ? faturaNo.trim() : '';
+    if (!no) throw new BadRequestException('Fatura numarası gerekli');
+
+    const bekleyen = await this.prisma.havaleOdemesi.updateMany({
+      where: { id: havaleId, ...ONAYLANABILIR },
+      data: { durum: HavaleDurumu.ODEME_BEKLENIYOR, faturaNo: no },
+    });
+    if (bekleyen.count === 0) {
+      const onayli = await this.prisma.havaleOdemesi.updateMany({
+        where: { id: havaleId, durum: { not: HavaleDurumu.IPTAL } },
+        data: { faturaNo: no },
+      });
+      if (onayli.count === 0) {
+        // Satır yoksa P2025 (eskisi gibi); varsa iptal edilmiştir.
+        await this.prisma.havaleOdemesi.findUniqueOrThrow({
+          where: { id: havaleId },
+          select: { id: true },
+        });
+        throw new BadRequestException('İptal edilmiş havaleye fatura kaydedilemez');
+      }
+    }
+
+    const kayit = await this.prisma.havaleOdemesi.findUniqueOrThrow({
       where: { id: havaleId },
-      data: {
-        durum: HavaleDurumu.ODEME_BEKLENIYOR,
-        faturaNo,
-      },
       include: { abonelik: true },
     });
 
     await this.abonelik.olayYaz(kayit.abonelikId, 'havale.fatura.kesildi', {
-      aciklama: `Fatura ${faturaNo}`,
+      aciklama:
+        bekleyen.count > 0
+          ? `Fatura ${no}`
+          : `Fatura ${no} (durum değişmedi: ${kayit.durum})`,
       aktor: aktorId,
-      veri: { havaleId, faturaNo },
+      veri: { havaleId, faturaNo: no },
     });
 
     return kayit;
@@ -221,7 +287,8 @@ export class HavaleServisi {
    *
    * Bütünlük açısından tek işlemde: hem havale kaydı ONAYLANDI olsun hem
    * abonelik uzasın. Biri olup diğeri olmazsa müşteri ya ödediği hâlde
-   * giremez ya ödemeden girer.
+   * giremez ya ödemeden girer. Aynı havaleye gelen iki istekten YALNIZ
+   * biri uzatır: karar işlemin ilk yazmasındaki koşullu sahiplenmedir.
    */
   async odemeyiOnayla(p: {
     havaleId: string;
@@ -230,6 +297,9 @@ export class HavaleServisi {
     /** Fatura zaten elle kesildiyse otomatik kesim atlanır. */
     faturaKesme?: boolean;
   }) {
+    // Hızlı ret + işlemin kullandığı alanlar (abonelik, ay adedi, tutar —
+    // teklifte yazılır, sonra değişmez). ⚠ Bu okuma KARAR DEĞİLDİR: aynı
+    // anda gelen iki istek ikisi de buradan geçebilir.
     const mevcut = await this.prisma.havaleOdemesi.findUniqueOrThrow({
       where: { id: p.havaleId },
       include: { abonelik: { include: { paketSurumu: true } } },
@@ -243,6 +313,48 @@ export class HavaleServisi {
     }
 
     const sonuc = await this.prisma.$transaction(async (tx) => {
+      // ⚠ 25.09 — KOŞULLU SAHİPLENME, işlemin İLK yazması. Eskiden durum
+      // yalnız yukarıda, işlem DIŞINDA okunuyor ve en sonda KOŞULSUZ
+      // `update` ONAYLANDI yazıyordu: aynı havaleye iki istek (çift tıklama,
+      // yavaş yanıttan sonra yeniden deneme, iki yönetici) ikisi de geçip
+      // iki kez uzatıyor, iki "ödemeniz alındı" gönderiyor, denetim izini
+      // ikincinin adıyla eziyordu (ölçüldü: 12 ay ödeme → +731 gün).
+      // Postgres READ COMMITTED'da güvenli, çünkü karar TEK bir koşullu
+      // UPDATE'in etkilediği satır sayısıdır: UPDATE satırı kilitler, ikinci
+      // istek kilidi bekler; birinci commit edince WHERE satırın YENİ
+      // sürümünde yeniden değerlendirilir (ONAYLANDI → 0 satır), birinci
+      // geri alınırsa özgün satırla devam edilir. Prisma 5.22 `updateMany`yi
+      // `relationMode` "foreignKeys" (varsayılan) iken tek `UPDATE … WHERE
+      // <koşul>` olarak koşar ve sayıyı o deyimden verir (motor kaynağı
+      // okundu); "prisma" modu önce id okuyup koşulsuz günceller — bu koruma
+      // o zaman ÇÖKER. `ONAYLANABILIR`daki `onaylandi: null`: 25.09 öncesi
+      // "fatura kesildi" kusuruyla durumu geri çekilmiş onaylı satır ikinci
+      // bir uzatma açamasın. ⚠ Sahiplenme satırı işlem boyunca kilitli tutar:
+      // bu sürede gelen iptal ve "fatura kesildi" de kilidi bekler — onlar da
+      // koşullu yazdığı için commit'ten sonra ONAYLANDI'yı EZEMEZ.
+      const sahiplenme = await tx.havaleOdemesi.updateMany({
+        where: { id: p.havaleId, ...ONAYLANABILIR },
+        data: {
+          durum: HavaleDurumu.ONAYLANDI,
+          onaylayanId: p.onaylayanId,
+          onaylandi: new Date(),
+          dekontUrl: p.dekontUrl,
+        },
+      });
+      if (sahiplenme.count === 0) {
+        // Kaybeden istek: satır bu arada onaylandı ya da iptal edildi. İşlem
+        // hiçbir şey yazmadı; hata onu geri alır, yan etkiler hiç koşmaz.
+        const simdiki = await tx.havaleOdemesi.findUniqueOrThrow({
+          where: { id: p.havaleId },
+          select: { durum: true },
+        });
+        throw new BadRequestException(
+          simdiki.durum === HavaleDurumu.IPTAL
+            ? 'İptal edilmiş ödeme onaylanamaz'
+            : 'Bu ödeme zaten onaylanmış',
+        );
+      }
+
       const abonelik = await this.abonelik.erisimiUzat(
         mevcut.abonelikId,
         mevcut.ayAdedi,
@@ -264,13 +376,7 @@ export class HavaleServisi {
 
       const havale = await tx.havaleOdemesi.update({
         where: { id: p.havaleId },
-        data: {
-          durum: HavaleDurumu.ONAYLANDI,
-          onaylayanId: p.onaylayanId,
-          onaylandi: new Date(),
-          dekontUrl: p.dekontUrl,
-          uzatilanTarih: abonelik.erisimSonu,
-        },
+        data: { uzatilanTarih: abonelik.erisimSonu },
       });
 
       // Yanıt yazılan paketi taşısın (uzatmanın dönüşü eski paketi taşır).
@@ -313,8 +419,12 @@ export class HavaleServisi {
     // SIRA: EN SONDA — işlem, fatura kuyruğu ve müşteri e-postası iyzico'nun
     // yavaşlığından etkilenmesin; süreç burada ölürse onay ve fatura
     // tamamdır, iptal ise sonraki onayda ya da geç gelen kart webhook'unda
-    // (havale dalı) yeniden denenir. ⚠ Aynı anda gelen İKİ onay isteğini bu
-    // sıra ENGELLEMEZ (durum işlem dışında okunuyor) — ayrı iş.
+    // (havale dalı) yeniden denenir. Buraya yalnız sahiplenmeyi kazanan
+    // istek ulaşır: fatura, e-posta ve iptal havale başına EN FAZLA bir kez
+    // koşar. ⚠ Süreç commit ile kuyruğa alma arasında ölürse ya da kuyruğa
+    // alma düşerse fatura talebi OLUŞMAZ ve yeniden onay 400 aldığı için
+    // kendiliğinden yeniden denenmez (25.09 öncesinde de böyleydi) — hata
+    // günlüğünü izleyin.
     // Kodu olmayan (havalenin kendi açtığı) ya da zaten kapalı abonelikte
     // iyzico'ya gidilmez.
     await this.abonelik
@@ -332,18 +442,35 @@ export class HavaleServisi {
   }
 
   async iptalEt(havaleId: string, aktorId: string, neden?: string) {
+    const onayliIptalEdilemez =
+      'Onaylanmış ödeme iptal edilemez — abonelik uzatıldı. ' +
+      'Düzeltme gerekiyorsa aboneliği elle kısaltın.';
     const kayit = await this.prisma.havaleOdemesi.findUniqueOrThrow({
       where: { id: havaleId },
     });
     if (kayit.durum === HavaleDurumu.ONAYLANDI) {
-      throw new BadRequestException(
-        'Onaylanmış ödeme iptal edilemez — abonelik uzatıldı. ' +
-          'Düzeltme gerekiyorsa aboneliği elle kısaltın.',
-      );
+      throw new BadRequestException(onayliIptalEdilemez);
     }
-    const guncel = await this.prisma.havaleOdemesi.update({
-      where: { id: havaleId },
+    // ⚠ 25.09 — KOŞULLU: yukarıdaki okuma karar değildir. Eskiden KOŞULSUZ
+    // `update` IPTAL yazıyordu: okumadan sonra commit edilen bir onayı ezip
+    // uzatılmış, faturası kuyruğa alınmış havaleyi IPTAL gösteriyordu
+    // (ölçüldü; onayın sahiplenmesi kilidi işlem boyunca tuttuğu için bu
+    // istek o kilidi bekler, commit'ten sonra 0 satır görür).
+    const iptal = await this.prisma.havaleOdemesi.updateMany({
+      where: { id: havaleId, ...ONAYLANABILIR },
       data: { durum: HavaleDurumu.IPTAL, aciklama: neden },
+    });
+    if (iptal.count === 0) {
+      const simdiki = await this.prisma.havaleOdemesi.findUniqueOrThrow({
+        where: { id: havaleId },
+      });
+      // Zaten iptal: ikinci istek (yeniden deneme) aynı satırı görür, olay
+      // ikinci kez yazılmaz. Değilse satır onaylıdır.
+      if (simdiki.durum === HavaleDurumu.IPTAL) return simdiki;
+      throw new BadRequestException(onayliIptalEdilemez);
+    }
+    const guncel = await this.prisma.havaleOdemesi.findUniqueOrThrow({
+      where: { id: havaleId },
     });
     await this.abonelik.olayYaz(kayit.abonelikId, 'havale.iptal', {
       aciklama: neden,
@@ -354,22 +481,14 @@ export class HavaleServisi {
   }
 
   /**
-   * Bekleyen havaleler — yönetim ekranı için. `paketSurumu` TEKLİFİN paketi
-   * (onayda hesabın paketi olur), `abonelik.paketSurumu` hesabın BUGÜNKÜ
-   * paketi; 25.09'a dek yalnız ikincisi dönüyordu ve Pro teklifi listede
-   * "Basic" görünüyordu.
+   * Bekleyen (onaylanabilir) havaleler — yönetim ekranı için. `paketSurumu`
+   * TEKLİFİN paketi (onayda hesabın paketi olur), `abonelik.paketSurumu`
+   * hesabın BUGÜNKÜ paketi; 25.09'a dek yalnız ikincisi dönüyordu ve Pro
+   * teklifi listede "Basic" görünüyordu.
    */
   async bekleyenler() {
     return this.prisma.havaleOdemesi.findMany({
-      where: {
-        durum: {
-          in: [
-            HavaleDurumu.TEKLIF,
-            HavaleDurumu.FATURA_KESILDI,
-            HavaleDurumu.ODEME_BEKLENIYOR,
-          ],
-        },
-      },
+      where: ONAYLANABILIR,
       include: {
         paketSurumu: { include: { paket: true } },
         abonelik: { include: { paketSurumu: { include: { paket: true } } } },
