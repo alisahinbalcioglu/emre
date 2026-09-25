@@ -37,6 +37,15 @@ import { tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
  *  yöneticiye yazılır. Geç gelen webhook'lar satırı değiştirmez. Kural:
  *  `AbonelikServisi` → "HAVALE ↔ KART ABONELİĞİ"; kapısı
  *  `backend/test/havale-iyzico-cakismasi-test.ts`.
+ *
+ *  ⚠ TEKLİFİN PAKETİ (25.09.2026 — Emre kararı: "onayda hemen uygula"):
+ *  teklif paketini `HavaleOdemesi.paketSurumuId`de taşır; onay o paketi
+ *  aboneliğin ETKİN paketi yapar ve karttan kalan paket değişimi izlerini
+ *  siler (`odenenPaketiYaz`). Eskiden paket hiç saklanmıyordu: satırı olan
+ *  firmada teklifin paketi yok sayılıyor, Basic müşteri Pro teklifini
+ *  ödeyince Basic kalıyordu — erişim, koltuk, DWG, fatura kalemi ve müşteri
+ *  e-postası hep "Basic" (ölçüldü). Kapısı
+ *  `backend/test/havale-teklif-paketi-test.ts`.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 @Injectable()
@@ -64,6 +73,21 @@ export class HavaleServisi {
       throw new BadRequestException('Ay adedi 1 ile 36 arasında olmalı');
     }
 
+    // ⚠ 25.09 — TEKLİFİN PAKETİ ZORUNLU ve VAR OLMALI: onayda hesabın paketi
+    // olur. Gövde satır içi tip literaliyle gelir (ValidationPipe DENETLEMEZ);
+    // eskiden mevcut satırda paket hiç okunmadığı için eksik ya da yanlış
+    // kimlik sessizce geçiyordu. Satış dışı sürüm (miras yenilemesi) serbest:
+    // paketi yönetici seçer.
+    const surum = p.paketSurumuId
+      ? await this.prisma.paketSurumu.findUnique({
+          where: { id: p.paketSurumuId },
+          select: { id: true, paket: { select: { kod: true, ad: true } } },
+        })
+      : null;
+    if (!surum) {
+      throw new BadRequestException('Teklifin paketi (paketSurumuId) bulunamadı');
+    }
+
     const abonelik = await this.abonelikBulYaDaOlustur(
       p.firmaId,
       p.paketSurumuId,
@@ -74,6 +98,7 @@ export class HavaleServisi {
     const kayit = await this.prisma.havaleOdemesi.create({
       data: {
         abonelikId: abonelik.id,
+        paketSurumuId: surum.id,
         durum: HavaleDurumu.TEKLIF,
         tutar: new Prisma.Decimal(p.tutar),
         paraBirimi: p.paraBirimi ?? 'TRY',
@@ -84,12 +109,14 @@ export class HavaleServisi {
     });
 
     await this.abonelik.olayYaz(abonelik.id, 'havale.teklif.olusturuldu', {
-      aciklama: `${teklifNo} — ${p.ayAdedi} ay, ${tutarYaz(p.tutar)}`,
+      aciklama: `${teklifNo} — ${surum.paket.ad}, ${p.ayAdedi} ay, ${tutarYaz(p.tutar)}`,
       aktor: p.olusturanId,
-      veri: { havaleId: kayit.id, teklifNo },
+      veri: { havaleId: kayit.id, teklifNo, paketSurumuId: surum.id },
     });
 
-    return kayit;
+    // Yanıt teklifin paketini taşır: yönetici NEYİ teklif ettiğini görür
+    // (eskiden yanıtta paket yoktu).
+    return { ...kayit, paketSurumu: surum };
   }
 
   /** 2. Fatura kesildi işaretle (proforma ya da gerçek fatura). */
@@ -149,9 +176,13 @@ export class HavaleServisi {
         },
       );
 
-      await tx.abonelik.update({
-        where: { id: mevcut.abonelikId },
-        data: { odemeYontemi: 'HAVALE' },
+      // Ödeme yöntemi + ETKİN PAKET (teklifin paketi) + kart izleri — tek yazım.
+      const guncel = await this.odenenPaketiYaz(tx, {
+        havaleId: p.havaleId,
+        abonelikId: mevcut.abonelikId,
+        teklifPaketi: mevcut.paketSurumuId ?? null,
+        teklifNo: mevcut.teklifNo,
+        aktor: p.onaylayanId,
       });
 
       const havale = await tx.havaleOdemesi.update({
@@ -165,7 +196,8 @@ export class HavaleServisi {
         },
       });
 
-      return { abonelik, havale };
+      // Yanıt yazılan paketi taşısın (uzatmanın dönüşü eski paketi taşır).
+      return { abonelik: guncel, havale };
     });
 
     // Fatura kuyruğa — işlem dışında, çünkü muhasebe servisi yavaşsa
@@ -235,7 +267,12 @@ export class HavaleServisi {
     return guncel;
   }
 
-  /** Bekleyen havaleler — yönetim ekranı için. */
+  /**
+   * Bekleyen havaleler — yönetim ekranı için. `paketSurumu` TEKLİFİN paketi
+   * (onayda hesabın paketi olur), `abonelik.paketSurumu` hesabın BUGÜNKÜ
+   * paketi; 25.09'a dek yalnız ikincisi dönüyordu ve Pro teklifi listede
+   * "Basic" görünüyordu.
+   */
   async bekleyenler() {
     return this.prisma.havaleOdemesi.findMany({
       where: {
@@ -247,12 +284,109 @@ export class HavaleServisi {
           ],
         },
       },
-      include: { abonelik: { include: { paketSurumu: { include: { paket: true } } } } },
+      include: {
+        paketSurumu: { include: { paket: true } },
+        abonelik: { include: { paketSurumu: { include: { paket: true } } } },
+      },
       orderBy: { olusturuldu: 'asc' },
     });
   }
 
   // ── Yardımcılar ─────────────────────────────────────────────────────────
+
+  /**
+   * ÖDENEN PAKET = HESABIN PAKETİ (25.09.2026 — Emre kararı: "onayda hemen
+   * uygula"). Onayın TEK abonelik yazımı: ödeme yöntemi HAVALE, etkin paket
+   * teklifin paketi, karttan kalan paket değişimi izleri silinir.
+   *
+   * NEDEN KART İZLERİ SİLİNİR: onay kart aboneliğini iyzico'da kapatır
+   * (`odemeyiOnayla` sonu) — iyzico'daki bekleyen plan değişimi artık
+   * başlamayacak ve havale dönemin paketini belirler. Kalsalardı (ölçüldü):
+   *  · `planliPaketSurumuId` + `paketGecisTarihi` → 10 dk taraması ödeme
+   *    yöntemine BAKMAZ: havaleyle bir yıl ödenmiş paketi kart döneminin
+   *    sonunda planlı pakete indirirdi (müşteri ekranı da "geçilecek" derdi);
+   *  · `odenenPaketSurumuId` → müşteri iptali (`iptalEt`) bunu "yeni ücret
+   *    başlamadan iptal" sanıp havaleyle ödenmiş paketi ESKİ pakete döndürürdü;
+   *  · `paketGecisTarihi` (kilit) → 3 gün sonra "tahsilat bildirimi gelmedi"
+   *    emniyet olayı yazılırdı; havalede iyzico tahsilatı hiç gelmez.
+   * İkizleri: `SatinAlmaServisi.iptalEt` ve satın almanın satır yazımı aynı
+   * üç alanı aynı gerekçeyle temizler.
+   *
+   * Teklifin paketi NULL (alan eklenmeden önce verilmiş teklif) → etkin paket
+   * DEĞİŞMEZ: hangi paket için verildiği bilinmiyor, tahmin yok.
+   * ⚠ Bedel (Emre kabul etti): ERKEN ödenen DÜŞÜRME yenilemesinde kalan üst
+   * paket günleri onay anında biter — uzatma eski bitişten başlar ama paket
+   * hemen değişir.
+   */
+  private async odenenPaketiYaz(
+    tx: Prisma.TransactionClient,
+    h: {
+      havaleId: string;
+      abonelikId: string;
+      teklifPaketi: string | null;
+      teklifNo: string | null;
+      aktor: string;
+    },
+  ) {
+    const once = await tx.abonelik.findUniqueOrThrow({
+      where: { id: h.abonelikId },
+      select: {
+        paketSurumuId: true,
+        planliPaketSurumuId: true,
+        paketGecisTarihi: true,
+        odenenPaketSurumuId: true,
+      },
+    });
+    const yeniPaket = h.teklifPaketi ?? once.paketSurumuId;
+    const guncel = await tx.abonelik.update({
+      where: { id: h.abonelikId },
+      data: {
+        odemeYontemi: 'HAVALE',
+        paketSurumuId: yeniPaket,
+        planliPaketSurumuId: null,
+        paketGecisTarihi: null,
+        odenenPaketSurumuId: null,
+      },
+    });
+
+    const kartIzi = {
+      planliPaketSurumuId: once.planliPaketSurumuId,
+      paketGecisTarihi: once.paketGecisTarihi?.toISOString() ?? null,
+      odenenPaketSurumuId: once.odenenPaketSurumuId,
+    };
+    const kartIziVardi = Object.values(kartIzi).some((v) => v !== null);
+    const paketDegisti = yeniPaket !== once.paketSurumuId;
+    if (!h.teklifPaketi) {
+      this.logger.warn(
+        `Havale ${h.teklifNo ?? h.havaleId}: teklifin paketi kayıtlı değil (alan eklenmeden önceki teklif) — ` +
+          'etkin paket DEĞİŞTİRİLMEDİ',
+      );
+    }
+    if (paketDegisti || kartIziVardi) {
+      const belge = h.teklifNo ?? h.havaleId;
+      await tx.abonelikOlayi.create({
+        data: {
+          abonelikId: h.abonelikId,
+          tip: paketDegisti ? 'paket.degisti' : 'paket.degisimi.birakildi',
+          oncekiDurum: guncel.durum,
+          yeniDurum: guncel.durum,
+          aciklama: paketDegisti
+            ? `Havale onayı — teklifin paketi uygulandı (${belge})`
+            : `Havale onayı — karttaki bekleyen paket değişimi bırakıldı (${belge})`,
+          veri: {
+            kaynak: 'havale',
+            havaleId: h.havaleId,
+            teklifNo: h.teklifNo,
+            oncekiPaketSurumuId: once.paketSurumuId,
+            yeniPaketSurumuId: yeniPaket,
+            birakilanKartDegisimi: kartIziVardi ? kartIzi : null,
+          },
+          aktor: h.aktor,
+        },
+      });
+    }
+    return guncel;
+  }
   private async abonelikBulYaDaOlustur(firmaId: string, paketSurumuId: string) {
     const mevcut = await this.prisma.abonelik.findUnique({ where: { firmaId } });
     if (mevcut) return mevcut;

@@ -1427,6 +1427,8 @@ model PaketSurumu {
   baslatmalar AbonelikBaslatma[]
   /// Bu surume gecmeyi oneren yonetici onerileri (A2 Blok 2).
   oneriler    PaketDegisimOnerisi[]
+  /// Bu surum icin verilmis havale teklifleri (25.09) — onayda etkin paket olur.
+  havaleTeklifleri HavaleOdemesi[]
 
   @@unique([paketId, surumNo])
   @@index([satistaMi])
@@ -1920,6 +1922,16 @@ model HavaleOdemesi {
   id         String   @id @default(uuid())
   abonelikId String
   abonelik   Abonelik @relation(fields: [abonelikId], references: [id])
+
+  /// TEKLIFIN PAKETI (25.09.2026 — Emre karari: "onayda hemen uygula").
+  /// Onay (`HavaleServisi.odemeyiOnayla`) bu surumu aboneligin ETKIN paketi
+  /// yapar. Eskiden hic saklanmiyordu: mevcut satirda teklifin paketi yok
+  /// sayiliyor, Basic musteri Pro teklifini odeyince Basic kaliyordu (fatura
+  /// da "Basic" yaziyordu; olculdu `test:havale-teklif-paketi`).
+  /// NULL = bu alan eklenmeden ONCE olusturulmus teklif: onay paketi
+  /// DEGISTIRMEZ (hangi paket icin verildigi bilinmiyor — tahmin yok).
+  paketSurumuId String?
+  paketSurumu   PaketSurumu? @relation(fields: [paketSurumuId], references: [id])
 
   durum      HavaleDurumu @default(TEKLIF)
   tutar      Decimal      @db.Decimal(12, 2)
