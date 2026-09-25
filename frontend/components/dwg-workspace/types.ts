@@ -37,6 +37,15 @@ export interface CalculatedLayer {
   /** Hesap hangi bolme moduyla yapildi. 't' = T noktalarinda bolme (varsayilan),
    *  'none' = bolme yok (entity = tek parca). Yeniden hesapta AYNEN korunur. */
   splitMode?: 't' | 'none';
+  /** Hesap HANGI cizim birimiyle (metre carpani) yapildi. Uzunluklar metre
+   *  cinsinden DONDURULMUS sayilardir; birim sonradan degisirse bu layer
+   *  BAYATTIR (birim-bayatlik.ts): onaylanamaz, fiyatlandirmaya gitmez,
+   *  "Yeniden ayir" ister. 25.09 oncesi kayitlarda yok — yukleme aninda
+   *  kaydin kendi birimiyle doldurulur (`kayitliDurumuCoz`). */
+  scaleUsed?: number;
+  /** Motorun olctugu ipucu: 💧 isaretsizken boru USTUNDE sembol tasiyan
+   *  katmanlar (cok → az). Adim 2'de satir ici gosterilir; karar degil. */
+  sprinklerAdaylari?: { layer: string; on_pipe: number }[];
 }
 
 /** Workspace'in genel state'i. */

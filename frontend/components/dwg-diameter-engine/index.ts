@@ -3,13 +3,13 @@
  *
  * DwgProjectWorkspace.tsx tek tüketici (composition root). Diger dosyalar
  * import etmemeli; izolasyon korunmali.
+ *
+ * 25.09: capraz-layer "Cap Renkleri" paneli (DiameterLegendPanel) kaldirildi —
+ * yerini Adim 2'nin secili layer icin metrajli cap listesi aldi
+ * (dwg-workspace/cap-gruplari.ts).
  */
 
 export { useLayerCalc } from './useLayerCalc';
+export type { HesapSecenekleri } from './useLayerCalc';
 export { useOriginalColorState } from './useOriginalColorState';
-export { default as DiameterLegendPanel } from './DiameterLegendPanel';
-export { buildLegendEntries } from './types';
-export type {
-  LayerCalcResult,
-  DiameterLegendEntry,
-} from './types';
+export type { LayerCalcResult } from './types';
