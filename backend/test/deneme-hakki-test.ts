@@ -64,6 +64,7 @@ import { OturumServisi } from '../src/altyapi/auth/oturum.servisi';
 import { ParolaServisi } from '../src/altyapi/auth/parola.servisi';
 import { AbonelikController } from '../src/ozellik/odeme/abonelik/abonelik.controller';
 import { OdemeModule } from '../src/ozellik/odeme/odeme.module';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 /**
  * FAZ 7 F2b — `login`/`register` artik DALLANIR (MFA acik/zorunluysa yanitta
@@ -1092,7 +1093,7 @@ function son() {
   }
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
-});
+}));

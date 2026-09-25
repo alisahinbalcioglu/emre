@@ -43,6 +43,7 @@ import { LibraryController } from '../src/ozellik/kutuphane/library/library.cont
 import { CreateManualBrandDto } from '../src/ozellik/kutuphane/library/dto/create-manual-brand.dto';
 import { AddLibraryRowsDto } from '../src/ozellik/kutuphane/library/dto/add-library-rows.dto';
 import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 const failures: string[] = [];
@@ -148,7 +149,7 @@ function excel(sayfa: string, aoa: unknown[][]): Buffer {
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
 
-(async () => {
+bitmezseKirmizi((async () => {
   // ═══ R) KURAL ═══════════════════════════════════════════════════════════════
   console.log('── R) kural: paraBirimiYazimi ──');
   {
@@ -351,4 +352,4 @@ function excel(sayfa: string, aoa: unknown[][]): Buffer {
     return;
   }
   console.log(`✓ PARA BIRIMI YAZIM: ${passed}/${toplam} kriter gecti`);
-})().catch((e) => { console.error('BEKLENMEYEN HATA:', e); process.exitCode = 1; });
+})().catch((e) => { console.error('BEKLENMEYEN HATA:', e); process.exitCode = 1; }));

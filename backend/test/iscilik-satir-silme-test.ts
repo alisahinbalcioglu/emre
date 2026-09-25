@@ -24,6 +24,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import { LaborFirmsService } from '../src/ozellik/kutuphane/labor-firms/labor-firms.service';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 const failures: string[] = [];
@@ -68,7 +69,7 @@ function sahte(sheet: any) {
   return { kayit, client };
 }
 
-(async () => {
+bitmezseKirmizi((async () => {
   console.log('── A) SILINEN SATIR SHEET JSON\'UNDAN DA KALKAR ──');
   {
     const sheet = sheetKur();
@@ -123,4 +124,4 @@ function sahte(sheet: any) {
   }
   console.log(` ✓ ISCILIK SATIR SILME: ${passed}/${toplam} kriter gecti`);
   console.log('════════════════════════════════════════════════════════════════');
-})();
+})());

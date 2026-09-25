@@ -45,6 +45,7 @@ import { AbonelikDurumu } from '@prisma/client';
 
 import { SatinAlmaServisi } from '../src/ozellik/odeme/abonelik/satinalma.servisi';
 import { AbonelikServisi } from '../src/ozellik/odeme/abonelik/abonelik.servisi';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 Logger.overrideLogger(false);
 
@@ -640,7 +641,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error('BEKLENMEDIK HATA:', e);
   process.exitCode = 1;
-});
+}));

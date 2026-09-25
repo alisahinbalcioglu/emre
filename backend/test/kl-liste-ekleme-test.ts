@@ -17,6 +17,7 @@ import { LaborFirmsService } from '../src/ozellik/kutuphane/labor-firms/labor-fi
 import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
 import { TerminologyService } from '../src/ozellik/eslestirme/matching/terminology.service';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -167,4 +168,4 @@ async function main() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(main().catch((e) => { console.error(e); process.exit(1); }));

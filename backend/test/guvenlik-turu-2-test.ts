@@ -65,6 +65,7 @@ import { QuotesController } from '../src/ozellik/teklif/quotes/quotes.controller
 import { BrandsController } from '../src/ozellik/kutuphane/brands/brands.controller';
 import { DwgEngineController } from '../src/modules/dwg-engine/dwg-engine.controller';
 import { DwgSahiplikServisi } from '../src/modules/dwg-engine/dwg-sahiplik.servisi';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -374,7 +375,7 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exit(1);
-});
+}));

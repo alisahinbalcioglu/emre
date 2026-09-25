@@ -27,6 +27,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { LaborFirmsService } from '../src/ozellik/kutuphane/labor-firms/labor-firms.service';
 import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 const failures: string[] = [];
@@ -35,7 +36,7 @@ function check(ad: string, kosul: boolean, detay?: string) {
   else { failures.push(`${ad}${detay ? ` — ${detay}` : ''}`); console.log(`  FAIL: ${ad}${detay ? ` — ${detay}` : ''}`); }
 }
 
-(async () => {
+bitmezseKirmizi((async () => {
   // ═══ A) ISCILIK: 'new' + 0 gecerli kalem → liste OLUSMAZ ═══════════════════
   console.log('── A) iscilik: once dogrula, sonra liste olustur ──');
   {
@@ -227,4 +228,4 @@ function check(ad: string, kosul: boolean, detay?: string) {
     for (const f of failures) console.log(`  - ${f}`);
     process.exit(1);
   }
-})();
+})());

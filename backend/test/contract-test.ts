@@ -42,6 +42,7 @@
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
 import { TerminologyService, ALIAS_SEEDS } from '../src/ozellik/eslestirme/matching/terminology.service';
 import type { MatchResult, MatchCandidate, BrandAlternative } from '../src/ozellik/eslestirme/matching/types';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 function lib(name: string, price: number) {
   return { id: `lib-${name}`, material: null, materialName: name, customPrice: null, listPrice: price, discountRate: 0 };
@@ -360,4 +361,4 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-run();
+bitmezseKirmizi(run());

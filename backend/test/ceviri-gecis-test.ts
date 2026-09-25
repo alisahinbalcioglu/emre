@@ -36,6 +36,7 @@ import { gecisAnahtari } from '../src/ozellik/odeme/abonelik/ceviri-kotasi';
 import { CeviriKotaServisi } from '../src/ozellik/odeme/abonelik/ceviri-kota.servisi';
 import { CeviriService } from '../src/ozellik/giris/ai/ceviri.service';
 import { sahteDb, type Kayit } from './ceviri-sahte-db';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 delete process.env.ANTHROPIC_API_KEY;
 
@@ -277,7 +278,7 @@ async function main(): Promise<void> {
   }
 }
 
-main()
+bitmezseKirmizi(main()
   .catch((e) => {
     failures.push(`beklenmedik hata: ${(e as Error)?.stack ?? e}`);
   })
@@ -288,4 +289,4 @@ main()
       failures.forEach((f) => console.log(`  - ${f}`));
       process.exitCode = 1;
     }
-  });
+  }));

@@ -69,6 +69,7 @@ import { FaturaServisi } from '../src/ozellik/odeme/fatura/fatura.servisi';
 import { DunningServisi } from '../src/ozellik/odeme/dunning/dunning.servisi';
 import { DUNNING_METINLERI } from '../src/ozellik/odeme/dunning/dunning.metinleri';
 import { tekilAnahtarUret } from '../src/ozellik/odeme/iyzico/imza';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -393,12 +394,22 @@ function bellekPrisma() {
  *   satırı okumuş ve ağda bekliyordur — yarış penceresinin tam modeli (E).
  *   Emniyet: 2 sn'de birikmezse yine bırakır (kapı asılı kalmaz; E-FIXTURE
  *   iki çağrının da geldiğini ayrıca ölçer).
+ *   ⚠ Emniyet zamanlayıcısı `unref`li DEĞİL. Kod iki çağrıyı sıraya alırsa
+ *   (ikinci süreç birincinin bitmesini bekler) bariyer hiç dolmaz ve bekleyen
+ *   TEK iş bu zamanlayıcı olur. `unref`li olsaydı Node döngüyü boş sayar,
+ *   kapı E bloğunda ÖZETSİZ 0 ile çıkardı. 25.09'da ölçüldü:
+ *   `tekOlayIsle`ye süreç içi sıra konunca E, M ve H blokları hiç
+ *   raporlanmadı. Bariyer dolunca zamanlayıcı temizlenir, bitmiş kapıyı
+ *   2 sn bekletmez.
  */
 function sahteIyzico(bariyer = 0) {
   const detaylar = new Map<string, unknown>();
   const sorulan: string[] = [];
   let bekleyenler: Array<() => void> = [];
+  let emniyet: NodeJS.Timeout | undefined;
   const birak = () => {
+    clearTimeout(emniyet);
+    emniyet = undefined;
     const kuyruk = bekleyenler;
     bekleyenler = [];
     kuyruk.forEach((f) => f());
@@ -413,7 +424,7 @@ function sahteIyzico(bariyer = 0) {
           await new Promise<void>((r) => {
             bekleyenler.push(r);
             if (bekleyenler.length >= bariyer) birak();
-            else setTimeout(birak, 2000).unref();
+            else emniyet ??= setTimeout(birak, 2000);
           });
         }
         const d = detaylar.get(kod);
@@ -956,7 +967,7 @@ async function main(): Promise<void> {
   son();
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
-});
+}));

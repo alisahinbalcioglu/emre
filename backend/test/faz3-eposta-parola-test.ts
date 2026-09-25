@@ -41,6 +41,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ConfigService } from '@nestjs/config';
 import { uygulamaKokuCoz } from '../src/altyapi/auth/uygulama-url';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -876,7 +877,7 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error('KAPI COKTU:', e);
   process.exit(1);
-});
+}));

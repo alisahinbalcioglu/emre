@@ -68,6 +68,7 @@ import { FIRMA_ROL_KEY } from '../src/altyapi/auth/decorators/firma-rolu.decorat
 import { TIER_KEY } from '../src/altyapi/auth/guards/tier.guard';
 import { sahteOidcSaglayici, type SahteSaglayici } from './yardimci/sahte-oidc-saglayici';
 import { onbellekleriTemizle } from '../src/altyapi/auth/kurumsal/oidc-istemci';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -1952,7 +1953,7 @@ async function main() {
   if (failed > 0) process.exitCode = 1;
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error('KAPI COKTU:', e);
   process.exitCode = 1;
-});
+}));

@@ -31,6 +31,7 @@ import { UyelikServisi } from '../src/ozellik/firma/uyelik.servisi';
 import { AdminController } from '../src/ozellik/kutuphane/admin/admin.controller';
 import { etkinHesapKosulu } from '../src/ozellik/firma/uyelik-kurallari';
 import { ROLES_KEY } from '../src/altyapi/auth/decorators/roles.decorator';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -500,7 +501,7 @@ async function main() {
   if (failed > 0) process.exitCode = 1;
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
-});
+}));

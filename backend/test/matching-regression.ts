@@ -13,6 +13,7 @@ import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.ser
 import { TerminologyService } from '../src/ozellik/eslestirme/matching/terminology.service';
 import { generateTags } from '../src/ozellik/eslestirme/matching/tag-generator';
 import { extractDiameter } from '../src/ozellik/eslestirme/matching/normalizer';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 interface TestCase {
   name: string;
@@ -274,7 +275,7 @@ async function runTests() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-runTests().catch((e) => {
+bitmezseKirmizi(runTests().catch((e) => {
   console.error('Test runner error:', e);
   process.exit(1);
-});
+}));

@@ -30,6 +30,7 @@
  */
 import { buildLibrarySheetRows, LibrarySheetItem } from '../src/ozellik/kutuphane/library/library-sheet-builder';
 import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 const failures: string[] = [];
@@ -82,7 +83,7 @@ const MEVCUT = {
   materialName: 'Somunlu Kelepçe', adRaw: 'Somunlu Kelepçe', listPrice: 8.4, discountRate: 0, unit: 'adet',
 };
 
-(async () => {
+bitmezseKirmizi((async () => {
   console.log('── A) AD DEGISIKLIGI KULLANICININ GORDUGU ALANA YAZILIR ──');
   {
     const { updates } = await kaydet(MEVCUT, [
@@ -148,4 +149,4 @@ const MEVCUT = {
   }
   console.log(` ✓ KUTUPHANE AD DUZENLEME: ${passed}/${toplam} kriter gecti`);
   console.log('════════════════════════════════════════════════════════════════');
-})();
+})());

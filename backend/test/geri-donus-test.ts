@@ -63,6 +63,7 @@ import { QuoteFormatsController } from '../src/ozellik/cikti/quote-formats/quote
 import { AiController } from '../src/ozellik/giris/ai/ai.controller';
 import { AbonelikController } from '../src/ozellik/odeme/abonelik/abonelik.controller';
 import { tokenOzetle } from '../src/altyapi/auth/token-ozet';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -726,10 +727,10 @@ function son() {
   }
 }
 
-main()
+bitmezseKirmizi(main()
   .then(fkBlogu)
   .then(son)
   .catch((e) => {
     console.error(e);
     process.exitCode = 1;
-  });
+  }));

@@ -24,6 +24,7 @@ import { parseLine } from '../src/ozellik/eslestirme/matching/index/line-parser'
 import { runQuery } from '../src/ozellik/eslestirme/matching/index/query-engine';
 import { toMatchResult, type TryCevirici } from '../src/ozellik/fiyat/matching/index/outcome-mapper';
 import type { IndexedRow } from '../src/ozellik/eslestirme/matching/index/types';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 const failures: string[] = [];
@@ -435,7 +436,7 @@ async function kurGeriDususu() {
   }
 }
 
-kurGeriDususu().then(() => {
+bitmezseKirmizi(kurGeriDususu().then(() => {
   console.log('');
   console.log('════════════════════════════════════════════════════════════════');
   const toplam = passed + failures.length;
@@ -447,4 +448,4 @@ kurGeriDususu().then(() => {
   }
   console.log(` ✓ KUR DONMASI: ${passed}/${toplam} kriter gecti`);
   console.log('════════════════════════════════════════════════════════════════');
-}).catch((e) => { console.error('BEKLENMEYEN HATA:', e); process.exit(1); });
+}).catch((e) => { console.error('BEKLENMEYEN HATA:', e); process.exit(1); }));

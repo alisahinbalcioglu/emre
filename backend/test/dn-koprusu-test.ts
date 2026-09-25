@@ -51,6 +51,7 @@ import { runQuery, urunVariantTags } from '../src/ozellik/eslestirme/matching/in
 import { toMatchResult } from '../src/ozellik/fiyat/matching/index/outcome-mapper';
 import { extractSizeInfo, sizeEquivalents } from '../src/ozellik/eslestirme/matching/conversion';
 import type { IndexedRow } from '../src/ozellik/eslestirme/matching/index/types';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 function prod(c: ProductColumns & { price: number }): IndexedRow {
   const idx = buildProductIndex(c);
@@ -338,4 +339,4 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-run().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(run().catch((e) => { console.error(e); process.exit(1); }));

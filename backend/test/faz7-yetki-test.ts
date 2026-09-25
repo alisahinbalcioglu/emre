@@ -55,6 +55,7 @@ import { LaborMatchingService } from '../src/ozellik/eslestirme/labor-matching/l
 import { LaborMatchingController } from '../src/ozellik/eslestirme/labor-matching/labor-matching.controller';
 import { LaborFirmsController } from '../src/ozellik/kutuphane/labor-firms/labor-firms.controller';
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 // JWT imzasi yalniz `login` yolunda gerekir; `jwt-secret.ts` yedek deger
 // KABUL ETMEZ (bilerek). Testin kendi ortami — canli anahtarla ilgisi yok.
@@ -670,7 +671,7 @@ async function main() {
   if (failed > 0) process.exitCode = 1;
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
-});
+}));

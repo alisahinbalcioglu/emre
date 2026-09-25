@@ -46,6 +46,7 @@ import {
   TAMPON_GUN,
   donemTarihleriHesapla,
 } from '../src/ozellik/odeme/abonelik/satinalma.servisi';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -442,7 +443,7 @@ async function main(): Promise<void> {
   son();
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
-});
+}));
