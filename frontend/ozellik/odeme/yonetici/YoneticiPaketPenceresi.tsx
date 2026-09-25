@@ -10,6 +10,11 @@
  * ⚠ Düşürme MÜŞTERİ ONAYI ALMAZ (Emre kararı) — bu yüzden onay adımında
  * yönetici neyin ne zaman olacağını, müşterinin ne kaybedeceğini ve kimin
  * erişiminin duracağını görür; iç gerekçe ZORUNLUDUR (denetim kaydı).
+ *
+ * A2 Blok 2 — ÖNERİ: yükseltme / yatay geçiş / fiyatı artan değişim paketi
+ * DEĞİŞTİRMEZ; firma sahiplerine onay bağlantısı gider. Onay adımı aynı
+ * (seçeneğin `islem`i hangi özet ve düğmenin çizileceğini seçer). Bekleyen
+ * öneri pencerenin üstünde durur ve geri çekilebilir.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -31,6 +36,7 @@ import {
   gerekceGecerliMi,
   hakListesi,
   islemDugmesi,
+  oneriOzeti,
   type YoneticiPaneli,
   type YoneticiSecenegi,
 } from './yonetici-paket';
@@ -135,7 +141,59 @@ export default function YoneticiPaketPenceresi({
     }
   }
 
+  /** A2 Blok 2 — müşteri onaylı öneri. Paket DEĞİŞMEZ; sahiplere bağlantı gider. */
+  async function oneriGonder() {
+    const hedef = secili;
+    if (!hedef || !gerekceGecerliMi(gerekce)) return;
+    setGonderiliyor(true);
+    let gonderildi = false;
+    try {
+      const { data } = await api.post(`/yonetim/abonelik/${firma.id}/oneri`, {
+        paketSurumuId: hedef.paketSurumuId,
+        gerekce: gerekce.trim(),
+        musteriNotu: musteriNotu.trim() || undefined,
+      });
+      gonderildi = true;
+      toast({
+        title: 'Öneri gönderildi',
+        description: data?.epostaGonderildi
+          ? `Firma sahiplerine onay bağlantısı gönderildi; öneri ${trTarih(data?.sonGecerlilik ?? '') || '7 gün'} tarihine kadar geçerli.`
+          : 'Öneri kaydedildi ama e-posta GÖNDERİLEMEDİ; müşteri öneriyi abonelik sayfasında görür, ayrıca haber verin.',
+      });
+      onDegisti();
+    } catch (e) {
+      toast({
+        title: 'Öneri gönderilemedi',
+        description: hataMetni(e) ?? 'Beklenmedik bir hata oluştu.',
+        variant: 'destructive',
+      });
+    } finally {
+      setGonderiliyor(false);
+      await yukle();
+      if (gonderildi) onayAdiminiKapat();
+    }
+  }
+
+  async function oneriGeriCek(oneriId: string) {
+    setGonderiliyor(true);
+    try {
+      await api.post(`/yonetim/abonelik/${firma.id}/oneri/${oneriId}/geri-cek`);
+      toast({ title: 'Öneri geri çekildi', description: 'Müşterinin bağlantısı artık bir işlem yapmaz.' });
+      onDegisti();
+    } catch (e) {
+      toast({
+        title: 'Öneri geri çekilemedi',
+        description: hataMetni(e) ?? 'Beklenmedik bir hata oluştu.',
+        variant: 'destructive',
+      });
+    } finally {
+      setGonderiliyor(false);
+      await yukle();
+    }
+  }
+
   const ab = panel?.abonelik ?? null;
+  const bekleyenOneri = panel?.oneri?.durum === 'bekliyor' ? panel.oneri : null;
 
   return (
     <Dialog open onOpenChange={(acik) => !acik && !gonderiliyor && onKapat()}>
@@ -190,11 +248,60 @@ export default function YoneticiPaketPenceresi({
               </p>
             </section>
 
+            {/* ── Öneri (A2 Blok 2): bekleyen ya da son öneri ─────────────── */}
+            {panel.oneri && (
+              <section
+                className={
+                  bekleyenOneri
+                    ? 'space-y-1 rounded-md border border-blue-200 bg-blue-50 p-3'
+                    : 'space-y-1 rounded-md border border-slate-200 p-3'
+                }
+                data-bolum="oneri"
+              >
+                <p className="font-medium text-slate-900">
+                  {bekleyenOneri ? 'Bekleyen öneri' : 'Son öneri'}: {panel.oneri.hedef.ad}
+                </p>
+                <p className="text-xs text-slate-600">
+                  {panel.oneri.durumMetni}
+                  {bekleyenOneri
+                    ? ` Son gün: ${trTarih(panel.oneri.sonGecerlilik) || '—'}.`
+                    : panel.oneri.sonuclandi
+                      ? ` (${trTarih(panel.oneri.sonuclandi)})`
+                      : ''}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Gönderen: {panel.oneri.olusturanEposta} · iç gerekçe: {panel.oneri.gerekce}
+                </p>
+                {panel.oneri.musteriNotu && (
+                  <p className="text-xs text-slate-500">Müşteriye not: {panel.oneri.musteriNotu}</p>
+                )}
+                {bekleyenOneri && (
+                  <div className="flex justify-end pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={gonderiliyor}
+                      onClick={() => void oneriGeriCek(bekleyenOneri.id)}
+                    >
+                      Öneriyi geri çek
+                    </Button>
+                  </div>
+                )}
+              </section>
+            )}
+
             {secili && ab ? (
-              /* ── Düşürme onay adımı ───────────────────────────────────── */
-              <section className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3" data-bolum="dusurme-onayi">
+              /* ── Onay adımı: düşürme ya da öneri (seçeneğin `islem`i) ────── */
+              <section
+                className={
+                  secili.islem === 'oneri'
+                    ? 'space-y-3 rounded-md border border-blue-300 bg-blue-50 p-3'
+                    : 'space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3'
+                }
+                data-bolum={secili.islem === 'oneri' ? 'oneri-onayi' : 'dusurme-onayi'}
+              >
                 <ul className="list-disc space-y-1 pl-5 text-slate-800">
-                  {dusurmeOzeti({
+                  {(secili.islem === 'oneri' ? oneriOzeti : dusurmeOzeti)({
                     mevcutPaketAdi: ab.paket.ad,
                     secenek: secili,
                     beklenenGecis: ab.beklenenGecis,
@@ -217,7 +324,9 @@ export default function YoneticiPaketPenceresi({
                 </label>
                 <label className="block">
                   <span className="text-xs font-medium text-slate-700">
-                    Müşteriye not (isteğe bağlı, e-postada görünür)
+                    {secili.islem === 'oneri'
+                      ? 'Müşteriye not (isteğe bağlı; e-postada ve abonelik sayfasında yalnız firma sahibine görünür)'
+                      : 'Müşteriye not (isteğe bağlı, e-postada görünür)'}
                   </span>
                   <textarea
                     className="mt-1 w-full rounded-md border border-slate-300 bg-white p-2 text-sm"
@@ -231,22 +340,33 @@ export default function YoneticiPaketPenceresi({
                   <Button variant="outline" size="sm" disabled={gonderiliyor} onClick={onayAdiminiKapat}>
                     Vazgeç
                   </Button>
-                  <Button
-                    size="sm"
-                    disabled={gonderiliyor || !gerekceGecerliMi(gerekce)}
-                    onClick={() => void dusur()}
-                    className="bg-amber-600 hover:bg-amber-700"
-                  >
-                    {gonderiliyor ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-                    Dönem sonunda düşür
-                  </Button>
+                  {secili.islem === 'oneri' ? (
+                    <Button
+                      size="sm"
+                      disabled={gonderiliyor || !gerekceGecerliMi(gerekce)}
+                      onClick={() => void oneriGonder()}
+                    >
+                      {gonderiliyor ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+                      Öneriyi gönder
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      disabled={gonderiliyor || !gerekceGecerliMi(gerekce)}
+                      onClick={() => void dusur()}
+                      className="bg-amber-600 hover:bg-amber-700"
+                    >
+                      {gonderiliyor ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+                      Dönem sonunda düşür
+                    </Button>
+                  )}
                 </div>
               </section>
             ) : (
               /* ── Paket seçenekleri ────────────────────────────────────── */
               <section className="space-y-2" data-bolum="secenekler">
                 {panel.secenekler.map((s) => {
-                  const dugme = islemDugmesi(s.islem);
+                  const dugme = islemDugmesi(s.islem, bekleyenOneri !== null);
                   return (
                     <div
                       key={s.paketSurumuId}
@@ -260,6 +380,9 @@ export default function YoneticiPaketPenceresi({
                           </span>
                         </p>
                         <p className="text-xs text-slate-600">{s.aciklama}</p>
+                        {s.kazanclar.length > 0 && s.islem === 'oneri' && (
+                          <p className="text-xs text-emerald-700">Kazanç: {hakListesi(s.kazanclar)}</p>
+                        )}
                         {s.kayiplar.length > 0 && s.islem !== 'yok' && (
                           <p className="text-xs text-amber-700">Kayıp: {hakListesi(s.kayiplar)}</p>
                         )}

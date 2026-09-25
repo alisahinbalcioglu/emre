@@ -10,8 +10,8 @@
  *  yeniden verir (panel iki istek arasında bayatlayabilir).
  *
  *  Emre kararları (23.09): yükseltme → müşteri onayı (öneri); düşürme →
- *  onaysız, dönem sonunda; kartsız müşteri → süreli paket. Blok 1 yalnız
- *  doğrudan düşürmeyi AÇAR; öneri ve süreli paket sonraki bloklarda açılır.
+ *  onaysız, dönem sonunda; kartsız müşteri → süreli paket. Blok 1 doğrudan
+ *  düşürmeyi, Blok 2 öneriyi AÇAR; süreli paket Blok 3'te açılır.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 import { trTarih } from '../../teklif/ceviri-kota';
@@ -41,6 +41,32 @@ export interface YoneticiPaneli {
     beklenenGecis: string;
   };
   secenekler: YoneticiSecenegi[];
+  /** Firmanın SON önerisi (A2 Blok 2); `durum` sunucuda HESAPLANMIŞ etkin durum. */
+  oneri: YoneticiOnerisi | null;
+}
+
+export type OneriDurumu =
+  | 'bekliyor'
+  | 'suresi-doldu'
+  | 'abonelik-degisti'
+  | 'satistan-kalkti'
+  | 'kabul-edildi'
+  | 'reddedildi'
+  | 'geri-cekildi'
+  | 'kapandi';
+
+export interface YoneticiOnerisi {
+  id: string;
+  hedef: { kod: string; ad: string };
+  durum: OneriDurumu;
+  /** Sunucunun metni (`ONERI_DURUM_METNI`) — ekran kendi çevirisini YAZMAZ. */
+  durumMetni: string;
+  sonGecerlilik: string;
+  olusturuldu: string;
+  olusturanEposta: string;
+  gerekce: string;
+  musteriNotu: string | null;
+  sonuclandi: string | null;
 }
 
 export interface YoneticiSecenegi {
@@ -96,20 +122,19 @@ export interface IslemDugmesi {
 }
 
 /**
- * Seçeneğin düğmesi. ⚠ Blok 1: yalnız doğrudan düşürme AÇIK. Öneri ve süreli
- * paket düğmesi görünür ama kapalıdır — yönetici yolun VAR olduğunu ve ne
- * zaman açılacağını görür, "yok" sanmaz.
+ * Seçeneğin düğmesi. Doğrudan düşürme ve öneri AÇIK (Blok 1–2); süreli paket
+ * görünür ama kapalıdır — yönetici yolun VAR olduğunu görür, "yok" sanmaz.
+ * ⚠ Firma başına TEK bekleyen öneri (sunucu 409 verir): bekleyen varken
+ * "Öneri gönder" kapalı ve NEDENİ yazılı.
  */
-export function islemDugmesi(islem: YoneticiIslemTuru): IslemDugmesi | null {
+export function islemDugmesi(islem: YoneticiIslemTuru, bekleyenOneriVar = false): IslemDugmesi | null {
   switch (islem) {
     case 'dogrudan-dusur':
       return { etiket: 'Dönem sonunda düşür', etkin: true, ipucu: null };
     case 'oneri':
-      return {
-        etiket: 'Öneri gönder',
-        etkin: false,
-        ipucu: 'Müşteri onaylı öneri bir sonraki adımda açılacak.',
-      };
+      return bekleyenOneriVar
+        ? { etiket: 'Öneri gönder', etkin: false, ipucu: 'Bekleyen bir öneri var; yenisi için önce onu geri çekin.' }
+        : { etiket: 'Öneri gönder', etkin: true, ipucu: null };
     case 'sureli-paket':
       return {
         etiket: 'Süreli paket tanımla',
@@ -155,5 +180,37 @@ export function dusurmeOzeti(g: {
     satirlar.push(`Geçişten sonra ${s.durdurulacakUye} ekip üyesinin erişimi durur.`);
   }
   satirlar.push('Müşteri onayı alınmaz; firma sahibine bilgi e-postası gider.');
+  return satirlar;
+}
+
+/**
+ * Öneri onay kutusundaki satırlar (A2 Blok 2). Paket DEĞİŞMEZ: müşteri
+ * onaylarsa A1'in kuralıyla uygulanır — hak kaybı yoksa özellikler HEMEN
+ * (ücret sonraki ödemede), varsa dönem sonunda (sunucudaki `zamanlama`).
+ */
+export function oneriOzeti(g: {
+  mevcutPaketAdi: string;
+  secenek: YoneticiSecenegi;
+  beklenenGecis: string;
+}): string[] {
+  const s = g.secenek;
+  const tarih = trTarih(g.beklenenGecis);
+  const satirlar = [
+    `${g.mevcutPaketAdi} → ${s.paket.ad}`,
+    'Paket şimdi DEĞİŞMEZ: firma sahiplerine onay bağlantısı gider; öneri 7 gün geçerlidir.',
+    s.kayiplar.length === 0
+      ? `Onaylanırsa özellikler hemen açılır; yeni ücret ${tarih || 'sonraki ödeme'} tarihindeki ödemeden itibaren.`
+      : `Onaylanırsa geçiş dönem sonunda (${tarih || 'bir sonraki ödeme günü'}) yapılır.`,
+    `Yeni aylık ücret: ${tutarYaz(s.tutar, s.paraBirimi)} (KDV dahil).`,
+  ];
+  if (s.kazanclar.length > 0) {
+    satirlar.push(`Müşterinin eklenen ya da artan hakları: ${hakListesi(s.kazanclar)}.`);
+  }
+  if (s.kayiplar.length > 0) {
+    satirlar.push(`Müşterinin azalan ya da kalkan hakları: ${hakListesi(s.kayiplar)}.`);
+  }
+  if (s.durdurulacakUye > 0) {
+    satirlar.push(`Geçişten sonra ${s.durdurulacakUye} ekip üyesinin erişimi durur.`);
+  }
   return satirlar;
 }

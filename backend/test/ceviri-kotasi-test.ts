@@ -278,6 +278,9 @@ async function baglanti(): Promise<void> {
     // 23.09: paket değişimi yolu (kart düğmesi) — bu kapının konusu değil;
     // boş harita → her kart "satin-al" (değişimin kendi kapısı: test:paket-degisimi).
     { yollar: async () => new Map() } as any,
+    // 24.09 (A2 Blok 2): bekleyen yönetici önerisi — bu kapının konusu değil
+    // (öneri yok); önerinin kendi kapısı test:yonetici-paket.
+    { bekleyen: async () => null } as any,
   );
   const donen = (await abonelikUcu.paketler({ id: 'u1', firmaId: 'f1' })) as any[];
   check(

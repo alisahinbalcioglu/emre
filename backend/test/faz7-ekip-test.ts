@@ -626,7 +626,8 @@ function bolumR(): void {
     Reflect.getMetadata(TIER_KEY, UyelikController) === undefined);
 
   // R4 — Abonelik uclari
-  const R4 = { basla: ['sahip'], kartGuncelle: ['sahip'], iptal: ['sahip'] };
+  // 24.09 (A2 Blok 2): yonetici onerisinin reddi de SAHIBIN isi.
+  const R4 = { basla: ['sahip'], kartGuncelle: ['sahip'], iptal: ['sahip'], oneriReddet: ['sahip'] };
   for (const [ad, bek] of Object.entries(R4)) {
     const h = (AbonelikController.prototype as any)[ad];
     check(`R4 AbonelikController.${ad} @FirmaRolu ${JSON.stringify(bek)}`,

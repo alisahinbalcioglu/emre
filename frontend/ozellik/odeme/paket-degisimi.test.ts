@@ -134,8 +134,14 @@ describe('S · BAĞLANTI — sayfa bu kurallara GERÇEKTEN bağlı', () => {
     const i = sayfa.indexOf("if (eylem.tur === 'degistir') {");
     expect(i).toBeGreaterThan(-1);
     const dal = sayfa.slice(i, sayfa.indexOf('return;', i));
-    expect(dal).toContain('setDegisimHedefi(p)');
+    // 24.09 (A2 Blok 2): pencereyi açan satırlar TEK fonksiyonda — öneri
+    // şeridi de aynı yoldan açar. Kapı iki adımı da ölçer: dal fonksiyonu
+    // çağırır, fonksiyon hedefi kurar.
+    expect(dal).toContain('degisimPenceresiniAc(p)');
     expect(dal).not.toContain('paketiSec(');
+    const ac = sayfa.slice(sayfa.indexOf('function degisimPenceresiniAc('), sayfa.indexOf('async function paketeGec('));
+    expect(ac).toContain('setDegisimHedefi(p)');
+    expect(ac).not.toContain('paketiSec(');
   });
 
   it('⭐ kapalı düğme BASILMAZ ve gerekçesi yazılır', () => {

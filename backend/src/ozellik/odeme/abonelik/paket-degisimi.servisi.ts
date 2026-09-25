@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   BadGatewayException,
   BadRequestException,
@@ -104,6 +105,19 @@ export interface DegisimIslemcisi {
 }
 
 /**
+ * ONERI KABULU (A2 Blok 2) — musteri islemcisine eklenen kancalar. Onay
+ * kapisi, iyzico cagrisi, kurtarma ve e-posta AYNEN A1'inkidir; oneri yalniz
+ * kontrol (kuyrukta, iyzico'dan ONCE), iz (olay verisi) ve tuketim (ana
+ * islemde) ekler. Kancalar `PaketOnerisiServisi.kabulKancalari`ndan gelir.
+ */
+export interface OneriKancalari {
+  kontrol: NonNullable<DegisimIslemcisi['kontrol']>;
+  /** Baglam verilir: kurtarmada kaydedilen degisim onerinin DEGIL (atif ona gore). */
+  olayEki: DegisimIslemcisi['olayEki'];
+  txEki: NonNullable<DegisimIslemcisi['txEki']>;
+}
+
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  *  PAKET DEGISIMI — uygulama (23.09.2026, yonetici paneli turu A1)
  * ═══════════════════════════════════════════════════════════════════════════
@@ -146,6 +160,8 @@ export class PaketDegisimiServisi {
 
   /** Firma basina sira (SatinAlmaServisi ile ayni desen; tek surec varsayimi). */
   private readonly firmaSirasi = new Map<string, Promise<unknown>>();
+  /** Bu async akis hangi firmalarin sirasi ICINDE — ic ice cagriyi yakalar. */
+  private readonly siradakiFirmalar = new AsyncLocalStorage<ReadonlySet<string>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -157,9 +173,22 @@ export class PaketDegisimiServisi {
     this.uygulamaUrl = config.get<string>('UYGULAMA_URL') ?? 'https://app.metapricex.com';
   }
 
-  private async firmaSirasiyla<T>(firmaId: string, is: () => Promise<T>): Promise<T> {
+  /**
+   * Firma sirasi — paket degisimi ve oneri islemleri (olustur, geri cek,
+   * reddet) AYNI siradan gecer: kabul ile geri cekme yarisamaz.
+   * ⚠ YALNIZ YAPRAK IS: `is` bu siraya YENIDEN girmemeli (ornegin icinden
+   * `degistir` cagirmamali) — ic ice cagri kendi kuyrugunu bekler ve firma
+   * SONSUZA DEK kilitlenirdi. Bu yuzden ic ice giris SESSIZ KILIT yerine
+   * hemen HATA verir (`siradakiFirmalar`).
+   */
+  async firmaSirasinda<T>(firmaId: string, is: () => Promise<T>): Promise<T> {
+    const icinde = this.siradakiFirmalar.getStore();
+    if (icinde?.has(firmaId)) {
+      throw new Error(`FIRMA SIRASI IC ICE CAGRILDI (firma=${firmaId}): is yaprak degil, kilitlenirdi`);
+    }
+    const baglam = new Set([...(icinde ?? []), firmaId]);
     const onceki = this.firmaSirasi.get(firmaId) ?? Promise.resolve();
-    const bu = onceki.catch(() => undefined).then(is);
+    const bu = onceki.catch(() => undefined).then(() => this.siradakiFirmalar.run(baglam, is));
     const kuyrukSonu = bu.catch(() => undefined);
     this.firmaSirasi.set(firmaId, kuyrukSonu);
     try {
@@ -207,12 +236,16 @@ export class PaketDegisimiServisi {
     return sonuc;
   }
 
-  async degistir(p: {
-    firmaId: string;
-    kullaniciId: string;
-    paketSurumuId: string;
-    sozlesmeOnayi?: boolean;
-  }): Promise<DegisimSonucu> {
+  async degistir(
+    p: {
+      firmaId: string;
+      kullaniciId: string;
+      paketSurumuId: string;
+      sozlesmeOnayi?: boolean;
+    },
+    /** Yonetici onerisinin kabulu (A2 Blok 2); yoksa A1 ile bayt bayt ayni. */
+    oneri?: OneriKancalari,
+  ): Promise<DegisimSonucu> {
     // ⚠ ONAY KAPISI ILK SIRADA (DTO'da da var): servis tek bir ucun ardinda
     // olmayabilir — onaysiz cagri iyzico'ya HICBIR istek gondermeden durur.
     if (p.sozlesmeOnayi !== true) {
@@ -222,16 +255,20 @@ export class PaketDegisimiServisi {
       );
     }
     const musteri: DegisimIslemcisi = {
+      kontrol: oneri?.kontrol,
       // ── ONAYIN IZI (satin almadaki 6.4 ile ayni) ──────────────
       // Zaman SUNUCUDA, surum BACKEND SABITINDEN: istemcinin
-      // "hangi metni onayladim" beyanina guvenilmez.
-      olayEki: (simdi) => ({
+      // "hangi metni onayladim" beyanina guvenilmez. Onay izi verinin
+      // SONUNDA kalir (oneri izi ondan once).
+      olayEki: (simdi, b) => ({
+        ...oneri?.olayEki(simdi, b),
         sozlesmeOnayiZamani: simdi.toISOString(),
         sozlesmeSurumu: HUKUKI_METIN_SURUMU,
       }),
+      txEki: oneri?.txEki,
       bildir: (b) => this.degisimMailiGonder(b.firmaId, b.cumle),
     };
-    const r = await this.firmaSirasiyla(p.firmaId, () => this.degistirSirayla(p, musteri));
+    const r = await this.firmaSirasinda(p.firmaId, () => this.degistirSirayla(p, musteri));
     return r.sonuc;
   }
 
@@ -644,7 +681,7 @@ export class PaketDegisimiServisi {
     p: { firmaId: string; kullaniciId: string; paketSurumuId: string },
     islemci: DegisimIslemcisi & { kontrol: NonNullable<DegisimIslemcisi['kontrol']> },
   ): Promise<{ sonuc: DegisimSonucu; bildirildi: boolean }> {
-    return this.firmaSirasiyla(p.firmaId, () => this.degistirSirayla(p, islemci));
+    return this.firmaSirasinda(p.firmaId, () => this.degistirSirayla(p, islemci));
   }
 
   /**
