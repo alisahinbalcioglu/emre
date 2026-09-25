@@ -108,6 +108,7 @@
     "test:havale-iyzico": "ts-node test/havale-iyzico-cakismasi-test.ts",
     "test:havale-teklif-paketi": "ts-node test/havale-teklif-paketi-test.ts",
     "test:yonetim-epostalari": "ts-node test/yonetim-epostalari-test.ts",
+    "test:musteri-epostalari": "ts-node test/musteri-epostalari-test.ts",
     "test:migration": "ts-node test/migration-zinciri-test.ts",
     "test:erisim": "ts-node test/erisim-kapisi-test.ts",
     "test:odeme-bekliyor-geri-sayim": "ts-node test/odeme-bekliyor-geri-sayim-test.ts",

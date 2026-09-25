@@ -237,8 +237,13 @@ export class FaturaServisi {
   /**
    * Faturayı kuyruğa alır. Aynı `tahsilatKodu` ikinci kez gelirse sessizce
    * yok sayılır — webhook tekrarı fatura tekrarına dönüşmez.
+   *
+   * Dönüş (25.09): `true` = satır BU çağrıyla yazıldı (tahsilat ilk kez
+   * işleniyor); `false` = aynı tahsilat kodu zaten vardı (webhook tekrarı,
+   * mutabakat oynatması). Sorunsuz yenilemenin "ödemeniz alındı" e-postası bu
+   * cevaba bağlıdır — tahsilat başına TAM BİR KEZ (`WebhookIsleyici`).
    */
-  async kuyrugaAl(t: FaturaTalebi): Promise<void> {
+  async kuyrugaAl(t: FaturaTalebi): Promise<boolean> {
     // Tutar KDV dahil geliyor; matrahı ve KDV'yi ayrıştır.
     const carpan = 1 + this.kdvOrani / 100;
     const matrah = Math.round((t.tutar / carpan) * 100) / 100;
@@ -267,10 +272,11 @@ export class FaturaServisi {
         },
       });
       this.logger.log(`Fatura kuyruğa alındı: ${t.tahsilatKodu}`);
+      return true;
     } catch (e: unknown) {
       if ((e as { code?: string })?.code === 'P2002') {
         this.logger.debug(`Fatura zaten var: ${t.tahsilatKodu}`);
-        return;
+        return false;
       }
       throw e;
     }

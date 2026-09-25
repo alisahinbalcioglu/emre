@@ -27,6 +27,7 @@ import {
   yeniAbonelikEngelliMi,
 } from './paket-degisimi';
 import { EpostaServisi } from '../eposta/eposta.servisi';
+import { iptalOnayiEpostasi } from '../eposta/musteri-epostalari';
 import { HUKUKI_METIN_SURUMU } from '../../../altyapi/auth/hukuki-surum';
 
 // Tanim deneme-hakki.ts'e tasindi (dairesel import onlemi, bkz. oradaki not);
@@ -1372,7 +1373,17 @@ export class SatinAlmaServisi {
    * Musteri iptali. Erisim DONEM SONUNA KADAR SURER (erisimSonu'na
    * dokunulmaz) — odenmis donemi geri almak sozlesmeye aykiri olurdu.
    */
-  async iptalEt(firmaId: string, kullaniciId: string, neden?: string) {
+  async iptalEt(
+    firmaId: string,
+    kullaniciId: string,
+    neden?: string,
+    /**
+     * 25.09 — iptal onayı e-postası YALNIZ müşterinin kendi isteğinde
+     * (`AbonelikController.iptal`). Hesap kapatmanın kendi e-postası var,
+     * yönetici silmede müşteriye yazılmaz — ikisi bayrağı VERMEZ.
+     */
+    s: { musteriyeBildir?: boolean } = {},
+  ) {
     const ab = await this.prisma.abonelik.findUnique({ where: { firmaId } });
     if (!ab) throw new NotFoundException('Abonelik bulunamadi');
     const simdi = new Date();
@@ -1435,8 +1446,12 @@ export class SatinAlmaServisi {
       ab.paketGecisTarihi.getTime() > simdi.getTime() &&
       ab.odenenPaketSurumuId !== ab.paketSurumuId;
 
-    await this.prisma.abonelik.update({
-      where: { id: ab.id },
+    // ⚠ 25.09 — KOŞULLU: okuduğumuz `iptalTalebi` hâlâ yerindeyse yazılır.
+    // Aynı iptali eşzamanlı iki istek (çift tık) okursa yalnız biri yazar;
+    // e-posta onun kararıdır (TAM BİR KEZ). Sıralı ikinci istek satırı zaten
+    // IPTAL okur: yazım eskisi gibi olur, e-posta gitmez.
+    const iptalYazimi = await this.prisma.abonelik.updateMany({
+      where: { id: ab.id, iptalTalebi: ab.iptalTalebi },
       data: {
         iptalTalebi: simdi,
         iptalNedeni: neden ?? null,
@@ -1457,7 +1472,8 @@ export class SatinAlmaServisi {
       },
     });
 
-    if (yukseltmeGeriAlinir) {
+    // Yazımı KAYBEDEN eşzamanlı istek olay yazmaz (kazanan yazdı; inceleme L11).
+    if (yukseltmeGeriAlinir && iptalYazimi.count === 1) {
       await this.prisma.abonelikOlayi.create({
         data: {
           abonelikId: ab.id,
@@ -1477,7 +1493,72 @@ export class SatinAlmaServisi {
       });
     }
 
+    const ilkIptal = ab.durum !== AbonelikDurumu.IPTAL && iptalYazimi.count === 1;
+    if (s.musteriyeBildir && ilkIptal) {
+      await this.iptalOnayiGonder(ab, yukseltmeGeriAlinir, simdi).catch((e) =>
+        this.logger.error(
+          `Iptal onayi e-postasi gonderilemedi (firma ${firmaId}): ${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
+    }
+
     return { durum: AbonelikDurumu.IPTAL, erisimSonu: ab.erisimSonu };
+  }
+
+  /**
+   * "Aboneliginiz iptal edildi" — metin `musteri-epostalari.ts`. Paket adi
+   * iptalden SONRAKI satirdan okunur: yukseltme geri alindiysa etkin paket
+   * artik odenmis pakettir.
+   */
+  private async iptalOnayiGonder(
+    ab: {
+      id: string;
+      firmaId: string;
+      durum: AbonelikDurumu;
+      erisimSonu: Date;
+      denemeSonu: Date | null;
+      odemeYontemi: OdemeYontemi;
+    },
+    yukseltmeGeriAlindi: boolean,
+    simdi: Date,
+  ): Promise<void> {
+    const firma = await this.prisma.firma.findUnique({
+      where: { id: ab.firmaId },
+      select: { ad: true, faturaEposta: true, yetkiliEposta: true },
+    });
+    const kime = firma?.faturaEposta ?? firma?.yetkiliEposta;
+    if (!firma || !kime) {
+      this.logger.warn(`Iptal onayi ATLANDI: firma ${ab.firmaId} icin adres yok`);
+      return;
+    }
+    const guncel = await this.prisma.abonelik.findUnique({
+      where: { id: ab.id },
+      select: { paketSurumu: { select: { paket: { select: { ad: true } } } } },
+    });
+    const paketAdi = guncel?.paketSurumu?.paket?.ad ?? 'MetaPriceX';
+    // DENEME TARIHE GORE (`yonetici-islemi.ts` H1 ile ayni okuma): gece
+    // mutabakati deneme satirini AKTIF'e cekebiliyordu; etiket tek basina
+    // "ilk cekim yapildi" demez.
+    const denemede =
+      ab.durum === AbonelikDurumu.DENEME || (!!ab.denemeSonu && ab.denemeSonu.getTime() > simdi.getTime());
+    // Son tahsilat alinamadi: `erisimSonu` basarisiz yenilemenin (GECMIS)
+    // tarihidir — "odenmis doneminiz surer" YAZILAMAZ (inceleme M2).
+    const odenmemis =
+      ab.durum === AbonelikDurumu.ODEME_BEKLIYOR || ab.durum === AbonelikDurumu.KISITLI;
+    const bitis = denemede ? (ab.denemeSonu ?? ab.erisimSonu) : ab.erisimSonu;
+    await this.eposta.gonder({
+      kime,
+      ...iptalOnayiEpostasi({
+        firmaAdi: firma.ad,
+        paketAdi,
+        bitis,
+        hal: denemede ? 'deneme' : odenmemis ? 'odenmemis' : 'odenmis',
+        kartli: ab.odemeYontemi === OdemeYontemi.KART,
+        erisimSuruyor: bitis.getTime() > simdi.getTime(),
+        geriDonulenPaketAdi: yukseltmeGeriAlindi ? paketAdi : null,
+        uygulamaUrl: this.uygulamaUrl,
+      }),
+    });
   }
 
   // ── 5. Kurtarma taramasi ────────────────────────────────────────────────
