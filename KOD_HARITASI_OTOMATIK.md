@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 786
-Toplam satir: 205098
+Toplam satir: 205232
 Uc nokta: 237
 test:* scripti: 128
 
@@ -423,7 +423,7 @@ test:* scripti: 128
 | `backend/test/yonetim-epostalari-test.ts` | 1147 |
 | `backend/test/yuzey-genisletme-test.ts` | 193 |
 | `frontend/app/(protected)/abonelik/donus/page.tsx` | 138 |
-| `frontend/app/(protected)/abonelik/page.tsx` | 841 |
+| `frontend/app/(protected)/abonelik/page.tsx` | 857 |
 | `frontend/app/(protected)/dashboard/page.tsx` | 241 |
 | `frontend/app/(protected)/dwg-workspace/page.tsx` | 112 |
 | `frontend/app/(protected)/firma/ekip/kurumsal-giris/page.tsx` | 576 |
@@ -685,8 +685,8 @@ test:* scripti: 128
 | `frontend/ozellik/odeme/iyzico-form.ts` | 138 |
 | `frontend/ozellik/odeme/ozellik-kapisi.test.ts` | 162 |
 | `frontend/ozellik/odeme/ozellik-kapisi.ts` | 64 |
-| `frontend/ozellik/odeme/paket-bicim.test.ts` | 129 |
-| `frontend/ozellik/odeme/paket-bicim.ts` | 301 |
+| `frontend/ozellik/odeme/paket-bicim.test.ts` | 217 |
+| `frontend/ozellik/odeme/paket-bicim.ts` | 331 |
 | `frontend/ozellik/odeme/paket-degisimi.test.ts` | 216 |
 | `frontend/ozellik/odeme/paket-degisimi.ts` | 115 |
 | `frontend/ozellik/odeme/paket-onerisi.test.ts` | 134 |
@@ -1398,7 +1398,7 @@ test:* scripti: 128
 | `frontend/ozellik/odeme/gorunen-paket-adi.test.ts` | `vitest` `node:fs` `node:path` `./paket-bicim` |
 | `frontend/ozellik/odeme/iyzico-form.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/odeme/ozellik-kapisi.test.ts` | `vitest` `node:fs` `node:path` |
-| `frontend/ozellik/odeme/paket-bicim.test.ts` | `vitest` `./paket-bicim` |
+| `frontend/ozellik/odeme/paket-bicim.test.ts` | `node:fs` `node:path` `vitest` `./paket-bicim` |
 | `frontend/ozellik/odeme/paket-bicim.ts` | `./paket-degisimi` |
 | `frontend/ozellik/odeme/paket-degisimi.test.ts` | `node:fs` `node:path` `vitest` |
 | `frontend/ozellik/odeme/paket-degisimi.ts` | `../teklif/ceviri-kota` `./paket-bicim` |
