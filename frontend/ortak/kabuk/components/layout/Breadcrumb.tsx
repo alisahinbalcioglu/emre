@@ -29,6 +29,9 @@ const LABEL_MAP: Record<string, string> = {
   // Ikinci tasarim: sayfa basligi ve menu "Ekip".
   ekip: 'Ekip',
   'kurumsal-giris': 'Kurumsal Giriş',
+  // 25.09.2026: kart güncelleme sayfası "abonelik › kart" diye HAM basılıyordu.
+  abonelik: 'Abonelik',
+  kart: 'Kart Güncelleme',
 };
 
 /**

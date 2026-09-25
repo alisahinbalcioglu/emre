@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   Yetenek,
   yetenekAcikMi,
+  seritEylemiGosterilsinMi,
   seritGosterilsinMi,
   seritSinifi,
   icerikDurdurulsunMu,
@@ -107,6 +108,21 @@ describe('erisim — serit', () => {
     const bilgi = seritSinifi('bilgi');
     expect(new Set([kritik, uyari, bilgi]).size).toBe(3);
     expect(kritik).toContain('red');
+  });
+
+  // 25.09.2026 (inceleme L1): ayni yola `Link` tiklamasi sayfayi yeniden
+  // kurmaz — kullanici zaten eylemin sayfasindayken dugme OLU kalirdi.
+  it('eylem dugmesi, kullanici ZATEN o sayfadaysa cizilmez; baska her yerde cizilir', () => {
+    const kart = { etiket: 'Karti guncelle', yol: '/abonelik/kart' };
+    expect(seritEylemiGosterilsinMi(kart, '/abonelik/kart')).toBe(false);
+    expect(seritEylemiGosterilsinMi(kart, '/dashboard')).toBe(true);
+    expect(seritEylemiGosterilsinMi(kart, '/abonelik')).toBe(true);
+    const paket = { etiket: 'Paket sec', yol: '/abonelik' };
+    expect(seritEylemiGosterilsinMi(paket, '/abonelik')).toBe(false);
+    expect(seritEylemiGosterilsinMi(paket, '/abonelik/kart')).toBe(true);
+    // Sorgu dizesi karsilastirmaya girmez (`usePathname` onu tasimaz).
+    expect(seritEylemiGosterilsinMi({ etiket: 'x', yol: '/abonelik?oneri=1' }, '/abonelik')).toBe(false);
+    expect(seritEylemiGosterilsinMi(undefined, '/dashboard')).toBe(false);
   });
 });
 

@@ -76,4 +76,27 @@ export class IyzicoDonusController {
     const sonuc = await this.satinAlma.donusIyzicodan(govde?.token ?? '');
     cevap.redirect(303, `${this.uygulamaUrl}/abonelik/donus?sonuc=${sonuc}`);
   }
+
+  /**
+   * KART GUNCELLEME DONUSU (25.09.2026). Ayni gerekceyle oturumsuz ve
+   * SERVER'da: `kartGuncellemeFormu`nun `callbackUrl`i burasi.
+   *
+   * iyzico belgesi (Abonelik Islemleri, 25.09 okundu): form tamamlaninca
+   * `callbackUrl`e POST ile YALNIZ `token` gelir — "Bu durumda kart basariyla
+   * guncellenmis demektir"; sonucu SORGULAYAN bir uc YOK (satin almadaki
+   * `formSonucu`nun karsiligi belgelenmemis).
+   *
+   * ⚠ Govde yine KANIT SAYILMAZ: bu uc HICBIR SEY YAZMAZ, tarayiciyi yalniz
+   * sonuc sayfasina tasir. Sahte bir POST'un yapabilecegi tek sey kendi
+   * tarayicisinda "guncellendi" yazisi gormektir. Token yoksa "hata" —
+   * iyzico basarisiz formda donmez, kullanici formda kalir.
+   */
+  @Post('iyzico-kart-donus')
+  kartDonus(
+    @Body() govde: { token?: string } | undefined,
+    @Res() cevap: Response,
+  ): void {
+    const sonuc = govde?.token ? 'guncellendi' : 'hata';
+    cevap.redirect(303, `${this.uygulamaUrl}/abonelik/kart?sonuc=${sonuc}`);
+  }
 }

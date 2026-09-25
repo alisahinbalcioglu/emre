@@ -211,6 +211,9 @@ describe('Ölçütün kendisi — tarayıcı metni koddan ayırıyor, kara liste
 const EKRANLAR = [
   'app/(protected)/abonelik/page.tsx', // paket seçimi, fatura formu, ödeme
   'app/(protected)/abonelik/donus/page.tsx', // ödeme dönüşü — satın almanın son adımı
+  // 25.09 — kart güncelleme sayfası ve metinleri (dunning e-postalarının hedefi).
+  'app/(protected)/abonelik/kart/page.tsx',
+  'ozellik/odeme/kart-guncelleme.ts',
   'app/(protected)/profile/page.tsx', // hesap: kimlik satırı, sekmeler
   // 23.09.2026 — Hesabım sekmelere bölündü; kartların metni artık bu
   // dosyalarda. Eklenmeselerdi sayfanın TAMAMI yine taranıyor sanılırdı.

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -16,7 +17,7 @@ import {
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { IyzicoClient, IyzicoHatasi } from '../iyzico/iyzico.client';
 import { AbonelikServisi } from './abonelik.servisi';
-import { kartAboneligiKapaliMi } from './kart-kapatma';
+import { kartAboneligiKapaliMi, kartGuncellenebilirMi } from './kart-kapatma';
 import { ceviriKotasiCoz } from './ceviri-kotasi';
 import { DenemeKarari } from './deneme-hakki';
 import { DenemeHakkiServisi } from './deneme-hakki.servisi';
@@ -1322,16 +1323,42 @@ export class SatinAlmaServisi {
   }
 
   // ── 3. Kart guncelleme sayfasi ──────────────────────────────────────────
-  async kartGuncellemeFormu(firmaId: string) {
+  /**
+   * iyzico'nun barindirilan kart guncelleme formu (1 TL cekilip iade edilerek
+   * dogrulanir). On yuzu `/abonelik/kart` — 25.09.2026'ya dek YOKTU: dunning
+   * e-postalarinin ve uygulama ici seridin dugmesi 404 veriyordu.
+   *
+   * @param abonelikId e-postadaki `?a=`: verilirse oturumdaki firmanin
+   *   aboneligi O olmali, yoksa iyzico'ya HIC gidilmez (`ABONELIK_ESLESMIYOR`).
+   *
+   * ⚠ DONUS ADRESI SUNUCU UCU, ON YUZ SAYFASI DEGIL: iyzico token'i POST
+   * govdesinde gonderir; tarayici bir Next.js sayfasina POST ile dustugunde
+   * govde okunamaz (06.09 satin alma dersi, `iyzico-donus.controller.ts`).
+   * Eski adres `/abonelik/kart-donus` on yuzde hic yoktu.
+   */
+  async kartGuncellemeFormu(firmaId: string, abonelikId?: string) {
     const ab = await this.prisma.abonelik.findUnique({ where: { firmaId } });
-    if (!ab?.iyzicoAbonelikKodu) {
-      throw new BadRequestException(
-        'Kart guncelleme yalnizca kart ile odenen aboneliklerde gecerlidir.',
-      );
+    if (abonelikId && ab?.id !== abonelikId) {
+      throw new ConflictException({
+        kod: 'ABONELIK_ESLESMIYOR',
+        message:
+          'Bu bağlantı başka bir firmanın aboneliğine ait. Kartı güncellemek için ' +
+          'e-postanın gönderildiği firmanın hesabıyla giriş yapın.',
+      });
+    }
+    // Havaleye gecmis satirin eski kart kodu durabilir (onayda iyzico'da
+    // kapatilir, kod silinmez); iptal edilmis ya da iyzico'da kapanmis
+    // abonelikte de guncellenecek kart yok. Kural seridin eylemiyle TEK yerde.
+    if (!ab || !kartGuncellenebilirMi(ab)) {
+      throw new BadRequestException({
+        kod: 'KART_ABONELIGI_YOK',
+        message:
+          'Kartla yenilenen etkin bir aboneliğiniz yok; güncellenecek kayıtlı bir kart bulunmuyor.',
+      });
     }
     const sonuc = await this.iyzico.kartGuncellemeSayfasi(
       ab.iyzicoAbonelikKodu,
-      `${this.uygulamaUrl}/abonelik/kart-donus`,
+      `${this.uygulamaUrl}/api/abonelik/iyzico-kart-donus`,
     );
     return {
       token: sonuc.token,

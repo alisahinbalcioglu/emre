@@ -45,6 +45,33 @@ export function kartAboneligiKapaliMi(ab: {
   return ab.iptalTalebi != null;
 }
 
+/**
+ * Kayıtlı kart GÜNCELLENEBİLİR mi — kart formu açılır mı, şeridin ödeme
+ * eylemi kart sayfasına mı gider? (25.09.2026)
+ *
+ * Kartla ödenen, bitmemiş ve iyzico'da KAPANMAMIŞ (yukarıdaki kural)
+ * abonelik. Havale satırında (havale teklifi `ASKIDA` + `HAVALE` satırı
+ * açar), iptal edilmiş ya da iyzico'da CANCELED/EXPIRED abonelikte
+ * güncellenecek kart yoktur: form açılmaz, şerit `/abonelik`e yollar. Kart
+ * sayfasına yollasaydı müşteri "kart aboneliği yok" retiyle çıkmaza düşerdi
+ * (inceleme M3).
+ *
+ * ⚠ İKİ OKUYUCU, TEK KURAL: `SatinAlmaServisi.kartGuncellemeFormu` (ret) ve
+ * `ErisimServisi.karar` (şerit eylemi). Kapısı: `backend/test/kart-guncelleme-test.ts`.
+ */
+export function kartGuncellenebilirMi<
+  T extends {
+    odemeYontemi: string;
+    durum: string;
+    iyzicoAbonelikKodu: string | null;
+    iyzicoDurum: string | null;
+    iptalTalebi: Date | null;
+  },
+>(ab: T): ab is T & { iyzicoAbonelikKodu: string } {
+  if (ab.odemeYontemi !== 'KART' || ab.durum === 'SONA_ERDI') return false;
+  return !kartAboneligiKapaliMi(ab);
+}
+
 /** Çift tahsilat e-postasında kart aboneliğinin son durumu. */
 export function kapatmaCumlesi(k: KartKapatmaSonucu): string {
   switch (k.sonuc) {

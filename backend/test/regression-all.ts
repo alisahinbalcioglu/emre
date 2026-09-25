@@ -580,6 +580,15 @@ const SUITES: Suite[] = [
   //    hiç dunning'e girmemişe SIFIR; posta hatası tahsilat olayını düşürmez.
   //    Eski hâl 17 kırmızı; inceleme öncesi "anlık görüntü" sürümü E1 kırmızı.
   { ad: 'Dunning "ödemeniz alındı": çıkış koşullu sıfırlamadan, tam bir kez, posta hatası tahsilatı düşürmez (Ö/T/K/N/Y/E/M/H)', script: 'test:dunning-toparlandi', zincir: 'Z0' },
+  // ── 25.09.2026 — /abonelik/kart CANLIDA 404'TÜ. DB/AĞ GEREKTİRMEZ. Dunning
+  //    e-postalarının "Kartımı güncelle"si, "ödemeniz alındı"nın "Uygulamaya
+  //    dön"ü ve uygulama içi şeridin "Kartı güncelle" / "Ödemeyi tamamla"sı
+  //    olmayan bir sayfaya gidiyordu; kart formunun dönüş adresi de ön yüzde
+  //    olmayan (ve olsa bile POST gövdesini okuyamayacak) bir sayfaydı.
+  //    Kapı backend'in ürettiği HER uygulama bağlantısını `frontend/app`
+  //    rotalarına ve `/api/` dönüşlerini kayıtlı uçlara çözer; `?a=` başka
+  //    firmanın kartını açamaz; dönüş ucu oturumsuz ve yazmaz.
+  { ad: 'Kart güncelleme: her uygulama bağlantısı bir sayfaya, ?a= yalnız kendi aboneliği, dönüş ucu (S/R/A/D)', script: 'test:kart-guncelleme', zincir: 'Z0' },
   // ── 25.09.2026 — HAVALE DURUM GEÇİŞLERİ (aynı havaleye iki onay + ikizleri).
   //    `odemeyiOnayla` durumu işlem DIŞINDA okuyup en sonda KOŞULSUZ ONAYLANDI
   //    yazıyordu: iki istek ikisi de geçiyor, aboneliği iki kez uzatıyor

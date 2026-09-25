@@ -299,6 +299,7 @@ async function main(): Promise<void> {
     ['POST /abonelik/kart-guncelle', 'ÖDEME: kartı geçersizleşen firma ödeyemez hâle gelir'],
     ['POST /abonelik/iptal', 'ÖDEME: iptal hakkı'],
     ['POST /abonelik/iyzico-donus', 'ÖDEME: iyzico dönüş ucu'],
+    ['POST /abonelik/iyzico-kart-donus', 'ÖDEME: iyzico kart güncelleme dönüş ucu'],
     ['POST /webhook/iyzico/abonelik', 'ÖDEME: sağlayıcı webhook\'u'],
     ['GET /fiyatlar', 'ÖDEME: girişsiz fiyat sayfası'],
   ];

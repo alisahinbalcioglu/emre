@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
-import { icerikDurdurulsunMu, seritGosterilsinMi, seritSinifi } from './erisim-durumu';
+import { icerikDurdurulsunMu, seritEylemiGosterilsinMi, seritGosterilsinMi, seritSinifi } from './erisim-durumu';
 import { useVitrin } from './VitrinSaglayici';
 
 /**
@@ -64,7 +64,7 @@ export function AbonelikSeridi() {
         <span className="opacity-90">{vitrin && deneme ? deneme.metin : uyari.metin}</span>
       </div>
 
-      {uyari.eylem && (
+      {uyari.eylem && seritEylemiGosterilsinMi(uyari.eylem, yol) && (
         <Link
           href={uyari.eylem.yol}
           className="shrink-0 rounded-md border border-current/30 bg-white/60 px-3 py-1 text-xs font-semibold hover:bg-white"
