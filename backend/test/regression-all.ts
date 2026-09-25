@@ -566,6 +566,20 @@ const SUITES: Suite[] = [
   //    hiç dunning'e girmemişe SIFIR; posta hatası tahsilat olayını düşürmez.
   //    Eski hâl 17 kırmızı; inceleme öncesi "anlık görüntü" sürümü E1 kırmızı.
   { ad: 'Dunning "ödemeniz alındı": çıkış koşullu sıfırlamadan, tam bir kez, posta hatası tahsilatı düşürmez (Ö/T/K/N/Y/E/M/H)', script: 'test:dunning-toparlandi', zincir: 'Z0' },
+  // ── 25.09.2026 — HAVALE DURUM GEÇİŞLERİ (aynı havaleye iki onay + ikizleri).
+  //    `odemeyiOnayla` durumu işlem DIŞINDA okuyup en sonda KOŞULSUZ ONAYLANDI
+  //    yazıyordu: iki istek ikisi de geçiyor, aboneliği iki kez uzatıyor
+  //    (ÖLÇÜLDÜ: 12 ay → +731 gün), yan etkileri çiftliyor, denetim izini
+  //    eziyordu; iptal edilmiş havale onaylanabiliyordu. "Fatura kesildi"
+  //    onaylı satırı bekleyenlere geri çekip ikinci onaya kapı açıyor, iptal
+  //    onaylı satırı eziyordu. Artık üçü de tek koşullu UPDATE: onayın
+  //    kaybedeni 400; onaylı satıra fatura no yalnız numara yazar, iptal
+  //    edilmişte 400; iptal onaylı satırda 400, ikinci iptal olay tekrarlamaz.
+  //    Kapı READ COMMITTED + satır kilidi taklidinde (taklidin kendisi T
+  //    bloğunda ölçülür) iç içe geçme sıralarını, gerçek fatura taramasıyla
+  //    NES kesim talebini ve denetleyicinin yol kimliğini ölçer. DB/AĞ/iyzico
+  //    GEREKTİRMEZ.
+  { ad: 'Havale durum geçişleri: READ COMMITTED taklidi · çift onay (4 sıra) · iptal ↔ onay · fatura kesildi · kusurdan kalma satır · denetleyici · Prisma önkoşulu (T/Y1-Y4/S/İ/F/FK/G/D/K)', script: 'test:havale-onay-yarisi', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 6.12a DENEME BİR KEZ. DB ve AĞ GEREKTİRMEZ (bellek-Prisma,
   //    kısıt + ILIKE joker + iç içe geçen çağrılar). Ölçülen: deneme hakkı hiçbir
   //    kimliğe bağlı değildi; aynı firma (iptal/deneme sonu ödeme alınamadı), hesap
