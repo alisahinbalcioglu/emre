@@ -67,6 +67,9 @@
  *   K  kaynak: `relationMode`/`referentialIntegrity` "prisma" değil · Prisma 5.x
  * Her Y senaryosu fatura kuyruğunu GERÇEK `FaturaServisi.kuyrugaBak` +
  * `ElleMuhasebeAdaptoru` ile işler: NES kesim talebi e-postası da sayılır.
+ * Y1–Y4 ve S1'de hesap Basic, teklif Pro: onay teklifin paketini de yazar
+ * (`odenenPaketiYaz`, 25.09 teklif paketi işi, AYNI işlem) — paket de TEK
+ * kez uygulanır (`paket.degisti` olayı 1).
  *
  * Günlük: `HO_GUNLUK=1` Nest günlüğünü konsola da basar.
  * Çıkış kodu sözleşmesi: 0 = PASS · diğeri = FAIL (process.exitCode).
@@ -742,6 +745,13 @@ function dunyaKur() {
     id: 'S1', paketId: 'P1', surumNo: 2, iyzicoPlanKodu: 'plan-pro', tutar: new Prisma.Decimal(1649),
     paraBirimi: 'TRY', periyot: 'MONTHLY', periyotAdedi: 1, denemeGunu: 30,
   });
+  // Çift onay senaryolarında hesap Basic'te, teklif Pro: onay paketi de
+  // değiştirir (`odenenPaketiYaz`) — paket de TEK kez uygulanmalı.
+  db.ekle('paket', { id: 'P0', kod: 'basic-mek', ad: 'Basic — Mekanik' });
+  db.ekle('paketSurumu', {
+    id: 'S0', paketId: 'P0', surumNo: 2, iyzicoPlanKodu: 'plan-basic', tutar: new Prisma.Decimal(899),
+    paraBirimi: 'TRY', periyot: 'MONTHLY', periyotAdedi: 1, denemeGunu: 30,
+  });
 
   const epostalar: Array<{ kime: string; konu: string; kritik: boolean }> = [];
   const eposta: any = {
@@ -784,7 +794,7 @@ function dunyaKur() {
   const bitenler = new Set<string>();
 
   /** Satın alma yolunun yazdığı kartlı satır (AKTİF, iyzico'da ACTIVE); havaleyle ödeyecek. */
-  function kartliSatir(firmaId: string, erisimSonu: Date): Satir {
+  function kartliSatir(firmaId: string, erisimSonu: Date, paketSurumuId = 'S1'): Satir {
     // Tam fatura kimliği: NES kesim talebi eksik kimlikte düşerdi (T47 kapısı).
     db.ekle('firma', {
       id: firmaId, ad: `Firma ${firmaId}`, unvan: `${firmaId} Mühendislik Ltd.`, vergiNo: '1234567890',
@@ -794,17 +804,21 @@ function dunyaKur() {
     const kod = `sub-${firmaId}`;
     iyz.kur(kod, `mus-${firmaId}`);
     return db.ekle('abonelik', {
-      firmaId, paketSurumuId: 'S1', durum: 'AKTIF', erisimSonu, odemeYontemi: 'KART',
+      firmaId, paketSurumuId, durum: 'AKTIF', erisimSonu, odemeYontemi: 'KART',
       iyzicoAbonelikKodu: kod, iyzicoKokKodu: kod, iyzicoMusteriKodu: `mus-${firmaId}`,
       iyzicoDurum: 'ACTIVE', iyzicoSonKontrol: new Date(),
     });
   }
 
   /** Yöneticinin GERÇEK ilk adımları: teklif (→ TEKLIF) ve istenirse "fatura kesildi" (→ ODEME_BEKLENIYOR). */
-  async function bekleyenHavale(firmaId: string, p: { ayAdedi?: number; faturali?: boolean } = {}): Promise<string> {
+  async function bekleyenHavale(
+    firmaId: string,
+    p: { ayAdedi?: number; faturali?: boolean; paketSurumuId?: string } = {},
+  ): Promise<string> {
     return istekle('kurulum', async () => {
       const teklif = await havale.teklifOlustur({
-        firmaId, paketSurumuId: 'S1', ayAdedi: p.ayAdedi ?? 12, tutar: HAVALE_TUTARI, olusturanId: 'yonetici-0',
+        firmaId, paketSurumuId: p.paketSurumuId ?? 'S1', ayAdedi: p.ayAdedi ?? 12, tutar: HAVALE_TUTARI,
+        olusturanId: 'yonetici-0',
       });
       if (p.faturali !== false) await havale.faturaKesildi(teklif.id, `FTR-${teklif.teklifNo}`, 'yonetici-0');
       return teklif.id;
@@ -871,6 +885,9 @@ function olc(d: Dunya, abonelikId: string, havaleId: string) {
     iyzicoIptal: d.iyz.sayi('abonelikIptal'),
     /** Yöneticiye giden NES kesim talebi — `nesKesimi()` koştuktan SONRA anlamlı. */
     nesEpostasi: d.epostalar.filter((e) => e.kritik && e.kime === YONETIM && NES_EPOSTASI.test(e.konu)).length,
+    /** Hesabın etkin paketi ve teklifin paketini uygulayan olay (`odenenPaketiYaz`). */
+    paketSurumuId: d.abonelikSatiri(abonelikId).paketSurumuId as string,
+    paketDegisti: olaylar.filter((o) => o.tip === 'paket.degisti').length,
     havale: d.havaleSatiri(havaleId),
   };
 }
@@ -886,6 +903,7 @@ const olcumSatiri = (k: string, o: Olcum, taban: Date, sonuclar: IstekSonucu[]) 
   `${k}: erişim sonu ${tarih(o.erisimSonu)} (taban ${tarih(taban)}, +${gunFarki(o.erisimSonu, taban)} gün) · ` +
   `durum.degisti ${o.durumDegisti} · "ödemeniz alındı" ${o.musteriEpostasi} · fatura kuyruğu çağrısı ${o.faturaCagrisi} ` +
   `(satır ${o.faturaSatiri}, NES talebi ${o.nesEpostasi}) · kart kapatma ${o.kartKapatCagrisi} (iyzico iptal ${o.iyzicoIptal}) · ` +
+  `paket ${o.paketSurumuId} (paket.degisti ${o.paketDegisti}) · ` +
   `havale ${o.havale.durum} / onaylayan ${o.havale.onaylayanId} · ${sonuclar.map(hataOzeti).join(' | ')}`;
 
 /**
@@ -897,7 +915,7 @@ function tekOnayOlcutleri(
   d: Dunya,
   o: Olcum,
   sonuclar: IstekSonucu[],
-  p: { taban: Date; kazanan?: string; gunluk0: number },
+  p: { taban: Date; kazanan?: string; gunluk0: number; teklifPaketi?: string },
 ): void {
   const kazananlar = sonuclar.filter((s) => s.tamam);
   const kaybedenler = sonuclar.filter((s) => !s.tamam);
@@ -956,6 +974,11 @@ function tekOnayOlcutleri(
     !!kazanan && o.havale.dekontUrl === `dekont-${kazanan.istek}`,
     `dekont ${o.havale.dekontUrl} · kazanan ${kazanan?.istek ?? 'yok'}`,
   );
+  if (p.teklifPaketi) {
+    // 25.09 teklif paketi (komşu iş, aynı işlem): paket de TEK kez uygulanır.
+    check(`${k}.19 teklifin paketi hesabın paketi oldu`, o.paketSurumuId === p.teklifPaketi, `paket ${o.paketSurumuId}`);
+    check(`${k}.20 "paket.degisti" olayı TAM BİR`, o.paketDegisti === 1, `${o.paketDegisti}`);
+  }
   olcum(olcumSatiri(k, o, p.taban, sonuclar));
 }
 
@@ -1160,7 +1183,7 @@ async function y1Blogu(): Promise<void> {
   console.log('\n── Y1 · iki istek AYNI ANDA: ikisi de ön denetimden geçer, işlemler iç içe ──');
   const d = dunyaKur();
   const taban = tabanTarih();
-  const ab = d.kartliSatir('FY1', taban);
+  const ab = d.kartliSatir('FY1', taban, 'S0');
   const havaleId = await d.bekleyenHavale('FY1');
   const g0 = gunluk.length;
   d.db.kancalar.deyimSonrasi = okumaBariyeri(d, ['A', 'B']);
@@ -1178,14 +1201,14 @@ async function y1Blogu(): Promise<void> {
     'Y1.0b FIXTURE: iki istek de işlem AÇTI (işlem dışı ön denetimden geçti)',
     !!islemBaslaOlayi(d.db, 'A') && !!islemBaslaOlayi(d.db, 'B'),
   );
-  tekOnayOlcutleri('Y1', d, await olcNesli(d, ab.id, havaleId), sonuclar, { taban, gunluk0: g0 });
+  tekOnayOlcutleri('Y1', d, await olcNesli(d, ab.id, havaleId), sonuclar, { taban, gunluk0: g0, teklifPaketi: 'S1' });
 }
 
 async function y2Blogu(): Promise<void> {
   console.log('\n── Y2 · ikinci istek birincinin işlemi AÇIKKEN gelir: kilidi bekler ──');
   const d = dunyaKur();
   const taban = tabanTarih();
-  const ab = d.kartliSatir('FY2', taban);
+  const ab = d.kartliSatir('FY2', taban, 'S0');
   const havaleId = await d.bekleyenHavale('FY2');
   const g0 = gunluk.length;
   let bSozu: Promise<IstekSonucu> | null = null;
@@ -1208,14 +1231,14 @@ async function y2Blogu(): Promise<void> {
     `A başla ${aBasla?.sira} · B başla ${bBasla?.sira} · A commit ${aCommit?.sira}`,
   );
   check("Y2.0b FIXTURE: B, A'nın işleminin tuttuğu satır kilidini BEKLEDİ", kilitBekledi(d.db, 'B', 'A'));
-  tekOnayOlcutleri('Y2', d, await olcNesli(d, ab.id, havaleId), b ? [a, b] : [a], { taban, kazanan: 'A', gunluk0: g0 });
+  tekOnayOlcutleri('Y2', d, await olcNesli(d, ab.id, havaleId), b ? [a, b] : [a], { taban, kazanan: 'A', gunluk0: g0, teklifPaketi: 'S1' });
 }
 
 async function y3Blogu(): Promise<void> {
   console.log("\n── Y3 · ikincinin ön denetimi birincinin commit'inden ÖNCE, işlemi SONRA ──");
   const d = dunyaKur();
   const taban = tabanTarih();
-  const ab = d.kartliSatir('FY3', taban);
+  const ab = d.kartliSatir('FY3', taban, 'S0');
   const havaleId = await d.bekleyenHavale('FY3');
   const g0 = gunluk.length;
   let bOkudu = false;
@@ -1235,14 +1258,14 @@ async function y3Blogu(): Promise<void> {
     !!(bOkuma && aCommit && bBasla) && bOkuma.sira < aCommit.sira && aCommit.sira < bBasla.sira,
     `B okuma ${bOkuma?.sira} · A commit ${aCommit?.sira} · B başla ${bBasla?.sira}`,
   );
-  tekOnayOlcutleri('Y3', d, await olcNesli(d, ab.id, havaleId), sonuclar, { taban, kazanan: 'A', gunluk0: g0 });
+  tekOnayOlcutleri('Y3', d, await olcNesli(d, ab.id, havaleId), sonuclar, { taban, kazanan: 'A', gunluk0: g0, teklifPaketi: 'S1' });
 }
 
 async function y4Blogu(): Promise<void> {
   console.log('\n── Y4 · ilk sahiplenen işlem GERİ ALINIR → bekleyen istek kazanır, tek uzatma ──');
   const d = dunyaKur();
   const taban = tabanTarih();
-  const ab = d.kartliSatir('FY4', taban);
+  const ab = d.kartliSatir('FY4', taban, 'S0');
   const havaleId = await d.bekleyenHavale('FY4');
   const g0 = gunluk.length;
   let bSozu: Promise<IstekSonucu> | null = null;
@@ -1284,6 +1307,8 @@ async function y4Blogu(): Promise<void> {
   check('Y4.11 günlükte HATA yok', hatalar.length === 0, hatalar.join(' | '));
   check('Y4.12 NES kesim talebi TAM BİR', o.nesEpostasi === 1, `${o.nesEpostasi}`);
   check("Y4.13 dekont B'ninki (geri alınan A'nınki kalmadı)", o.havale.dekontUrl === 'dekont-B', `${o.havale.dekontUrl}`);
+  check('Y4.14 teklifin paketi hesabın paketi oldu (B uyguladı)', o.paketSurumuId === 'S1', `paket ${o.paketSurumuId}`);
+  check('Y4.15 "paket.degisti" TAM BİR (A\'nınki geri alındı)', o.paketDegisti === 1, `${o.paketDegisti}`);
   olcum(olcumSatiri('Y4', o, taban, b ? [a, b] : [a]));
 }
 
@@ -1295,7 +1320,7 @@ async function sBlogu(): Promise<void> {
   {
     const d = dunyaKur();
     const taban = tabanTarih();
-    const ab = d.kartliSatir('FS1', taban);
+    const ab = d.kartliSatir('FS1', taban, 'S0');
     const havaleId = await d.bekleyenHavale('FS1');
     const g0 = gunluk.length;
     const listede = async () =>
@@ -1303,8 +1328,8 @@ async function sBlogu(): Promise<void> {
     check('S1.0 onay bekleyen havale yönetim listesinde', await listede());
     const a = await onayIstegi(d, 'A', havaleId);
     const b = await onayIstegi(d, 'B', havaleId);
-    tekOnayOlcutleri('S1', d, await olcNesli(d, ab.id, havaleId), [a, b], { taban, kazanan: 'A', gunluk0: g0 });
-    check('S1.19 onaylı havale yönetim listesinden çıktı', !(await listede()));
+    tekOnayOlcutleri('S1', d, await olcNesli(d, ab.id, havaleId), [a, b], { taban, kazanan: 'A', gunluk0: g0, teklifPaketi: 'S1' });
+    check('S1.21 onaylı havale yönetim listesinden çıktı', !(await listede()));
     olcum(`S1: ikinci istek işlem açtı mı: ${islemBaslaOlayi(d.db, 'B') ? 'evet (sahiplenme reddetti)' : 'hayır (işlem dışı ön denetim reddetti)'}`);
   }
   {

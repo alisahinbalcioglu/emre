@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 788
-Toplam satir: 208733
+Toplam satir: 208758
 Uc nokta: 237
 test:* scripti: 130
 
@@ -348,7 +348,7 @@ test:* scripti: 130
 | `backend/test/guvenlik-turu-2-test.ts` | 381 |
 | `backend/test/guvenlik-uclari-test.ts` | 461 |
 | `backend/test/havale-iyzico-cakismasi-test.ts` | 1678 |
-| `backend/test/havale-onay-yarisi-test.ts` | 1846 |
+| `backend/test/havale-onay-yarisi-test.ts` | 1871 |
 | `backend/test/havale-teklif-paketi-test.ts` | 1338 |
 | `backend/test/hesap-dogrulugu-test.ts` | 913 |
 | `backend/test/iliskisel-alan-suzgeci-test.ts` | 171 |
