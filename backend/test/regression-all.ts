@@ -557,6 +557,13 @@ const SUITES: Suite[] = [
   //    her tahsilatta NES kesim talebini (VUK 231/5 son günüyle) e-postalar.
   //    DB/AĞ/SMTP GEREKTİRMEZ.
   { ad: 'Yönetim e-postaları: adres çözümü · uyarı · NES fatura kesim talebi · bağlantı (A/B/C/K/D/E/F)', script: 'test:yonetim-epostalari', zincir: 'Z0' },
+  // ── 25.09.2026 — MÜŞTERİ E-POSTALARI (Emre: "devam et, önerdiğin sırayla";
+  //    deneme için "3 gün kala, bir kez"). Dört olay müşteriye HİÇ e-posta
+  //    üretmiyordu: sorunsuz yenileme, müşterinin iptali, havale reddi, deneme
+  //    bitiyor. Her biri TAM BİR KEZ: fatura satırının tekilliği, koşullu iptal
+  //    yazımları, koşullu `denemeHatirlatmasi` işareti; dunning'in "ödemeniz
+  //    alındı"sıyla ayrık. DB/AĞ/SMTP GEREKTİRMEZ.
+  { ad: 'Müşteri e-postaları: yenileme makbuzu · iptal onayı · havale reddi · deneme bitiyor · tam bir kez · bağlantı (M/H/İ/Ö/D/N)', script: 'test:musteri-epostalari', zincir: 'Z0' },
   // ── 21.09.2026 — PLAN 5.8 VERİ İMHASI, ÖDEME AYAĞI. DB/AĞ GEREKTİRMEZ.
   //    K4: fatura müşteri kimliğini `Firma` satırından CANLI okuyordu; fatura
   //    tahsilat anında yazılıp kesim @Cron ile SONRA koştuğu için müşteri

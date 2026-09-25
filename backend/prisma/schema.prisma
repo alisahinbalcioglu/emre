@@ -1490,6 +1490,15 @@ model Abonelik {
   erisimSonu DateTime
   denemeSonu DateTime?
 
+  /// "DENEME SURENIZ BITIYOR" E-POSTASI GITTI MI (25.09.2026, Emre: ilk
+  /// cekimden 3 gun once, bir kez). Gunluk tarama (`DenemeHatirlatmasiServisi`)
+  /// e-postayi gondermeden ONCE bu alani KOSULLU yazar (`null` iken) — ayni
+  /// satiri iki tur / iki surec ayni anda gorse de yalniz biri yazar ve
+  /// gonderir (TAM BIR KEZ). Gonderim duserse alan geri `null`a cekilir,
+  /// sonraki tur yeniden dener. NULL = hatirlatma gitmedi. Deneme hakki firma
+  /// basina BIR kez oldugu icin alan sifirlanmaz.
+  denemeHatirlatmasi DateTime?
+
   /// SATIN ALMANIN KOPRU TARIHI (24.09.2026). Kart satin almasi `erisimSonu`nu
   /// iyzico'nun gercek donem sonunu bilmeden TAMPONLU bir kopru degerle yazar
   /// (`donemTarihleriHesapla`: deneme ya da 31 gun + 2 gun tampon); o deger

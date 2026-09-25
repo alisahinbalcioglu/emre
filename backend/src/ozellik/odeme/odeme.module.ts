@@ -12,6 +12,7 @@ import { AbonelikServisi } from './abonelik/abonelik.servisi';
 import { ErisimServisi } from './abonelik/erisim.servisi';
 import { SatinAlmaServisi } from './abonelik/satinalma.servisi';
 import { DenemeHakkiServisi } from './abonelik/deneme-hakki.servisi';
+import { DenemeHatirlatmasiServisi } from './abonelik/deneme-hatirlatmasi.servisi';
 import { PaketDegisimiServisi } from './abonelik/paket-degisimi.servisi';
 import { AbonelikController } from './abonelik/abonelik.controller';
 import { YoneticiAbonelikController } from './abonelik/yonetici/yonetici-abonelik.controller';
@@ -79,6 +80,9 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     SatinAlmaServisi,
     // Faz 6.12a: deneme bir kez — satin alma ve JWT'li paket ucu kullanir.
     DenemeHakkiServisi,
+    // 25.09: "deneme süreniz bitiyor" — ilk çekimden 3 gün önce, bir kez
+    // (@Cron 09:00 İstanbul; tam bir kez `denemeHatirlatmasi` koşullu yazımı).
+    DenemeHatirlatmasiServisi,
     // 23.09: paket degisimi + 10 dk'lik planli gecis taramasi (@Cron).
     PaketDegisimiServisi,
     // 24.09 (A2): yonetici paneli — ayni cekirdegi (islemciyleDegistir) kullanir.

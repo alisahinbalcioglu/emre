@@ -239,6 +239,7 @@ export class AbonelikController {
     @Body() g: { neden?: string },
   ) {
     const { firmaId, userId } = kimlikCoz(kullanici);
-    return this.satinAlma.iptalEt(firmaId, userId, g.neden);
+    // Müşterinin KENDİ iptali: onay e-postası yalnız bu yoldan (25.09).
+    return this.satinAlma.iptalEt(firmaId, userId, g.neden, { musteriyeBildir: true });
   }
 }

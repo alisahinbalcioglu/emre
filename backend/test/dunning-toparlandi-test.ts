@@ -868,7 +868,12 @@ async function eBlogu(): Promise<void> {
   const b = d.olay(BASARILI, 'sub-e', 'ord-e2', { alindi: simdi - DK });
   // `kuyrugaAl` = setImmediate(() => tekOlayIsle(id)); zamanlayıcıyı değil
   // işlemenin KENDİSİNİ çağırıyoruz ki iki süreç de beklenebilsin.
-  const kuyruktan = (d.isleyici as any).tekOlayIsle.bind(d.isleyici) as (id: string) => Promise<void>;
+  // ⚠ 25.09: `tekOlayIsle` artık SÜREÇ İÇİ olay kilidi taşır (aynı süreçte
+  // ikinci çağrı hemen döner — `test:musteri-epostalari` Ö9). İki AYRI süreç
+  // bu bellek içi kilidi paylaşmaz: burada ölçülen tolerans (koşullu
+  // sıfırlama) çok süreçli kurulumun güvencesidir, o yüzden ikinci "süreç"
+  // kilidin ALTINDAKİ işlemeyi çağırır.
+  const kuyruktan = (d.isleyici as any).tekOlayIsleKilitli.bind(d.isleyici) as (id: string) => Promise<void>;
   const g = await gunluguTopla(() => Promise.all([kuyruktan(b.id), d.isleyici.bekleyenleriIsle()]));
 
   check('E-FIXTURE yarış GERÇEKTEN koştu: iki süreç de tahsilat yolunda iyzico\'ya sordu; AKTIF, dönem sonu, TEK fatura; olay hatasız, günlük temiz',

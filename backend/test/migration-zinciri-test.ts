@@ -255,6 +255,18 @@ async function main() {
     JSON.stringify(parolaTanimli),
   );
 
+  // ── Z3d (25.09): "deneme bitiyor" isareti — BOS baslar, tam bir kez ────
+  const hatirlatma = await db.query<{ column_name: string; is_nullable: string; column_default: string | null }>(
+    `SELECT column_name, is_nullable, column_default FROM information_schema.columns
+     WHERE table_name='Abonelik' AND column_name='denemeHatirlatmasi'`,
+  );
+  const hk = hatirlatma.rows[0];
+  check(
+    'Z3d Abonelik.denemeHatirlatmasi NULL olabilir ve varsayilani YOK (deploy aninda hatirlatma gitmis sayilmaz)',
+    !!hk && hk.is_nullable === 'YES' && hk.column_default === null,
+    JSON.stringify(hk),
+  );
+
   // ═══════════════════════════════════════════════════════════════════════
   //  B* — BACKFILL SOZU: "hicbir mevcut kullanicinin erisimi kesilmez"
   // ═══════════════════════════════════════════════════════════════════════
