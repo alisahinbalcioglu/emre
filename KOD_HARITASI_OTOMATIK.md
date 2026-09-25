@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 787
-Toplam satir: 206430
+Toplam satir: 206751
 Uc nokta: 237
 test:* scripti: 129
 
@@ -264,7 +264,7 @@ test:* scripti: 129
 | `backend/src/ozellik/odeme/iyzico/imza.ts` | 206 |
 | `backend/src/ozellik/odeme/iyzico/iyzico-hata.filter.ts` | 108 |
 | `backend/src/ozellik/odeme/iyzico/iyzico-tarihi.ts` | 46 |
-| `backend/src/ozellik/odeme/iyzico/iyzico.client.ts` | 565 |
+| `backend/src/ozellik/odeme/iyzico/iyzico.client.ts` | 598 |
 | `backend/src/ozellik/odeme/iyzico/tahsilat-kaniti.ts` | 140 |
 | `backend/src/ozellik/odeme/odeme.module.ts` | 126 |
 | `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | 162 |
@@ -356,7 +356,7 @@ test:* scripti: 129
 | `backend/test/index-engine-test.ts` | 1774 |
 | `backend/test/iscilik-satir-silme-test.ts` | 127 |
 | `backend/test/iyzico-imza-basligi-test.ts` | 235 |
-| `backend/test/iyzico-zaman-asimi-test.ts` | 881 |
+| `backend/test/iyzico-zaman-asimi-test.ts` | 1031 |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | 131 |
 | `backend/test/kaucuk-izolasyon-test.ts` | 244 |
 | `backend/test/kd11-toplam-yollari-test.ts` | 172 |
@@ -399,7 +399,7 @@ test:* scripti: 129
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 97 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 894 |
+| `backend/test/regression-all.ts` | 898 |
 | `backend/test/s45-malzeme-aile-test.ts` | 440 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 882 |
@@ -424,7 +424,7 @@ test:* scripti: 129
 | `backend/test/yonetim-epostalari-test.ts` | 1147 |
 | `backend/test/yuzey-genisletme-test.ts` | 193 |
 | `frontend/app/(protected)/abonelik/donus/page.tsx` | 138 |
-| `frontend/app/(protected)/abonelik/page.tsx` | 841 |
+| `frontend/app/(protected)/abonelik/page.tsx` | 857 |
 | `frontend/app/(protected)/dashboard/page.tsx` | 241 |
 | `frontend/app/(protected)/dwg-workspace/page.tsx` | 112 |
 | `frontend/app/(protected)/firma/ekip/kurumsal-giris/page.tsx` | 576 |
@@ -686,8 +686,8 @@ test:* scripti: 129
 | `frontend/ozellik/odeme/iyzico-form.ts` | 138 |
 | `frontend/ozellik/odeme/ozellik-kapisi.test.ts` | 162 |
 | `frontend/ozellik/odeme/ozellik-kapisi.ts` | 64 |
-| `frontend/ozellik/odeme/paket-bicim.test.ts` | 129 |
-| `frontend/ozellik/odeme/paket-bicim.ts` | 301 |
+| `frontend/ozellik/odeme/paket-bicim.test.ts` | 217 |
+| `frontend/ozellik/odeme/paket-bicim.ts` | 331 |
 | `frontend/ozellik/odeme/paket-degisimi.test.ts` | 216 |
 | `frontend/ozellik/odeme/paket-degisimi.ts` | 115 |
 | `frontend/ozellik/odeme/paket-onerisi.test.ts` | 134 |
@@ -1400,7 +1400,7 @@ test:* scripti: 129
 | `frontend/ozellik/odeme/gorunen-paket-adi.test.ts` | `vitest` `node:fs` `node:path` `./paket-bicim` |
 | `frontend/ozellik/odeme/iyzico-form.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/odeme/ozellik-kapisi.test.ts` | `vitest` `node:fs` `node:path` |
-| `frontend/ozellik/odeme/paket-bicim.test.ts` | `vitest` `./paket-bicim` |
+| `frontend/ozellik/odeme/paket-bicim.test.ts` | `node:fs` `node:path` `vitest` `./paket-bicim` |
 | `frontend/ozellik/odeme/paket-bicim.ts` | `./paket-degisimi` |
 | `frontend/ozellik/odeme/paket-degisimi.test.ts` | `node:fs` `node:path` `vitest` |
 | `frontend/ozellik/odeme/paket-degisimi.ts` | `../teklif/ceviri-kota` `./paket-bicim` |
