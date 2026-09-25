@@ -43,6 +43,7 @@ import { getFirmaCapabilities } from '../src/altyapi/auth/capabilities.helper';
 import { TierGuard } from '../src/altyapi/auth/guards/tier.guard';
 import { ErisimServisi } from '../src/ozellik/odeme/abonelik/erisim.servisi';
 import { LaborController } from '../src/ozellik/kutuphane/labor/labor.controller';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -345,7 +346,7 @@ async function main() {
   if (failed > 0) process.exitCode = 1;
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
-});
+}));

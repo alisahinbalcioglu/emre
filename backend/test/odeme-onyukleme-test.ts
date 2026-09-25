@@ -52,6 +52,7 @@
  * pakette KULLANILMAZ — test DB'siz kostugu icin atlanacak durum yoktur.)
  */
 import 'reflect-metadata';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -412,7 +413,7 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exit(1);
-});
+}));

@@ -57,6 +57,7 @@ import {
   tekUrunPlanTanimlari,
   tekUruneTasinmaliMi,
 } from '../scripts/paketleri-kur';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 Logger.overrideLogger(false);
 
@@ -1420,7 +1421,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error('BEKLENMEDIK HATA:', e);
   process.exitCode = 1;
-});
+}));

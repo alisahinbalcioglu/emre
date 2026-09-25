@@ -70,6 +70,7 @@ import {
   FaturaServisi,
   kopyadanMusteri,
 } from '../src/ozellik/odeme/fatura/fatura.servisi';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -892,7 +893,7 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
-});
+}));

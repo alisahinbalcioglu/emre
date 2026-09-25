@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { AbonelikDurumu, type Prisma } from '@prisma/client';
+import { AbonelikDurumu, OdemeYontemi, type Prisma } from '@prisma/client';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { HUKUKI_METIN_SURUMU } from '../../../altyapi/auth/hukuki-surum';
 import {
@@ -492,12 +492,22 @@ export class PaketDegisimiServisi {
         // halde degilse (uc ayni, durum degistirilebilir, kilit yok) HICBIR
         // SEY yazilmaz — degisim iyzico'da olmus olabilir; asagidaki YARIM
         // gunlugu ve kurtarma yolu (201402/201403) onu bulur.
+        // ⚠ 25.09 — HAVALE ONAYI da bu kuyrugu kullanmaz ve artik etkin paketi
+        // TEKLIFIN paketine yazar, kart izlerini siler (`HavaleServisi.
+        // odenenPaketiYaz`). Onay islemi commit olup kart aboneligini henuz
+        // kapatmamisken (fatura kuyrugu + musteri e-postasi arasi) bu yazim
+        // gelirse uc/durum/kilit yine tutar: havaleyle odenen paket ezilir,
+        // planli gecis ve kilit GERI gelirdi. Kosul `odemeYontemi: KART`:
+        // satir havaleye gectiyse 409; iyzico'daki yeni uc onayin kart
+        // kapatmasinda 201403 → canli uc yoluyla kapanir. Kapi:
+        // `test:havale-teklif-paketi` A.
         const yazim = await tx.abonelik.updateMany({
           where: {
             id: mevcut.id,
             iyzicoAbonelikKodu: eskiKod,
             durum: { in: [AbonelikDurumu.AKTIF, AbonelikDurumu.DENEME] },
             paketGecisTarihi: null,
+            odemeYontemi: OdemeYontemi.KART,
           },
           data: {
             // YUKSELTME: ozellikler HEMEN; donemi ODENMIS paket saklanir —

@@ -28,6 +28,7 @@ import * as ExcelJS from 'exceljs';
 import { standartCiktiUret } from '../src/ozellik/teklif/quotes/standart-cikti';
 import { buildExportWorkbook } from '../src/ozellik/teklif/quotes/export-engine';
 import { buildSampleFormat } from '../src/ozellik/cikti/quote-formats/format-engine';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let pass = 0; const fails: string[] = [];
 const check = (ad: string, kosul: boolean, kanit = '') => {
@@ -168,4 +169,4 @@ async function main() {
   console.log(`\nSONUC: ${pass} PASS, ${fails.length} FAIL`);
   if (fails.length) { fails.forEach((f) => console.log('  • ' + f)); process.exit(1); }
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(main().catch((e) => { console.error(e); process.exit(1); }));

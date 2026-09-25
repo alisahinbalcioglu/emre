@@ -61,6 +61,7 @@ import {
   meydanOkumaImzala,
 } from '../src/altyapi/auth/mfa/meydan-okuma';
 import { JwtStrategy } from '../src/altyapi/auth/strategies/jwt.strategy';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -482,7 +483,7 @@ async function main(): Promise<void> {
   await t9();
 }
 
-main()
+bitmezseKirmizi(main()
   .catch((hata) => {
     failed++;
     failures.push(`BEKLENMEYEN HATA: ${hataMesaji(hata)}`);
@@ -497,4 +498,4 @@ main()
       failures.forEach((f) => console.log(`  · ${f}`));
       process.exitCode = 1;
     }
-  });
+  }));

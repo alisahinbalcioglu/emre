@@ -510,7 +510,11 @@ const SUITES: Suite[] = [
   //    ve kayıtlı uç canlı görünse de "değişmedi" DEMEZ (Z6); dunning "ödemeniz
   //    alınamadı" bildirimini basamak başına BİR KEZ erteler (Z7). Z6/Z7
   //    GERÇEK servislerle koşar.
-  { ad: 'iyzico zaman aşımı: sinyal · kesim · işaretli kodsuz hata · belirsiz dal · firma sırası · dunning (Z1-Z7)', script: 'test:iyzico-zaman-asimi', zincir: 'Z0' },
+  //    25.09: okuma (GET) çağrısı, bağlantı yanıt gelmeden koparsa en çok 2 kez
+  //    yeniden denenir (sandbox yeni bağlantıların bir kısmını sıfırlıyor; gece
+  //    mutabakatının ilk çağrısı takılıyordu). POST, zaman aşımı ve kodlu red
+  //    yeniden DENENMEZ (Z8).
+  { ad: 'iyzico zaman aşımı: sinyal · kesim · işaretli kodsuz hata · belirsiz dal · firma sırası · dunning · okuma yeniden denemesi (Z1-Z8)', script: 'test:iyzico-zaman-asimi', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
   // T47 (22.09.2026): "fatura bilgisi eksik firma gercek bir fatura kesme
@@ -533,6 +537,16 @@ const SUITES: Suite[] = [
   //    "iade" uyarısı üretir; havaleden sonra müşteri iptali çalışır. Y bloğu
   //    geç/yarış webhook'unu ölçer (A/B/D onu KOŞMAZ). DB/AĞ/iyzico GEREKTİRMEZ.
   { ad: 'Havale ↔ iyzico kart aboneliği: onayda iptal · ret/çift tahsilat · yarış · müşteri iptali · bağlantı (F/İ/A/B/D/Y/M/K/N)', script: 'test:havale-iyzico', zincir: 'Z0' },
+  // ── 25.09.2026 — HAVALE TEKLİFİNİN PAKETİ (Emre kararı: "onayda hemen
+  //    uygula"). ÖLÇÜLDÜ: teklifin paketi hiç saklanmıyordu; satırı olan
+  //    firmada yok sayılıyor, Basic müşteri Pro teklifini ödeyince Basic
+  //    kalıyordu (erişim, koltuk, DWG, fatura kalemi, müşteri e-postası).
+  //    Karttan kalan A1 izleri de havaleyle ödenen paketi sonradan
+  //    değiştiriyordu (planlı düşürme taraması, iptalde "ödenmiş paket",
+  //    kilit olayı). Artık teklif paketi kaydedilir, onay onu etkin paket
+  //    yapar ve izleri siler; kart webhook'u yarışta paketi geri çekmez.
+  //    DB/AĞ/iyzico GEREKTİRMEZ.
+  { ad: 'Havale teklifinin paketi: teklif · onayda paket · düşürme · yenileme · yeni firma · A1 izleri · eski teklif · yarışlar · geç çekim · koltuk uyarısı · yönetici listesi (F/T/K/D/H/Y/P/E/R/A/W/S/G)', script: 'test:havale-teklif-paketi', zincir: 'Z0' },
   // ── 24.09.2026 — YÖNETİM E-POSTALARI (Emre: "faturalar ve uyarılar vs. e
   //    posta olarak gitmeli"). Yönetici uyarıları yalnız YONETIM_EPOSTA'ya
   //    gidiyordu ve canlıda değişken BOŞ: çift tahsilat / iptal düşmesi /
@@ -566,6 +580,20 @@ const SUITES: Suite[] = [
   //    hiç dunning'e girmemişe SIFIR; posta hatası tahsilat olayını düşürmez.
   //    Eski hâl 17 kırmızı; inceleme öncesi "anlık görüntü" sürümü E1 kırmızı.
   { ad: 'Dunning "ödemeniz alındı": çıkış koşullu sıfırlamadan, tam bir kez, posta hatası tahsilatı düşürmez (Ö/T/K/N/Y/E/M/H)', script: 'test:dunning-toparlandi', zincir: 'Z0' },
+  // ── 25.09.2026 — HAVALE DURUM GEÇİŞLERİ (aynı havaleye iki onay + ikizleri).
+  //    `odemeyiOnayla` durumu işlem DIŞINDA okuyup en sonda KOŞULSUZ ONAYLANDI
+  //    yazıyordu: iki istek ikisi de geçiyor, aboneliği iki kez uzatıyor
+  //    (ÖLÇÜLDÜ: 12 ay → +731 gün), yan etkileri çiftliyor, denetim izini
+  //    eziyordu; iptal edilmiş havale onaylanabiliyordu. "Fatura kesildi"
+  //    onaylı satırı bekleyenlere geri çekip ikinci onaya kapı açıyor, iptal
+  //    onaylı satırı eziyordu. Artık üçü de tek koşullu UPDATE: onayın
+  //    kaybedeni 400; onaylı satıra fatura no yalnız numara yazar, iptal
+  //    edilmişte 400; iptal onaylı satırda 400, ikinci iptal olay tekrarlamaz.
+  //    Kapı READ COMMITTED + satır kilidi taklidinde (taklidin kendisi T
+  //    bloğunda ölçülür) iç içe geçme sıralarını, gerçek fatura taramasıyla
+  //    NES kesim talebini ve denetleyicinin yol kimliğini ölçer. DB/AĞ/iyzico
+  //    GEREKTİRMEZ.
+  { ad: 'Havale durum geçişleri: READ COMMITTED taklidi · çift onay (4 sıra) · iptal ↔ onay · fatura kesildi · kusurdan kalma satır · denetleyici · Prisma önkoşulu (T/Y1-Y4/S/İ/F/FK/G/D/K)', script: 'test:havale-onay-yarisi', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 6.12a DENEME BİR KEZ. DB ve AĞ GEREKTİRMEZ (bellek-Prisma,
   //    kısıt + ILIKE joker + iç içe geçen çağrılar). Ölçülen: deneme hakkı hiçbir
   //    kimliğe bağlı değildi; aynı firma (iptal/deneme sonu ödeme alınamadı), hesap

@@ -46,6 +46,7 @@ import {
 } from '../src/altyapi/auth/kurumsal/saglayici-kurallari';
 import { pkceMeydani, pkceUret, rastgeleDizge } from '../src/altyapi/auth/kurumsal/pkce';
 import { sahteOidcSaglayici } from './yardimci/sahte-oidc-saglayici';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -637,7 +638,7 @@ async function main(): Promise<void> {
   await o17o21();
 }
 
-main()
+bitmezseKirmizi(main()
   .catch((hata) => {
     failed++;
     failures.push(`BEKLENMEYEN HATA: ${hata instanceof Error ? hata.message : String(hata)}`);
@@ -649,4 +650,4 @@ main()
       failures.forEach((f) => console.log(`  · ${f}`));
       process.exitCode = 1;
     }
-  });
+  }));

@@ -93,6 +93,26 @@ export function durdurulacakUye(aktifUye: number, yeniHak: number): number {
   return Math.max(0, aktifUye - Math.max(yeniHak, 1));
 }
 
+/**
+ * Bir paket degisiminin KOLTUK ETKISI (25.09.2026 — havale dusurmesi, Emre
+ * karari). Kural `durdurulacakUye` (= `uyelik-kurallari.ts`
+ * `koltukSirasiKarari`): `max(hak, 1)`i asan etkin hesap durur.
+ *   · `toplamDurdurulan` — yeni pakette duran etkin hesap sayisi.
+ *   · `yeniDurdurulan`   — YALNIZ bu degisimin durdurdugu: yukseltmede ve ayni
+ *     pakette 0 (onceden duranlar zaten duruyordu — uyari onlari bu degisime
+ *     yuklemesin).
+ * `eskiHak` null = abonelik satiri YOK (koltuk kurali islemiyordu).
+ */
+export function koltukEtkisi(g: {
+  aktifUye: number;
+  eskiHak: number | null;
+  yeniHak: number;
+}): { toplamDurdurulan: number; yeniDurdurulan: number } {
+  const toplamDurdurulan = durdurulacakUye(g.aktifUye, g.yeniHak);
+  const onceden = g.eskiHak === null ? 0 : durdurulacakUye(g.aktifUye, g.eskiHak);
+  return { toplamDurdurulan, yeniDurdurulan: Math.max(0, toplamDurdurulan - onceden) };
+}
+
 function redAciklamasi(kod: PaketDegisimRedKodu, ab: YoneticiAboneligi, simdi: Date): string {
   switch (kod) {
     case 'AYNI_PAKET':

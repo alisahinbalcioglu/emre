@@ -17,6 +17,7 @@
  */
 import * as fs from 'fs';
 import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -159,4 +160,4 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-run().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(run().catch((e) => { console.error(e); process.exit(1); }));

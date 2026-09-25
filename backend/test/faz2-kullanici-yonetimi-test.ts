@@ -28,6 +28,7 @@ import * as path from 'node:path';
 import { InternalServerErrorException } from '@nestjs/common';
 import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
 import { kullanimiOlc } from '../src/ozellik/giris/ai/ai-maliyet';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -618,7 +619,7 @@ function son(): void {
   }
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error('KAPI COKTU:', e);
   process.exit(1);
-});
+}));

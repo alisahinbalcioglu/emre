@@ -59,6 +59,7 @@ import { DavetKabulDto } from '../src/ozellik/firma/dto/davet-kabul.dto';
 import { ParolaServisi } from '../src/altyapi/auth/parola.servisi';
 import { HesapServisi } from '../src/altyapi/auth/hesap.servisi';
 import { AuthController } from '../src/altyapi/auth/auth.controller';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -528,7 +529,7 @@ async function main(): Promise<void> {
   process.exitCode = failed > 0 ? 1 : 0;
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error('KAPI COKTU:', e);
   process.exitCode = 1;
-});
+}));

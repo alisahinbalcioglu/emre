@@ -44,6 +44,7 @@ import 'reflect-metadata';
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
 import { LaborFirmsService } from '../src/ozellik/kutuphane/labor-firms/labor-firms.service';
 import { Kimlik } from '../src/altyapi/auth/kimlik';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -280,7 +281,7 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exit(1);
-});
+}));

@@ -77,9 +77,12 @@ export class HavaleController {
     @CurrentUser() kullanici: { id: string },
     @Body() g: { dekontUrl?: string; faturaKesme?: boolean },
   ) {
+    // 25.09: govde YAYILIMDAN ONCE, kimlikler SONRA. Satir ici tip literali
+    // ValidationPipe'i atlar; `havaleId: id, ...g` sirasinda govdedeki bir
+    // `havaleId` YOLDAKI kimligi eziyor, URL'dekinden BASKA havale onaylaniyordu.
     return this.havale.odemeyiOnayla({
-      havaleId: id,
       ...g,
+      havaleId: id,
       onaylayanId: kullanici.id,
     });
   }

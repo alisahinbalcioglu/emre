@@ -24,6 +24,7 @@ import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
 import { antetKur, antetLogoNotu, gorselBoyutu, ANTET_FIRMA_ALANLARI } from '../src/ozellik/cikti/utils/antet';
 import { TAM_FIRMA, JPEG_1PX, WEBP_BASLIK, pngUret, gercek, formulDenetimi } from './cikti-test-yardimci';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 const FE = require('../../frontend/ozellik/fiyat/pricing');
 const K = (v: number): number => FE.kurusTamsayi(v);
@@ -378,4 +379,4 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-run().catch((e) => { console.error('BEKLENMEYEN HATA:', e); process.exit(1); });
+bitmezseKirmizi(run().catch((e) => { console.error('BEKLENMEYEN HATA:', e); process.exit(1); }));

@@ -87,9 +87,12 @@ export interface OneriAboneligi {
   paketGecisTarihi: Date | null;
   durum: AbonelikDurumu;
   /**
-   * Oneri yalniz KART aboneligine yapilir. Havale onayi paketi, kodu ve
-   * durumu degistirmeden yontemi HAVALE yapar (inceleme O1) — goruntu bunu
-   * da gormeli, yoksa oneri "bekliyor" gorunur ama kabul edilemez.
+   * Oneri yalniz KART aboneligine yapilir. Havale onayi yontemi HAVALE yapar;
+   * paketi yalniz teklifin paketi farkliysa degistirir (25.09,
+   * `HavaleServisi.odenenPaketiYaz`), iyzico kodunu yalniz kart iptali 201403'e
+   * duserse canli uca tasir. Ayni paketle yenilemede anlik goruntunun paket ve
+   * kod alanlari TUTABILIR — yontem alani bu yuzden gorulmeli (inceleme O1),
+   * yoksa oneri "bekliyor" gorunur ama kabul edilemez.
    */
   odemeYontemi: OdemeYontemi;
 }

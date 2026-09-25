@@ -43,6 +43,7 @@ import { TerminologyService, ALIAS_SEEDS } from '../src/ozellik/eslestirme/match
 import { generateTags } from '../src/ozellik/eslestirme/matching/tag-generator';
 import { extractDiameter } from "../src/ozellik/eslestirme/matching/normalizer";
 import { extractSizeInfo } from '../src/ozellik/eslestirme/matching/conversion';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 function lib(name: string, price: number) {
   return { id: `lib-${name}`, material: null, materialName: name, customPrice: null, listPrice: price, discountRate: 0 };
@@ -445,4 +446,4 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-run().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(run().catch((e) => { console.error(e); process.exit(1); }));

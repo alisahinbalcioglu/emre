@@ -66,6 +66,7 @@ import { FIRMA_ROL_KEY } from '../src/altyapi/auth/decorators/firma-rolu.decorat
 import { AdminController } from '../src/ozellik/kutuphane/admin/admin.controller';
 import { FirmaController } from '../src/ozellik/firma/firma.controller';
 import { sifirlamaPlaniUret } from '../scripts/mfa-sifirla';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -1559,7 +1560,7 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
-});
+}));

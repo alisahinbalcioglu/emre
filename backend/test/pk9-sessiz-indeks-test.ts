@@ -19,6 +19,7 @@
  */
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
 import { TerminologyService, ALIAS_SEEDS } from '../src/ozellik/eslestirme/matching/terminology.service';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0; const failures: string[] = [];
 const check = (ad: string, kosul: boolean, detay?: string) => {
@@ -93,4 +94,4 @@ async function main() {
   console.log(`\nSONUC: ${passed} PASS, ${failures.length} FAIL`);
   if (failures.length) { failures.forEach((f) => console.log('  • ' + f)); process.exit(1); }
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(main().catch((e) => { console.error(e); process.exit(1); }));

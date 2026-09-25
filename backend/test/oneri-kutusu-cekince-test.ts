@@ -43,6 +43,7 @@
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
 import { TerminologyService, ALIAS_SEEDS } from '../src/ozellik/eslestirme/matching/terminology.service';
 import type { MatchResult } from '../src/ozellik/eslestirme/matching/types';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -356,4 +357,4 @@ async function run() {
   if (failed > 0) process.exit(1);
 }
 
-run();
+bitmezseKirmizi(run());

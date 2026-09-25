@@ -8,6 +8,7 @@ import { buildExportWorkbook } from '../src/ozellik/teklif/quotes/export-engine'
 import { standartCiktiUret } from '../src/ozellik/teklif/quotes/standart-cikti';
 import { buildSampleFormat } from '../src/ozellik/cikti/quote-formats/format-engine';
 import * as ExcelJS from 'exceljs';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 const olc = async (ad: string, fn: () => Promise<any> | any, tekrar = 1) => {
   const t0 = Date.now();
@@ -69,4 +70,4 @@ async function main() {
     console.log(`  ${m}: ${idx} index/unique`);
   }
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(main().catch((e) => { console.error(e); process.exit(1); }));

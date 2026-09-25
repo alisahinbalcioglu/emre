@@ -48,6 +48,7 @@ import { CeviriService } from '../src/ozellik/giris/ai/ceviri.service';
 import { AiController } from '../src/ozellik/giris/ai/ai.controller';
 import { CeviriIstegiDto, CeviriOnizlemeSorgusuDto } from '../src/ozellik/giris/ai/dto/ceviri.dto';
 import { Yetenek } from '../src/ozellik/odeme/abonelik/erisim.servisi';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 // ⚠ W bloğu AI'ya GİTMEMELİ: anahtar yoksa `cevir` eksik metinde erken hata
 // verir. Ortamda gerçek anahtar varsa bile bu test onu kullanamaz.
@@ -1177,7 +1178,7 @@ async function aBlogu(): Promise<void> {
   }
 }
 
-wBlogu()
+bitmezseKirmizi(wBlogu()
   .catch((e) => {
     failed++;
     failures.push(`W bloğu beklenmedik hata: ${(e as Error)?.stack ?? e}`);
@@ -1190,4 +1191,4 @@ wBlogu()
       process.exit(1);
     }
     process.exit(0);
-  });
+  }));

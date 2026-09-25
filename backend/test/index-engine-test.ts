@@ -14,6 +14,7 @@ import { parseLine } from '../src/ozellik/eslestirme/matching/index/line-parser'
 import { runQuery } from '../src/ozellik/eslestirme/matching/index/query-engine';
 import { toMatchResult } from '../src/ozellik/fiyat/matching/index/outcome-mapper';
 import type { IndexedRow } from '../src/ozellik/eslestirme/matching/index/types';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -1770,4 +1771,4 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-run();
+bitmezseKirmizi(run());

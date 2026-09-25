@@ -35,6 +35,7 @@ import { TierGuard } from '../src/altyapi/auth/guards/tier.guard';
 import { ErisimGuard } from '../src/ozellik/odeme/abonelik/erisim.guard';
 import { ErisimServisi } from '../src/ozellik/odeme/abonelik/erisim.servisi';
 import { Uc, dekoratorVar, ucEnvanteri, ucretliKapiVar } from './yardimci/uc-envanteri';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 const BACKEND_KOKU = path.resolve(__dirname, '..');
 
@@ -342,7 +343,7 @@ async function main(): Promise<void> {
   console.log('\nT2.14 DAVRANIŞ PASS.');
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error('T2.14 DAVRANIŞ — beklenmeyen hata:', e);
   process.exitCode = 1;
-});
+}));

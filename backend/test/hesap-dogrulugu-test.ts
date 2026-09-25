@@ -43,6 +43,7 @@ import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.ser
 import * as BE from '../src/ozellik/fiyat/matching/pricing';
 import { antetKur } from '../src/ozellik/cikti/utils/antet';
 import { TAM_FIRMA, formulDegerlendir, gercek, formulDenetimi } from './cikti-test-yardimci';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 // Ekranin TEK hesap modulu — beklenen degerlerin kaynagi (kd11 ile ayni yol).
 const FE = require('../../frontend/ozellik/fiyat/pricing');
@@ -909,4 +910,4 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-run().catch((e) => { console.error('BEKLENMEYEN HATA:', e); process.exit(1); });
+bitmezseKirmizi(run().catch((e) => { console.error('BEKLENMEYEN HATA:', e); process.exit(1); }));

@@ -9,6 +9,7 @@
 
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
 import { TerminologyService, ALIAS_SEEDS } from '../src/ozellik/eslestirme/matching/terminology.service';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 // ── Fake kutuphane satiri (UserLibrary shape — materialId yok → tag'ler
 //    generateTags ile anlik uretilir, gercek "manuel eklenen satir" yolu) ──
@@ -709,4 +710,4 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-run().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(run().catch((e) => { console.error(e); process.exit(1); }));
