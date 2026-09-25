@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 778
-Toplam satir: 201465
+Kod dosyasi: 780
+Toplam satir: 201864
 Uc nokta: 231
 test:* scripti: 128
 
@@ -485,8 +485,10 @@ test:* scripti: 128
 | `frontend/components/dwg-tagging/BucketPanel.tsx` | 144 |
 | `frontend/components/dwg-tagging/index.ts` | 12 |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | 110 |
-| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 1989 |
+| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 2003 |
 | `frontend/components/dwg-viewer/aci-colors.ts` | 38 |
+| `frontend/components/dwg-viewer/canli-cap.test.ts` | 288 |
+| `frontend/components/dwg-viewer/canli-cap.ts` | 97 |
 | `frontend/components/dwg-viewer/index.ts` | 6 |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | 54 |
 | `frontend/components/dwg-viewer/segment-length.ts` | 48 |
@@ -1224,7 +1226,9 @@ test:* scripti: 128
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | `vitest` |
 | `frontend/components/dwg-tagging/BucketPanel.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `./useTaggingStore` |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | `zustand` `zustand/middleware` `@/components/dwg-metraj/diameter-colors` |
-| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | `react` `rbush` `lucide-react` `@/ortak/lib/api` `./types` `@/components/dwg-metraj/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./segment-length` `./useViewport` `./aci-colors` |
+| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | `react` `rbush` `lucide-react` `@/ortak/lib/api` `./types` `@/components/dwg-metraj/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./segment-length` `./canli-cap` `./useViewport` `./aci-colors` |
+| `frontend/components/dwg-viewer/canli-cap.test.ts` | `node:fs` `node:path` `typescript` `vitest` `./canli-cap` `../dwg-metraj/constants` `../dwg-metraj/types` |
+| `frontend/components/dwg-viewer/canli-cap.ts` | `../dwg-metraj/types` |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | `vitest` `./segment-length` |
 | `frontend/components/dwg-viewer/useViewport.ts` | `react` `./types` |
 | `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | `react` `lucide-react` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/api` `@/components/dwg-viewer` `@/components/dwg-metraj` `@/components/dwg-metraj/types` `./LayerInfoSidebar` `./LayerVisibilityPanel` `./MetrajSummaryPanel` `./useWorkspaceState` `./onay-revizyon` `./sprinkler-bayatlik` `./types` `@/components/dwg-tagging` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` |
