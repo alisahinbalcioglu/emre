@@ -47,6 +47,7 @@ import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 import { QuotesController } from '../src/ozellik/teklif/quotes/quotes.controller';
 import { YETENEK_KEY } from '../src/ozellik/odeme/abonelik/erisim.guard';
 import { sahteDb, type Kayit } from './ceviri-sahte-db';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 delete process.env.ANTHROPIC_API_KEY;
 
@@ -760,7 +761,7 @@ async function main(): Promise<void> {
   }
 }
 
-main()
+bitmezseKirmizi(main()
   .catch((e) => {
     failures.push(`beklenmedik hata: ${(e as Error)?.stack ?? e}`);
   })
@@ -771,4 +772,4 @@ main()
       failures.forEach((f) => console.log(`  - ${f}`));
       process.exitCode = 1;
     }
-  });
+  }));

@@ -30,6 +30,7 @@ import * as ts from 'typescript';
 import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
 import { buildProductIndex } from '../src/ozellik/eslestirme/matching/index/product-index';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 const failures: string[] = [];
@@ -144,7 +145,7 @@ function havuzUrunu(id: string, cap: string, fiyat: number, sira: number) {
   };
 }
 
-(async () => {
+bitmezseKirmizi((async () => {
   const { prisma, db } = sahtePrisma();
   db.brand.push({ id: 'b1', name: 'TestVana', isGlobal: true });
   db.priceList.push({ id: 'pl1', brandId: 'b1', name: 'TestVana 2026', ownerUserId: null, ownerFirmaId: null });
@@ -244,4 +245,4 @@ function havuzUrunu(id: string, cap: string, fiyat: number, sira: number) {
     for (const f of failures) console.log(`  ❌ ${f}`);
     process.exit(1);
   }
-})().catch((e) => { console.error('BEKLENMEYEN:', e); process.exit(1); });
+})().catch((e) => { console.error('BEKLENMEYEN:', e); process.exit(1); }));

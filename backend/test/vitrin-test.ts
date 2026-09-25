@@ -42,6 +42,7 @@ import { BrandsService } from '../src/ozellik/kutuphane/brands/brands.service';
 import { BrandsController } from '../src/ozellik/kutuphane/brands/brands.controller';
 import { ABONELIK_DURUMLARI } from '../src/altyapi/auth/abonelik-erisim';
 import { KAPALI_HESAP_IZINLI } from '../src/altyapi/auth/decorators/kapali-hesap-izinli.decorator';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -317,7 +318,7 @@ function ucYuzeyiBlogu() {
   check('U2b havuz fiyat araması YETENEKLİ kalır (vitrine ve askıya 403)', aramaYetenegi.includes(Yetenek.KUTUPHANE_GORUNTULE), js(aramaYetenegi));
 }
 
-(async () => {
+bitmezseKirmizi((async () => {
   try {
     const k = await kararBlogu();
     await guardBlogu();
@@ -332,4 +333,4 @@ function ucYuzeyiBlogu() {
     failures.forEach((f) => console.log(`  · ${f}`));
     process.exitCode = 1;
   }
-})();
+})());

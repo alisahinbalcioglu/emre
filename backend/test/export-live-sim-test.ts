@@ -8,6 +8,7 @@
  */
 import * as ExcelJS from 'exceljs';
 import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 /** Sahte CeviriService — bu testler dil gecmez, sheetleriCevir erken doner;
  *  onbellekHaritasi HIC cagrilmaz. Constructor 13.08'de 3 parametreye cikti;
@@ -417,4 +418,4 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-run().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(run().catch((e) => { console.error(e); process.exit(1); }));

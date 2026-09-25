@@ -60,6 +60,7 @@ import {
 } from '../src/ozellik/odeme/abonelik/abonelik.servisi';
 import { SatinAlmaServisi } from '../src/ozellik/odeme/abonelik/satinalma.servisi';
 import { DenemeHakkiServisi } from '../src/ozellik/odeme/abonelik/deneme-hakki.servisi';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -855,7 +856,7 @@ async function main() {
   if (failed > 0) process.exitCode = 1;
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error('BEKLENMEYEN HATA:', e);
   process.exitCode = 1;
-});
+}));

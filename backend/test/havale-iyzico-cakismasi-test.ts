@@ -85,6 +85,7 @@ import type { IyzicoAbonelikDurumu, IyzicoSiparis } from '../src/ozellik/odeme/i
 import type { AbonelikWebhookGovdesi } from '../src/ozellik/odeme/iyzico/imza';
 import { IyzicoWebhookController } from '../src/ozellik/odeme/webhook/webhook.controller';
 import { WebhookIsleyici } from '../src/ozellik/odeme/webhook/webhook.isleyici';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -1671,7 +1672,7 @@ async function main(): Promise<void> {
   son();
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
-});
+}));

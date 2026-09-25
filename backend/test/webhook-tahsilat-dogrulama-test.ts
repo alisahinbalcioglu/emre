@@ -63,6 +63,7 @@ import { WebhookIsleyici } from '../src/ozellik/odeme/webhook/webhook.isleyici';
 import { FaturaServisi } from '../src/ozellik/odeme/fatura/fatura.servisi';
 import { DunningServisi } from '../src/ozellik/odeme/dunning/dunning.servisi';
 import type { AbonelikWebhookGovdesi } from '../src/ozellik/odeme/iyzico/imza';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -1105,7 +1106,7 @@ async function main(): Promise<void> {
   son();
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
-});
+}));

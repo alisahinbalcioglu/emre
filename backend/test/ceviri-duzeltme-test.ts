@@ -51,6 +51,7 @@ const EPOSTA_SAHTE = { gonder: async () => undefined } as any;
 import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 import { suzgecOlc } from '../scripts/ceviri-suzgec-olcum';
 import { sahteDb, type Kayit } from './ceviri-sahte-db';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 delete process.env.ANTHROPIC_API_KEY;
 
@@ -906,7 +907,7 @@ async function main(): Promise<void> {
   await mBlogu();
 }
 
-main()
+bitmezseKirmizi(main()
   .catch((e) => {
     failures.push(`beklenmedik hata: ${(e as Error)?.stack ?? e}`);
   })
@@ -917,4 +918,4 @@ main()
       failures.forEach((f) => console.log(`  - ${f}`));
       process.exitCode = 1;
     }
-  });
+  }));

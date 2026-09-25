@@ -31,6 +31,7 @@
  * BU TEST KIRMIZI OLMAK ICIN YAZILDI. Duzeltme bu asamada YAPILMADI.
  */
 import { PrismaClient } from '@prisma/client';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 const check = (ad: string, kosul: boolean, kanit?: string) => {
@@ -181,4 +182,4 @@ async function main() {
   if (failed) { failures.forEach((f) => console.log(`  · ${f}`)); process.exit(1); }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(main().catch((e) => { console.error(e); process.exit(1); }));

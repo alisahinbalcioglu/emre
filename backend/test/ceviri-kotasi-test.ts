@@ -27,6 +27,7 @@ import { SatinAlmaServisi } from '../src/ozellik/odeme/abonelik/satinalma.servis
 import { FIYAT_ONBELLEK_MS, FiyatController } from '../src/ozellik/odeme/abonelik/fiyat.controller';
 import { AbonelikController } from '../src/ozellik/odeme/abonelik/abonelik.controller';
 import { OdemeModule } from '../src/ozellik/odeme/odeme.module';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -289,7 +290,7 @@ async function baglanti(): Promise<void> {
   );
 }
 
-baglanti()
+bitmezseKirmizi(baglanti()
   .catch((e) => {
     failed++;
     failures.push(`bağlantı bloğu patladı: ${(e as Error).message}`);
@@ -303,4 +304,4 @@ baglanti()
       process.exit(1);
     }
     process.exit(0);
-  });
+  }));

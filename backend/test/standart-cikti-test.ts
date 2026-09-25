@@ -19,6 +19,7 @@ import * as ExcelJS from 'exceljs';
 import { standartCiktiUret, STANDART_CIKTI_KOLONLARI } from '../src/ozellik/teklif/quotes/standart-cikti';
 import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
 import { formulDegerlendir, formulDenetimi } from './cikti-test-yardimci';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 // Ekranin TEK hesap modulu — "ekran toplami" beklentisinin kaynagi (kd11/hesap ile ayni yol)
 const FE = require('../../frontend/ozellik/fiyat/pricing');
@@ -785,4 +786,4 @@ async function yeniTasarim(): Promise<void> {
   }
 }
 
-main().catch((e) => { console.error(e); process.exitCode = 1; });
+bitmezseKirmizi(main().catch((e) => { console.error(e); process.exitCode = 1; }));

@@ -28,6 +28,7 @@ import {
   KENARLA_ORTAK_BASLIKLAR,
   guvenlikBasliklariniKur,
 } from '../src/altyapi/http/guvenlik-basliklari';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 const failures: string[] = [];
@@ -70,7 +71,7 @@ const kodMetni = (dosya: string) => fs.readFileSync(dosya, 'utf-8')
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .split(/\r?\n/).map((l) => l.replace(/(^|\s)\/\/.*$/, '')).join('\n');
 
-(async () => {
+bitmezseKirmizi((async () => {
   console.log('── G0) OLCUT: kurulum YOKKEN uygulama cıplak (bulgu yeniden uretilir) ──');
   {
     const { app, port } = await uygulama(false);
@@ -132,4 +133,4 @@ const kodMetni = (dosya: string) => fs.readFileSync(dosya, 'utf-8')
     for (const f of failures) console.log(`  ❌ ${f}`);
     process.exit(1);
   }
-})().catch((e) => { console.error('BEKLENMEYEN:', e); process.exit(1); });
+})().catch((e) => { console.error('BEKLENMEYEN:', e); process.exit(1); }));

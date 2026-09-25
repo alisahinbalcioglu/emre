@@ -33,6 +33,7 @@
  * DB GEREKTIRMEZ: prisma sahte.
  */
 import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 /** Sahte CeviriService — bu testler dil gecmez, sheetleriCevir erken doner;
  *  onbellekHaritasi HIC cagrilmaz. Constructor 13.08'de 3 parametreye cikti;
@@ -167,4 +168,4 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => { console.error('HATA:', e); process.exit(1); });
+bitmezseKirmizi(main().catch((e) => { console.error('HATA:', e); process.exit(1); }));

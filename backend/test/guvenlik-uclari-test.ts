@@ -64,6 +64,7 @@ import { TierGuard, TIER_KEY } from '../src/altyapi/auth/guards/tier.guard';
 // K4 — onay bayraginin HTTP→servis kablolamasi (sahte servisle, DB'siz)
 import { BrandsController } from '../src/ozellik/kutuphane/brands/brands.controller';
 import { AdminController } from '../src/ozellik/kutuphane/admin/admin.controller';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 const check = (ad: string, kosul: boolean, kanit?: string) => {
@@ -457,4 +458,4 @@ async function main() {
   if (failed) { failures.forEach((f) => console.log(`  · ${f}`)); process.exit(1); }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(main().catch((e) => { console.error(e); process.exit(1); }));

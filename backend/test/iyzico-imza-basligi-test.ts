@@ -33,6 +33,7 @@
 import { createHmac } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { IyzicoClient } from '../src/ozellik/odeme/iyzico/iyzico.client';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -228,7 +229,7 @@ function son() {
   }
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exit(1);
-});
+}));

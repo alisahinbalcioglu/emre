@@ -40,6 +40,7 @@ import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.ser
 import { TerminologyService, ALIAS_SEEDS } from '../src/ozellik/eslestirme/matching/terminology.service';
 import { generateTags } from '../src/ozellik/eslestirme/matching/tag-generator';
 import { SURFACE_TAGS, CONNECTION_TAGS } from '../src/ozellik/eslestirme/matching/shared-tag-matcher';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 // ── Fake kutuphane satiri (matching-unit-test.ts uslubu) ───────────
 function lib(name: string, price: number) {
@@ -321,4 +322,4 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-run().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(run().catch((e) => { console.error(e); process.exit(1); }));

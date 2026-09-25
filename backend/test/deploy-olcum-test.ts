@@ -18,6 +18,7 @@
 import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { olcumKos, defterKos, kacislariCoz } = require('../../scripts/deploy-olcum.cjs');
@@ -63,7 +64,7 @@ function sunucu(): Promise<{ taban: string; kapat: () => Promise<void> }> {
   }));
 }
 
-(async () => {
+bitmezseKirmizi((async () => {
   const { taban, kapat } = await sunucu();
   const sessiz = () => undefined;
 
@@ -150,4 +151,4 @@ function sunucu(): Promise<{ taban: string; kapat: () => Promise<void> }> {
     // (mutasyon kosumunda olculdu). Dongu bosalinca 1 ile cikar.
     process.exitCode = 1;
   }
-})().catch((e) => { console.error('BEKLENMEYEN:', e); process.exit(1); });
+})().catch((e) => { console.error('BEKLENMEYEN:', e); process.exit(1); }));

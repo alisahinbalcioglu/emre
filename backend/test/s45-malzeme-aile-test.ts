@@ -38,6 +38,7 @@ import { parseLine } from '../src/ozellik/eslestirme/matching/index/line-parser'
 import { runQuery } from '../src/ozellik/eslestirme/matching/index/query-engine';
 import { sizeEquivalents } from '../src/ozellik/eslestirme/matching/conversion';
 import type { IndexedRow } from '../src/ozellik/eslestirme/matching/index/types';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -418,7 +419,7 @@ function bolumE() {
     (inc.rozet ?? '').includes('32 mm') && inc.tags.includes('od-32'), `got "${inc.rozet}" tags=${JSON.stringify(inc.tags)}`);
 }
 
-(async () => {
+bitmezseKirmizi((async () => {
   console.log('\n=== BOLUM A — S5 malzeme katmani (sozluk → motor) ===');
   await bolumA();
   console.log('\n=== BOLUM B — S5 motor sozlesmesi ===');
@@ -436,4 +437,4 @@ function bolumE() {
   console.log(`S4+S5: ${passed} PASS, ${failed} FAIL`);
   if (failures.length) { console.log('\nBASARISIZ:'); failures.forEach((f) => console.log(`  - ${f}`)); }
   process.exit(failed > 0 ? 1 : 0);
-})();
+})());

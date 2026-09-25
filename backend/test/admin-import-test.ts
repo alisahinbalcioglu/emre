@@ -9,6 +9,7 @@ import {
   mapPriceListColumns, yapilandirmaSkoru,
 } from '../src/ozellik/kutuphane/utils/import-fidelity';
 import { deriveEtiketler, isValidAdOverride } from '../src/ozellik/eslestirme/utils/etiket-display';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -315,10 +316,10 @@ async function a2EskiIceAktarma() {
     `atlanan=${sonuc.totalSkipped} yazılan=${yazilan.length}`);
 }
 
-a2EskiIceAktarma().catch((e) => { failed++; failures.push(`A2 eski içe aktarma koşamadı: ${(e as Error).message}`); }).then(() => {
+bitmezseKirmizi(a2EskiIceAktarma().catch((e) => { failed++; failures.push(`A2 eski içe aktarma koşamadı: ${(e as Error).message}`); }).then(() => {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`SONUC: ${passed} PASS, ${failed} FAIL`);
   console.log('='.repeat(60));
   if (failures.length > 0) { console.log('\nFAILURES:'); failures.forEach((f) => console.log('  - ' + f)); }
   process.exit(failed > 0 ? 1 : 0);
-});
+}));

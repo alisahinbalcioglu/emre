@@ -47,6 +47,7 @@ import {
   DENEME_KAYDI_SAKLAMA_GUN,
   DENEME_KAYDI_SAKLAMA_YIL,
 } from '../src/ozellik/imha/saklama-sureleri';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
 let failed = 0;
@@ -1158,7 +1159,7 @@ async function main(): Promise<void> {
   if (failed > 0) process.exitCode = 1;
 }
 
-main().catch((e) => {
+bitmezseKirmizi(main().catch((e) => {
   console.error(e);
   process.exitCode = 1;
-});
+}));

@@ -28,6 +28,7 @@ import { QuoteFormatsService } from '../src/ozellik/cikti/quote-formats/quote-fo
 import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
 import { MatchingService } from '../src/ozellik/eslestirme/matching/matching.service';
 import { TerminologyService } from '../src/ozellik/eslestirme/matching/terminology.service';
+import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 const prisma = new PrismaClient();
 const fakeFx: any = { getRates: async () => ({ usdTry: 40, eurTry: 45 }) };
@@ -350,4 +351,4 @@ async function main() {
   if (failures.length) { failures.forEach((f) => console.log(`  · ${f}`)); process.exit(1); }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+bitmezseKirmizi(main().catch((e) => { console.error(e); process.exit(1); }));
