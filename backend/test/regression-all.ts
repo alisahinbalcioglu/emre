@@ -499,7 +499,11 @@ const SUITES: Suite[] = [
   //    ve kayıtlı uç canlı görünse de "değişmedi" DEMEZ (Z6); dunning "ödemeniz
   //    alınamadı" bildirimini basamak başına BİR KEZ erteler (Z7). Z6/Z7
   //    GERÇEK servislerle koşar.
-  { ad: 'iyzico zaman aşımı: sinyal · kesim · işaretli kodsuz hata · belirsiz dal · firma sırası · dunning (Z1-Z7)', script: 'test:iyzico-zaman-asimi', zincir: 'Z0' },
+  //    25.09: okuma (GET) çağrısı, bağlantı yanıt gelmeden koparsa en çok 2 kez
+  //    yeniden denenir (sandbox yeni bağlantıların bir kısmını sıfırlıyor; gece
+  //    mutabakatının ilk çağrısı takılıyordu). POST, zaman aşımı ve kodlu red
+  //    yeniden DENENMEZ (Z8).
+  { ad: 'iyzico zaman aşımı: sinyal · kesim · işaretli kodsuz hata · belirsiz dal · firma sırası · dunning · okuma yeniden denemesi (Z1-Z8)', script: 'test:iyzico-zaman-asimi', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
   // T47 (22.09.2026): "fatura bilgisi eksik firma gercek bir fatura kesme
