@@ -136,6 +136,25 @@ export class IyzicoHatasi extends Error {
  */
 export const IYZICO_ZAMAN_ASIMI_MS = 20_000;
 
+/**
+ * Okuma (GET) cagrisi, baglanti yanit gelmeden KOPARSA bu beklemelerle yeniden
+ * denenir: en cok 2 ek deneme, toplam 3.
+ *
+ * ⚠ NEDEN (25.09 olcumu, yonetici oturum): backend konteynerinde YENI bir
+ * surecte (acik keep-alive soketi yokken) sandbox'a 6 ardisik GET → 1. ve 2.
+ * ECONNRESET (210 ms, 94 ms), 3.–6. HTTP 200. Sandbox bazi YENI baglantilari
+ * sifirliyor; gece mutabakatinin ilk cagrisi buna takilip abonelik atlaniyordu.
+ *
+ * ⚠ YALNIZ GET ve YALNIZ yanit gelmeden kopan baglantida (undici bunu
+ * `TypeError: fetch failed` olarak atar):
+ *   · POST'a ASLA: iptal/yukseltme/tahsilat istegi iyzico'ya ulasip ISLENMIS
+ *     olabilir; tekrari cift islemdir.
+ *   · Zaman asiminda DEGIL: sinyal cagri basina BIR kez kurulur, 20 sn TUM
+ *     denemeleri kapsar — on yuzun 30 sn'si asilmaz.
+ *   · iyzico'nun kodlu reddinde DEGIL: red bir yanittir, kopan baglanti degil.
+ */
+export const IYZICO_OKUMA_YENIDEN_DENEME_MS: readonly number[] = [250, 750];
+
 @Injectable()
 export class IyzicoClient {
   private readonly logger = new Logger(IyzicoClient.name);
@@ -189,15 +208,6 @@ export class IyzicoClient {
   ): Promise<T> {
     const url = this.tabanUrl + yol;
 
-    // ⚠ TEK rastgele deger: hem imzaya hem baslIga AYNI deger gider.
-    // Ikisi ayrisirsa iyzico her istegi "Authentication token is not
-    // verified" ile reddeder (01.09'da canli sandbox'ta olculdu).
-    //
-    // Bicim iyzico'nun kendi ornegindeki gibi: zaman damgasi + rakamlar.
-    // Deger imzada ve baslIkta ayni oldugu surece icerigi teknik olarak
-    // serbest; yine de saglayicinin kalibindan sapmiyoruz.
-    const rastgele = `${Date.now()}${randomBytes(4).readUInt32BE(0)}`;
-
     // ⚠⚠ IMZAYA GIREN YOL SORGU DIZESI ICERMEZ.
     // iyzico dokumani: "The URI path does not include query strings — only
     // the endpoint path." Yani `/v2/subscription/products?page=1&count=100`
@@ -213,26 +223,49 @@ export class IyzicoClient {
     // Baslik ve govde AYNI sinyale bagli: undici govde akisini da bu sinyalle
     // keser (24.09 olcumu: baslik gelip govde takilinca `cevap.json()` ayni
     // TimeoutError ile dustu). Sinyal YALNIZ zaman asiminda duser; hata
-    // aninda dusmus olmasi zaman asimini ag hatasindan ayirir.
+    // aninda dusmus olmasi zaman asimini ag hatasindan ayirir. Cagri basina
+    // BIR kez kurulur: okuma yeniden denemeleri de ayni 20 sn icinde kalir.
     const sinyal = AbortSignal.timeout(IYZICO_ZAMAN_ASIMI_MS);
 
     let cevap: Response;
-    try {
-      cevap = await fetch(url, {
-        method: metot,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: this.yetkiBasligi(imzaYolu, govde, rastgele),
-          'x-iyzi-rnd': rastgele,
-        },
-        body: govde ? JSON.stringify(govde) : undefined,
-        signal: sinyal,
-      });
-    } catch (e) {
-      // Ag hatasi (baglanti koptu, DNS) AYNEN atilir; yalniz zaman asimi
-      // kodsuz IyzicoHatasi'na cevrilir.
-      if (sinyal.aborted) throw this.zamanAsimi(metot, imzaYolu, 'yanit');
-      throw e;
+    for (let deneme = 0; ; deneme++) {
+      // ⚠ TEK rastgele deger: hem imzaya hem baslIga AYNI deger gider.
+      // Ikisi ayrisirsa iyzico her istegi "Authentication token is not
+      // verified" ile reddeder (01.09'da canli sandbox'ta olculdu). Her
+      // denemede YENI deger uretilir: ayni `randomKey` tekrar kullanilmaz.
+      //
+      // Bicim iyzico'nun kendi ornegindeki gibi: zaman damgasi + rakamlar.
+      // Deger imzada ve baslIkta ayni oldugu surece icerigi teknik olarak
+      // serbest; yine de saglayicinin kalibindan sapmiyoruz.
+      const rastgele = `${Date.now()}${randomBytes(4).readUInt32BE(0)}`;
+      try {
+        cevap = await fetch(url, {
+          method: metot,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: this.yetkiBasligi(imzaYolu, govde, rastgele),
+            'x-iyzi-rnd': rastgele,
+          },
+          body: govde ? JSON.stringify(govde) : undefined,
+          signal: sinyal,
+        });
+        break;
+      } catch (e) {
+        // Zaman asimi kodsuz IyzicoHatasi'na cevrilir ve YENIDEN DENENMEZ.
+        if (sinyal.aborted) throw this.zamanAsimi(metot, imzaYolu, 'yanit');
+        // Yanit gelmeden kopan baglanti (bkz. IYZICO_OKUMA_YENIDEN_DENEME_MS)
+        // yalniz GET'te yeniden denenir; digeri AYNEN atilir.
+        if (metot !== 'GET' || !(e instanceof TypeError) || deneme >= IYZICO_OKUMA_YENIDEN_DENEME_MS.length) {
+          throw e;
+        }
+        const bekleme = IYZICO_OKUMA_YENIDEN_DENEME_MS[deneme];
+        this.logger.warn(
+          `iyzico baglantisi yanit gelmeden koptu (${deneme + 1}. deneme), ${bekleme} ms sonra yeniden: ${metot} ${imzaYolu} — ${e.message}`,
+        );
+        // Sure bekleme sirasinda dolarsa sonraki `fetch` hemen reddeder ve
+        // yukaridaki denetim onu zaman asimina cevirir — ayrica bakmaya gerek yok.
+        await new Promise((r) => setTimeout(r, bekleme));
+      }
     }
 
     let json: IyzicoYanit<T>;

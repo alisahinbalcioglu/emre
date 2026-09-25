@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/ortak/lib/api';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
-import { KAPSAM_ETIKET, SEVIYE_ETIKET, donemEki, kotaCumlesi, odemeDenemeNotu, paketRozeti, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
+import { KAPSAM_ETIKET, SEVIYE_ETIKET, donemEki, kotaCumlesi, odemeDenemeNotu, paketListesiGorunumu, paketRozeti, vitrinFiyati, type Paket } from '@/ozellik/odeme/paket-bicim';
 // 23.09 — paket değişimi: kartın yolu (satın al / geç / geçilemez) SUNUCUDAN
 // (`degisim` alanı); bu modül yalnız ekrana çevirir.
 import {
@@ -69,6 +69,9 @@ export default function AbonelikSayfasi() {
   const [paketler, setPaketler] = useState<Paket[]>([]);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [hata, setHata] = useState<string | null>(null);
+  // 25.09 — paket listesi OKUNAMADI mı? `hata`dan ayrı: o kutu fatura/ödeme
+  // hatalarını da taşır. Açıkken "satışta paket yok" DENMEZ (`paketListesiGorunumu`).
+  const [paketHatasi, setPaketHatasi] = useState(false);
   const [secilen, setSecilen] = useState<string | null>(null);
   const [formHtml, setFormHtml] = useState<string | null>(null);
   const [faturaAcik, setFaturaAcik] = useState(false);
@@ -157,8 +160,13 @@ export default function AbonelikSayfasi() {
   const paketleriGetir = useCallback(async () => {
     try {
       const { data } = await api.get<Paket[]>('/abonelik/paketler');
-      setPaketler(Array.isArray(data) ? data : []);
+      // ⚠ Dizi olmayan 200 (ör. vekil sunucunun HTML sayfası) "satışta paket
+      // yok" DEĞİLDİR — okunamamış listedir (fiyat sayfasıyla aynı kural).
+      if (!Array.isArray(data)) throw new Error('Paket listesi dizi değil');
+      setPaketler(data);
+      setPaketHatasi(false);
     } catch {
+      setPaketHatasi(true);
       setHata('Paketler yüklenemedi. Lütfen sayfayı yenileyin.');
     } finally {
       setYukleniyor(false);
@@ -479,6 +487,11 @@ export default function AbonelikSayfasi() {
   // `erisim` gelmeden HİÇBİR kart işaretlenmez (yanlış kartı "mevcut" demek,
   // müşteriyi yanlış pakete yükseltmeye iterdi).
   const mevcutPaketKodu = ozet.paketKodu;
+  const paketGorunumu = paketListesiGorunumu({
+    yukleniyor,
+    yuklemeHatasi: paketHatasi,
+    paketSayisi: paketler.length,
+  });
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -559,9 +572,12 @@ export default function AbonelikSayfasi() {
         </div>
       )}
 
-      {yukleniyor ? (
+      {paketGorunumu === 'yukleniyor' ? (
         <div className="py-12 text-center text-sm text-muted-foreground">Paketler yükleniyor…</div>
-      ) : paketler.length === 0 ? (
+      ) : paketGorunumu === 'hata' ? (
+        // Okunamadı ≠ satışta yok: üstteki kırmızı kutu tek başına kalır.
+        null
+      ) : paketGorunumu === 'bos' ? (
         <div className="rounded-xl border bg-muted/30 py-12 text-center text-sm text-muted-foreground">
           Şu anda satışta paket bulunmuyor. Lütfen bizimle iletişime geçin.
         </div>

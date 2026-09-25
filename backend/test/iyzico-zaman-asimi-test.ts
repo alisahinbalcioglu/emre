@@ -38,6 +38,10 @@
  *      alinamadi" bildirimi GITMEZ, basamak islenmis SAYILMAZ — basamak basina
  *      BIR KEZ: ikinci zaman asiminda bildirim gider. Gercek red ve basarili
  *      yanit eskisi gibi; basarili denemeden sonraki DB hatasi red SAYILMAZ
+ *   Z8 ⭐ OKUMA YENIDEN DENEMESI (25.09): GET, baglanti yanit gelmeden koparsa
+ *      en cok 2 kez yeniden denenir (250 / 750 ms) — iki kopma kurtarilir, uc
+ *      kopmada hata AYNEN yukselir; her deneme yeni rastgele deger, tek zaman
+ *      asimi sinyali; POST, zaman asimi ve kodlu red yeniden DENENMEZ
  *
  * Cikis kodu sozlesmesi: 0 = PASS · digeri = FAIL.
  * ⚠ `process.exit` YOK: Windows'ta acik fetch soketiyle `process.exit(1)`
@@ -125,6 +129,9 @@ interface GidenIstek {
   url: string;
   metot?: string;
   signal?: unknown;
+  basliklar?: Record<string, string>;
+  /** Giden istegin cikis ani (yeniden deneme beklemesi buradan olculur). */
+  an: number;
   /** fetch'in sozu basliklarla cozuldu mu (govde asamasina gecildi mi). */
   baslikGeldi: boolean;
 }
@@ -139,7 +146,14 @@ const asilTimeout = AbortSignal.timeout;
 
 function aracilariKur(): void {
   globalThis.fetch = ((url: any, opts: any) => {
-    const kayit: GidenIstek = { url: String(url), metot: opts?.method, signal: opts?.signal, baslikGeldi: false };
+    const kayit: GidenIstek = {
+      url: String(url),
+      metot: opts?.method,
+      signal: opts?.signal,
+      basliklar: opts?.headers,
+      an: Date.now(),
+      baslikGeldi: false,
+    };
     giden.push(kayit);
     return asilFetch(url, opts).then((cevap) => {
       kayit.baslikGeldi = true;
@@ -840,6 +854,141 @@ async function z7(): Promise<void> {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  Z8 · OKUMA YENIDEN DENEMESI (baglanti yanit gelmeden koparsa)
+// ═══════════════════════════════════════════════════════════════════════════
+// 25.09 olcumu (yonetici oturum): yeni surecte sandbox'a ilk IKI GET ECONNRESET
+// aldi, sonrakiler 200. Gece mutabakatinin ilk cagrisi buna takilip abonelik
+// atlaniyordu. Deneme sayisi GIDEN istekten sayilir (sunucu sayisi olcut).
+const CANLI_UC: Davranis = { tur: 'cevapla', veri: { referenceCode: 'uc-0', subscriptionStatus: 'ACTIVE' } };
+
+/** Ilk `kopma` istegin baglantisini koparir, sonrakilere `sonra` davranir. */
+function kopanSunucu(kopma: number, sonra: Davranis) {
+  let kalan = kopma;
+  return sahteIyzico((): Davranis => (kalan-- > 0 ? { tur: 'kopar' } : sonra));
+}
+
+async function z8(): Promise<void> {
+  console.log('\n── Z8 · GET: baglanti yanit gelmeden koparsa en cok 2 kez yeniden denenir ──');
+
+  // Iki ardisik kopma → ucuncu deneme cevap alir. Sure UZUN kurulur: bekleme
+  // (250 + 750 ms) kisaltilmis zaman asimina takilmasin.
+  kayitlariSifirla();
+  sinyalSuresi = BEKCI_MS;
+  const gunlukBasi = gunluk.length;
+  let iyz = await kopanSunucu(2, CANLI_UC);
+  try {
+    const r = await sureli(() => istemci(iyz.taban).abonelikGetir('uc-0'));
+    check('Z8-OLCUT sunucu ilk IKI baglantiyi kopardi, ucuncuyu cevapladi', iyz.gelen.length === 3, `gelen=${iyz.gelen.length}`);
+    check(
+      'Z8a ⭐ iki ardisik kopma KURTARILDI: veri dondu',
+      r.durum === 'deger' && r.deger?.subscriptionStatus === 'ACTIVE',
+      `durum=${r.durum} ${r.durum === 'hata' ? ozet(r.hata) : ''}`,
+    );
+    check('Z8b giden istek sayisi 3 (1 + 2 ek deneme)', giden.length === 3, `giden=${giden.length}`);
+    const rnd = giden.map((g) => g.basliklar?.['x-iyzi-rnd']);
+    check(
+      'Z8c her deneme YENI rastgele degerle gider (randomKey tekrar kullanilmaz)',
+      rnd.length === 3 && rnd.every(Boolean) && new Set(rnd).size === 3,
+      JSON.stringify(rnd),
+    );
+    check(
+      'Z8d tek zaman asimi sinyali TUM denemeleri kapsar (20 sn butcesi asilmaz)',
+      kurulanSinyaller.length === 1 && giden.every((g) => g.signal === kurulanSinyaller[0]),
+      `kurulan=${kurulanSinyaller.length}`,
+    );
+    const ara1 = (giden[1]?.an ?? 0) - (giden[0]?.an ?? 0);
+    const ara2 = (giden[2]?.an ?? 0) - (giden[1]?.an ?? 0);
+    check('Z8e bekleme ARTAN: once ~250 ms, sonra ~750 ms', ara1 >= 225 && ara2 >= 675 && ara2 > ara1, `ara1=${ara1} ara2=${ara2}`);
+    const uyarilar = gunluk.slice(gunlukBasi).filter((s) => s.includes('yanit gelmeden koptu'));
+    check(
+      'Z8f her yeniden deneme gunlukte (yontem + yol)',
+      uyarilar.length === 2 && uyarilar.every((s) => s.includes('GET /v2/subscription/subscriptions/uc-0')),
+      uyarilar.join(' | ') || '(uyari yok)',
+    );
+  } finally {
+    await iyz.kapat();
+  }
+
+  // Uc ardisik kopma → hata AYNEN yukselir; dorduncu deneme YOK.
+  kayitlariSifirla();
+  sinyalSuresi = BEKCI_MS;
+  iyz = await kopanSunucu(3, CANLI_UC);
+  try {
+    const r = await sureli(() => istemci(iyz.taban).abonelikGetir('uc-0'));
+    check(
+      'Z8g ⭐ uc kopmada hata AYNEN yukseldi (TypeError; IyzicoHatasi / zaman asimi DEGIL)',
+      r.durum === 'hata' && r.hata instanceof TypeError && !(r.hata instanceof IyzicoHatasi),
+      ozet(r.hata),
+    );
+    check('Z8h deneme siniri: tam 3 giden istek, dorduncu YOK', giden.length === 3 && iyz.gelen.length === 3, `giden=${giden.length} gelen=${iyz.gelen.length}`);
+  } finally {
+    await iyz.kapat();
+  }
+
+  // POST'a ASLA: iptal iyzico'ya ulasip ISLENMIS olabilir — tekrari cift islem.
+  kayitlariSifirla();
+  sinyalSuresi = BEKCI_MS;
+  iyz = await kopanSunucu(1, CANLI_UC);
+  try {
+    const r = await sureli(() => istemci(iyz.taban).abonelikIptal('uc-0'));
+    check(
+      'Z8i ⭐ POST kopmada YENIDEN DENENMEDI: tek giden istek, hata aynen',
+      giden.length === 1 && r.durum === 'hata' && r.hata instanceof TypeError,
+      `giden=${giden.length} ${ozet(r.hata)}`,
+    );
+  } finally {
+    await iyz.kapat();
+  }
+
+  // Zaman asimi yeniden denenmez (20 sn × 3 on yuzun 30 sn'sini asardi).
+  kayitlariSifirla(); // kisa zaman asimi
+  iyz = await sahteIyzico(() => ({ tur: 'takil' }));
+  try {
+    const r = await sureli(() => istemci(iyz.taban).abonelikGetir('uc-0'));
+    check(
+      'Z8j GET zaman asiminda YENIDEN DENENMEDI: tek giden istek, isaretli hata',
+      giden.length === 1 && r.hata instanceof IyzicoHatasi && r.hata.zamanAsimi === true,
+      `giden=${giden.length} ${ozet(r.hata)}`,
+    );
+  } finally {
+    await iyz.kapat();
+  }
+
+  // iyzico'nun kodlu reddi yeniden denenmez: red bir yanittir.
+  kayitlariSifirla();
+  sinyalSuresi = BEKCI_MS;
+  iyz = await sahteIyzico(() => ({ tur: 'reddet', kod: 'RED-TEST', mesaj: 'Abonelik bulunamadı' }));
+  try {
+    const r = await sureli(() => istemci(iyz.taban).abonelikGetir('uc-0'));
+    check(
+      'Z8k GET kodlu redde YENIDEN DENENMEDI: tek giden istek, kodlu hata',
+      giden.length === 1 && r.hata instanceof IyzicoHatasi && r.hata.kod === 'RED-TEST',
+      `giden=${giden.length} ${ozet(r.hata)}`,
+    );
+  } finally {
+    await iyz.kapat();
+  }
+
+  // Kesin hata (eksik anahtar → 503) baglanti hatasi DEGILDIR: yeniden denenmez,
+  // beklenmez. (Yalniz undici'nin `TypeError: fetch failed`i denenir.)
+  kayitlariSifirla();
+  const eksikBasi = gunluk.length;
+  const eksik = new IyzicoClient(new ConfigService({ IYZICO_TABAN_URL: 'http://127.0.0.1:9' }));
+  const r503 = await sureli(() => eksik.abonelikGetir('uc-0'));
+  // ⚠ Sure ust siniri BILEREK yok (yuk altinda kararsiz olurdu): yeniden deneme
+  // olsaydi her biri gunluge "yanit gelmeden koptu" yazardi — olcut o.
+  check(
+    'Z8l eksik yapilandirma (503) YENIDEN DENENMEDI: istek cikmadi, yeniden deneme uyarisi yok',
+    r503.durum === 'hata' &&
+      typeof r503.hata?.getStatus === 'function' &&
+      r503.hata.getStatus() === 503 &&
+      giden.length === 0 &&
+      !gunluk.slice(eksikBasi).some((s) => s.includes('yanit gelmeden koptu')),
+    `durum=${r503.durum} giden=${giden.length} ms=${r503.ms} ${ozet(r503.hata)}`,
+  );
+}
+
 /** Bir blokta cokme sonrakileri GIZLEMESIN: hata o blogun kirmizisi olur, kosu surer. */
 async function blok(ad: string, fn: () => Promise<void>): Promise<void> {
   try {
@@ -858,6 +1007,7 @@ async function main(): Promise<void> {
     await blok('Z5', z5);
     await blok('Z6', z6);
     await blok('Z7', z7);
+    await blok('Z8', z8);
   } finally {
     aracilariSok();
   }

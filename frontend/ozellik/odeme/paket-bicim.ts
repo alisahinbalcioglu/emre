@@ -298,3 +298,33 @@ export function vitrinFiyati(s: PaketSurumu): VitrinFiyati {
     alt: `≈ ${sozlesme} olarak tahsil edilir (KDV dahil)`,
   };
 }
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  ABONELİK SAYFASI — paket alanında ne çizilir (25.09.2026)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  ⚠ YÜKLEME HATASI "SATIŞTA PAKET YOK" DEĞİLDİR. `GET /abonelik/paketler`
+ *  düşünce liste boş kalıyor, kırmızı "Paketler yüklenemedi" kutusunun hemen
+ *  altına "Şu anda satışta paket bulunmuyor. Lütfen bizimle iletişime geçin."
+ *  çiziliyordu (f84d3ea, 28.08'den beri; 25.09 görsel kontrolde görüldü).
+ *  Paketler VARDI, yalnız okunamamıştı: ikinci cümle yanlıştı ve müşteriyi
+ *  sayfayı yenilemek yerine bize yazmaya yöneltiyordu. Boş liste cümlesi YALNIZ
+ *  istek başarılı olup `[]` döndüğünde çizilir; hatada kırmızı kutu tek başına
+ *  kalır. Fiyat sayfası (`FiyatKartlari.tsx`) aynı kuralı kendi durumuyla uygular.
+ *
+ *  Kartlar varken yenileme düşerse (ör. paket değişiminden sonraki yenileme)
+ *  önceki kartlar ekranda KALIR — eski davranış; kırmızı kutu yenilemeyi ister.
+ */
+export type PaketListesiGorunumu = 'yukleniyor' | 'hata' | 'bos' | 'kartlar';
+
+export function paketListesiGorunumu(g: {
+  yukleniyor: boolean;
+  /** Son `GET /abonelik/paketler` düştü ya da dizi dönmedi. */
+  yuklemeHatasi: boolean;
+  paketSayisi: number;
+}): PaketListesiGorunumu {
+  if (g.yukleniyor) return 'yukleniyor';
+  if (g.paketSayisi > 0) return 'kartlar';
+  return g.yuklemeHatasi ? 'hata' : 'bos';
+}
