@@ -546,7 +546,7 @@ const SUITES: Suite[] = [
   //    kilit olayı). Artık teklif paketi kaydedilir, onay onu etkin paket
   //    yapar ve izleri siler; kart webhook'u yarışta paketi geri çekmez.
   //    DB/AĞ/iyzico GEREKTİRMEZ.
-  { ad: 'Havale teklifinin paketi: teklif · onayda paket · düşürme · yenileme · yeni firma · A1 izleri · eski teklif · yarış · geç çekim · yönetici listesi (F/T/K/D/H/Y/P/E/R/W/G)', script: 'test:havale-teklif-paketi', zincir: 'Z0' },
+  { ad: 'Havale teklifinin paketi: teklif · onayda paket · düşürme · yenileme · yeni firma · A1 izleri · eski teklif · yarışlar · geç çekim · koltuk uyarısı · yönetici listesi (F/T/K/D/H/Y/P/E/R/A/W/S/G)', script: 'test:havale-teklif-paketi', zincir: 'Z0' },
   // ── 24.09.2026 — YÖNETİM E-POSTALARI (Emre: "faturalar ve uyarılar vs. e
   //    posta olarak gitmeli"). Yönetici uyarıları yalnız YONETIM_EPOSTA'ya
   //    gidiyordu ve canlıda değişken BOŞ: çift tahsilat / iptal düşmesi /

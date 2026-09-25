@@ -60,6 +60,7 @@ import { PaketDegisimiServisi } from '../src/ozellik/odeme/abonelik/paket-degisi
 import { SatinAlmaServisi } from '../src/ozellik/odeme/abonelik/satinalma.servisi';
 import { FaturaServisi } from '../src/ozellik/odeme/fatura/fatura.servisi';
 import { HavaleServisi } from '../src/ozellik/odeme/havale/havale.servisi';
+import { koltukDurumuHesapla } from '../src/ozellik/firma/uyelik-kurallari';
 import { IyzicoHatasi } from '../src/ozellik/odeme/iyzico/iyzico.client';
 import type { IyzicoAbonelikDurumu } from '../src/ozellik/odeme/iyzico/iyzico.client';
 
@@ -535,7 +536,12 @@ function sahteIyzico() {
 /** İki paket erişim kararında AYRIŞIR: koltuk 1↔2, DWG kapalı↔açık, seviye core↔pro. */
 const BASIC = 'S-BASIC';
 const PRO = 'S-PRO';
-const PAKET_KODU: Record<string, string> = { [BASIC]: 'basic-mek', [PRO]: 'pro-mek' };
+/** S bloğu: kullanıcı hakları canlı katalogla aynı (Basic 1 · Pro 2 · Pro-MEP 3) + 5 kişilik miras. */
+const MEP = 'S-MEP';
+const MIRAS = 'S-MIRAS';
+const PAKET_KODU: Record<string, string> = {
+  [BASIC]: 'basic-mek', [PRO]: 'pro-mek', [MEP]: 'pro-mep', [MIRAS]: 'miras-pro',
+};
 const pk = (id: unknown) => (typeof id === 'string' ? PAKET_KODU[id] ?? id : String(id));
 
 function dunyaKur() {
@@ -558,6 +564,25 @@ function dunyaKur() {
     id: PRO, paketId: 'P-PRO', surumNo: 2, iyzicoPlanKodu: 'plan-pro', iyzicoDenemesizPlanKodu: 'plan-pro-dz',
     iyzicoUrunKodu: 'urun-1', tutar: new Prisma.Decimal(1649), paraBirimi: 'TRY', periyot: 'MONTHLY',
     periyotAdedi: 1, denemeGunu: 30, satistaMi: true,
+  });
+  db.ekle('paket', {
+    id: 'P-MEP', kod: 'pro-mep', ad: 'Pro — MEP', kapsam: 'mep', seviye: 'pro',
+    kullaniciHakki: 3, aylikTeklifHakki: null, dwgAktif: true, aktif: true,
+  });
+  db.ekle('paketSurumu', {
+    id: MEP, paketId: 'P-MEP', surumNo: 2, iyzicoPlanKodu: 'plan-mep', iyzicoDenemesizPlanKodu: 'plan-mep-dz',
+    iyzicoUrunKodu: 'urun-1', tutar: new Prisma.Decimal(2449), paraBirimi: 'TRY', periyot: 'MONTHLY',
+    periyotAdedi: 1, denemeGunu: 30, satistaMi: true,
+  });
+  // Miras (göç) paketi: satış dışı, 5 kişilik — "miras → katalog" düşürmesi.
+  db.ekle('paket', {
+    id: 'P-MIRAS', kod: 'miras-pro', ad: 'Miras Pro', kapsam: 'mechanical', seviye: 'pro',
+    kullaniciHakki: 5, aylikTeklifHakki: null, dwgAktif: true, aktif: false,
+  });
+  db.ekle('paketSurumu', {
+    id: MIRAS, paketId: 'P-MIRAS', surumNo: 1, iyzicoPlanKodu: 'plan-miras', iyzicoDenemesizPlanKodu: null,
+    iyzicoUrunKodu: 'urun-0', tutar: new Prisma.Decimal(0), paraBirimi: 'TRY', periyot: 'YEARLY',
+    periyotAdedi: 1, denemeGunu: 0, satistaMi: false,
   });
 
   const epostalar: Array<{ kime: string; konu: string; paragraflar: string[] }> = [];
@@ -624,6 +649,17 @@ function dunyaKur() {
     });
   }
 
+  /**
+   * Firma hesabı (koltuk kuralının okuduğu alanlar). `dakikaOnce`: katılım
+   * sırası — küçük = daha yeni. Banlı / silinmiş hesap `ek` ile.
+   */
+  function uye(firmaId: string, rol: 'sahip' | 'uye', dakikaOnce: number, ek: Satir = {}): Satir {
+    return db.ekle('user', {
+      firmaId, firmaRol: rol, email: `${rol}-${dakikaOnce}@${firmaId.toLowerCase()}.test`,
+      createdAt: new GercekDate(GercekDate.now() - dakikaOnce * 60_000), deletedAt: null, status: 'active', ...ek,
+    });
+  }
+
   /** Yöneticinin GERÇEK ilk adımı: teklif (fırlatırsa hata döner, fırlatmaz). */
   async function teklif(firmaId: string, paket: string | undefined, an: number, ayAdedi = 12) {
     return saatte(an, async () => {
@@ -672,7 +708,7 @@ function dunyaKur() {
 
   return {
     db, iyz, epostalar, kesimler, abonelik, fatura, havale, erisim, degisim, satinAlma,
-    firma, kartliSatir, havaleSatiri, teklif, onayla, havaleIleOde, oku, karar, olaylar,
+    firma, kartliSatir, havaleSatiri, uye, teklif, onayla, havaleIleOde, oku, karar, olaylar,
     musteriEpostasi, faturaKuyrugu, yoneticiye, epostadaKanca,
   };
 }
@@ -1256,6 +1292,178 @@ async function wBlogu(): Promise<void> {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+//  S — KOLTUK: düşürme ekip üyesini durdurur (Emre kararı, 25.09)
+// ═════════════════════════════════════════════════════════════════════════
+/**
+ * Gerçek koltuk kuralı (`koltukDurumuHesapla` — JwtStrategy her istekte bunu
+ * çağırır): verilen hesaplardan hangileri DURDU (e-postaları).
+ */
+async function duranlar(d: Dunya, hesaplar: Satir[]): Promise<string[]> {
+  const sonuc: string[] = [];
+  for (const h of hesaplar) {
+    const k = await koltukDurumuHesapla(d.db.prisma, {
+      id: h.id, firmaId: h.firmaId, firmaRol: h.firmaRol, createdAt: h.createdAt,
+    });
+    if (k.durduruldu) sonuc.push(h.email);
+  }
+  return sonuc;
+}
+
+/** Onay e-postasının (müşteri) tüm paragrafları tek metin. */
+const onayMetni = (d: Dunya, firmaId: string) =>
+  (d.musteriEpostasi(firmaId).find((e) => /aboneliğiniz uzatıldı/.test(e.konu))?.paragraflar ?? []).join(' ');
+
+async function sBlogu(): Promise<void> {
+  console.log('\n── S · koltuk: düşürmede duran ekip üyesi (yönetici uyarısı + müşteri e-postası) ──');
+  {
+    // Miras 5 kişilik HAVALE satırı; 5 etkin hesap (1 sahip + 4 üye) + banlı ve
+    // silinmiş birer üye. Pro-MEP (3 kişilik) yenilemesi → 2 kişi durur.
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.havaleSatiri('S1', MIRAS, { erisimSonu: new GercekDate(T0 + 60 * GUN) });
+    const sahip = d.uye('S1', 'sahip', 500);
+    const u1 = d.uye('S1', 'uye', 400);
+    const u2 = d.uye('S1', 'uye', 300);
+    const u3 = d.uye('S1', 'uye', 200);
+    const u4 = d.uye('S1', 'uye', 100);
+    d.uye('S1', 'uye', 50, { status: 'banned' });
+    d.uye('S1', 'uye', 40, { deletedAt: new GercekDate(T0 - GUN) });
+    const etkinler = [sahip, u1, u2, u3, u4];
+    const onceki = await duranlar(d, etkinler);
+    check('S1 FIXTURE KANITI: 5 kişilik mirasta 5 etkin hesabın hiçbiri durmuyor (banlı + silinmiş hesap da var)',
+      onceki.length === 0 && d.db.tablo('user').filter((x) => x.firmaId === 'S1').length === 7, `duran=${onceki.join(',')}`);
+
+    const t = await d.teklif('S1', MEP, T0);
+    const u = t.yanit?.uyari;
+    olcum(`S · miras 5 → Pro-MEP 3 teklif yanıtı: uyari=${JSON.stringify(u)}`);
+    check('S2 ⭐ teklif yanıtı yöneticiyi ÖNCEDEN uyarıyor: 5 etkin, yeni sınır 3, 2 kişi durur — teklif REDDEDİLMEDİ',
+      t.id !== null && u?.durdurulacakUyeSayisi === 2 && u?.yeniSinir === 3 && u?.mevcutAktif === 5,
+      `hata=${hataMetni(t.hata)} uyari=${JSON.stringify(u)}`);
+    const mesaj = String(u?.mesaj ?? '');
+    check('S3 uyarının düz metni sayıları ve kimin durduğunu söylüyor (5 etkin · 3 kişilik · en son katılan 2 kişi)',
+      /5 etkin/.test(mesaj) && /3 kişilik/.test(mesaj) && /en son katılan 2 kişi/.test(mesaj), mesaj);
+
+    await d.onayla(t.id!, T0 + GUN);
+    const sonra = await duranlar(d, etkinler);
+    check('S4 ÖLÇÜM: onaydan sonra gerçek koltuk kuralı EN SON katılan 2 üyeyi durduruyor; sahip ve eski üyeler çalışıyor',
+      sonra.join(',') === [u3.email, u4.email].join(','), `duran=${sonra.join(',')}`);
+    const metin = onayMetni(d, 'S1');
+    olcum(`S · onay e-postası: "${metin}"`);
+    // Düzeltme yolu KODDAKİ gibi: Ekip sayfası yalnız firma sahibine görünür
+    // (Sidebar YALNIZ_YONETICIYE); havale satırında paket değişimi self-servis
+    // DEĞİL (A1 `HAVALE` reddi: "bizimle iletişime geçin").
+    check('S5 ⭐ onay e-postası açıkça söylüyor: firma sahibi dahil 3 kişilik · 2 kişinin erişimi durduruldu · en son katılanlar · veriler silinmedi · sahip hesabıyla Ekip sayfası · büyük paket için iletişim',
+      /firma sahibi dahil 3 kişilik/.test(metin) && /2 kişinin erişimi durduruldu/.test(metin) &&
+        /en son katılan/.test(metin) && /silinmedi/.test(metin) && /[Ff]irma sahibi hesabıyla/.test(metin) &&
+        /Ekip sayfası/.test(metin) && /ekipten çıkar/.test(metin) && /iletişime geç/.test(metin),
+      metin);
+    check('S6 onay hiçbir hesabı silmedi ya da değiştirmedi (durdurma türetilir, saklanmaz)',
+      d.db.tablo('user').filter((x) => x.firmaId === 'S1' && x.deletedAt === null && x.status === 'active').length === 5);
+
+    // E-postadaki İKİ düzeltme yolunu ÖLÇ (tahmin değil): (1) bir üyeyi
+    // ekipten çıkarmak (hesap kapanır → etkin sayılmaz) en eski duran üyeyi
+    // açar; (2) paket büyüyünce hepsi açılır.
+    const cikarilan = d.db.tablo('user').find((x) => x.id === u1.id)!;
+    cikarilan.deletedAt = new GercekDate(T0 + 2 * GUN);
+    const cikarinca = await duranlar(d, [sahip, u2, u3, u4]);
+    const satir = d.db.tablo('abonelik').find((r) => r.firmaId === 'S1')!;
+    satir.paketSurumuId = MIRAS;
+    const buyuyunce = await duranlar(d, [sahip, u2, u3, u4]);
+    check('S7 düzeltme yolları gerçekten açıyor: bir üye ekipten çıkınca yalnız en yeni üye durur; paket büyüyünce kimse durmaz',
+      cikarinca.join(',') === u4.email && buyuyunce.length === 0,
+      `çıkarınca=${cikarinca.join(',')} büyüyünce=${buyuyunce.join(',')}`);
+  }
+  {
+    // KART Pro (2 kişilik) + 2 etkin → Basic (1): 1 kişi durur.
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.kartliSatir('S8', PRO, { erisimSonu: new GercekDate(T0 + 12 * GUN) });
+    d.uye('S8', 'sahip', 300);
+    d.uye('S8', 'uye', 100);
+    const t = await d.teklif('S8', BASIC, T0);
+    await d.onayla(t.id!, T0 + SAAT);
+    const metin = onayMetni(d, 'S8');
+    check('S8 kartlı Pro → Basic: yanıtta 2 etkin / sınır 1 / 1 durur; e-postada "1 kişilik" ve "1 kişinin erişimi durduruldu"',
+      t.yanit?.uyari?.durdurulacakUyeSayisi === 1 && t.yanit?.uyari?.yeniSinir === 1 && t.yanit?.uyari?.mevcutAktif === 2 &&
+        /firma sahibi dahil 1 kişilik/.test(metin) && /1 kişinin erişimi durduruldu/.test(metin),
+      `uyari=${JSON.stringify(t.yanit?.uyari)} e-posta="${metin}"`);
+  }
+  {
+    // YÜKSELTME: Basic (1) + 2 etkin (üye ŞU AN durmuş) → Pro (2): uyarı yok.
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.havaleSatiri('S9', BASIC, { erisimSonu: new GercekDate(T0 + 30 * GUN) });
+    d.uye('S9', 'sahip', 300);
+    d.uye('S9', 'uye', 100);
+    const t = await d.teklif('S9', PRO, T0);
+    await d.onayla(t.id!, T0 + SAAT);
+    const metin = onayMetni(d, 'S9');
+    check('S9 yükseltmede uyarı YOK: yanıtta uyari=null, e-postada koltuk cümlesi yok',
+      t.id !== null && t.yanit?.uyari === null && !/erişimi durduruldu/.test(metin) && /uzatıldı/.test(metin),
+      `uyari=${JSON.stringify(t.yanit?.uyari)} e-posta="${metin}"`);
+  }
+  {
+    // AYNI PAKET: Pro (2) + 3 etkin (biri ZATEN durmuş) → Pro yenileme: uyarı yok.
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.havaleSatiri('S10', PRO, { erisimSonu: new GercekDate(T0 + 30 * GUN) });
+    d.uye('S10', 'sahip', 300);
+    d.uye('S10', 'uye', 200);
+    d.uye('S10', 'uye', 100);
+    const t = await d.teklif('S10', PRO, T0);
+    await d.onayla(t.id!, T0 + SAAT);
+    const metin = onayMetni(d, 'S10');
+    check('S10 aynı paketle yenilemede uyarı YOK (önceden duran üye bu işlemin sonucu değil)',
+      t.id !== null && t.yanit?.uyari === null && !/erişimi durduruldu/.test(metin),
+      `uyari=${JSON.stringify(t.yanit?.uyari)} e-posta="${metin}"`);
+  }
+  {
+    // DÜŞÜRME ama sınır aşılmıyor: Pro → Basic, yalnız sahip → uyarı yok.
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.kartliSatir('S11', PRO, { erisimSonu: new GercekDate(T0 + 12 * GUN) });
+    d.uye('S11', 'sahip', 300);
+    d.uye('S11', 'uye', 100, { status: 'banned' });
+    const t = await d.teklif('S11', BASIC, T0);
+    await d.onayla(t.id!, T0 + SAAT);
+    const metin = onayMetni(d, 'S11');
+    check('S11 düşürmede kimse durmuyorsa uyarı YOK (tek etkin hesap; banlı üye sayılmaz)',
+      t.id !== null && t.yanit?.uyari === null && !/erişimi durduruldu/.test(metin),
+      `uyari=${JSON.stringify(t.yanit?.uyari)} e-posta="${metin}"`);
+  }
+  {
+    // ZATEN AŞMIŞ firma düşürülür: Pro (2) + 3 etkin (biri ŞU AN durmuş) → Basic (1).
+    // Uyarı çıkar (bu değişim bir kişiyi daha durdurur) ve TOPLAMI söyler: 2.
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.havaleSatiri('S13', PRO, { erisimSonu: new GercekDate(T0 + 30 * GUN) });
+    const sahip = d.uye('S13', 'sahip', 300);
+    const eski = d.uye('S13', 'uye', 200);
+    const yeni = d.uye('S13', 'uye', 100);
+    const once = await duranlar(d, [sahip, eski, yeni]);
+    const t = await d.teklif('S13', BASIC, T0);
+    await d.onayla(t.id!, T0 + SAAT);
+    const sonra = await duranlar(d, [sahip, eski, yeni]);
+    const metin = onayMetni(d, 'S13');
+    check('S13 sınırı zaten aşmış firmada düşürme: uyarı TOPLAMI söyler (2 durur; 1\'i önceden duruyordu) — e-posta da 2',
+      once.join(',') === yeni.email && sonra.join(',') === [eski.email, yeni.email].join(',') &&
+        t.yanit?.uyari?.durdurulacakUyeSayisi === 2 && t.yanit?.uyari?.mevcutAktif === 3 && t.yanit?.uyari?.yeniSinir === 1 &&
+        /2 kişinin erişimi durduruldu/.test(metin),
+      `önce=${once.join(',')} sonra=${sonra.join(',')} uyari=${JSON.stringify(t.yanit?.uyari)} e-posta="${metin}"`);
+  }
+  {
+    // YENİ FİRMA (satır yok), yalnız sahip → Basic: uyarı yok.
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.firma('S12');
+    d.uye('S12', 'sahip', 300);
+    const t = await d.teklif('S12', BASIC, T0);
+    check('S12 yeni firmada (satır yok, tek sahip) uyarı YOK', t.id !== null && t.yanit?.uyari === null,
+      `uyari=${JSON.stringify(t.yanit?.uyari)}`);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 //  G — YÖNETİCİ GÖRÜNÜMÜ
 // ═════════════════════════════════════════════════════════════════════════
 async function gBlogu(): Promise<void> {
@@ -1325,6 +1533,7 @@ async function main(): Promise<void> {
   await blok('R', rBlogu);
   await blok('A', aBlogu);
   await blok('W', wBlogu);
+  await blok('S', sBlogu);
   await blok('G', gBlogu);
   son();
   kapiBitti = true;

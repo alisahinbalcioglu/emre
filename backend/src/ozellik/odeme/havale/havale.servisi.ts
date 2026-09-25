@@ -5,6 +5,45 @@ import { AbonelikServisi } from '../abonelik/abonelik.servisi';
 import { FaturaServisi } from '../fatura/fatura.servisi';
 import { EpostaServisi } from '../eposta/eposta.servisi';
 import { tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
+import { etkinHesapKosulu } from '../../firma/uyelik-kurallari';
+import { koltukEtkisi } from '../abonelik/yonetici/yonetici-islemi';
+
+/** Düşürmenin koltuk etkisi — sayım `etkinHesapKosulu`, kural `koltukEtkisi`. */
+export interface HavaleKoltukEtkisi {
+  aktifUye: number;
+  yeniHak: number;
+  toplamDurdurulan: number;
+  yeniDurdurulan: number;
+}
+
+/**
+ * Yöneticiye, teklif ANINDA (API yanıtı — havale için yönetici ekranı yok).
+ * Kimin durduğu kodla aynı: sıra önce sahipler, sonra üyeler, katılım
+ * zamanına göre; `max(hak, 1)`i aşan EN SON katılanlar durur
+ * (`uyelik-kurallari.ts` `koltukSirasiKarari`).
+ */
+export function koltukUyarisiMetni(k: HavaleKoltukEtkisi): string {
+  return (
+    `Firmanın ${k.aktifUye} etkin hesabı var; teklifteki paket firma sahibi dahil ${k.yeniHak} kişilik. ` +
+    `Onaylanırsa ekibe en son katılan ${k.toplamDurdurulan} kişinin erişimi durur (verileri silinmez). ` +
+    'Müşteriyle önceden konuşun; teklif yine de geçerlidir.'
+  );
+}
+
+/**
+ * Müşteriye, onay e-postasında. Dil ön yüzdeki `kucultmeUyarisi` ile aynı.
+ * Düzeltme yolları KODDAKİ gibi: Ekip sayfası yalnız firma sahibine görünür
+ * (menü "Ekip"); havale satırında paket değişimi self-servis değil (A1
+ * `HAVALE` reddi) — büyük paket için iletişim.
+ */
+export function koltukEpostaCumlesi(k: Pick<HavaleKoltukEtkisi, 'yeniHak' | 'toplamDurdurulan'>): string {
+  return (
+    `Yeni paketiniz firma sahibi dahil ${k.yeniHak} kişilik. Ekibinizden ${k.toplamDurdurulan} kişinin ` +
+    'erişimi durduruldu (ekibe en son katılanlar); verileri silinmedi. Firma sahibi hesabıyla uygulamadaki ' +
+    'Ekip sayfasından bir üyeyi ekipten çıkararak yer açabilir ya da daha büyük bir paket için bizimle ' +
+    'iletişime geçebilirsiniz.'
+  );
+}
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -46,6 +85,14 @@ import { tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
  *  ödeyince Basic kalıyordu — erişim, koltuk, DWG, fatura kalemi ve müşteri
  *  e-postası hep "Basic" (ölçüldü). Kapısı
  *  `backend/test/havale-teklif-paketi-test.ts`.
+ *
+ *  ⚠ KOLTUK (25.09.2026 — Emre kararı): paket onayda HEMEN değiştiği için
+ *  düşürme, kullanıcı hakkını aşan en son katılan hesapları o an durdurur
+ *  (kural `uyelik-kurallari.ts` `koltukSirasiKarari`, her istekte türetilir).
+ *  Teklif yanıtı yöneticiyi ÖNCEDEN uyarır (`uyari`, teklif reddedilmez);
+ *  onay e-postası müşteriye kaç kişinin durduğunu ve nasıl açılacağını
+ *  söyler. Yalnız BU değişimin durdurduğu biri varsa — yükseltme ve aynı
+ *  paket uyarı üretmez (`koltukEtkisi`). Kapısı aynı dosya, S bloğu.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 @Injectable()
@@ -81,12 +128,36 @@ export class HavaleServisi {
     const surum = p.paketSurumuId
       ? await this.prisma.paketSurumu.findUnique({
           where: { id: p.paketSurumuId },
-          select: { id: true, paket: { select: { kod: true, ad: true } } },
+          select: { id: true, paket: { select: { kod: true, ad: true, kullaniciHakki: true } } },
         })
       : null;
     if (!surum) {
       throw new BadRequestException('Teklifin paketi (paketSurumuId) bulunamadı');
     }
+
+    // ⚠ 25.09 — KOLTUK ÖN BİLGİSİ (Emre kararı): onay paketi HEMEN değiştirir;
+    // düşürme ekibin en son katılanlarını durdurur. Havale için yönetici
+    // ekranı yok, teklif API'den verilir → yanıt bunu ÖNCEDEN söyler ki
+    // yönetici müşteriyle konuşsun. Teklif REDDEDİLMEZ. Bugünkü paket satır
+    // açılmadan ÖNCE okunur: satırı olmayan firmada koltuk kuralı işlemiyordu.
+    const bugunku = await this.prisma.abonelik.findUnique({
+      where: { firmaId: p.firmaId },
+      select: { paketSurumu: { select: { paket: { select: { kullaniciHakki: true } } } } },
+    });
+    const koltuk = await this.koltukEtkisiOku(
+      p.firmaId,
+      bugunku?.paketSurumu?.paket?.kullaniciHakki ?? null,
+      surum.paket.kullaniciHakki,
+    );
+    const uyari =
+      koltuk.yeniDurdurulan > 0
+        ? {
+            durdurulacakUyeSayisi: koltuk.toplamDurdurulan,
+            yeniSinir: koltuk.yeniHak,
+            mevcutAktif: koltuk.aktifUye,
+            mesaj: koltukUyarisiMetni(koltuk),
+          }
+        : null;
 
     const abonelik = await this.abonelikBulYaDaOlustur(
       p.firmaId,
@@ -111,12 +182,18 @@ export class HavaleServisi {
     await this.abonelik.olayYaz(abonelik.id, 'havale.teklif.olusturuldu', {
       aciklama: `${teklifNo} — ${surum.paket.ad}, ${p.ayAdedi} ay, ${tutarYaz(p.tutar)}`,
       aktor: p.olusturanId,
-      veri: { havaleId: kayit.id, teklifNo, paketSurumuId: surum.id },
+      veri: {
+        havaleId: kayit.id,
+        teklifNo,
+        paketSurumuId: surum.id,
+        // Yöneticiye yapılan koltuk uyarısının izi (içerik değil sayı).
+        ...(uyari ? { durdurulacakUye: uyari.durdurulacakUyeSayisi } : {}),
+      },
     });
 
     // Yanıt teklifin paketini taşır: yönetici NEYİ teklif ettiğini görür
-    // (eskiden yanıtta paket yoktu).
-    return { ...kayit, paketSurumu: surum };
+    // (eskiden yanıtta paket yoktu). `uyari` null = kimse durmaz.
+    return { ...kayit, paketSurumu: surum, uyari };
   }
 
   /** 2. Fatura kesildi işaretle (proforma ya da gerçek fatura). */
@@ -216,7 +293,16 @@ export class HavaleServisi {
         .catch((e) => this.logger.error(`Havale faturası kuyruğa alınamadı: ${e}`));
     }
 
-    await this.musteriyeHaberVer(mevcut.abonelikId, sonuc.abonelik.erisimSonu);
+    // ⚠ 25.09 — KOLTUK (Emre kararı): onay paketi HEMEN değiştirdi; düşürme
+    // ekibin en son katılanlarını durdurduysa e-posta bunu AÇIKÇA söyler.
+    // Önceki paket işlemden önce okunan satırdan, yazılan paket işlemin
+    // dönüşünden (işlem gövdesine dokunulmaz).
+    const koltuk = await this.onayKoltukEtkisi(
+      mevcut.abonelik.firmaId,
+      mevcut.abonelik.paketSurumuId,
+      sonuc.abonelik.paketSurumuId,
+    );
+    await this.musteriyeHaberVer(mevcut.abonelikId, sonuc.abonelik.erisimSonu, koltuk);
 
     // ⚠ 24.09 — KARTTAN HAVALEYE GEÇİŞ (Emre kararı: "ikisi birden, onay
     // beklemez"): eski kart aboneliği iyzico'da KAPATILIR; kapatılmasaydı
@@ -410,7 +496,48 @@ export class HavaleServisi {
     return `TKF-${yil}-${String(sayi + 1).padStart(4, '0')}`;
   }
 
-  private async musteriyeHaberVer(abonelikId: string, yeniTarih: Date) {
+  /**
+   * Etkin hesap sayısı + koltuk etkisi. Sayım `etkinHesapKosulu` (ekip ekranı
+   * ve koltuk kuralıyla AYNI tanım: silinmemiş ve banlı olmayan), kural
+   * `koltukEtkisi`.
+   */
+  private async koltukEtkisiOku(
+    firmaId: string,
+    eskiHak: number | null,
+    yeniHak: number,
+  ): Promise<HavaleKoltukEtkisi> {
+    const aktifUye = await this.prisma.user.count({ where: { firmaId, ...etkinHesapKosulu() } });
+    return { aktifUye, yeniHak, ...koltukEtkisi({ aktifUye, eskiHak, yeniHak }) };
+  }
+
+  /**
+   * Onayın koltuk etkisi — müşteri e-postası için. ⚠ ASLA FIRLATMAZ: onay ve
+   * fatura zaten tamam; okuma düşerse koltuk cümlesi yazılmaz, HATA günlüğü.
+   */
+  private async onayKoltukEtkisi(
+    firmaId: string,
+    oncekiPaket: string,
+    yeniPaket: string,
+  ): Promise<HavaleKoltukEtkisi | null> {
+    try {
+      const surumler = await this.prisma.paketSurumu.findMany({
+        where: { id: { in: [oncekiPaket, yeniPaket] } },
+        select: { id: true, paket: { select: { kullaniciHakki: true } } },
+      });
+      const hak = (id: string) => surumler.find((s) => s.id === id)?.paket?.kullaniciHakki;
+      const yeniHak = hak(yeniPaket);
+      if (typeof yeniHak !== 'number') return null;
+      const eskiHak = hak(oncekiPaket);
+      return await this.koltukEtkisiOku(firmaId, typeof eskiHak === 'number' ? eskiHak : null, yeniHak);
+    } catch (e) {
+      this.logger.error(
+        `Havale onayının koltuk etkisi okunamadı (firma=${firmaId}): ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return null;
+    }
+  }
+
+  private async musteriyeHaberVer(abonelikId: string, yeniTarih: Date, koltuk: HavaleKoltukEtkisi | null = null) {
     const ab = await this.prisma.abonelik.findUnique({
       where: { id: abonelikId },
       include: { paketSurumu: { include: { paket: true } } },
@@ -430,6 +557,8 @@ export class HavaleServisi {
         paragraflar: [
           `${firma.ad} için ${ab.paketSurumu.paket.ad} aboneliğiniz ` +
             `${tarihYaz(yeniTarih)} tarihine kadar uzatıldı.`,
+          // YALNIZ bu onayın durdurduğu biri varsa (yükseltme ve aynı paket: yok).
+          ...(koltuk && koltuk.yeniDurdurulan > 0 ? [koltukEpostaCumlesi(koltuk)] : []),
           'Faturanız ayrıca iletilecektir.',
           'İyi çalışmalar.',
         ],
