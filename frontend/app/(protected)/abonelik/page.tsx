@@ -14,6 +14,7 @@ import {
   type PaketGecisi,
 } from '@/ozellik/odeme/paket-degisimi';
 import { DenemeSatiri } from '@/ozellik/odeme/DenemeSatiri';
+import { OneriSeridi } from '@/ozellik/odeme/OneriSeridi';
 import { kucultmeUyarisi } from '@/ozellik/firma/ekip/koltuk-metinleri';
 // ⚠ Paket adı/durum rozeti hesap sayfasıyla AYNI saf modülden: "miras-pro"
 // müşteriye teknik kodla gösterilmez, durum kodu ekran adına çevrilir. İkinci
@@ -236,6 +237,14 @@ export default function AbonelikSayfasi() {
    * zaten kayıtlı karttan yürüyor, iyzico yalnız planı değiştirir. Zamanlama
    * (hemen / dönem sonu) sunucunun kararıdır; ekran onu ÖNCEDEN gösterir.
    */
+  /** Onay penceresini açar — kart ve öneri şeridi AYNI yoldan (A2 Blok 2). */
+  function degisimPenceresiniAc(p: Paket) {
+    setDegisimSonucu(null);
+    setDegisimHatasi(null);
+    setDegisimOnayi(SOZLESME_ONAYI_BASLANGIC);
+    setDegisimHedefi(p);
+  }
+
   async function paketeGec() {
     if (!degisimHedefi) return;
     const onayHatasi = sozlesmeOnayiHatasi(degisimOnayi);
@@ -249,6 +258,9 @@ export default function AbonelikSayfasi() {
       const { data } = await api.post<{ mesaj?: string }>('/abonelik/degistir', {
         paketSurumuId: degisimHedefi.surum.paketSurumuId,
         sozlesmeOnayi: degisimOnayi,
+        // A2 Blok 2: önerilen paketi seçmek ÖNERİYİ KABUL etmektir (kart ya
+        // da şerit fark etmez); sunucu öneriyi iyzico'dan ÖNCE denetler.
+        ...(degisimHedefi.oneri ? { oneriId: degisimHedefi.oneri.id } : {}),
       });
       setDegisimSonucu(typeof data?.mesaj === 'string' ? data.mesaj : 'Paket değişikliğiniz alındı.');
       setDegisimHedefi(null);
@@ -258,6 +270,17 @@ export default function AbonelikSayfasi() {
       await Promise.all([paketleriGetir(), kimligiGetir(), yetenekleriYenile()]);
     } catch (e: any) {
       const m = e?.response?.data?.message ?? e?.response?.data?.mesaj;
+      const kod = e?.response?.data?.kod;
+      // A2 Blok 2 (inceleme D4): öneri artık geçerli değil (geri çekildi, süresi
+      // doldu…). Pencere ESKİ öneriyi taşımaya devam ederse her deneme yine 409
+      // alır ve hız sınırını tüketir — pencere kapanır, kartlar yenilenen
+      // listeden (önerisiz) yeniden açılır.
+      if (typeof kod === 'string' && kod.startsWith('ONERI_')) {
+        setDegisimHedefi(null);
+        setHata(typeof m === 'string' ? m : 'Öneri artık geçerli değil.');
+        void Promise.all([paketleriGetir(), kimligiGetir()]).catch(() => undefined);
+        return;
+      }
       // ⚠ Sunucudan metin gelmediyse (bağlantı koptu, zaman aşımı) sonucu
       // BİLMİYORUZ: değişiklik sunucuda gerçekleşmiş olabilir. "Paketiniz
       // değişmedi" demek o durumda yalan olurdu (inceleme bulgusu 1). Kesin
@@ -518,6 +541,16 @@ export default function AbonelikSayfasi() {
         </div>
       )}
 
+      {/* A2 Blok 2 — yönetici paket önerisi (yalnız GEÇERLİ öneri gelir). */}
+      <OneriSeridi
+        paketler={paketler}
+        yukleniyor={yukleniyor}
+        sahipMi={firmaRol === 'sahip'}
+        mevcutPaketKodu={mevcutPaketKodu ?? null}
+        onIncele={degisimPenceresiniAc}
+        onReddedildi={() => void paketleriGetir()}
+      />
+
       {degisimSonucu && (
         <div role="status" className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
           {degisimSonucu}
@@ -666,10 +699,7 @@ export default function AbonelikSayfasi() {
                       // İSTENMEZ, onay penceresi açılır (küçültme uyarısı da
                       // pencerenin İÇİNDE, aynı sözleşme onayıyla birlikte).
                       if (eylem.tur === 'degistir') {
-                        setDegisimSonucu(null);
-                        setDegisimHatasi(null);
-                        setDegisimOnayi(SOZLESME_ONAYI_BASLANGIC);
-                        setDegisimHedefi(p);
+                        degisimPenceresiniAc(p);
                         return;
                       }
                       // ⚠ Kucultme UYARIDIR, ret DEGIL (R1-Y4): Emre kucultmeyi
@@ -722,6 +752,9 @@ export default function AbonelikSayfasi() {
               {degisimHedefi.ad} paketine geçiş
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">Şu anki paketiniz: {ozet.baslik}</p>
+            {degisimHedefi.oneri && (
+              <p className="mt-2 text-xs text-blue-800">Bu paket MetaPriceX ekibinin önerisi; onaylarsanız öneri kabul edilmiş olur.</p>
+            )}
             <p className="mt-3 text-sm leading-relaxed">
               {degisimOnayMetni({
                 zamanlama: degisimHedefi.degisim.zamanlama,

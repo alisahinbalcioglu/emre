@@ -1,4 +1,4 @@
-import { Equals, IsBoolean, IsString } from 'class-validator';
+import { Equals, IsBoolean, IsOptional, IsString, IsUUID } from 'class-validator';
 
 /**
  * POST /abonelik/degistir govdesi (23.09.2026 — paket degisimi).
@@ -22,4 +22,13 @@ export class AbonelikDegistirDto {
       'Devam edebilmek için Ön Bilgilendirme Formu ve Mesafeli Satış Sözleşmesi onayını işaretlemelisiniz.',
   })
   sozlesmeOnayi: boolean;
+
+  /**
+   * Yonetici onerisinin kabulu (A2 Blok 2). Verilirse oneri kuyrukta,
+   * iyzico'dan ONCE denetlenir (bekliyor mu, bu firmanin mi, ayni paket mi);
+   * onay kapisi YUKARIDAKIYLE AYNI — oneri sozlesme onayinin yerini TUTMAZ.
+   */
+  @IsOptional()
+  @IsUUID()
+  oneriId?: string;
 }

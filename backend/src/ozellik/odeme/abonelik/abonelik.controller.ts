@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, SetMetadata, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, SetMetadata, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import {
   KAPALI_HESAP_IZINLI,
@@ -14,6 +14,7 @@ import { ErisimServisi } from './erisim.servisi';
 import { SatinAlmaServisi } from './satinalma.servisi';
 import { DenemeHakkiServisi } from './deneme-hakki.servisi';
 import { PaketDegisimiServisi } from './paket-degisimi.servisi';
+import { PaketOnerisiServisi } from './yonetici/paket-onerisi.servisi';
 import { AbonelikBaslaDto } from './dto/abonelik-basla.dto';
 import { AbonelikDegistirDto } from './dto/abonelik-degistir.dto';
 
@@ -51,6 +52,7 @@ export class AbonelikController {
     private readonly satinAlma: SatinAlmaServisi,
     private readonly denemeHakki: DenemeHakkiServisi,
     private readonly paketDegisimi: PaketDegisimiServisi,
+    private readonly paketOnerisi: PaketOnerisiServisi,
   ) {}
 
   /**
@@ -66,10 +68,14 @@ export class AbonelikController {
   @Get('paketler')
   async paketler(@CurrentUser() kullanici: unknown) {
     const { firmaId, userId } = kimlikCoz(kullanici);
-    const [paketler, karar] = await Promise.all([
+    const [paketler, karar, oneri] = await Promise.all([
       this.satinAlma.satistakiPaketler(),
       this.denemeHakki.karar({ firmaId, kullaniciId: userId }),
+      this.paketOnerisi.bekleyen(firmaId),
     ]);
+    // A2 Blok 2: yonetici notu yalniz SAHIBE (kabul/ret onun isi). Rol her
+    // istekte veritabanindan okunur (jwt.strategy) — token'daki eski deger degil.
+    const sahip = (kullanici as { firmaRol?: string }).firmaRol === 'sahip';
     // ⚠ 23.09 — KARTIN DUGMESI SUNUCUDAN: "satin al / bu pakete gec / gecilemez
     // (neden)". `degistir` ucuyla AYNI saf karar (`paketDegisimYolu`) — ekran
     // "gec" deyip sunucu reddedemez. Firma bazli oldugu icin BURADA eklenir,
@@ -88,6 +94,17 @@ export class AbonelikController {
         denemeGerekcesi: p.surum.denemeGunu > 0 ? karar.gerekce : null,
       },
       degisim: yollar.get(p.surum.paketSurumuId) ?? { yol: 'satin-al' as const },
+      // A2 Blok 2: bekleyen yonetici onerisi HEDEF paketin satirinda (dizi
+      // bicimi korunur; `degisim` A1'in saf karari olarak kalir).
+      ...(oneri && oneri.hedefPaketSurumuId === p.surum.paketSurumuId
+        ? {
+            oneri: {
+              id: oneri.id,
+              sonGecerlilik: oneri.sonGecerlilik,
+              not: sahip ? oneri.musteriNotu : null,
+            },
+          }
+        : {}),
     }));
   }
 
@@ -155,12 +172,38 @@ export class AbonelikController {
   @Post('degistir')
   async degistir(@CurrentUser() kullanici: unknown, @Body() g: AbonelikDegistirDto) {
     const { firmaId, userId } = kimlikCoz(kullanici);
-    return this.paketDegisimi.degistir({
-      firmaId,
-      kullaniciId: userId,
-      paketSurumuId: g.paketSurumuId,
-      sozlesmeOnayi: g.sozlesmeOnayi,
-    });
+    return this.paketDegisimi.degistir(
+      {
+        firmaId,
+        kullaniciId: userId,
+        paketSurumuId: g.paketSurumuId,
+        sozlesmeOnayi: g.sozlesmeOnayi,
+      },
+      // A2 Blok 2: yonetici onerisinin KABULU ayni uc, ayni cekirdek.
+      g.oneriId ? this.paketOnerisi.kabulKancalari({ firmaId, oneriId: g.oneriId, kullaniciId: userId }) : undefined,
+    );
+  }
+
+  /**
+   * YONETICI ONERISINI REDDET (A2 Blok 2). Paketi degistirmez, yalniz oneriyi
+   * kapatir; kabul `degistir` + `oneriId`dir.
+   * ⚠ Kapilar `degistir` ile ayni gerekceyle: SAHIP + kapali hesapta YOK
+   * (servis rolu kuyrukta veritabanindan yeniden okur).
+   * ⚠ `degistir`den SONRA durur: A1 kapisi (B0b) `degistir`in dekorator
+   * blogunu ONCEKI metodun kapanisindan keser; araya metot girerse bozulur.
+   */
+  @UseGuards(FirmaRolGuard)
+  @FirmaRolu('sahip')
+  @SetMetadata(KAPALI_HESAP_IZINLI, false)
+  @UseGuards(KullaniciHizSiniriGuard)
+  @Throttle({ default: { ttl: 900_000, limit: 10 } })
+  @Post('oneri/:oneriId/reddet')
+  async oneriReddet(
+    @CurrentUser() kullanici: unknown,
+    @Param('oneriId', new ParseUUIDPipe()) oneriId: string,
+  ) {
+    const { firmaId, userId } = kimlikCoz(kullanici);
+    return this.paketOnerisi.reddet({ firmaId, oneriId, kullaniciId: userId });
   }
 
   /**

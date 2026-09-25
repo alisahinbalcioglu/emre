@@ -233,6 +233,9 @@ const EKRANLAR = [
   // 24.09 (A2) — yönetici "Paket işlemleri" penceresi ve yardımcı metinleri.
   'ozellik/odeme/yonetici/yonetici-paket.ts',
   'ozellik/odeme/yonetici/YoneticiPaketPenceresi.tsx',
+  // 24.09 (A2 Blok 2) — müşterinin paket önerisi şeridi ve metinleri.
+  'ozellik/odeme/OneriSeridi.tsx',
+  'ozellik/odeme/paket-onerisi.ts',
   'ozellik/odeme/abonelik-ozeti.ts',
   'ozellik/odeme/fatura-kimligi.ts',
   'ozellik/odeme/telefon-bicim.ts',

@@ -10,7 +10,14 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { gecerliTokenMi, girisSonrasiYol, oturumuYaz } from './oturum';
+import {
+  gecerliTokenMi,
+  girisDonusunuAl,
+  girisDonusunuSakla,
+  girisSonrasiYol,
+  izinliDonusYolu,
+  oturumuYaz,
+} from './oturum';
 
 function sahteDepo() {
   const kutu = new Map<string, string>();
@@ -167,5 +174,87 @@ describe('kaynak kapısı — token yazımı tek yerde', () => {
   it('ÖLÇÜT: tarayıcı gezgini gerçekten dosya buluyor (boş küme yalancı yeşili yok)', () => {
     const hepsi = gez(path.join(KOK, 'ortak'));
     expect(hepsi.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * A2 Blok 2 (24.09.2026) — GİRİŞ DÖNÜŞ YOLU. Firma sahibine giden öneri
+ * e-postası `/abonelik?oneri=<kimlik>` açar; oturum yoksa korumalı alan
+ * `/login`e yollar ve adres sekmede saklanır. AÇIK YÖNLENDİRME YOK.
+ */
+describe('giriş dönüş yolu — yalnız izin listesi, bir kez', () => {
+  const OTURUM = { token: GECERLI, user: { id: 'u', email: 'e', role: 'user' } };
+  const KIMLIK = '11111111-2222-4333-8444-555555555555';
+  const ONCEKI_OTURUM_DEPOSU = Object.prototype.hasOwnProperty.call(g, 'sessionStorage') ? g.sessionStorage : undefined;
+  let oturumDeposu: ReturnType<typeof sahteDepo>;
+  beforeEach(() => {
+    oturumDeposu = sahteDepo();
+    g.sessionStorage = oturumDeposu;
+  });
+  afterAll(() => {
+    if (ONCEKI_OTURUM_DEPOSU === undefined) delete g.sessionStorage;
+    else g.sessionStorage = ONCEKI_OTURUM_DEPOSU;
+  });
+
+  it('izinli: `/abonelik` ve `/abonelik?oneri=<uuid>`', () => {
+    expect(izinliDonusYolu('/abonelik')).toBe('/abonelik');
+    expect(izinliDonusYolu(`/abonelik?oneri=${KIMLIK}`)).toBe(`/abonelik?oneri=${KIMLIK}`);
+  });
+
+  it.each([
+    '//dis.site/abonelik',
+    'https://dis.site/abonelik',
+    'javascript:alert(1)',
+    '/abonelikx',
+    '/abonelik/../admin',
+    '/admin',
+    '/dashboard',
+    `/abonelik?oneri=${KIMLIK}&donus=//dis.site`,
+    `/abonelik?oneri=${KIMLIK}#x`,
+    '/abonelik?oneri=kimlik-degil',
+    '/abonelik\n', // `$` satır sonundan önce eşleşmemeli (güvenlik incelemesi notu)
+    '/\\dis.site', // ters bölü: tarayıcı `/\` → `//` sayar
+    '',
+  ])('⭐ reddedilir (açık yönlendirme yok): %s', (yol) => {
+    expect(izinliDonusYolu(yol)).toBeNull();
+  });
+
+  it('saklanan izinli yol girişten sonra kullanılır ve BİR KEZ okunur', () => {
+    girisDonusunuSakla(`/abonelik?oneri=${KIMLIK}`);
+    expect(girisSonrasiYol(OTURUM)).toBe(`/abonelik?oneri=${KIMLIK}`);
+    expect(girisSonrasiYol(OTURUM)).toBe('/dashboard');
+  });
+
+  it('izinsiz yol SAKLANMAZ ve ESKİ kaydı siler (başka sayfadan düşen oturum eski öneriye gitmesin)', () => {
+    girisDonusunuSakla(`/abonelik?oneri=${KIMLIK}`);
+    girisDonusunuSakla('/dashboard');
+    expect(girisDonusunuAl()).toBeNull();
+  });
+
+  it('depoya elle yazılmış izinsiz değer OKURKEN de reddedilir', () => {
+    oturumDeposu.setItem('girisDonusu', '//dis.site');
+    expect(girisSonrasiYol(OTURUM)).toBe('/dashboard');
+  });
+
+  it('⭐ AÇIKÇA verilen izinsiz dönüş de reddedilir (süzgeç `girisSonrasiYol`un KENDİSİNDE)', () => {
+    expect(girisSonrasiYol(OTURUM, '//dis.site')).toBe('/dashboard');
+    expect(girisSonrasiYol(OTURUM, 'https://dis.site/abonelik')).toBe('/dashboard');
+  });
+
+  it('hesap/koltuk durumu dönüş yolundan ÖNCE gelir', () => {
+    expect(girisSonrasiYol({ ...OTURUM, user: { ...OTURUM.user, hesapKapali: true } }, `/abonelik?oneri=${KIMLIK}`)).toBe('/abonelik');
+    expect(girisSonrasiYol({ ...OTURUM, user: { ...OTURUM.user, koltukDurduruldu: true } }, `/abonelik?oneri=${KIMLIK}`)).toBe(
+      '/koltuk-durduruldu',
+    );
+  });
+
+  it('korumalı alan ve 401 yakalayıcısı `/login`den ÖNCE adresi saklıyor', () => {
+    const onyuz = path.join(__dirname, '../..');
+    const kabuk = fs.readFileSync(path.join(onyuz, 'app/(protected)/layout.tsx'), 'utf8');
+    const api = fs.readFileSync(path.join(onyuz, 'ortak/lib/api.ts'), 'utf8');
+    const sakla = 'girisDonusunuSakla(window.location.pathname + window.location.search);';
+    expect(kabuk.split(sakla).length - 1).toBe(2);
+    expect(api.indexOf(sakla)).toBeGreaterThan(-1);
+    expect(api.indexOf(sakla)).toBeLessThan(api.indexOf("window.location.href = '/login';"));
   });
 });

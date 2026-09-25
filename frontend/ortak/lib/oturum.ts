@@ -64,7 +64,7 @@ export function oturumuYaz(data: unknown): OturumYaniti {
  * "yoneticiniz paketi yukseltmeli" okur ve hesabinin KAPALI oldugunu hic
  * ogrenemezdi.
  */
-export function girisSonrasiYol(data: OturumYaniti): string {
+export function girisSonrasiYol(data: OturumYaniti, donus: string | null = girisDonusunuAl()): string {
   // ── 22.09.2026 (Emre karari): AYRI GERI DONUS EKRANI KALDIRILDI ──────
   // Eskiden `/hesap-kapali` diye TEK amacli bir sayfa vardi. Emre'nin
   // gerekcesi: "ikinci bir arayuze hic gerek yok — 30 gun boyunca mail ve
@@ -73,7 +73,60 @@ export function girisSonrasiYol(data: OturumYaniti): string {
   // ekrandan bir dugmeyle gostermek araya gereksiz bir adim koyuyordu.
   // Kapatma cumlesi ve imha tarihi kaybolmadi — `KapaliHesapSeridi`ne tasindi.
   if (data.user?.hesapKapali === true) return '/abonelik';
-  return data.user?.koltukDurduruldu === true ? '/koltuk-durduruldu' : '/dashboard';
+  if (data.user?.koltukDurduruldu === true) return '/koltuk-durduruldu';
+  // A2 Blok 2: e-postadaki oneri baglantisi girisle KAYBOLMAZ — ama yalniz
+  // izin listesindeki yol (acik yonlendirme YOK). Hesap/koltuk durumu ONCE.
+  return izinliDonusYolu(donus) ?? '/dashboard';
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  GIRIS DONUS YOLU (24.09.2026, A2 Blok 2 — yonetici paket onerisi)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  Firma sahibine giden oneri e-postasi `/abonelik?oneri=<kimlik>` acar.
+ *  Oturum yoksa (ya da suresi dolmussa) korumali alan `/login`e yollar;
+ *  giristen sonra bu adres KAYBOLMASIN diye sekmede (`sessionStorage`)
+ *  saklanir ve `girisSonrasiYol` onu BIR KEZ okur. Parola, iki adimli kod ve
+ *  sirket girisi (dis yonlendirme) dallarinin HEPSI ayni sekmede kalir.
+ *
+ *  ⚠ ACIK YONLENDIRME YOK: yalniz `/abonelik` ya da `/abonelik?oneri=<uuid>`.
+ *  Baska her deger (baska yol, baska parametre, `//dis.site`, `javascript:`)
+ *  hem YAZARKEN hem OKURKEN reddedilir.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+const DONUS_ANAHTARI = 'girisDonusu';
+const IZINLI_DONUS =
+  /^\/abonelik(\?oneri=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$/i;
+
+/** Izin listesindeki yol ise kendisi, degilse `null`. */
+export function izinliDonusYolu(yol: unknown): string | null {
+  return typeof yol === 'string' && IZINLI_DONUS.test(yol) ? yol : null;
+}
+
+/**
+ * Korumali alan `/login`e yollamadan ONCE cagirir. Izinli degilse eski kaydi
+ * SILER — baska bir sayfadan dusulen oturum eski oneri adresine gitmesin.
+ */
+export function girisDonusunuSakla(yol: string): void {
+  try {
+    const izinli = izinliDonusYolu(yol);
+    if (izinli) sessionStorage.setItem(DONUS_ANAHTARI, izinli);
+    else sessionStorage.removeItem(DONUS_ANAHTARI);
+  } catch {
+    // Depo kapali (gizli pencere, sunucu tarafi): donus yolu yalniz kaybolur.
+  }
+}
+
+/** Saklanan yolu BIR KEZ okur ve siler; izinli degilse `null`. */
+export function girisDonusunuAl(): string | null {
+  try {
+    const yol = sessionStorage.getItem(DONUS_ANAHTARI);
+    sessionStorage.removeItem(DONUS_ANAHTARI);
+    return izinliDonusYolu(yol);
+  } catch {
+    return null;
+  }
 }
 
 /**
