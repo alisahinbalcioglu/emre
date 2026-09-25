@@ -853,8 +853,20 @@ export class AbonelikServisi {
     }
     if (ab.paketSurumuId === surum.id) return;
 
+    // ⚠ 25.09 — YALNIZ KART SATIRI: havale onayı artık etkin paketi TEKLİFİN
+    // paketine yazar (`HavaleServisi.odenenPaketiYaz`) ve kart kodu satırda
+    // kalır. Webhook durum geçişini onaydan ÖNCE yapıp buraya onaydan SONRA
+    // gelirse taze okuma HAVALE satırını görür; koşulsuz yazma havaleyle
+    // ödenmiş paketi kartın eski planına geri çekerdi (ölçüldü:
+    // `test:havale-teklif-paketi` yarış bloğu). Havale dalı (`tahsilatBasarili`
+    // başı) hizalamaya hiç gelmez; bu koşul yarış içindir (24.09 `kosul` ikizi).
     const sonuc = await this.prisma.abonelik.updateMany({
-      where: { id: ab.id, paketSurumuId: ab.paketSurumuId, iyzicoAbonelikKodu: webhookKodu },
+      where: {
+        id: ab.id,
+        paketSurumuId: ab.paketSurumuId,
+        iyzicoAbonelikKodu: webhookKodu,
+        odemeYontemi: OdemeYontemi.KART,
+      },
       data: { paketSurumuId: surum.id, planliPaketSurumuId: null, odenenPaketSurumuId: null },
     });
     if (sonuc.count === 0) return;

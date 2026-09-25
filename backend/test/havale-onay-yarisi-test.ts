@@ -166,7 +166,11 @@ const ILISKILER: Record<string, Record<string, { model: string; yerel: string }>
     firma: { model: 'firma', yerel: 'firmaId' },
   },
   paketSurumu: { paket: { model: 'paket', yerel: 'paketId' } },
-  havaleOdemesi: { abonelik: { model: 'abonelik', yerel: 'abonelikId' } },
+  havaleOdemesi: {
+    abonelik: { model: 'abonelik', yerel: 'abonelikId' },
+    // 25.09 teklif paketi: teklif paketini taşır, `bekleyenler` onu da döndürür.
+    paketSurumu: { model: 'paketSurumu', yerel: 'paketSurumuId' },
+  },
   fatura: { abonelik: { model: 'abonelik', yerel: 'abonelikId' } },
 };
 
