@@ -15,6 +15,8 @@
  *     kurucu tip bilgisi `undefined` kalır). Mutabakat yeniden dışa verir.
  *   · `siparisiBul` — gövdedeki kodun iyzico listesindeki BİREBİR karşılığı.
  *   · `tahsilatBasarisizligiKarari` — REDDEDİLDİ Mİ (`tahsilatBasarisiz`).
+ *   · `yenidenDenemeHedefi` — ANLIK yeniden denemenin (26.09) hedef siparişi:
+ *     bildirimlerdeki adaylardan iyzico'nun listesinde doğrulanan.
  *
  *  ÖLÇÜLDÜ (20.08 sandbox, docs/adim0-tutanak/adim0-ek-cikti.json):
  *   · ödenmiş sipariş: `orderStatus: 'SUCCESS'` + `paymentAttempts[{paymentStatus: 'SUCCESS'}]`;
@@ -136,4 +138,47 @@ export function tahsilatBasarisizligiKarari(
     return { karar: 'KANITLI', gerekce: `sipariş reddedildi (${siparisDurumu}), abonelik ${abonelik}` };
   }
   return { karar: 'KANITSIZ', gerekce: `sipariş ${siparisDurumu}, reddedilmiş çekim yok; abonelik ${abonelik}` };
+}
+
+/** Anlık yeniden denemenin hedefi: dene / zaten ödenmiş / doğrulanamadı. */
+export type DenemeHedefi =
+  | { tur: 'dene'; kod: string; gerekce: string }
+  | { tur: 'odenmis'; kod: string; gerekce: string }
+  | { tur: 'yok'; gerekce: string };
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  ANLIK YENİDEN DENEMENİN HEDEFİ (26.09.2026) — SAF
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Adaylar: bu aboneliğin başarısızlık BİLDİRİMLERİNDEKİ sipariş kodları,
+ *  YENİDEN ESKİYE. Bildirim kanıt DEĞİLDİR (uç açık, imza zorunlu değil):
+ *  sahte, eskimiş ya da sonradan ödenmiş olabilir — merdivenin
+ *  `sonBasarisizSiparis`i en yeni bildirimi SORMADAN çeker. Para çeken anlık
+ *  deneme karar vermeden iyzico'nun KENDİ listesine bakar:
+ *   · listede OLMAYAN aday atlanır (sahte ya da başka aboneliğin kodu);
+ *   · listede olan İLK (en yeni) aday karar verir:
+ *       ödenmiş               → `odenmis` (bekleyen ödeme yok; başarı yolu
+ *                               kuyruğa yazılır, yeniden ÇEKİLMEZ);
+ *       ödenmemiş + KANITLI   → `dene`;
+ *       ödenmemiş + KANITSIZ  → `yok` (ret doğrulanamadı; para çekilmez);
+ *   · hiçbiri listede değil  → `yok`.
+ *  ⚠ "Listede ve ödenmemiş" TEK BAŞINA yetmez: ACTIVE abonelikte denemesiz
+ *  WAITING sipariş olur (`tahsilatBasarisizligiKarari` kural 4) — ret kararı
+ *  aynı fonksiyondan, ikiz kural yok.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+export function yenidenDenemeHedefi(detay: unknown, adaylar: readonly unknown[]): DenemeHedefi {
+  const d = detay && typeof detay === 'object' ? (detay as Record<string, unknown>) : {};
+  const siparisler = Array.isArray(d.orders) ? (d.orders as unknown[]) : undefined;
+  for (const aday of adaylar) {
+    const siparis = siparisiBul(siparisler, aday);
+    if (!siparis) continue;
+    const kod = aday as string;
+    if (odenmisSiparisMi(siparis)) return { tur: 'odenmis', kod, gerekce: `sipariş ${kod} iyzico'da ödenmiş` };
+    const k = tahsilatBasarisizligiKarari(detay, kod);
+    return k.karar === 'KANITLI'
+      ? { tur: 'dene', kod, gerekce: k.gerekce }
+      : { tur: 'yok', gerekce: `sipariş ${kod}: ${k.gerekce}` };
+  }
+  return { tur: 'yok', gerekce: `${adaylar.length} adayın hiçbiri iyzico listesinde yok` };
 }

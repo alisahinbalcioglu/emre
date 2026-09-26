@@ -483,6 +483,8 @@ function dunyaKur() {
     denemeHakki,
     { yollar: async () => new Map() } as any,
     { bekleyen: async () => null } as any,
+    // 26.09: anlık ödeme denemesi — bu kapının konusu değil (test:aninda-tahsilat).
+    {} as any,
   );
 
   const firma = (id: string, telefon: string | null = null) => db.ekle('firma', { id, ad: id, telefon });

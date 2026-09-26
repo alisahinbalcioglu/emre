@@ -1010,7 +1010,7 @@ async function nBlogu(): Promise<void> {
   {
     const cagrilar: any[] = [];
     const satinAlmaStub = { iptalEt: async (...a: any[]) => void cagrilar.push(a) } as any;
-    const ctrl = new AbonelikController({} as any, satinAlmaStub, {} as any, {} as any, {} as any);
+    const ctrl = new AbonelikController({} as any, satinAlmaStub, {} as any, {} as any, {} as any, {} as any);
     await ctrl.iptal({ id: 'u1', firmaId: 'F1' }, { neden: 'pahalı' });
     check('N1 ⭐ müşterinin "Aboneliğimi iptal et" ucu onay bayrağını VERİR',
       cagrilar.length === 1 && cagrilar[0][0] === 'F1' && cagrilar[0][3]?.musteriyeBildir === true, JSON.stringify(cagrilar));

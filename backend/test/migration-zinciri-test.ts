@@ -267,6 +267,18 @@ async function main() {
     JSON.stringify(hk),
   );
 
+  // ── Z3e (26.09): tahsilat denemesi kirasi — BOS baslar (deneme yok) ────
+  const kira = await db.query<{ column_name: string; is_nullable: string; column_default: string | null }>(
+    `SELECT column_name, is_nullable, column_default FROM information_schema.columns
+     WHERE table_name='Abonelik' AND column_name='tahsilatKirasi'`,
+  );
+  const kk = kira.rows[0];
+  check(
+    'Z3e Abonelik.tahsilatKirasi NULL olabilir ve varsayilani YOK (deploy aninda hicbir satirin denemesi kilitli sayilmaz)',
+    !!kk && kk.is_nullable === 'YES' && kk.column_default === null,
+    JSON.stringify(kk),
+  );
+
   // ═══════════════════════════════════════════════════════════════════════
   //  B* — BACKFILL SOZU: "hicbir mevcut kullanicinin erisimi kesilmez"
   // ═══════════════════════════════════════════════════════════════════════

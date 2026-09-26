@@ -125,6 +125,7 @@
     "test:odeme-imha": "ts-node test/odeme-imha-test.ts",
     "test:dunning-toparlandi": "ts-node test/dunning-toparlandi-test.ts",
     "test:kart-guncelleme": "ts-node test/kart-guncelleme-test.ts",
+    "test:aninda-tahsilat": "ts-node test/aninda-tahsilat-test.ts",
     "test:havale-onay-yarisi": "ts-node test/havale-onay-yarisi-test.ts",
     "test:fatura-kimligi": "ts-node test/fatura-kimligi-kapisi-test.ts",
     "test:deneme-hakki": "ts-node test/deneme-hakki-test.ts",

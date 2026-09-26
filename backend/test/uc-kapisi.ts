@@ -137,6 +137,7 @@ const UCRETSIZ: Record<string, Muafiyet> = {
   'POST /abonelik/oneri/:oneriId/reddet': ['ODEME', 'Yönetici paket önerisini reddetme; paketi değiştirmez, ödemesi geciken firma da reddedebilmeli.'],
   'POST /abonelik/donus': ['ODEME', 'iyzico 3-D dönüşü; ödeme burada sonuçlanır.'],
   'POST /abonelik/kart-guncelle': ['ODEME', 'Kartı geçersizleşen firma kartını değiştiremezse hiç ödeyemez.'],
+  'POST /abonelik/odeme-tekrar-dene': ['ODEME', 'Kartını güncelleyen askıdaki/kısıtlı firmanın bekleyen ödemesini hemen denetir — kapanırsa firma askıdan ÇIKAMAZ (26.09).'],
   'POST /abonelik/iptal': ['ODEME', 'İptal hakkı ödeme durumuna bağlanamaz (tüketici hakkı).'],
   'POST /abonelik/iyzico-donus': ['ODEME', 'iyzico çapraz-site dönüş POST\'u; kimlik token\'ın kendisidir, oturum yok.'],
   // 25.09: kart güncelleme dönüşü — `kartGuncellemeFormu`nun callbackUrl'i.

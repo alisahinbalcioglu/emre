@@ -217,6 +217,9 @@ async function main() {
     'POST /api/abonelik/kart-guncelle',
     // 25.09: kart formunun callbackUrl'i bu yol — kayitli degilse iyzico 404 alir.
     'POST /api/abonelik/iyzico-kart-donus',
+    // 26.09: kart guncellenince bekleyen odemeyi hemen deneyen OTURUMLU uc —
+    // DI grafigi (Dunning → AbonelikController) onyuklemede cozulmeli.
+    'POST /api/abonelik/odeme-tekrar-dene',
     'POST /api/abonelik/iptal',
   ];
   for (const b of beklenen) {

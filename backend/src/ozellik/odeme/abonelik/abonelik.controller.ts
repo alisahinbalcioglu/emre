@@ -15,6 +15,7 @@ import { SatinAlmaServisi } from './satinalma.servisi';
 import { DenemeHakkiServisi } from './deneme-hakki.servisi';
 import { PaketDegisimiServisi } from './paket-degisimi.servisi';
 import { PaketOnerisiServisi } from './yonetici/paket-onerisi.servisi';
+import { DunningServisi } from '../dunning/dunning.servisi';
 import { AbonelikBaslaDto } from './dto/abonelik-basla.dto';
 import { AbonelikDegistirDto } from './dto/abonelik-degistir.dto';
 import { KartGuncelleDto } from './dto/kart-guncelle.dto';
@@ -54,6 +55,7 @@ export class AbonelikController {
     private readonly denemeHakki: DenemeHakkiServisi,
     private readonly paketDegisimi: PaketDegisimiServisi,
     private readonly paketOnerisi: PaketOnerisiServisi,
+    private readonly dunning: DunningServisi,
   ) {}
 
   /**
@@ -237,6 +239,26 @@ export class AbonelikController {
   async kartGuncelle(@CurrentUser() kullanici: unknown, @Body() g: KartGuncelleDto) {
     const { firmaId } = kimlikCoz(kullanici);
     return this.satinAlma.kartGuncellemeFormu(firmaId, g?.abonelikId);
+  }
+
+  /**
+   * BEKLEYEN ODEMEYI SIMDI DENE (26.09.2026, Emre karari): kart guncelleme
+   * sonuc sayfasi (`/abonelik/kart?sonuc=guncellendi`) cagirir. Kurallar ve
+   * TAM BIR KEZ `DunningServisi.anindaDene`de (kira).
+   * ⚠ OTURUMLU ve SAHIP: para ceken is. iyzico'nun kart donus ucu oturumsuz ve
+   * capraz-sitedir — tahsilati ORADAN tetiklemek sahte bir POST'a cekim
+   * yaptirmak olurdu.
+   * ⚠ HIZ SINIRI (kullanici basina 15 dk'da 6): kira zaten tek cekime izin
+   * verir; sinir kiraya carpan tekrarlarin (yenileme) iyzico okumasini seyreltir.
+   */
+  @UseGuards(FirmaRolGuard)
+  @FirmaRolu('sahip')
+  @UseGuards(KullaniciHizSiniriGuard)
+  @Throttle({ default: { ttl: 900_000, limit: 6 } })
+  @Post('odeme-tekrar-dene')
+  async odemeyiTekrarDene(@CurrentUser() kullanici: unknown) {
+    const { firmaId } = kimlikCoz(kullanici);
+    return this.dunning.anindaDene(firmaId);
   }
 
   /** Iptal — erisim DONEM SONUNA kadar surer. */

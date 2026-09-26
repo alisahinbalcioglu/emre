@@ -1541,6 +1541,16 @@ model Abonelik {
   sonDeneme       DateTime?
   kisitlandi      DateTime? // salt-okunur moda gecis ani
 
+  /// TAHSILAT DENEMESI KIRASI (26.09.2026). iyzico'ya yeniden tahsilat
+  /// (`/operation/retry`) gonderen HER yol once bu alani KOSULLU yazar:
+  /// `null` ya da gecmisse yazan kazanir, digeri 0 satir gorur ve iyzico'ya
+  /// GITMEZ. Iki yol ayni kirayi alir: dunning merdiveni ve kartini guncelleyen
+  /// musterinin anlik denemesi — cift tik, sayfa yenileme ve ayni anda kosan
+  /// tarama cift cekim yapamaz. Deger = kiranin bittigi an; sonucu bilinmeyen
+  /// ya da basarili denemeden sonra uzun tutulur (sureler
+  /// `dunning/tahsilat-kirasi.ts`). NULL = deneme yok.
+  tahsilatKirasi DateTime?
+
   /// Musteri iptal etti — donem sonuna kadar erisim SURER.
   iptalTalebi DateTime?
   iptalNedeni String?
