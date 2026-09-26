@@ -59,13 +59,30 @@ export const KART_METINLERI = {
   hazirlaniyor: 'Kart güncelleme formu hazırlanıyor…',
   guncellendiBaslik: 'Kartınız güncellendi',
   guncellendiMetin: "Yeni kartınız iyzico'da kayıtlı; sonraki ödemeleriniz bu karttan alınır.",
-  bekleyenOdeme:
-    'Bekleyen ödemeniz kart güncellemesiyle hemen çekilmez. Ödemeniz alındığında ' +
-    'hesabınız açılır ve size e-postayla haber veririz; birkaç gün içinde e-posta ' +
-    'gelmezse bizimle iletişime geçin.',
-  askidaOdeme:
-    'Askıya alınmış aboneliklerde ödeme kendiliğinden yeniden denenmez. Ödemenizin ' +
-    'alınması ve hesabınızın açılması için bizimle iletişime geçin.',
+  odemeDeneniyor: 'Bekleyen ödemeniz yeni kartınızdan deneniyor…',
+  odemeAlindi:
+    'Bekleyen ödemeniz yeni kartınızdan alındı. Hesabınız bir dakika içinde tam erişime döner; ' +
+    'onay e-postası gönderiyoruz.',
+  odemeIletildi:
+    "Bekleyen ödemeniz için tahsilat isteği iyzico'ya iletildi. Sonuç birkaç dakika içinde " +
+    'belli olur; ödeme alındığında hesabınız açılır ve size e-postayla haber veririz.',
+  odemeBelirsiz:
+    "Bekleyen ödemeniz denendi ama iyzico'dan yanıt gelmedi. Ödeme alındıysa hesabınız açılır " +
+    've size e-postayla haber veririz. Çift çekim olmaması için ödeme bugün yeniden denenmeyecek.',
+  odemeBaglantiKoptu:
+    'Ödeme sonucunu şu an alamadık. Ödeme alındıysa hesabınız açılır ve size e-postayla haber ' +
+    'veririz; birkaç dakika içinde değişiklik olmazsa bu sayfayı yenileyin.',
+  odemeReddedildiBaslik: 'Ödeme alınamadı',
+  odemeReddedildi: 'Kartınız güncellendi ama bekleyen ödeme yeni kartınızdan da alınamadı',
+  odemeReddedildiSonu: 'Başka bir kartla yeniden deneyebilirsiniz.',
+  odemeKisaSureOnce:
+    'Ödemeniz kısa süre önce denendi. Birkaç dakika sonra bu sayfayı yenileyerek yeniden deneyebilirsiniz.',
+  odemeSonucBekleniyor:
+    'Ödemeniz kısa süre önce denendi; sonucu size e-postayla bildireceğiz. Çift çekim olmaması için ' +
+    'şimdilik yeniden denenmeyecek.',
+  odemeYapilamadiBaslik: 'Ödeme yeniden denenemedi',
+  odemeYapilamadi:
+    'Kartınız güncellendi ama bekleyen ödemenizi şu an yeniden deneyemedik. Lütfen bizimle iletişime geçin.',
   donusHatasiBaslik: 'Kart güncellenemedi',
   donusHatasiMetin: 'Kart güncelleme tamamlanamadı. Formu yeniden açıp tekrar deneyin.',
   formHatasiBaslik: 'Kart güncelleme formu açılamadı',
@@ -82,23 +99,121 @@ export const KART_METINLERI = {
 } as const;
 
 /**
- * "Kartınız güncellendi" açıklaması — abonelik durumuna göre (erişim kararı).
- *
- * ⚠ DÜRÜSTLÜK (inceleme H1, 25.09): kart güncellemesi bekleyen ödemeyi
- * ÇEKMEZ. iyzico başarısız tahsilatı kendiliğinden tekrarlamaz; tekrarı
- * dunning merdiveni yapar, yalnız belli günlerde (varsayılan 3., 7., 20.).
- * 30. günde ASKIDA'ya geçen abonelik bir daha denenmez. Bu ekran "hemen
- * açılır" DEMEZ. Durum henüz gelmediyse (yükleniyor) yalnız ilk cümle.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  BEKLEYEN ÖDEMENİN ANLIK DENEMESİ (26.09.2026, Emre kararı)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  25.09'da kart güncellemesi bekleyen ödemeyi ÇEKMİYORDU (yeniden deneme
+ *  yalnız dunning merdiveninde, ASKIDA'da hiç) ve ekran bunu söylüyordu.
+ *  Artık kart dönüşü (`?sonuc=guncellendi`) oturumlu `POST /abonelik/odeme-
+ *  tekrar-dene`yi BİR KEZ çağırır; bekleyen ödeme yoksa sunucu `gerekmiyor`
+ *  der. TAM BİR KEZ sunucudadır (kira, `backend/.../dunning/tahsilat-
+ *  kirasi.ts`): yenileme ve çift tık ikinci çekimi yapamaz.
+ *  Ekran yalnız SUNUCUNUN söylediğini söyler — "alındı" ancak iyzico siparişi
+ *  ödenmiş gösterdiyse gelir.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
-export function guncellendiMetni(durum: string | null | undefined): string {
-  switch (durum) {
-    case 'ODEME_BEKLIYOR':
-    case 'KISITLI':
-      return `${KART_METINLERI.guncellendiMetin} ${KART_METINLERI.bekleyenOdeme}`;
-    case 'ASKIDA':
-      return `${KART_METINLERI.guncellendiMetin} ${KART_METINLERI.askidaOdeme}`;
+
+/** Sunucunun sonucu (`AnindaDenemeSonucu`) + istemcinin kendi iki hâli. */
+export type OdemeDenemesi =
+  | { sonuc: 'alindi' | 'iletildi' | 'belirsiz' | 'gerekmiyor' | 'yapilamadi' }
+  | { sonuc: 'reddedildi'; mesaj: string }
+  | { sonuc: 'zaten-deneniyor'; kiraBitis: string }
+  /** İstemci: hız sınırı (429) — sunucu denemedi. */
+  | { sonuc: 'sinir' }
+  /** İstemci: yanıt gelmedi (zaman aşımı, ağ) — sunucu denemiş olabilir. */
+  | { sonuc: 'baglantiKoptu' };
+
+/**
+ * Sunucu hedefi iyzico'ya sorar, çekimi dener ve sonucu yeniden sorar — her
+ * çağrı ≤ 20 sn (`IYZICO_ZAMAN_ASIMI_MS`). Genel 30 sn sınırı (`api.ts`)
+ * yetmez: yanıtı beklemeden bırakan sayfa "sonuç alınamadı" derdi.
+ */
+export const ODEME_DENEMESI_ZAMAN_ASIMI_MS = 75_000;
+
+/** Yanıtı doğrular; tanınmayan biçim "yapılamadı" sayılır — sonuç uydurulmaz. */
+export function odemeDenemesiOku(veri: unknown): OdemeDenemesi {
+  const v = veri && typeof veri === 'object' ? (veri as Record<string, unknown>) : {};
+  switch (v.sonuc) {
+    case 'alindi':
+    case 'iletildi':
+    case 'belirsiz':
+    case 'gerekmiyor':
+    case 'yapilamadi':
+      return { sonuc: v.sonuc };
+    case 'reddedildi':
+      return { sonuc: 'reddedildi', mesaj: typeof v.mesaj === 'string' ? v.mesaj.trim() : '' };
+    case 'zaten-deneniyor':
+      return typeof v.kiraBitis === 'string' && !Number.isNaN(Date.parse(v.kiraBitis))
+        ? { sonuc: 'zaten-deneniyor', kiraBitis: v.kiraBitis }
+        : { sonuc: 'yapilamadi' };
     default:
-      return KART_METINLERI.guncellendiMetin;
+      return { sonuc: 'yapilamadi' };
+  }
+}
+
+/**
+ * İstek hatası → sonuç. Yanıt YOKSA (zaman aşımı, ağ) sunucu çekimi denemiş
+ * olabilir: `baglantiKoptu` (yenilemek güvenli — kira ikinci çekimi keser).
+ * Yanıt VARSA çekim yapılmadı: 429 → `sinir`; 403 (sahip değil) → `gerekmiyor`
+ * (bu kişi kart güncellemedi, ödeme onun işi değil); diğeri → `yapilamadi`.
+ */
+export function odemeDenemesiHatasi(hata: unknown): OdemeDenemesi {
+  const yanit = (hata as { response?: { status?: unknown } } | null)?.response;
+  if (!yanit) return { sonuc: 'baglantiKoptu' };
+  if (yanit.status === 429) return { sonuc: 'sinir' };
+  if (yanit.status === 403) return { sonuc: 'gerekmiyor' };
+  return { sonuc: 'yapilamadi' };
+}
+
+export interface OdemeGorunumu {
+  ton: 'basari' | 'bilgi' | 'hata';
+  baslik: string;
+  metin: string;
+  /** "Formu yeniden aç": kart reddettiyse başka bir kartla denemek için. */
+  yenidenAc: boolean;
+  /** Başarı yolu işlenince erişim değişir: yetenekler kısa süre tazelenir. */
+  erisimiTazele: boolean;
+}
+
+/** Kira bu kadar ya da daha az kaldıysa "birkaç dakika sonra yeniden deneyin" denir (ret kirası 10 dk). */
+const KISA_KIRA_MS = 15 * 60_000;
+
+/** Sonuç sayfasının görünümü; `null` = deneme sürüyor. SAF. */
+export function odemeDenemesiGorunumu(o: OdemeDenemesi | null, simdiMs: number): OdemeGorunumu {
+  const gorunum = (ton: OdemeGorunumu['ton'], metin: string, ek: Partial<OdemeGorunumu> = {}): OdemeGorunumu => ({
+    ton, baslik: KART_METINLERI.guncellendiBaslik, metin, yenidenAc: false, erisimiTazele: false, ...ek,
+  });
+  if (!o) return gorunum('bilgi', KART_METINLERI.odemeDeneniyor);
+  switch (o.sonuc) {
+    case 'gerekmiyor':
+      return gorunum('basari', KART_METINLERI.guncellendiMetin);
+    case 'alindi':
+      return gorunum('basari', KART_METINLERI.odemeAlindi, { erisimiTazele: true });
+    case 'iletildi':
+      return gorunum('basari', KART_METINLERI.odemeIletildi, { erisimiTazele: true });
+    case 'belirsiz':
+      return gorunum('bilgi', KART_METINLERI.odemeBelirsiz, { erisimiTazele: true });
+    case 'baglantiKoptu':
+      return gorunum('bilgi', KART_METINLERI.odemeBaglantiKoptu, { erisimiTazele: true });
+    case 'sinir':
+      return gorunum('bilgi', KART_METINLERI.odemeKisaSureOnce);
+    case 'zaten-deneniyor':
+      return gorunum(
+        'bilgi',
+        Date.parse(o.kiraBitis) - simdiMs <= KISA_KIRA_MS
+          ? KART_METINLERI.odemeKisaSureOnce
+          : KART_METINLERI.odemeSonucBekleniyor,
+      );
+    case 'reddedildi':
+      return gorunum(
+        'hata',
+        `${KART_METINLERI.odemeReddedildi}${o.mesaj ? `: ${o.mesaj.replace(/[.\s]+$/, '')}` : ''}. ` +
+          KART_METINLERI.odemeReddedildiSonu,
+        { baslik: KART_METINLERI.odemeReddedildiBaslik, yenidenAc: true },
+      );
+    case 'yapilamadi':
+    default:
+      return gorunum('hata', KART_METINLERI.odemeYapilamadi, { baslik: KART_METINLERI.odemeYapilamadiBaslik });
   }
 }
 

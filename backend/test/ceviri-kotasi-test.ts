@@ -281,6 +281,9 @@ async function baglanti(): Promise<void> {
     // 24.09 (A2 Blok 2): bekleyen yönetici önerisi — bu kapının konusu değil
     // (öneri yok); önerinin kendi kapısı test:yonetici-paket.
     { bekleyen: async () => null } as any,
+    // 26.09: anlık ödeme denemesi (DunningServisi) — bu kapının konusu değil;
+    // kendi kapısı test:aninda-tahsilat.
+    {} as any,
   );
   const donen = (await abonelikUcu.paketler({ id: 'u1', firmaId: 'f1' })) as any[];
   check(

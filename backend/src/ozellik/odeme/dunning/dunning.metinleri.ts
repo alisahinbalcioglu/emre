@@ -47,7 +47,8 @@ export const DUNNING_METINLERI: Record<
       'Bu genellikle kartın yenilenmiş, limitin geçici olarak dolmuş ya da ' +
         'internetten ödemeye kapalı olmasından kaynaklanır.',
       'Hesabınız şu an normal çalışmaya devam ediyor. Kartınızı ' +
-        'güncellerseniz herhangi bir kesinti yaşamazsınız.',
+        'güncellediğinizde bekleyen ödeme hemen yeni kartınızdan denenir; ' +
+        'herhangi bir kesinti yaşamazsınız.',
     ],
     dugmeEtiketi: 'Kartımı güncelle',
     altNot: HAVALE_NOTU,
@@ -62,7 +63,7 @@ export const DUNNING_METINLERI: Record<
       `Hesabınız ${b.kisitTarihi} tarihine kadar normal çalışmaya devam edecek. ` +
         'O tarihten sonra yeni teklif oluşturma ve çıktı indirme geçici olarak kapanır — ' +
         'mevcut teklifleriniz görünmeye devam eder.',
-      'Kartınızı güncellemeniz yeterli, gerisini biz hallederiz.',
+      'Kartınızı güncellemeniz yeterli: bekleyen ödeme hemen yeni kartınızdan denenir.',
     ],
     dugmeEtiketi: 'Kartımı güncelle',
     altNot: HAVALE_NOTU,
@@ -77,7 +78,8 @@ export const DUNNING_METINLERI: Record<
       `${b.kisitTarihi} tarihinde hesabınız salt-okunur moda geçecek: ` +
         'tekliflerinizi görüntülemeye devam edersiniz ama yeni teklif ' +
         'oluşturamaz, Excel ya da teklif formatında indiremezsiniz.',
-      'Verilerinizin hiçbiri silinmez. Ödeme tamamlandığı anda her şey ' +
+      'Verilerinizin hiçbiri silinmez. Kartınızı güncellediğinizde bekleyen ' +
+        'ödeme hemen yeniden denenir; ödeme alındığında her şey birkaç dakika içinde ' +
         'olduğu gibi geri açılır.',
     ],
     dugmeEtiketi: 'Şimdi öde',
@@ -94,7 +96,8 @@ export const DUNNING_METINLERI: Record<
         'fiyat kütüphanenize bakmak.',
       'Şu an kapalı olanlar: yeni teklif oluşturmak, metraj yüklemek, ' +
         'fiyatlı Excel ve teklif formatında çıktı indirmek.',
-      'Ödemeyi tamamladığınızda hesabınız birkaç saniye içinde açılır.',
+      'Kartınızı güncellediğinizde bekleyen ödeme hemen yeniden denenir; ödeme ' +
+        'alındığında hesabınız birkaç dakika içinde açılır.',
     ],
     dugmeEtiketi: 'Ödemeyi tamamla',
     altNot: HAVALE_NOTU,
@@ -123,7 +126,8 @@ export const DUNNING_METINLERI: Record<
       `${b.firmaAdi} hesabı askıya alındı.`,
       'Teklifleriniz, fiyat kütüphaneniz ve ayarlarınız olduğu gibi ' +
         'duruyor — hiçbiri silinmedi.',
-      'Ödemenizi tamamladığınızda hesabınız kaldığı yerden açılır.',
+      'Kartınızı güncellediğinizde bekleyen ödeme hemen yeniden denenir; ödeme ' +
+        'alındığında hesabınız kaldığı yerden açılır.',
     ],
     dugmeEtiketi: 'Hesabımı geri aç',
     altNot: HAVALE_NOTU,

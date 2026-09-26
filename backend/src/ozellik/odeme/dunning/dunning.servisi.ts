@@ -2,9 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
-import { AbonelikDurumu } from '@prisma/client';
-import { IyzicoClient, IyzicoHatasi } from '../iyzico/iyzico.client';
+import { AbonelikDurumu, OdemeYontemi, Prisma } from '@prisma/client';
+import { IyzicoAbonelikDetayi, IyzicoClient, IyzicoHatasi } from '../iyzico/iyzico.client';
+import { kullaniciyaMesaj } from '../iyzico/iyzico-hata.filter';
+import { odenmisSiparisMi, siparisiBul, yenidenDenemeHedefi } from '../iyzico/tahsilat-kaniti';
 import { AbonelikServisi } from '../abonelik/abonelik.servisi';
+import { kartGuncellenebilirMi } from '../abonelik/kart-kapatma';
 import { EpostaServisi } from '../eposta/eposta.servisi';
 import {
   DUNNING_METINLERI,
@@ -12,6 +15,22 @@ import {
   tutarYaz,
 } from './dunning.metinleri';
 import { dunningKisitGunu, kisitlamayaKalanGun } from './kisit-gunu';
+import {
+  AnindaDenemeSonucu,
+  KIRA_RET_MS,
+  KIRA_SONUC_MS,
+  YENIDEN_DENEME_PENCERESI_GUN,
+  anindaDenemeEngeli,
+  denemeHatasiSinifi,
+} from './tahsilat-kirasi';
+
+/** Anlık denemenin kuyruğa yazdığı başarı olayının kaynağı (`WebhookOlayi.kaynak`, tekil anahtar öneki). */
+export const ANINDA_DENEME_KAYNAGI = 'aninda-deneme';
+
+/** Günlük ve olay için hata metni. */
+function hataMetni(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -56,7 +75,7 @@ export class DunningServisi {
   private readonly uygulamaUrl: string;
 
   /** iyzico'nun yeniden deneme penceresi. Aşılırsa denemeyi bırakırız. */
-  private readonly AZAMI_GUN = 160;
+  private readonly AZAMI_GUN = YENIDEN_DENEME_PENCERESI_GUN;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -166,10 +185,31 @@ export class DunningServisi {
     const basamakNo = this.basamaklar.indexOf(basamak) + 2; // ilk bildirim = 1
     if (ab.denemeSayisi >= basamakNo) return;
 
+    // ⚠ 26.09 — BİR TAHSİLAT DENEMESİ SÜRÜYOR YA DA SONUCU BEKLENİYOR: müşteri
+    // kartını güncelleyip ödemeyi az önce denetti (`anindaDene`) ya da önceki
+    // denemenin yanıtı gelmedi. Basamak BUGÜN uygulanmaz — ne yeni çekim, ne
+    // durum düşürme, ne bildirim: ödeyen müşteriye "kısıtlandı" gitmesin, belirsiz
+    // çekimin üstüne ikinci çekim gelmesin. Yarınki tarama taze bilgiyle bakar
+    // (kira `KIRA_SONUC_MS` = 20 sa, ertesi 10:00'dan önce biter).
+    if (ab.tahsilatKirasi && ab.tahsilatKirasi.getTime() > Date.now()) {
+      this.logger.log(
+        `Abonelik ${abonelikId}: tahsilat denemesi sürüyor ya da sonucu bekleniyor ` +
+          `(kira ${ab.tahsilatKirasi.toISOString()}) — basamak ${basamakNo} yarına`,
+      );
+      return;
+    }
+
     // ── Yeniden tahsilat denemesi ────────────────────────────────────────
     if (basamak.tekrarDene && ab.iyzicoAbonelikKodu) {
       const sonSiparis = await this.sonBasarisizSiparis(ab.iyzicoAbonelikKodu);
       if (sonSiparis) {
+        // KİRA (26.09): müşterinin anlık denemesiyle AYNI kira. Satır okunduktan
+        // sonra müşteri kazandıysa iyzico'ya GİDİLMEZ, basamak yarına kalır.
+        const kira = await this.kiraAl(abonelikId, new Date());
+        if (!kira) {
+          this.logger.log(`Abonelik ${abonelikId}: kira başka bir denemede — basamak ${basamakNo} yarına`);
+          return;
+        }
         // ⚠ `try` YALNIZ iyzico cagrisini sarar (24.09): basarili denemeden
         // sonra olay/DB yazmasi duserse bu RED DEGILDIR. Eskiden catch'e
         // dusuyor ve odeme alinmisken "tekrar denedik, yine alinamadi"
@@ -181,6 +221,14 @@ export class DunningServisi {
           basarili = true;
         } catch (e) {
           hata = e;
+        }
+        // Kira YALNIZ kesin retde kısalır (para çekilmedi); başarılı ya da
+        // belirsiz denemede UZUN kalır — müşteri 10 dk sonra ikinci çekimi
+        // tetikleyemesin. Merdivenin bildirim kararı aşağıda DEĞİŞMEDİ.
+        if (!basarili && denemeHatasiSinifi(hata) === 'reddedildi') {
+          await this.kiraKisalt(abonelikId, kira).catch((e) =>
+            this.logger.error(`Kira kısaltılamadı (${abonelikId}): ${e instanceof Error ? e.message : String(e)}`),
+          );
         }
         if (basarili) {
           await this.abonelik.olayYaz(abonelikId, 'dunning.tekrar.denendi', {
@@ -265,6 +313,213 @@ export class DunningServisi {
     // Zaten sorunsuzsa "geri hoş geldiniz" göndermeyelim
     if (!dunningdenCikti) return;
     await this.gonder(abonelikId, 'toparlandi');
+  }
+
+  // ── Kart güncellemesinden sonra ANLIK deneme (26.09.2026) ──────────────
+  /**
+   * Emre kararı (26.09): kart güncellenince bekleyen ödeme HEMEN bir kez
+   * yeniden tahsil edilir. Tetikleyen OTURUMLU uçtur (`POST /abonelik/odeme-
+   * tekrar-dene`, yalnız firma sahibi, hız sınırlı) — çapraz-site ve oturumsuz
+   * kart dönüş ucu para çeken bir işi TETİKLEMEZ.
+   *
+   * SIRA: ön koşul (saf) → aday siparişler (bildirimler) → KİRA (koşullu
+   * yazım; kaybeden iyzico'ya gitmez) → hedefi iyzico'ya SOR (listede,
+   * ödenmemiş, reddi doğrulanmış) → yeniden deneme (POST — PARA ÇEKER,
+   * kendiliğinden yeniden DENENMEZ) → ödendi mi SOR.
+   *
+   * BAŞARI YOLU YENİ DEĞİL: sipariş iyzico'da ödenmiş görünürse webhook
+   * işleyicisinin kuyruğuna başarı olayı yazılır (gece mutabakatının kayıp
+   * tahsilat kalıbı). İşleyici `tahsilatBasarili` (ödemeyi iyzico'ya YENİDEN
+   * sorar) + fatura + "ödemeniz alındı"yı koşar; iyzico'nun kendi webhook'u da
+   * gelirse koşullu sıfırlama ve tekil fatura satırı ikinci e-postayı keser.
+   * Bu metot E-POSTA GÖNDERMEZ.
+   */
+  async anindaDene(firmaId: string): Promise<AnindaDenemeSonucu> {
+    const simdi = new Date();
+    const ab = await this.prisma.abonelik.findUnique({ where: { firmaId } });
+    const engel = anindaDenemeEngeli(ab, !!ab && kartGuncellenebilirMi(ab), simdi);
+    if (engel || !ab?.iyzicoAbonelikKodu) {
+      this.logger.log(`Anında deneme gerekmedi (firma ${firmaId}): ${engel ?? 'kod yok'}`);
+      return { sonuc: 'gerekmiyor' };
+    }
+    const abonelikKodu = ab.iyzicoAbonelikKodu;
+
+    const adaylar = await this.basarisizSiparisAdaylari(abonelikKodu);
+    if (adaylar.length === 0) {
+      await this.anindaIz(ab.id, 'dunning.aninda.yapilamadi', 'başarısızlık bildirimi yok — hedef sipariş bilinmiyor');
+      return { sonuc: 'yapilamadi' };
+    }
+
+    const kira = await this.kiraAl(ab.id, simdi);
+    if (!kira) {
+      // Kira başkasında YA DA satır arada döngüden çıktı (ödendi, havale).
+      const guncel = await this.prisma.abonelik.findUnique({
+        where: { id: ab.id },
+        select: { tahsilatKirasi: true, ilkBasarisizlik: true },
+      });
+      const k = guncel?.tahsilatKirasi;
+      if (guncel?.ilkBasarisizlik && k && k.getTime() > simdi.getTime()) {
+        return { sonuc: 'zaten-deneniyor', kiraBitis: k.toISOString() };
+      }
+      return { sonuc: 'gerekmiyor' };
+    }
+
+    // Hedef iyzico'ya SORULUR (GET: kopan bağlantıda kendiliğinden yeniden denenir).
+    let detay: IyzicoAbonelikDetayi;
+    try {
+      detay = await this.iyzico.abonelikGetir(abonelikKodu);
+    } catch (e) {
+      await this.kiraBirak(ab.id, kira);
+      await this.anindaIz(ab.id, 'dunning.aninda.yapilamadi', `iyzico okunamadı: ${hataMetni(e)}`);
+      return { sonuc: 'yapilamadi' };
+    }
+    const hedef = yenidenDenemeHedefi(detay, adaylar);
+    if (hedef.tur === 'odenmis') {
+      // Bekleyen ödeme YOK: başarının webhook'u gecikmiş ya da kaybolmuş.
+      // Yeniden ÇEKİLMEZ; başarı yolu kuyruğa yazılır, kira uzun kalır.
+      await this.basariYolunaYaz(abonelikKodu, hedef.kod, detay);
+      await this.anindaIz(ab.id, 'dunning.aninda.odenmis', hedef.gerekce, { siparisKodu: hedef.kod });
+      return { sonuc: 'alindi' };
+    }
+    if (hedef.tur === 'yok') {
+      await this.kiraBirak(ab.id, kira);
+      await this.anindaIz(ab.id, 'dunning.aninda.yapilamadi', hedef.gerekce);
+      return { sonuc: 'yapilamadi' };
+    }
+
+    // ── PARA ÇEKEN ÇAĞRI — tek kez; hata kendiliğinden yeniden DENENMEZ ───
+    try {
+      await this.iyzico.tahsilatiTekrarla(hedef.kod);
+    } catch (e) {
+      if (denemeHatasiSinifi(e) === 'reddedildi') {
+        await this.kiraKisalt(ab.id, kira).catch((k) =>
+          this.logger.error(`Kira kısaltılamadı (${ab.id}): ${hataMetni(k)}`),
+        );
+        const mesaj = kullaniciyaMesaj(e as IyzicoHatasi);
+        await this.anindaIz(ab.id, 'dunning.aninda.reddedildi', `sipariş ${hedef.kod}: ${mesaj}`, {
+          siparisKodu: hedef.kod,
+        });
+        return { sonuc: 'reddedildi', mesaj };
+      }
+      // Belirsiz: iyzico çekmiş olabilir. Kira UZUN kalır — ne müşteri ne
+      // merdiven bugün ikinci çekimi gönderebilir.
+      await this.anindaIz(ab.id, 'dunning.aninda.belirsiz', `sipariş ${hedef.kod}: ${hataMetni(e)}`, {
+        siparisKodu: hedef.kod,
+      });
+      return { sonuc: 'belirsiz' };
+    }
+    await this.anindaIz(ab.id, 'dunning.aninda.denendi', `sipariş ${hedef.kod} — ${hedef.gerekce}`, {
+      siparisKodu: hedef.kod,
+    });
+
+    // iyzico "success" dedi — belge bunun ödemenin ALINDIĞI anlamına gelip
+    // gelmediğini SÖYLEMİYOR (25.09 okundu). "Alındı" yalnız iyzico'nun
+    // listesi siparişi ödenmiş gösterirse söylenir.
+    try {
+      const son = await this.iyzico.abonelikGetir(abonelikKodu);
+      const siparis = siparisiBul(son.orders, hedef.kod);
+      if (siparis && odenmisSiparisMi(siparis)) {
+        await this.basariYolunaYaz(abonelikKodu, hedef.kod, son);
+        return { sonuc: 'alindi' };
+      }
+    } catch (e) {
+      this.logger.warn(`Anında deneme sonrası iyzico okunamadı (${ab.id}): ${hataMetni(e)}`);
+    }
+    return { sonuc: 'iletildi' };
+  }
+
+  // ── Tahsilat denemesi kirası (26.09) ────────────────────────────────────
+  /**
+   * iyzico'ya yeniden tahsilat göndermeden ÖNCE: kira NULL ya da geçmişse
+   * yazılır, kazanan iyzico'ya gider. Yalnız dunning döngüsündeki KART satırı
+   * kiralanır (arada ödenen ya da havaleye geçen satır 0 satır verir). Kira UZUN
+   * alınır (`KIRA_SONUC_MS`); kesin retde `kiraKisalt`, çekim hiç
+   * gönderilmediyse `kiraBirak`. Dönen değer kiranın kimliğidir (bitiş anı):
+   * sonraki yazımlar yalnız kira HÂLÂ bizimse uygulanır. `null` = kazanamadık.
+   */
+  private async kiraAl(abonelikId: string, simdi: Date): Promise<Date | null> {
+    const bitis = new Date(simdi.getTime() + KIRA_SONUC_MS);
+    const r = await this.prisma.abonelik.updateMany({
+      where: {
+        id: abonelikId,
+        odemeYontemi: OdemeYontemi.KART,
+        ilkBasarisizlik: { not: null },
+        OR: [{ tahsilatKirasi: null }, { tahsilatKirasi: { lt: simdi } }],
+      },
+      data: { tahsilatKirasi: bitis },
+    });
+    return r.count === 1 ? bitis : null;
+  }
+
+  /** Kesin ret: para çekilmedi — kira kısalır, başka kartla yeniden denenebilir. */
+  private async kiraKisalt(abonelikId: string, kira: Date): Promise<void> {
+    await this.prisma.abonelik.updateMany({
+      where: { id: abonelikId, tahsilatKirasi: kira },
+      data: { tahsilatKirasi: new Date(Date.now() + KIRA_RET_MS) },
+    });
+  }
+
+  /** Çekim hiç gönderilmedi (hedef doğrulanamadı, iyzico okunamadı): kira geri verilir. */
+  private async kiraBirak(abonelikId: string, kira: Date): Promise<void> {
+    await this.prisma.abonelik
+      .updateMany({ where: { id: abonelikId, tahsilatKirasi: kira }, data: { tahsilatKirasi: null } })
+      .catch((e) => this.logger.error(`Kira bırakılamadı (${abonelikId}): ${hataMetni(e)}`));
+  }
+
+  /** Başarısızlık bildirimlerindeki sipariş kodları — yeniden eskiye, tekil. Anlık denemenin ADAYLARI (kanıt değil). */
+  private async basarisizSiparisAdaylari(abonelikKodu: string): Promise<string[]> {
+    const olaylar = await this.prisma.webhookOlayi.findMany({
+      where: { abonelikKodu, olayTipi: 'subscription.order.failure' },
+      orderBy: { alindi: 'desc' },
+      select: { siparisKodu: true },
+      take: 20,
+    });
+    return [...new Set(olaylar.map((o) => o.siparisKodu).filter((k): k is string => !!k))];
+  }
+
+  /**
+   * Ödenmiş görünen siparişi webhook işleyicisinin BAŞARI yoluna yazar — gece
+   * mutabakatının kayıp tahsilat oynatmasıyla aynı kalıp (`mutabakat.job.ts`
+   * `tahsilatiYenidenOynat`). İşleyici dakikalık taramada koşar ve ödemeyi
+   * iyzico'ya YENİDEN sorar: bu olay tek başına erişim VERMEZ. Tekil anahtar
+   * siparişe bağlı: aynı siparişin ikinci yazımı (P2002) sessizce geçer.
+   * Kritik değil: yazılamazsa iyzico'nun webhook'u ya da gece mutabakatı aynı
+   * yolu koşar — hata günlüğe yazılır, sonuç müşteriye yine "alındı"dır.
+   */
+  private async basariYolunaYaz(abonelikKodu: string, siparisKodu: string, detay: IyzicoAbonelikDetayi): Promise<void> {
+    const kanit = siparisiBul(detay.orders, siparisKodu) ?? null;
+    try {
+      await this.prisma.webhookOlayi.create({
+        data: {
+          tekilAnahtar: `${ANINDA_DENEME_KAYNAGI}:subscription.order.success:${siparisKodu}`,
+          kaynak: ANINDA_DENEME_KAYNAGI,
+          olayTipi: 'subscription.order.success',
+          // iyzico bu gövdeyi GÖNDERMEDİ: webhook alanları + kanıt (iyzico'nun
+          // kendi sipariş kaydı). İmza yok → `imzaGecerli` varsayılanı (false).
+          hamGovde: {
+            kaynak: ANINDA_DENEME_KAYNAGI,
+            iyziEventType: 'subscription.order.success',
+            subscriptionReferenceCode: abonelikKodu,
+            orderReferenceCode: siparisKodu,
+            customerReferenceCode: detay.customerReferenceCode ?? null,
+            kanit: kanit as unknown as Prisma.InputJsonValue,
+          } as Prisma.InputJsonObject,
+          abonelikKodu,
+          siparisKodu,
+          musteriKodu: detay.customerReferenceCode ?? null,
+        },
+      });
+    } catch (e) {
+      if ((e as { code?: string })?.code === 'P2002') return;
+      this.logger.error(`Başarı olayı kuyruğa yazılamadı (sipariş ${siparisKodu}): ${hataMetni(e)}`);
+    }
+  }
+
+  /** Anlık denemenin izi. Kritik değil: para çeken çağrının sonucunu DÜŞÜRMEZ. */
+  private async anindaIz(abonelikId: string, tip: string, aciklama: string, veri?: Prisma.InputJsonObject): Promise<void> {
+    await this.abonelik
+      .olayYaz(abonelikId, tip, { aciklama, veri, aktor: 'musteri' })
+      .catch((e) => this.logger.error(`Olay yazılamadı (${tip}, ${abonelikId}): ${hataMetni(e)}`));
   }
 
   // ── Yardımcılar ─────────────────────────────────────────────────────────

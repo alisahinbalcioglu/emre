@@ -698,10 +698,28 @@ function dunningDb(secenek: DunningSecenek = {}) {
   };
   const olaylar: Record<string, any>[] = [...(secenek.onOlaylar ?? [])];
   const guncellemeler: Record<string, any>[] = [];
+  // 26.09 — merdiven iyzico'ya gitmeden ÖNCE tahsilat kirasını koşullu alır
+  // (anlık denemeyle ortak kira, `dunning/tahsilat-kirasi.ts`). Kira yazımları
+  // AYRI tutulur: `guncellemeler` basamak yazımlarını sayar (Z7 "basamak
+  // işlenmedi" = 0 güncelleme).
+  const kiralar: Record<string, any>[] = [];
+  /** Kira koşulu GERÇEKTEN uygulanır; tanınmayan koşulda PATLAR. */
+  const kosulTutar = (w: Record<string, any>): boolean =>
+    Object.entries(w).every(([k, v]) => {
+      if (k === 'OR') return (v as Record<string, any>[]).some(kosulTutar);
+      const d = satir[k] ?? null;
+      if (v === null) return d === null;
+      if (v instanceof Date) return d instanceof Date && d.getTime() === v.getTime();
+      if (v && typeof v === 'object' && 'not' in v && v.not === null) return d !== null;
+      if (v && typeof v === 'object' && 'lt' in v) return d !== null && d < v.lt;
+      if (v && typeof v === 'object') throw new Error(`sahte DB: desteklenmeyen kosul ${k}=${JSON.stringify(v)}`);
+      return d === v;
+    });
   const db: any = {
     satir,
     olaylar,
     guncellemeler,
+    kiralar,
     abonelik: {
       findMany: async () => [{ id: satir.id }],
       findUnique: async ({ where }: any) => (where.id === satir.id ? { ...satir } : null),
@@ -710,6 +728,13 @@ function dunningDb(secenek: DunningSecenek = {}) {
         guncellemeler.push(data);
         Object.assign(satir, data);
         return { ...satir };
+      },
+      updateMany: async ({ where, data }: any) => {
+        if (Object.keys(data).join() !== 'tahsilatKirasi') throw new Error(`sahte DB: beklenmeyen updateMany ${JSON.stringify(data)}`);
+        if (!kosulTutar(where)) return { count: 0 };
+        kiralar.push(data);
+        Object.assign(satir, data);
+        return { count: 1 };
       },
     },
     firma: { findUnique: async () => ({ ad: 'Firma A', faturaEposta: 'fatura@firma.test', yetkiliEposta: null }) },
@@ -752,6 +777,10 @@ async function dunningKos(davranis: Davranis, secenek: DunningSecenek = {}) {
     const taramalar: { posta: number; denemeSayisi: number }[] = [];
     let r: Awaited<ReturnType<typeof sureli>> = { durum: 'asili', ms: 0, bitti: 0 };
     for (let i = 0; i < (secenek.tarama ?? 1); i++) {
+      // 26.09 — taramalar arası BİR GÜN: belirsiz denemenin tahsilat kirası
+      // (`KIRA_SONUC_MS` = 20 sa) ertesi 10:00 taramasından önce biter. Kira
+      // eskitilmezse ikinci tarama "aynı gün" olur ve kira onu haklı olarak durdurur.
+      if (i > 0 && db.satir.tahsilatKirasi) db.satir.tahsilatKirasi = new Date(Date.now() - 1000);
       r = await sureli(() => dunning.merdiveniYurut());
       taramalar.push({ posta: postalar.length, denemeSayisi: db.satir.denemeSayisi });
     }

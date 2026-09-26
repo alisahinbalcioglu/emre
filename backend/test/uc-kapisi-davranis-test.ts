@@ -297,6 +297,7 @@ async function main(): Promise<void> {
     ['POST /abonelik/basla', 'ÖDEME: satın almanın kendisi — kapanırsa askıdaki firma askıdan ÇIKAMAZ'],
     ['POST /abonelik/donus', 'ÖDEME: iyzico 3-D dönüşü'],
     ['POST /abonelik/kart-guncelle', 'ÖDEME: kartı geçersizleşen firma ödeyemez hâle gelir'],
+    ['POST /abonelik/odeme-tekrar-dene', 'ÖDEME: askıdaki firma kartını güncelleyip bekleyen ödemesini tamamlar'],
     ['POST /abonelik/iptal', 'ÖDEME: iptal hakkı'],
     ['POST /abonelik/iyzico-donus', 'ÖDEME: iyzico dönüş ucu'],
     ['POST /abonelik/iyzico-kart-donus', 'ÖDEME: iyzico kart güncelleme dönüş ucu'],

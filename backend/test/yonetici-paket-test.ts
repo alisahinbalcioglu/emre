@@ -1971,6 +1971,8 @@ async function oMusteriYaniti(): Promise<void> {
       { karar: async () => ({ hak: false, gerekce: 'kullanildi' }) } as any,
       { yollar: async () => new Map() } as any,
       on,
+      // 26.09: anlık ödeme denemesi — bu kapının konusu değil (test:aninda-tahsilat).
+      {} as any,
     );
     const sahip = (await ctrl.paketler({ id: 'sahip', firmaId: 'f1', firmaRol: 'sahip' })) as any[];
     const uye = (await ctrl.paketler({ id: 'uye1', firmaId: 'f1', firmaRol: 'uye' })) as any[];

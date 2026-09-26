@@ -607,7 +607,15 @@ const SUITES: Suite[] = [
   //    Kapı backend'in ürettiği HER uygulama bağlantısını `frontend/app`
   //    rotalarına ve `/api/` dönüşlerini kayıtlı uçlara çözer; `?a=` başka
   //    firmanın kartını açamaz; dönüş ucu oturumsuz ve yazmaz.
-  { ad: 'Kart güncelleme: her uygulama bağlantısı bir sayfaya, ?a= yalnız kendi aboneliği, dönüş ucu (S/R/A/D)', script: 'test:kart-guncelleme', zincir: 'Z0' },
+  { ad: 'Kart güncelleme: her uygulama bağlantısı bir sayfaya, ?a= yalnız kendi aboneliği, dönüş ucu, iyzico dönüşü CORS muafiyeti (S/R/A/D/C)', script: 'test:kart-guncelleme', zincir: 'Z0' },
+  // ── 26.09.2026 — KART GÜNCELLENİNCE BEKLEYEN ÖDEME HEMEN DENENİR (Emre
+  //    kararı). DB/AĞ GEREKTİRMEZ. iyzico'nun yeniden denemesi POST'tur ve PARA
+  //    ÇEKER: çift tık, sayfa yenileme ve aynı anda koşan merdiven ikinci çekimi
+  //    göndermesin diye iki yol da aynı KİRAYI koşullu alır. Kapı eşzamanlı
+  //    çağrıları kiraya aynı anda getirip (bariyer) İKİ sırada tek çekim ölçer;
+  //    hedef siparişi iyzico'nun listesinden doğrular (bildirim kanıt değil);
+  //    başarı yolunu GERÇEK işleyicide koşup tek "ödemeniz alındı" sayar.
+  { ad: 'Anında tahsilat: kart güncellenince bekleyen ödeme bir kez, kira ile tam bir kez, merdivenle ortak (S/A/T/M/E/C/P)', script: 'test:aninda-tahsilat', zincir: 'Z0' },
   // ── 25.09.2026 — HAVALE DURUM GEÇİŞLERİ (aynı havaleye iki onay + ikizleri).
   //    `odemeyiOnayla` durumu işlem DIŞINDA okuyup en sonda KOŞULSUZ ONAYLANDI
   //    yazıyordu: iki istek ikisi de geçiyor, aboneliği iki kez uzatıyor

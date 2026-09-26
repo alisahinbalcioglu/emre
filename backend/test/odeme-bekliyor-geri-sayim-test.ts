@@ -94,7 +94,7 @@ const VARSAYILAN: Record<string, () => Satir> = {
     durum: 'DENEME', denemeSonu: null, planliPaketSurumuId: null, paketGecisTarihi: null,
     odenenPaketSurumuId: null, iyzicoAbonelikKodu: null, iyzicoKokKodu: null,
     iyzicoMusteriKodu: null, iyzicoDurum: null, iyzicoSonKontrol: null, odemeYontemi: 'KART',
-    ilkBasarisizlik: null, denemeSayisi: 0, sonDeneme: null, kisitlandi: null,
+    ilkBasarisizlik: null, denemeSayisi: 0, sonDeneme: null, kisitlandi: null, tahsilatKirasi: null,
     iptalTalebi: null, iptalNedeni: null, olusturuldu: new Date(), guncellendi: new Date(),
   }),
 };
@@ -120,7 +120,9 @@ function kosulUygula(deger: any, kosul: any): boolean {
 
 function whereUygula(satir: Satir, where: any): boolean {
   return Object.entries(where ?? {}).every(([k, v]) => {
-    if (k === 'OR' || k === 'AND' || k === 'NOT') throw new Error(`bellek-Prisma: desteklenmeyen ${k}`);
+    // 26.09 — merdivenin tahsilat kirası (`NULL ya da geçmiş`) OR ile yazılır.
+    if (k === 'OR') return (v as any[]).some((w) => whereUygula(satir, w));
+    if (k === 'AND' || k === 'NOT') throw new Error(`bellek-Prisma: desteklenmeyen ${k}`);
     return kosulUygula(satir[k], v);
   });
 }

@@ -3,11 +3,15 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   KART_METINLERI,
-  guncellendiMetni,
+  ODEME_DENEMESI_ZAMAN_ASIMI_MS,
   kartHatasi,
   kartIstekGovdesi,
   kartSayfasiGirdisi,
+  odemeDenemesiGorunumu,
+  odemeDenemesiHatasi,
+  odemeDenemesiOku,
   yenidenAcmaAdresi,
+  type OdemeDenemesi,
 } from './kart-guncelleme';
 import { icerikDurdurulsunMu, type ErisimKarari } from './erisim-durumu';
 
@@ -131,25 +135,91 @@ describe('Y · "Formu yeniden aç" hedefi', () => {
   });
 });
 
-describe('M · "Kartınız güncellendi" metni dürüst (inceleme H1)', () => {
-  it('M1 bekleyen ödemesi olmayan (AKTİF, DENEME, durum henüz yok): yalnız "sonraki ödemeler bu karttan"', () => {
-    for (const durum of ['AKTIF', 'DENEME', null, undefined]) {
-      expect(guncellendiMetni(durum)).toBe(KART_METINLERI.guncellendiMetin);
+/**
+ * Ö — BEKLEYEN ÖDEMENİN ANLIK DENEMESİ (26.09.2026, Emre kararı). Kart
+ * dönüşünde sayfa sunucuya BİR KEZ sorar; ekran yalnız sunucunun söylediğini
+ * söyler. Tam bir kez sunucudadır (kira): `backend/test/aninda-tahsilat-test.ts`.
+ */
+describe('Ö · anında ödeme denemesi: yanıt, hata, görünüm', () => {
+  const SIMDI = Date.parse('2026-09-26T10:00:00Z');
+  const gor = (o: OdemeDenemesi | null) => odemeDenemesiGorunumu(o, SIMDI);
+
+  it('Ö1 sunucu yanıtı doğrulanır; tanınmayan biçim "yapılamadı" — sonuç uydurulmaz', () => {
+    for (const sonuc of ['alindi', 'iletildi', 'belirsiz', 'gerekmiyor', 'yapilamadi'] as const) {
+      expect(odemeDenemesiOku({ sonuc })).toEqual({ sonuc });
+    }
+    expect(odemeDenemesiOku({ sonuc: 'reddedildi', mesaj: '  Kart limiti yetersiz ' })).toEqual({
+      sonuc: 'reddedildi', mesaj: 'Kart limiti yetersiz',
+    });
+    expect(odemeDenemesiOku({ sonuc: 'zaten-deneniyor', kiraBitis: '2026-09-26T10:05:00.000Z' })).toEqual({
+      sonuc: 'zaten-deneniyor', kiraBitis: '2026-09-26T10:05:00.000Z',
+    });
+    for (const bozuk of [null, 'alindi', {}, { sonuc: 'ALINDI' }, { sonuc: 'zaten-deneniyor', kiraBitis: 'dün' }]) {
+      expect(odemeDenemesiOku(bozuk)).toEqual({ sonuc: 'yapilamadi' });
     }
   });
-  it('M2 ⭐ ödemesi bekleyen (ODEME_BEKLIYOR, KISITLI): ödeme HEMEN ÇEKİLMEZ denir, "hemen açılır" sözü verilmez', () => {
-    for (const durum of ['ODEME_BEKLIYOR', 'KISITLI']) {
-      const m = guncellendiMetni(durum);
-      expect(m).toContain('hemen çekilmez');
-      expect(m).toContain('iletişime geçin');
-      expect(m).not.toMatch(/hemen açıl|anında açıl|otomatik olarak açıl/);
-    }
+
+  it('Ö2 ⭐ istek hatası: yanıt YOKSA çekim olmuş olabilir (bağlantı koptu), yanıt VARSA çekim yok', () => {
+    expect(odemeDenemesiHatasi(new Error('timeout of 75000ms exceeded'))).toEqual({ sonuc: 'baglantiKoptu' });
+    expect(odemeDenemesiHatasi({ response: { status: 429 } })).toEqual({ sonuc: 'sinir' });
+    expect(odemeDenemesiHatasi({ response: { status: 403, data: { kod: 'FIRMA_SAHIBI_GEREKLI' } } })).toEqual({
+      sonuc: 'gerekmiyor',
+    });
+    expect(odemeDenemesiHatasi({ response: { status: 500 } })).toEqual({ sonuc: 'yapilamadi' });
   });
-  it('M3 ⭐ ASKIDA: ödemenin kendiliğinden yeniden DENENMEDİĞİ ve ne yapılacağı söylenir', () => {
-    const m = guncellendiMetni('ASKIDA');
-    expect(m).toContain('kendiliğinden yeniden denenmez');
-    expect(m).toContain('iletişime geçin');
-    expect(m.startsWith(KART_METINLERI.guncellendiMetin)).toBe(true);
+
+  it('Ö3 ⭐ "alındı" YALNIZ sunucu alındı dediğinde; "iletildi" ödemenin alındığını SÖYLEMEZ', () => {
+    expect(gor({ sonuc: 'alindi' })).toMatchObject({ ton: 'basari', metin: KART_METINLERI.odemeAlindi });
+    expect(KART_METINLERI.odemeAlindi).toContain('alındı');
+    for (const o of [{ sonuc: 'iletildi' }, { sonuc: 'belirsiz' }, { sonuc: 'baglantiKoptu' }] as OdemeDenemesi[]) {
+      expect(gor(o).metin).not.toMatch(/ödemeniz[^.]*alındı\./i);
+    }
+    expect(gor({ sonuc: 'gerekmiyor' })).toMatchObject({ ton: 'basari', metin: KART_METINLERI.guncellendiMetin });
+  });
+
+  it('Ö4 ⭐ belirsiz sonuç: çift çekim olmaması için BUGÜN yeniden denenmeyeceği söylenir', () => {
+    expect(gor({ sonuc: 'belirsiz' }).metin).toContain('bugün yeniden denenmeyecek');
+  });
+
+  it('Ö5 kart reddetti: iyzico iletisi gösterilir, başka kartla "Formu yeniden aç"', () => {
+    const g = gor({ sonuc: 'reddedildi', mesaj: 'Kart limiti yetersiz (iyzico kodu: 10051).' });
+    expect(g).toMatchObject({ ton: 'hata', baslik: KART_METINLERI.odemeReddedildiBaslik, yenidenAc: true });
+    expect(g.metin).toBe(
+      `${KART_METINLERI.odemeReddedildi}: Kart limiti yetersiz (iyzico kodu: 10051). ${KART_METINLERI.odemeReddedildiSonu}`,
+    );
+    expect(gor({ sonuc: 'reddedildi', mesaj: '' }).metin).toBe(
+      `${KART_METINLERI.odemeReddedildi}. ${KART_METINLERI.odemeReddedildiSonu}`,
+    );
+  });
+
+  it('Ö6 kira başkasında: kısa kira (ret sonrası) → "birkaç dakika sonra", uzun kira → "şimdilik denenmeyecek"', () => {
+    const kira = (dk: number) => new Date(SIMDI + dk * 60_000).toISOString();
+    expect(gor({ sonuc: 'zaten-deneniyor', kiraBitis: kira(10) }).metin).toBe(KART_METINLERI.odemeKisaSureOnce);
+    expect(gor({ sonuc: 'zaten-deneniyor', kiraBitis: kira(20 * 60) }).metin).toBe(KART_METINLERI.odemeSonucBekleniyor);
+    expect(gor({ sonuc: 'sinir' }).metin).toBe(KART_METINLERI.odemeKisaSureOnce);
+  });
+
+  it('Ö7 deneme sürerken (null) bekleme metni; "Formu yeniden aç" yalnız ret sonrası', () => {
+    expect(gor(null)).toMatchObject({ ton: 'bilgi', metin: KART_METINLERI.odemeDeneniyor, yenidenAc: false });
+    const hepsi: OdemeDenemesi[] = [
+      { sonuc: 'alindi' }, { sonuc: 'iletildi' }, { sonuc: 'belirsiz' }, { sonuc: 'gerekmiyor' },
+      { sonuc: 'yapilamadi' }, { sonuc: 'sinir' }, { sonuc: 'baglantiKoptu' },
+      { sonuc: 'zaten-deneniyor', kiraBitis: new Date(SIMDI).toISOString() },
+    ];
+    for (const o of hepsi) expect(gor(o).yenidenAc, o.sonuc).toBe(false);
+  });
+
+  it('Ö8 erişim yalnız ödeme işlenebilecekken tazelenir (alındı, iletildi, belirsiz, bağlantı koptu)', () => {
+    const tazelenen = (['alindi', 'iletildi', 'belirsiz', 'baglantiKoptu'] as const).map((sonuc) => gor({ sonuc }).erisimiTazele);
+    expect(tazelenen).toEqual([true, true, true, true]);
+    for (const sonuc of ['gerekmiyor', 'yapilamadi', 'sinir'] as const) expect(gor({ sonuc }).erisimiTazele).toBe(false);
+  });
+
+  it('Ö9 istemci bekleme süresi sunucunun üç iyzico çağrısından uzun (her biri IYZICO_ZAMAN_ASIMI_MS)', () => {
+    const istemci = readFileSync(join(kok, '..', 'backend', 'src', 'ozellik', 'odeme', 'iyzico', 'iyzico.client.ts'), 'utf8');
+    const iyzicoMs = Number(istemci.match(/export const IYZICO_ZAMAN_ASIMI_MS = ([\d_]+);/)?.[1].replace(/_/g, ''));
+    expect(iyzicoMs).toBeGreaterThan(0);
+    expect(ODEME_DENEMESI_ZAMAN_ASIMI_MS).toBeGreaterThan(3 * iyzicoMs);
   });
 });
 
@@ -175,13 +245,32 @@ describe('B · sayfa BAĞLANTISI (kaynak, yorumsuz)', () => {
   });
   it('B4b "Formu yeniden aç" YALNIZ hedef varken çizilir ve hedefi elle yazılmaz', () => {
     expect(kod).toMatch(/setYenidenAcYolu\(yenidenAcmaAdresi\(girdi, 'baglantisiz'\)\);\s*setKip\('donusHatasi'\)/);
-    expect(kod).toMatch(/\{yenidenAcYolu && \(\s*<a href=\{yenidenAcYolu\}/);
+    expect(kod).toMatch(
+      /const formuYenidenAc = odemeGorunumu \? \(odemeGorunumu\.yenidenAc \? '\/abonelik\/kart' : null\) : yenidenAcYolu;/,
+    );
+    expect(kod).toMatch(/\{formuYenidenAc && \(\s*<a href=\{formuYenidenAc\}/);
     expect(kod).not.toMatch(/href="\/abonelik\/kart/);
   });
-  it("B5 'guncellendi' dönüşünde form İSTENMEZ; metin erişim durumundan (guncellendiMetni)", () => {
-    expect(kod).toMatch(/girdi\.sonuc === 'guncellendi'\) \{\s*setKip\('guncellendi'\);\s*return;/);
-    expect(kod).toMatch(/const \{ erisim \} = useCapabilities\(\);/);
-    expect(kod).toMatch(/guncellendiMetni\(erisim\?\.durum\)/);
+  it("B5 ⭐ 'guncellendi' dönüşünde form İSTENMEZ; bekleyen ödeme sunucuya BİR KEZ sorulur ve sonuç saf eşlemeden okunur", () => {
+    const dal = kod.match(/if \(girdi\.sonuc === 'guncellendi'\) \{([\s\S]*?)\n {4}\}/)?.[1] ?? '';
+    expect(dal).toMatch(/setKip\('guncellendi'\);/);
+    expect(dal).toMatch(
+      /api\.post\('\/abonelik\/odeme-tekrar-dene', \{\}, \{ timeout: ODEME_DENEMESI_ZAMAN_ASIMI_MS \}\)/,
+    );
+    expect(dal).toMatch(/setOdeme\(odemeDenemesiOku\(data\)\)/);
+    expect(dal).toMatch(/setOdeme\(odemeDenemesiHatasi\(e\)\)/);
+    expect(dal).toMatch(/return;\s*$/);
+    expect(dal).not.toMatch(/kart-guncelle'/);
+  });
+  it('B7 ödeme işlenebilecekse erişim (şerit, yetenekler) sınırlı kez tazelenir — karar saf görünümden', () => {
+    expect(kod).toMatch(/const tazele = odeme !== null && odemeGorunumu\?\.erisimiTazele === true;/);
+    expect(kod).toMatch(/if \(!tazele\) return;/);
+    expect(kod).toMatch(/\[15_000, 40_000, 75_000\]\.map\(\(ms\) => setTimeout\(\(\) => void refresh\(\), ms\)\)/);
+    expect(kod).toMatch(/return \(\) => zamanlayicilar\.forEach\(clearTimeout\);/);
+  });
+  it('B6 ⭐ para çeken istek sayfada TEK yerde (dönüş dalı) — form kipi ve hata dalları çekim istemez', () => {
+    expect(kod.match(/odeme-tekrar-dene/g) ?? []).toHaveLength(1);
+    expect(kod).toMatch(/const odemeGorunumu = kip === 'guncellendi' \? odemeDenemesiGorunumu\(odeme, Date\.now\(\)\) : null;/);
   });
 });
 

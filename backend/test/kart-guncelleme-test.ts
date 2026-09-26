@@ -482,7 +482,7 @@ async function aBlogu(): Promise<void> {
   const cagrilar: unknown[][] = [];
   const kontrolcu = new AbonelikController({} as any, {
     kartGuncellemeFormu: async (...arg: unknown[]) => { cagrilar.push(arg); return { formIcerigi: '' }; },
-  } as any, {} as any, {} as any, {} as any);
+  } as any, {} as any, {} as any, {} as any, {} as any);
   await kontrolcu.kartGuncelle({ id: 'U1', firmaId: 'F-A' }, { abonelikId: KENDI });
   check('A6 ⭐ BAĞLANTI: @Body tipi KartGuncelleDto ve controller ?a=\'yı servise iletir',
     tipler[1] === KartGuncelleDto && cagrilar.length === 1 && cagrilar[0][0] === 'F-A' && cagrilar[0][1] === KENDI,
