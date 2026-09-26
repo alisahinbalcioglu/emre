@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 827
-Toplam satir: 218755
+Kod dosyasi: 829
+Toplam satir: 219184
 Uc nokta: 239
 test:* scripti: 133
 
@@ -501,10 +501,12 @@ test:* scripti: 133
 | `frontend/components/dwg-metraj/unit-detection.ts` | 79 |
 | `frontend/components/dwg-tagging/index.ts` | 14 |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | 110 |
-| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 1552 |
+| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 1559 |
 | `frontend/components/dwg-viewer/aci-colors.ts` | 38 |
 | `frontend/components/dwg-viewer/canli-cap.test.ts` | 299 |
 | `frontend/components/dwg-viewer/canli-cap.ts` | 101 |
+| `frontend/components/dwg-viewer/gorunum-kutusu.test.ts` | 298 |
+| `frontend/components/dwg-viewer/gorunum-kutusu.ts` | 124 |
 | `frontend/components/dwg-viewer/gorunum-olcek.test.ts` | 41 |
 | `frontend/components/dwg-viewer/index.ts` | 7 |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | 54 |
@@ -1288,9 +1290,11 @@ test:* scripti: 133
 | `frontend/components/dwg-metraj/diameter-colors.ts` | `./constants` |
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | `vitest` |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | `zustand` `zustand/middleware` `@/components/dwg-metraj/diameter-colors` |
-| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | `rbush` `lucide-react` `@/ortak/lib/api` `./types` `@/components/dwg-metraj/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./segment-length` `./canli-cap` `./useViewport` `./aci-colors` |
+| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | `rbush` `lucide-react` `@/ortak/lib/api` `./types` `@/components/dwg-metraj/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./segment-length` `./canli-cap` `./gorunum-kutusu` `./useViewport` `./aci-colors` |
 | `frontend/components/dwg-viewer/canli-cap.test.ts` | `node:fs` `node:path` `typescript` `vitest` `./canli-cap` `../dwg-metraj/constants` `../dwg-metraj/types` |
 | `frontend/components/dwg-viewer/canli-cap.ts` | `../dwg-metraj/types` |
+| `frontend/components/dwg-viewer/gorunum-kutusu.test.ts` | `node:fs` `node:path` `typescript` `vitest` `./gorunum-kutusu` |
+| `frontend/components/dwg-viewer/gorunum-kutusu.ts` | `./types` |
 | `frontend/components/dwg-viewer/gorunum-olcek.test.ts` | `vitest` `./useViewport` `./types` |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | `vitest` `./segment-length` |
 | `frontend/components/dwg-viewer/useViewport.ts` | `react` `./types` |
