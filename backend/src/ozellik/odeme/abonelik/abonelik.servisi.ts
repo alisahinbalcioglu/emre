@@ -658,6 +658,15 @@ export class AbonelikServisi {
         // 24.09: erisimin bu tahsilatta nasil degistigi olaydan okunabilsin.
         oncekiErisimSonu: ab.erisimSonu.toISOString(),
         kopruDuzeltildi: kopruDuzeltilir,
+        // 25.09: havale onayinin kart bildirimi cekimin tutarini, donemini ve
+        // erisime ETKISINI olaydan okur (iyzico'ya gidilmez) — miras satirda
+        // cekim erisimi uzatmaz, olagan satirda uzatir; yonetici iade
+        // kararini buna gore verir (havale-kart-penceresi.ts).
+        yeniErisimSonu: yeniErisimSonu.toISOString(),
+        tutar: siparis.paidPrice ?? siparis.price ?? null,
+        paraBirimi: ab.paketSurumu.paraBirimi,
+        startPeriod: siparis.startPeriod ?? null,
+        endPeriod: siparis.endPeriod ?? null,
       },
     });
 

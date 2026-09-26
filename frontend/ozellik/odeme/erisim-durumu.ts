@@ -117,6 +117,19 @@ export function seritGosterilsinMi(karar: ErisimKarari | null): boolean {
 }
 
 /**
+ * Seridin eylem dugmesi cizilmeli mi? (25.09.2026 — inceleme L1)
+ *
+ * Kullanici ZATEN eylemin sayfasindaysa HAYIR: ayni yola `Link` tiklamasi
+ * sayfayi yeniden kurmaz, dugme olu kalirdi (`/abonelik/kart`ta "Karti
+ * guncelle", `/abonelik`te "Paket sec"). Sorgu dizesi ve capa karsilastirmaya
+ * girmez — `usePathname` onlari tasimaz.
+ */
+export function seritEylemiGosterilsinMi(eylem: ErisimUyarisi['eylem'] | null | undefined, yol: string): boolean {
+  if (!eylem) return false;
+  return eylem.yol.split(/[?#]/)[0] !== yol;
+}
+
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  *  ERISIM TAMAMEN KAPALIYKEN ACIK KALAN YOLLAR
  * ═══════════════════════════════════════════════════════════════════════════

@@ -90,14 +90,21 @@ export function girisSonrasiYol(data: OturumYaniti, donus: string | null = giris
  *  saklanir ve `girisSonrasiYol` onu BIR KEZ okur. Parola, iki adimli kod ve
  *  sirket girisi (dis yonlendirme) dallarinin HEPSI ayni sekmede kalir.
  *
- *  ⚠ ACIK YONLENDIRME YOK: yalniz `/abonelik` ya da `/abonelik?oneri=<uuid>`.
- *  Baska her deger (baska yol, baska parametre, `//dis.site`, `javascript:`)
- *  hem YAZARKEN hem OKURKEN reddedilir.
+ *  25.09.2026 — dunning e-postasinin "Kartimi guncelle" dugmesi
+ *  `/abonelik/kart?a=<abonelik kimligi>` acar; iyzico donusu
+ *  `/abonelik/kart?sonuc=guncellendi|hata`ya duser. Liste disinda kalsalardi
+ *  oturumu dusmus musteri girisle PANELE gider, karti hic guncelleyemez ya da
+ *  guncellemenin sonucunu gormezdi (inceleme M2).
+ *
+ *  ⚠ ACIK YONLENDIRME YOK: yalniz `/abonelik`, `/abonelik?oneri=<uuid>`,
+ *  `/abonelik/kart`, `/abonelik/kart?a=<uuid>` ve
+ *  `/abonelik/kart?sonuc=guncellendi|hata`. Baska her deger (baska yol, baska
+ *  parametre, `//dis.site`, `javascript:`) hem YAZARKEN hem OKURKEN reddedilir.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 const DONUS_ANAHTARI = 'girisDonusu';
 const IZINLI_DONUS =
-  /^\/abonelik(\?oneri=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$/i;
+  /^\/abonelik(?:\?oneri=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\/kart(?:\?(?:a=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|sonuc=(?:guncellendi|hata)))?)?$/i;
 
 /** Izin listesindeki yol ise kendisi, degilse `null`. */
 export function izinliDonusYolu(yol: unknown): string | null {

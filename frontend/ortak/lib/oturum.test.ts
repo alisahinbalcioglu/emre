@@ -201,6 +201,20 @@ describe('giriş dönüş yolu — yalnız izin listesi, bir kez', () => {
     expect(izinliDonusYolu(`/abonelik?oneri=${KIMLIK}`)).toBe(`/abonelik?oneri=${KIMLIK}`);
   });
 
+  // 25.09.2026 — dunning e-postası `/abonelik/kart?a=<abonelik>` açar; iyzico
+  // dönüşü `?sonuc=`e düşer. Liste dışında kalsalardı oturumu düşmüş müşteri
+  // girişten sonra panele giderdi (inceleme M2).
+  it('⭐ izinli: `/abonelik/kart`, `?a=<uuid>` ve `?sonuc=guncellendi|hata`', () => {
+    for (const yol of ['/abonelik/kart', `/abonelik/kart?a=${KIMLIK}`, '/abonelik/kart?sonuc=guncellendi', '/abonelik/kart?sonuc=hata']) {
+      expect(izinliDonusYolu(yol), yol).toBe(yol);
+    }
+  });
+
+  it('⭐ e-postadaki kart bağlantısı girişten SONRA aynen açılır (?a= kaybolmaz)', () => {
+    girisDonusunuSakla(`/abonelik/kart?a=${KIMLIK}`);
+    expect(girisSonrasiYol(OTURUM)).toBe(`/abonelik/kart?a=${KIMLIK}`);
+  });
+
   it.each([
     '//dis.site/abonelik',
     'https://dis.site/abonelik',
@@ -215,6 +229,15 @@ describe('giriş dönüş yolu — yalnız izin listesi, bir kez', () => {
     '/abonelik\n', // `$` satır sonundan önce eşleşmemeli (güvenlik incelemesi notu)
     '/\\dis.site', // ters bölü: tarayıcı `/\` → `//` sayar
     '',
+    // 25.09 — kart yolunun izni de dar: başka parametre, bozuk kimlik, ek yol yok.
+    '/abonelik/kart?a=kimlik-degil',
+    `/abonelik/kart?a=${KIMLIK}&donus=//dis.site`,
+    `/abonelik/kart?oneri=${KIMLIK}`,
+    '/abonelik/kart?sonuc=basarili',
+    `/abonelik/kart?sonuc=guncellendi&a=${KIMLIK}`,
+    '/abonelik/kart/../admin',
+    '/abonelik/kartx',
+    '/abonelik/kart\n',
   ])('⭐ reddedilir (açık yönlendirme yok): %s', (yol) => {
     expect(izinliDonusYolu(yol)).toBeNull();
   });

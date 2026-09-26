@@ -7,6 +7,7 @@ import {
 } from '../../../altyapi/auth/kapali-hesap';
 import { abonelikErisimi } from '../../../altyapi/auth/abonelik-erisim';
 import { kisitlamayaKalanGun } from '../dunning/kisit-gunu';
+import { kartGuncellenebilirMi } from './kart-kapatma';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -262,6 +263,16 @@ export class ErisimServisi {
     // Asagidaki dallar yalnizca MESAJ ve `kalanGun` uretir.
     const e = abonelikErisimi({ durum: ab.durum, erisimSonu: ab.erisimSonu }, simdi);
 
+    // Ödeme sorunlu dalların (ODEME_BEKLIYOR · KISITLI · ASKIDA) eylemi (25.09).
+    // Kart sayfası YALNIZ güncellenecek kart varken: havale satırında ya da
+    // iyzico'da kapanmış abonelikte o sayfa "kart aboneliği yok" retiyle
+    // çıkmazdır. Kural kart formunun reddiyle TEK yerde.
+    const kartVar = kartGuncellenebilirMi(ab);
+    const odemeEylemi = (kartEtiketi: string) =>
+      kartVar
+        ? { etiket: kartEtiketi, yol: '/abonelik/kart' }
+        : { etiket: 'Ödemeyi tamamla', yol: '/abonelik' };
+
     switch (ab.durum) {
       case AbonelikDurumu.DENEME: {
         if (suresiDoldu) {
@@ -358,7 +369,7 @@ export class ErisimServisi {
             metin:
               'Kayıtlı kartınızdan tahsilat yapılamadı. Kartınızı ' +
               'güncellerseniz kesinti yaşamazsınız.',
-            eylem: { etiket: 'Kartı güncelle', yol: '/abonelik/kart' },
+            eylem: odemeEylemi('Kartı güncelle'),
           },
         };
       }
@@ -376,7 +387,7 @@ export class ErisimServisi {
               'Mevcut tekliflerinizi görebilirsiniz, ancak yeni teklif ' +
               'oluşturma ve çıktı indirme kapalı. Ödemenizi tamamladığınızda ' +
               'anında açılır.',
-            eylem: { etiket: 'Ödemeyi tamamla', yol: '/abonelik/kart' },
+            eylem: odemeEylemi('Ödemeyi tamamla'),
           },
         };
 
@@ -392,7 +403,7 @@ export class ErisimServisi {
             metin:
               'Verileriniz duruyor. Ödemenizi tamamladığınızda hesabınız ' +
               'olduğu gibi geri açılır.',
-            eylem: { etiket: 'Ödemeyi tamamla', yol: '/abonelik/kart' },
+            eylem: odemeEylemi('Ödemeyi tamamla'),
           },
         };
 

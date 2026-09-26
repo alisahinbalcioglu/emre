@@ -17,6 +17,7 @@ import { PaketDegisimiServisi } from './paket-degisimi.servisi';
 import { PaketOnerisiServisi } from './yonetici/paket-onerisi.servisi';
 import { AbonelikBaslaDto } from './dto/abonelik-basla.dto';
 import { AbonelikDegistirDto } from './dto/abonelik-degistir.dto';
+import { KartGuncelleDto } from './dto/kart-guncelle.dto';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -221,13 +222,21 @@ export class AbonelikController {
     return this.satinAlma.donus(g.token, firmaId);
   }
 
-  /** Kayitli karti degistirme formu (1 TL cekilip iade edilerek dogrulanir). */
+  /**
+   * Kayitli karti degistirme formu (1 TL cekilip iade edilerek dogrulanir).
+   * Govde: e-postadaki `?a=` → `abonelikId` (bkz. `KartGuncelleDto`).
+   */
   @UseGuards(FirmaRolGuard)
   @FirmaRolu('sahip')
+  // ⚠ HIZ SINIRI (kullanici basina 15 dk'da 10): her cagri iyzico'da yeni bir
+  // form jetonu acar. Sayfa acilisi + "Formu yeniden ac" icin genis, dongude
+  // iyzico'yu doldurmaya dar. Kova `degistir`deki gibi oturum sahibi.
+  @UseGuards(KullaniciHizSiniriGuard)
+  @Throttle({ default: { ttl: 900_000, limit: 10 } })
   @Post('kart-guncelle')
-  async kartGuncelle(@CurrentUser() kullanici: unknown) {
+  async kartGuncelle(@CurrentUser() kullanici: unknown, @Body() g: KartGuncelleDto) {
     const { firmaId } = kimlikCoz(kullanici);
-    return this.satinAlma.kartGuncellemeFormu(firmaId);
+    return this.satinAlma.kartGuncellemeFormu(firmaId, g?.abonelikId);
   }
 
   /** Iptal — erisim DONEM SONUNA kadar surer. */
@@ -239,6 +248,7 @@ export class AbonelikController {
     @Body() g: { neden?: string },
   ) {
     const { firmaId, userId } = kimlikCoz(kullanici);
-    return this.satinAlma.iptalEt(firmaId, userId, g.neden);
+    // Müşterinin KENDİ iptali: onay e-postası yalnız bu yoldan (25.09).
+    return this.satinAlma.iptalEt(firmaId, userId, g.neden, { musteriyeBildir: true });
   }
 }

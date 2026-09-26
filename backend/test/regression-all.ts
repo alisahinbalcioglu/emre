@@ -546,7 +546,7 @@ const SUITES: Suite[] = [
   //    kilit olayı). Artık teklif paketi kaydedilir, onay onu etkin paket
   //    yapar ve izleri siler; kart webhook'u yarışta paketi geri çekmez.
   //    DB/AĞ/iyzico GEREKTİRMEZ.
-  { ad: 'Havale teklifinin paketi: teklif · onayda paket · düşürme · yenileme · yeni firma · A1 izleri · eski teklif · yarışlar · geç çekim · koltuk uyarısı · yönetici listesi (F/T/K/D/H/Y/P/E/R/A/W/S/G)', script: 'test:havale-teklif-paketi', zincir: 'Z0' },
+  { ad: 'Havale teklifinin paketi: teklif · onayda paket · düşürme · yenileme · yeni firma · A1 izleri · eski teklif · yarışlar · geç çekim · koltuk uyarısı · kart açıkken havale · yönetici listesi (F/T/K/D/H/Y/P/E/R/A/W/S/C/G)', script: 'test:havale-teklif-paketi', zincir: 'Z0' },
   // ── 24.09.2026 — YÖNETİM E-POSTALARI (Emre: "faturalar ve uyarılar vs. e
   //    posta olarak gitmeli"). Yönetici uyarıları yalnız YONETIM_EPOSTA'ya
   //    gidiyordu ve canlıda değişken BOŞ: çift tahsilat / iptal düşmesi /
@@ -557,6 +557,13 @@ const SUITES: Suite[] = [
   //    her tahsilatta NES kesim talebini (VUK 231/5 son günüyle) e-postalar.
   //    DB/AĞ/SMTP GEREKTİRMEZ.
   { ad: 'Yönetim e-postaları: adres çözümü · uyarı · NES fatura kesim talebi · bağlantı (A/B/C/K/D/E/F)', script: 'test:yonetim-epostalari', zincir: 'Z0' },
+  // ── 25.09.2026 — MÜŞTERİ E-POSTALARI (Emre: "devam et, önerdiğin sırayla";
+  //    deneme için "3 gün kala, bir kez"). Dört olay müşteriye HİÇ e-posta
+  //    üretmiyordu: sorunsuz yenileme, müşterinin iptali, havale reddi, deneme
+  //    bitiyor. Her biri TAM BİR KEZ: fatura satırının tekilliği, koşullu iptal
+  //    yazımları, koşullu `denemeHatirlatmasi` işareti; dunning'in "ödemeniz
+  //    alındı"sıyla ayrık. DB/AĞ/SMTP GEREKTİRMEZ.
+  { ad: 'Müşteri e-postaları: yenileme makbuzu · iptal onayı · havale reddi · deneme bitiyor · tam bir kez · bağlantı (M/H/İ/Ö/D/N)', script: 'test:musteri-epostalari', zincir: 'Z0' },
   // ── 21.09.2026 — PLAN 5.8 VERİ İMHASI, ÖDEME AYAĞI. DB/AĞ GEREKTİRMEZ.
   //    K4: fatura müşteri kimliğini `Firma` satırından CANLI okuyordu; fatura
   //    tahsilat anında yazılıp kesim @Cron ile SONRA koştuğu için müşteri
@@ -580,6 +587,15 @@ const SUITES: Suite[] = [
   //    hiç dunning'e girmemişe SIFIR; posta hatası tahsilat olayını düşürmez.
   //    Eski hâl 17 kırmızı; inceleme öncesi "anlık görüntü" sürümü E1 kırmızı.
   { ad: 'Dunning "ödemeniz alındı": çıkış koşullu sıfırlamadan, tam bir kez, posta hatası tahsilatı düşürmez (Ö/T/K/N/Y/E/M/H)', script: 'test:dunning-toparlandi', zincir: 'Z0' },
+  // ── 25.09.2026 — /abonelik/kart CANLIDA 404'TÜ. DB/AĞ GEREKTİRMEZ. Dunning
+  //    e-postalarının "Kartımı güncelle"si, "ödemeniz alındı"nın "Uygulamaya
+  //    dön"ü ve uygulama içi şeridin "Kartı güncelle" / "Ödemeyi tamamla"sı
+  //    olmayan bir sayfaya gidiyordu; kart formunun dönüş adresi de ön yüzde
+  //    olmayan (ve olsa bile POST gövdesini okuyamayacak) bir sayfaydı.
+  //    Kapı backend'in ürettiği HER uygulama bağlantısını `frontend/app`
+  //    rotalarına ve `/api/` dönüşlerini kayıtlı uçlara çözer; `?a=` başka
+  //    firmanın kartını açamaz; dönüş ucu oturumsuz ve yazmaz.
+  { ad: 'Kart güncelleme: her uygulama bağlantısı bir sayfaya, ?a= yalnız kendi aboneliği, dönüş ucu (S/R/A/D)', script: 'test:kart-guncelleme', zincir: 'Z0' },
   // ── 25.09.2026 — HAVALE DURUM GEÇİŞLERİ (aynı havaleye iki onay + ikizleri).
   //    `odemeyiOnayla` durumu işlem DIŞINDA okuyup en sonda KOŞULSUZ ONAYLANDI
   //    yazıyordu: iki istek ikisi de geçiyor, aboneliği iki kez uzatıyor

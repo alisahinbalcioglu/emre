@@ -215,6 +215,8 @@ async function main() {
     'POST /api/abonelik/basla',
     'POST /api/abonelik/donus',
     'POST /api/abonelik/kart-guncelle',
+    // 25.09: kart formunun callbackUrl'i bu yol — kayitli degilse iyzico 404 alir.
+    'POST /api/abonelik/iyzico-kart-donus',
     'POST /api/abonelik/iptal',
   ];
   for (const b of beklenen) {

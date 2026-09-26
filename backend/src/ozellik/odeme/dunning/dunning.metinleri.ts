@@ -154,11 +154,16 @@ export function tutarYaz(tutar: number, paraBirimi = 'TRY'): string {
   );
 }
 
-/** Tarihi Türkçe biçimde yazar: "3 Eylül 2026" */
+/**
+ * Tarihi Türkçe biçimde yazar: "3 Eylül 2026". ⚠ 25.09: GÜN İSTANBUL'A GÖRE
+ * — konteyner saati UTC (Dockerfile/compose `TZ` vermez); 00:00-02:59 arası
+ * bir an (ör. ilk çekim) müşteriye bir GÜN ÖNCESİ olarak yazılıyordu.
+ */
 export function tarihYaz(t: Date): string {
   return t.toLocaleDateString('tr-TR', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
+    timeZone: 'Europe/Istanbul',
   });
 }

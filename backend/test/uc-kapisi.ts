@@ -139,6 +139,8 @@ const UCRETSIZ: Record<string, Muafiyet> = {
   'POST /abonelik/kart-guncelle': ['ODEME', 'Kartı geçersizleşen firma kartını değiştiremezse hiç ödeyemez.'],
   'POST /abonelik/iptal': ['ODEME', 'İptal hakkı ödeme durumuna bağlanamaz (tüketici hakkı).'],
   'POST /abonelik/iyzico-donus': ['ODEME', 'iyzico çapraz-site dönüş POST\'u; kimlik token\'ın kendisidir, oturum yok.'],
+  // 25.09: kart güncelleme dönüşü — `kartGuncellemeFormu`nun callbackUrl'i.
+  'POST /abonelik/iyzico-kart-donus': ['ODEME', 'iyzico çapraz-site kart güncelleme dönüşü; oturum yok, HİÇBİR ŞEY yazmaz, yalnız sonuç sayfasına yönlendirir.'],
   'POST /webhook/iyzico/abonelik': ['ODEME', 'Sağlayıcıdan gelen olay; oturum yok, imzayla doğrulanır.'],
   'GET /fiyatlar': ['ODEME', 'Girişsiz ziyaretçiye açık fiyat sayfası (Faz 6.1); ThrottlerGuard ile IP sınırlı.'],
 

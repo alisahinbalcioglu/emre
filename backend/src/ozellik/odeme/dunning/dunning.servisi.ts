@@ -359,7 +359,12 @@ export class DunningServisi {
       konu: metin.konu,
       baslik: metin.baslik,
       paragraflar: metin.govde,
-      dugme: { etiket: metin.dugmeEtiketi, url: kartUrl },
+      // "Ödemeniz alındı"nın düğmesi "Uygulamaya dön": ödeyen müşteriyi kart
+      // formuna değil panele götürür (25.09; kart sayfası yokken ikisi de 404'tü).
+      dugme: {
+        etiket: metin.dugmeEtiketi,
+        url: anahtar === 'toparlandi' ? `${this.uygulamaUrl}/dashboard` : kartUrl,
+      },
       altNot: metin.altNot,
     });
 

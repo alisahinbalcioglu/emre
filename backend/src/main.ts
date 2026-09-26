@@ -5,6 +5,7 @@ import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { guvenlikBasliklariniKur } from './altyapi/http/guvenlik-basliklari';
 import { govdeSinirlariniKur } from './altyapi/http/govde-siniri';
+import { corsSecenekleri } from './altyapi/http/cors';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -70,21 +71,11 @@ async function bootstrap() {
         'http://localhost:3010', // Playwright e2e dev sunucusu
       ];
   const allowedOrigins = Array.from(new Set([...envOrigins, ...gelistirmeOrigins]));
-  const allowedPatterns: RegExp[] = [];
 
-  app.enableCors({
-    origin: (origin, callback) => {
-      // Same-origin (browser address bar veya server-to-server) — origin undefined
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      if (allowedPatterns.some((re) => re.test(origin))) return callback(null, true);
-      return callback(new Error(`CORS blocked: ${origin}`));
-    },
-    credentials: true,
-    // KF6: indirme yanitindaki dosya adi + self-check uyarisi cross-origin'de
-    // de okunabilsin (same-origin'de zaten serbest)
-    exposedHeaders: ['Content-Disposition', 'X-Export-Warning', 'X-Export-Summary'],
-  });
+  // Koken kapisi ve iyzico donus muafiyeti `altyapi/http/cors.ts`te (25.09):
+  // iyzico'nun tarayicidan gelen donus POST'u listede olmayan `Origin` tasir
+  // ve kapi onu denetleyiciye ulasmadan 500'e ceviriyordu.
+  app.enableCors(corsSecenekleri(allowedOrigins));
 
   app.setGlobalPrefix('api');
 

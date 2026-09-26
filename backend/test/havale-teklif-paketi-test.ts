@@ -61,8 +61,10 @@ import { SatinAlmaServisi } from '../src/ozellik/odeme/abonelik/satinalma.servis
 import { FaturaServisi } from '../src/ozellik/odeme/fatura/fatura.servisi';
 import { HavaleServisi } from '../src/ozellik/odeme/havale/havale.servisi';
 import { koltukDurumuHesapla } from '../src/ozellik/firma/uyelik-kurallari';
+import { tarihYaz } from '../src/ozellik/odeme/dunning/dunning.metinleri';
 import { IyzicoHatasi } from '../src/ozellik/odeme/iyzico/iyzico.client';
-import type { IyzicoAbonelikDurumu } from '../src/ozellik/odeme/iyzico/iyzico.client';
+import type { IyzicoAbonelikDetayi, IyzicoAbonelikDurumu } from '../src/ozellik/odeme/iyzico/iyzico.client';
+import { KART_OKUMA_SURESI_MS, sonrakiKartCekimi, yerelSonrakiCekim } from '../src/ozellik/odeme/havale/havale-kart-penceresi';
 
 let passed = 0;
 let failed = 0;
@@ -256,6 +258,8 @@ function sirala(satirlar: Satir[], orderBy: any): Satir[] {
 /** Tek seferlik kanca: eşleşen ilk sorgu ÇALIŞMADAN önce `fn` koşar (yarış kurulumu). */
 interface Kanca {
   model: string;
+  /** Kancanın koştuğu okuma: mevcut yarış kancaları `findUnique`, olay kaydı arızası `findMany`. */
+  islem: 'findUnique' | 'findMany';
   eslesir: (arg: any) => boolean;
   fn: () => Promise<void>;
   tetiklendi: boolean;
@@ -317,9 +321,9 @@ function bellekPrisma() {
     return satir;
   }
 
-  async function kancaKos(model: string, arg: any): Promise<void> {
+  async function kancaKos(model: string, arg: any, islem: Kanca['islem'] = 'findUnique'): Promise<void> {
     for (const k of kancalar) {
-      if (!k.tetiklendi && k.model === model && k.eslesir(arg)) {
+      if (!k.tetiklendi && k.model === model && k.islem === islem && k.eslesir(arg)) {
         k.tetiklendi = true;
         await k.fn();
       }
@@ -346,6 +350,7 @@ function bellekPrisma() {
     },
     findMany: async (arg: any = {}) => {
       await Promise.resolve();
+      await kancaKos(model, arg, 'findMany');
       let liste = sirala(tablo(model).filter((r) => whereUygula(r, arg.where)), arg.orderBy);
       if (arg.take !== undefined) liste = liste.slice(0, arg.take);
       return liste.map((s) => yansit(model, s, arg));
@@ -401,8 +406,13 @@ function bellekPrisma() {
       },
     },
   );
-  const kancaKur = (model: string, eslesir: (arg: any) => boolean, fn: () => Promise<void>): Kanca => {
-    const k: Kanca = { model, eslesir, fn, tetiklendi: false };
+  const kancaKur = (
+    model: string,
+    eslesir: (arg: any) => boolean,
+    fn: () => Promise<void>,
+    islem: Kanca['islem'] = 'findUnique',
+  ): Kanca => {
+    const k: Kanca = { model, islem, eslesir, fn, tetiklendi: false };
     kancalar.push(k);
     return k;
   };
@@ -421,6 +431,8 @@ interface SahteAbonelik {
   olusturuldu: number;
   /** Dönem sonu — `paketDegistir` (NEXT_PERIOD) yeni planın başlangıcını bundan bildirir. */
   donemSonu: number;
+  /** Denemeli abonelik: iyzico'nun `trialEndDate`i (ms). Denemesizde yok. */
+  denemeSonu?: number;
   siparisler: Satir[];
 }
 
@@ -429,6 +441,10 @@ function sahteIyzico() {
   const cagrilar: Array<{ ad: string; kod: string }> = [];
   /** Koda bağlı iptal arızası (ağ / iyzico hatası). */
   const iptalArizasi = new Map<string, Error>();
+  /** Koda bağlı OKUMA arızası (`abonelikGetir` — iyzico'ya ulaşılamıyor). */
+  const getirArizasi = new Map<string, Error>();
+  /** Koda bağlı ASILI okuma: `abonelikGetir` hiç yanıt vermez (iyzico yavaş / bağlantı takıldı). */
+  const getirAsili = new Set<string>();
   /**
    * TEK SEFERLİK: `paketDegistir` değişimi iyzico'da UYGULAR, yanıtı bu kanca
    * bitene dek döndürmez (yanıt ağda) — A1 ↔ havale onayı yarışını kurar.
@@ -446,11 +462,15 @@ function sahteIyzico() {
     customerReferenceCode: a.musteri,
     subscriptionStatus: a.durum,
     createdDate: new GercekDate(a.olusturuldu).toISOString(),
+    ...(a.denemeSonu !== undefined ? { trialEndDate: a.denemeSonu } : {}),
     orders: a.siparisler.map((s) => ({ ...s })),
   });
   const istemci: any = {
     abonelikGetir: async (kod: string) => {
       cagrilar.push({ ad: 'abonelikGetir', kod });
+      const ariza = getirArizasi.get(kod);
+      if (ariza) throw ariza;
+      if (getirAsili.has(kod)) return new Promise(() => undefined);
       return detay(kod, bul(kod));
     },
     // iyzico bilinmeyen filtreyi YUTAR (20.08): arama TÜM abonelikleri döner,
@@ -500,12 +520,31 @@ function sahteIyzico() {
   return {
     istemci,
     cagrilar,
-    kur: (kod: string, plan: string, musteri: string, donemSonu: number) =>
+    kur: (kod: string, plan: string, musteri: string, donemSonu: number, denemeSonu?: number) =>
       void abonelikler.set(kod, {
-        durum: 'ACTIVE', plan, musteri, olusturuldu: GercekDate.now() - 60 * GUN, donemSonu, siparisler: [],
+        durum: 'ACTIVE', plan, musteri, olusturuldu: GercekDate.now() - 60 * GUN, donemSonu, denemeSonu, siparisler: [],
       }),
     durum: (kod: string) => abonelikler.get(kod)?.durum,
+    durumYaz: (kod: string, durum: IyzicoAbonelikDurumu) => void (bul(kod).durum = durum),
+    /** iyzico'nun defterinde karttan GERÇEKTEN çekilen (SUCCESS) sipariş sayısı. */
+    basariliCekimler: (kod: string) =>
+      (abonelikler.get(kod)?.siparisler ?? []).filter((s) => s.orderStatus === 'SUCCESS').length,
     iptaliBoz: (kod: string, hata: Error) => void iptalArizasi.set(kod, hata),
+    okumayiBoz: (kod: string, hata: Error) => void getirArizasi.set(kod, hata),
+    okumayiAs: (kod: string) => void getirAsili.add(kod),
+    sayi: (ad: string, kod?: string) => cagrilar.filter((c) => c.ad === ad && (!kod || c.kod === kod)).length,
+    /** Başarısız dönem çekimi (kart reddi): FAILED sipariş, abonelik UNPAID. */
+    ret: (kod: string, p: { baslangic: number; bitis: number }): string => {
+      const a = bul(kod);
+      const siparis = `sip-${kod}-${a.siparisler.length + 1}`;
+      a.siparisler.push({
+        referenceCode: siparis, orderStatus: 'FAILED',
+        startPeriod: new GercekDate(p.baslangic).toISOString(), endPeriod: new GercekDate(p.bitis).toISOString(),
+        price: 1299, paymentAttempts: [{ paymentAttemptStatus: 'FAILED' }],
+      });
+      a.durum = 'UNPAID';
+      return siparis;
+    },
     degisimdeKanca: (fn: () => Promise<void>) => void (degisimKancasi = fn),
     /**
      * iyzico'nun DÖNEM ÇEKİMİ (abonelik planının fiyatıyla). İptal edilmiş /
@@ -633,7 +672,9 @@ function dunyaKur() {
   function kartliSatir(firmaId: string, paket: string, p: { erisimSonu: Date; plan?: string; ek?: Satir }): Satir {
     firma(firmaId);
     const kod = `sub-${firmaId}`;
-    iyz.kur(kod, p.plan ?? (paket === PRO ? 'plan-pro' : 'plan-basic'), `mus-${firmaId}`, p.erisimSonu.getTime());
+    // Denemeli satır = iyzico'da denemeli abonelik (satın alma ikisini birlikte açar).
+    const deneme = p.ek?.denemeSonu ? new GercekDate(p.ek.denemeSonu).getTime() : undefined;
+    iyz.kur(kod, p.plan ?? (paket === PRO ? 'plan-pro' : 'plan-basic'), `mus-${firmaId}`, p.erisimSonu.getTime(), deneme);
     return db.ekle('abonelik', {
       firmaId, paketSurumuId: paket, durum: 'AKTIF', erisimSonu: p.erisimSonu, odemeYontemi: 'KART',
       iyzicoAbonelikKodu: kod, iyzicoKokKodu: kod, iyzicoMusteriKodu: `mus-${firmaId}`, iyzicoDurum: 'ACTIVE',
@@ -1464,6 +1505,521 @@ async function sBlogu(): Promise<void> {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+//  C — KART ABONELİĞİ AÇIKKEN HAVALE SATIŞI (25.09 — Emre: "uyar + onayda bildir")
+// ═════════════════════════════════════════════════════════════════════════
+/**
+ * Teklif ile onay arasında (havale günlerce sürer) kart aboneliği iyzico'da
+ * AÇIK: yenileme çekimi o pencereye düşerse satır hâlâ KART'tır — webhook onu
+ * OLAĞAN yenileme sayar (çift tahsilat dalı HAVALE satırına bakar). ÖLÇÜLDÜ
+ * (düzeltme öncesi): kartlı AKTIF, DENEME ve kartı düşmüş (UNPAID) satırda
+ * kart pencerede sessizce bir dönem daha çekildi; yöneticiye e-posta 0, olay
+ * 0, teklif yanıtında kart bilgisi yok. Erişim üst üste eklendiği için aynı
+ * dönem iki kez ödenmiyor, ama müşteri istemediği bir kart dönemini ödüyor.
+ * KARAR: teklif iyzico'dan canlı durumu okuyup `kartUyarisi` döner (teklif
+ * REDDEDİLMEZ); onay, tekliften sonra karttan çekim olduysa yöneticiye
+ * e-posta + olay yazar ve yanıtında `kartCekimleri` taşır.
+ */
+async function cBlogu(): Promise<void> {
+  console.log('\n── C · kart aboneliği açıkken havale satışı (teklif ↔ onay penceresi) ──');
+  /** Teklif → (pencerede çekim/ret/yok) → onay. */
+  const pencere = async (
+    kur: (d: Dunya, T0: number) => {
+      firmaId: string; kod: string; cekimAni: number; baslangic: number;
+      olay?: 'cekim' | 'ret' | 'yok' | 'kodsuz' | 'cift';
+      /** Tekliften ÖNCE gerçek yoldan koşan adım (ör. önceki dönemin çekimi). */
+      once?: () => Promise<void>;
+    },
+  ) => {
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    const s = kur(d, T0);
+    if (s.once) await s.once();
+    const teklifteAb = d.oku(s.firmaId);
+    const getir0 = d.iyz.sayi('abonelikGetir', s.kod);
+    const t = await d.teklif(s.firmaId, PRO, T0);
+    const teklifteOkuma = d.iyz.sayi('abonelikGetir', s.kod) - getir0;
+    const y0 = d.yoneticiye().length;
+    let sip: string | null = null;
+    const olay = s.olay ?? 'cekim';
+    if (olay === 'cekim' || olay === 'cift') {
+      sip = d.iyz.cekim(s.kod, { baslangic: s.baslangic, bitis: ayEkle(s.baslangic, 1) });
+      if (sip) await saatte(s.cekimAni, () => d.abonelik.tahsilatBasarili(s.kod, sip!));
+      // GERÇEK yol: aynı webhook olayı ikinci kez işlenir (fatura kuyruğu düşünce
+      // işleyici baştan koşar) — ikinci bir `durum.degisti` olayı yazılır.
+      if (sip && olay === 'cift') await saatte(s.cekimAni + 60_000, () => d.abonelik.tahsilatBasarili(s.kod, sip!));
+    } else if (olay === 'ret') {
+      sip = d.iyz.ret(s.kod, { baslangic: s.baslangic, bitis: ayEkle(s.baslangic, 1) });
+      await saatte(s.cekimAni, () => d.abonelik.tahsilatBasarisiz(s.kod, sip!));
+    } else if (olay === 'kodsuz') {
+      // SENTETİK: bugün bu geçişi yazan yol yok (`tahsilatBasarili` hep sipariş
+      // kodludur) — okuyucunun sözleşmesi ölçülür: kodsuz çekim düşürülmez.
+      const ab = d.oku(s.firmaId);
+      d.db.ekle('abonelikOlayi', {
+        abonelikId: ab.id, tip: 'durum.degisti', aktor: 'webhook', oncekiDurum: ab.durum, yeniDurum: 'AKTIF',
+        aciklama: 'Tahsilat başarılı (sipariş kodu yok)', veri: {}, olusturuldu: new GercekDate(s.cekimAni),
+      });
+    }
+    const g0 = gunluk.length;
+    // Teklif düştüyse onaya gidilmez: blok çökmesin, düşüşü assert yakalasın (C10 `t.id`).
+    const yanit = t.id ? await d.onayla(t.id, s.cekimAni + 2 * GUN) : null;
+    const ab = d.oku(s.firmaId);
+    return {
+      d, T0, t, yanit, ab, sip, teklifteOkuma, g0, teklifteAb,
+      ku: t.yanit?.kartUyarisi,
+      kartEpostasi: d.yoneticiye().slice(y0).filter((e) => /kart/i.test(e.konu)),
+      kartOlayi: d.olaylar(/^havale\.onay\.kart\.cekimi$/, ab.id),
+      teklifOlayi: d.olaylar(/^havale\.teklif\.olusturuldu$/, ab.id)[0],
+    };
+  };
+  const bildirildi = (c: Awaited<ReturnType<typeof pencere>>) =>
+    c.kartEpostasi.length === 1 && c.kartEpostasi[0].paragraflar.join(' ').includes(String(c.sip)) &&
+    /iade/.test(c.kartEpostasi[0].paragraflar.join(' ')) &&
+    // Kart kapatma SONUCU aynı e-postada (onay kartı az önce kapattı).
+    /şimdi iyzico'da iptal edildi/.test(c.kartEpostasi[0].paragraflar.join(' ')) &&
+    c.kartOlayi.length === 1 && (c.kartOlayi[0].veri?.siparisler ?? []).includes(c.sip) &&
+    c.yanit?.kartCekimleri?.length === 1 && c.yanit.kartCekimleri[0].siparisKodu === c.sip;
+  const bildirimOzeti = (c: Awaited<ReturnType<typeof pencere>>) =>
+    `e-posta=${c.kartEpostasi.map((e) => e.konu).join(' | ')} olay=${c.kartOlayi.length} ` +
+    `yanıt=${JSON.stringify(c.yanit?.kartCekimleri)} sip=${c.sip}`;
+
+  // C1 — KART AKTIF: dönem 5 gün sonra bitiyor; teklif bugün, onay 7. gün.
+  const c1 = await pencere((d, T0) => {
+    d.kartliSatir('C1', BASIC, { erisimSonu: new GercekDate(T0 + 5 * GUN) });
+    // Bu dönemin çekimi TEKLİFTEN ÖNCE (gerçek webhook yolu): iyzico'da ödenmiş dönem T0+5'te
+    // biter — sonraki çekim tarihi iyzico'nun KENDİ siparişinden okunur (inceleme D1).
+    const once = async () => {
+      const sip = d.iyz.cekim('sub-C1', { baslangic: ayEkle(T0 + 5 * GUN, -1), bitis: T0 + 5 * GUN })!;
+      await saatte(ayEkle(T0 + 5 * GUN, -1), () => d.abonelik.tahsilatBasarili('sub-C1', sip));
+    };
+    return { firmaId: 'C1', kod: 'sub-C1', cekimAni: T0 + 5 * GUN, baslangic: T0 + 5 * GUN, once };
+  });
+  check('C1 ⭐ teklif iyzico\'dan canlı durumu OKUYOR ve uyarıyor: ACTIVE · doğrulandı · sonraki çekim dönem sonu · tutar — teklif REDDEDİLMEDİ',
+    c1.t.id !== null && c1.teklifteOkuma >= 1 && c1.ku?.iyzicoDurum === 'ACTIVE' && c1.ku?.dogrulandi === true &&
+      c1.ku?.sonrakiCekim === new GercekDate(c1.T0 + 5 * GUN).toISOString() && c1.ku?.tutar === '1299.00' &&
+      c1.ku?.paraBirimi === 'TRY' && c1.ku?.sonrakiCekimKaynagi === 'iyzico',
+    `okuma=${c1.teklifteOkuma} uyari=${JSON.stringify(c1.ku)}`);
+  const m1 = String(c1.ku?.mesaj ?? '');
+  olcum(`C · kart uyarısı: "${m1}"`);
+  check('C2 uyarı metni: sonraki çekim tarihi, "bir dönem daha", müşterinin iptal yolu (Hesabım → Abonelik → Aboneliği iptal et)',
+    m1.includes(tarihYaz(new GercekDate(c1.T0 + 5 * GUN))) && /bir dönem daha/.test(m1) && /Aboneliği iptal et/.test(m1) &&
+      !/kesin değil/.test(m1),
+    m1);
+  check('C3 teklif olayı kart uyarısının izini taşıyor (durum + sonraki çekim + tarihin kaynağı)',
+    c1.teklifOlayi?.veri?.kart?.iyzicoDurum === 'ACTIVE' &&
+      c1.teklifOlayi?.veri?.kart?.sonrakiCekim === new GercekDate(c1.T0 + 5 * GUN).toISOString() &&
+      c1.teklifOlayi?.veri?.kart?.sonrakiCekimKaynagi === 'iyzico',
+    JSON.stringify(c1.teklifOlayi?.veri));
+  const e1 = c1.kartEpostasi.length === 1 ? c1.kartEpostasi[0].paragraflar.join(' ') : '';
+  olcum(`C · onayda kart bildirimi: "${e1}"`);
+  check('C4 ⭐ onay: tekliften SONRA karttan çekim oldu → yöneticiye TEK e-posta (sipariş, iade yolu, kart kapatma sonucu)',
+    c1.kartEpostasi.length === 1 && e1.includes(String(c1.sip)) && /iade/.test(e1) && /şimdi iyzico'da iptal edildi/.test(e1),
+    bildirimOzeti(c1));
+  check('C4b onay: olay havale.onay.kart.cekimi siparişi taşıyor',
+    c1.kartOlayi.length === 1 && JSON.stringify(c1.kartOlayi[0].veri?.siparisler) === JSON.stringify([c1.sip]),
+    JSON.stringify(c1.kartOlayi.map((o) => o.veri)));
+  check('C4c onay yanıtı kartCekimleri = [bu sipariş]',
+    c1.yanit?.kartCekimleri?.length === 1 && c1.yanit.kartCekimleri[0].siparisKodu === c1.sip,
+    JSON.stringify(c1.yanit?.kartCekimleri));
+  {
+    const bas = new GercekDate(c1.T0 + 5 * GUN);
+    const son = new GercekDate(ayEkle(c1.T0 + 5 * GUN, 1));
+    check('C4d e-posta çekimin TUTARINI, kart dönemini ve ERİŞİME ETKİSİNİ söylüyor (uzattı → iade erişimi KISALTMAZ)',
+      e1.includes('₺1.299,00') && e1.includes(`kart dönemi ${tarihYaz(bas)} – ${tarihYaz(son)}`) &&
+        e1.includes(`erişimi ${tarihYaz(bas)} → ${tarihYaz(son)} uzattı`) && /İade erişimi kendiliğinden KISALTMAZ/.test(e1),
+      e1);
+  }
+  check('C5 onay yine TAMAM (bildirim onayı durdurmaz): AKTIF + HAVALE, kart iyzico\'da kapatıldı; yutulan hata yok',
+    c1.ab.durum === 'AKTIF' && c1.ab.odemeYontemi === 'HAVALE' && c1.d.iyz.durum('sub-C1') === 'CANCELED' &&
+      hatalarSonra(c1.g0).length === 0,
+    `durum=${c1.ab.durum} yöntem=${c1.ab.odemeYontemi} iyzico=${c1.d.iyz.durum('sub-C1')} hata=${hatalarSonra(c1.g0).join(' · ')}`);
+
+  // C6 — DENEME: deneme 3 gün sonra bitiyor (ilk çekim), erişim tamponu +2 gün.
+  const c6 = await pencere((d, T0) => {
+    d.kartliSatir('C6', BASIC, {
+      erisimSonu: new GercekDate(T0 + 5 * GUN),
+      ek: { durum: 'DENEME', denemeSonu: new GercekDate(T0 + 3 * GUN) },
+    });
+    return { firmaId: 'C6', kod: 'sub-C6', cekimAni: T0 + 3 * GUN, baslangic: T0 + 3 * GUN };
+  });
+  check('C6 DENEME: sonraki çekim DENEME SONU (erişim tamponu değil); ilk çekim pencerede → onayda bildirim',
+    c6.ku?.iyzicoDurum === 'ACTIVE' && c6.ku?.sonrakiCekim === new GercekDate(c6.T0 + 3 * GUN).toISOString() &&
+      c6.ku?.sonrakiCekimKaynagi === 'iyzico' &&
+      bildirildi(c6),
+    `uyari=${JSON.stringify(c6.ku)} ${bildirimOzeti(c6)}`);
+
+  // C7 — KARTI DÜŞMÜŞ (UNPAID, ODEME_BEKLIYOR): tarih bilinmez, yeniden deneme her an geçebilir.
+  const c7 = await pencere((d, T0) => {
+    d.kartliSatir('C7', BASIC, {
+      // Erişim tamponu (köprü) HÂLÂ gelecekte: tarih yine gösterilmemeli.
+      erisimSonu: new GercekDate(T0 + GUN),
+      ek: { durum: 'ODEME_BEKLIYOR', iyzicoDurum: 'UNPAID', ilkBasarisizlik: new GercekDate(T0 - 2 * GUN) },
+    });
+    d.iyz.durumYaz('sub-C7', 'UNPAID');
+    return { firmaId: 'C7', kod: 'sub-C7', cekimAni: T0 + GUN, baslangic: T0 - 2 * GUN };
+  });
+  check('C7 UNPAID: uyarı "ödeme bekliyor", tarih YOK (yeniden deneme her an); pencerede geçen çekim onayda bildirildi',
+    c7.ku?.iyzicoDurum === 'UNPAID' && c7.ku?.sonrakiCekim === null && /yeniden deneme/.test(String(c7.ku?.mesaj)) &&
+      bildirildi(c7),
+    `uyari=${JSON.stringify(c7.ku)} ${bildirimOzeti(c7)}`);
+
+  // C8 — KONTROL: kart aboneliği BİLİNEN kapalı (müşteri iptal etti) → okuma yok, uyarı yok.
+  const c8 = await pencere((d, T0) => {
+    d.kartliSatir('C8', BASIC, {
+      erisimSonu: new GercekDate(T0 + 5 * GUN),
+      ek: { durum: 'IPTAL', iyzicoDurum: 'CANCELED', iptalTalebi: new GercekDate(T0 - GUN) },
+    });
+    d.iyz.durumYaz('sub-C8', 'CANCELED');
+    return { firmaId: 'C8', kod: 'sub-C8', cekimAni: T0 + 5 * GUN, baslangic: T0 + 5 * GUN };
+  });
+  check('C8 KONTROL: bilinen kapalı kart → iyzico\'ya gidilmez, kartUyarisi=null, onayda kart bildirimi yok',
+    c8.t.id !== null && c8.teklifteOkuma === 0 && c8.ku === null && c8.kartEpostasi.length === 0 &&
+      c8.kartOlayi.length === 0 && Array.isArray(c8.yanit?.kartCekimleri) && c8.yanit.kartCekimleri.length === 0,
+    `okuma=${c8.teklifteOkuma} uyari=${JSON.stringify(c8.ku)} ${bildirimOzeti(c8)}`);
+
+  // C9 — KONTROL: havale satırı, kart kodu yok (miras) → okuma yok, uyarı yok.
+  {
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.havaleSatiri('C9', BASIC, { erisimSonu: new GercekDate(T0 + 60 * GUN) });
+    const okuma0 = d.iyz.sayi('abonelikGetir');
+    const t = await d.teklif('C9', PRO, T0);
+    check('C9 KONTROL: kart kodu olmayan havale satırında iyzico\'ya gidilmez, kartUyarisi=null',
+      t.id !== null && t.yanit?.kartUyarisi === null && d.iyz.sayi('abonelikGetir') === okuma0,
+      `uyari=${JSON.stringify(t.yanit?.kartUyarisi)} okuma=${d.iyz.sayi('abonelikGetir') - okuma0}`);
+  }
+
+  // C10 — iyzico OKUNAMIYOR: uyarı yerel kayıtla, "doğrulanamadı"; teklif yine oluşur.
+  const c10 = await pencere((d, T0) => {
+    d.kartliSatir('C10', BASIC, { erisimSonu: new GercekDate(T0 + 5 * GUN) });
+    d.iyz.okumayiBoz('sub-C10', new Error('fetch failed'));
+    return { firmaId: 'C10', kod: 'sub-C10', cekimAni: T0 + 5 * GUN, baslangic: T0 + 5 * GUN, olay: 'yok' };
+  });
+  check('C10 iyzico okunamayınca teklif REDDEDİLMEZ: uyarı yerel kayıtla (ACTIVE), dogrulandi=false, metin "doğrulanamadı"',
+    c10.t.id !== null && c10.ku?.dogrulandi === false && c10.ku?.iyzicoDurum === 'ACTIVE' &&
+      /doğrulanamadı/.test(String(c10.ku?.mesaj)),
+    `hata=${hataMetni(c10.t.hata)} uyari=${JSON.stringify(c10.ku)}`);
+
+  // C11 — KONTROL: pencerede çekim YOK (onay yenilemeden önce) → uyarı var, bildirim yok.
+  const c11 = await pencere((d, T0) => {
+    d.kartliSatir('C11', BASIC, { erisimSonu: new GercekDate(T0 - 10 * GUN) });
+    // Önceki dönemin çekimi TEKLİFTEN ÖNCE (gerçek webhook yolu): onayda sayılmamalı.
+    const once = async () => {
+      const sip = d.iyz.cekim('sub-C11', { baslangic: T0 - 10 * GUN, bitis: T0 + 20 * GUN })!;
+      await saatte(T0 - 10 * GUN, () => d.abonelik.tahsilatBasarili('sub-C11', sip));
+    };
+    return { firmaId: 'C11', kod: 'sub-C11', cekimAni: T0 + GUN, baslangic: T0 + 20 * GUN, olay: 'yok', once };
+  });
+  check('C11 KONTROL: tekliften ÖNCEKİ çekim sayılmaz, onay yenilemeden ÖNCE → uyarı vardı ama onayda kart bildirimi YOK',
+    c11.ku?.iyzicoDurum === 'ACTIVE' &&
+      c11.d.olaylar(/^durum\.degisti$/, c11.ab.id).some((o) => o.aktor === 'webhook') &&
+      c11.kartEpostasi.length === 0 && c11.kartOlayi.length === 0 &&
+      Array.isArray(c11.yanit?.kartCekimleri) && c11.yanit.kartCekimleri.length === 0,
+    bildirimOzeti(c11));
+
+  // C12 — yerel kayıt BAYAT: satır ACTIVE diyor, iyzico'da abonelik CANCELED (panelden iptal) → uyarı YOK.
+  const c12 = await pencere((d, T0) => {
+    d.kartliSatir('C12', BASIC, { erisimSonu: new GercekDate(T0 + 5 * GUN) });
+    d.iyz.durumYaz('sub-C12', 'CANCELED');
+    return { firmaId: 'C12', kod: 'sub-C12', cekimAni: T0 + 5 * GUN, baslangic: T0 + 5 * GUN, olay: 'yok' };
+  });
+  check('C12 canlı okuma yerel kaydı YENER: satır ACTIVE, iyzico CANCELED → kartUyarisi=null (okuma yapıldı)',
+    c12.teklifteOkuma >= 1 && c12.ku === null, `okuma=${c12.teklifteOkuma} uyari=${JSON.stringify(c12.ku)}`);
+
+  // C13 — KONTROL: pencerede BAŞARISIZ çekim (kart reddi) → çekim sayılmaz, bildirim yok.
+  const c13 = await pencere((d, T0) => {
+    d.kartliSatir('C13', BASIC, { erisimSonu: new GercekDate(T0 + 5 * GUN) });
+    return { firmaId: 'C13', kod: 'sub-C13', cekimAni: T0 + 5 * GUN, baslangic: T0 + 5 * GUN, olay: 'ret' };
+  });
+  check('C13 KONTROL: pencerede kart REDDİ (başarısız çekim) kart çekimi SAYILMAZ — bildirim yok',
+    c13.kartEpostasi.length === 0 && c13.kartOlayi.length === 0 && c13.yanit?.kartCekimleri?.length === 0 &&
+      c13.d.olaylar(/^durum\.degisti$/, c13.ab.id).some((o) => o.aktor === 'webhook' && o.yeniDurum === 'ODEME_BEKLIYOR'),
+    bildirimOzeti(c13));
+
+  // C16 — SAVUNMA: sipariş kodu OLMAYAN webhook tahsilat geçişi yine SAYILIR.
+  const c16 = await pencere((d, T0) => {
+    d.kartliSatir('C16', BASIC, { erisimSonu: new GercekDate(T0 + 5 * GUN) });
+    return { firmaId: 'C16', kod: 'sub-C16', cekimAni: T0 + 5 * GUN, baslangic: T0 + 5 * GUN, olay: 'kodsuz' };
+  });
+  check('C16 SAVUNMA: sipariş kodsuz webhook tahsilatı DÜŞÜRÜLMEZ — yanıtta siparisKodu=null, e-postada "sipariş kodu okunamadı", olay yazıldı',
+    c16.kartEpostasi.length === 1 && /sipariş kodu okunamadı/.test(c16.kartEpostasi[0].paragraflar.join(' ')) &&
+      c16.kartOlayi.length === 1 && c16.yanit?.kartCekimleri?.length === 1 &&
+      c16.yanit.kartCekimleri[0].siparisKodu === null,
+    bildirimOzeti(c16));
+
+  // C17 — MİRAS + KART (inceleme Y1): satın alma 365 günü KORUDU, webhook erişimi
+  // yalnız ileri yazar → yerel erisimSonu kart dönemi DEĞİL; tarih iyzico'dan okunur.
+  const c17 = await pencere((d, T0) => {
+    d.kartliSatir('C17', BASIC, { erisimSonu: new GercekDate(T0 + 300 * GUN) });
+    // Önceki dönemin çekimi GERÇEK webhook yolundan; dönem sonu (T0+10) korunan erişimden erken.
+    const once = async () => {
+      const sip = d.iyz.cekim('sub-C17', { baslangic: T0 - 20 * GUN, bitis: T0 + 10 * GUN })!;
+      await saatte(T0 - 20 * GUN, () => d.abonelik.tahsilatBasarili('sub-C17', sip));
+    };
+    return { firmaId: 'C17', kod: 'sub-C17', cekimAni: T0 + 10 * GUN, baslangic: T0 + 10 * GUN, once };
+  });
+  const e17 = c17.kartEpostasi.length === 1 ? c17.kartEpostasi[0].paragraflar.join(' ') : '';
+  check('C17 FIXTURE KANITI: önceki çekim webhook\'tan işlendi, korunan erişim (T0+300) DEĞİŞMEDİ',
+    c17.teklifteAb.erisimSonu.getTime() === c17.T0 + 300 * GUN &&
+      c17.d.olaylar(/^durum\.degisti$/, c17.ab.id).some((o) => o.aktor === 'webhook'),
+    `erisimSonu=${tarih(c17.teklifteAb.erisimSonu)}`);
+  check('C17 ⭐ miras satırda sonraki çekim iyzico\'nun ödenmiş dönem sonu (T0+10), korunan erişim sonu (T0+300) DEĞİL',
+    c17.ku?.dogrulandi === true && c17.ku?.sonrakiCekim === new GercekDate(c17.T0 + 10 * GUN).toISOString(),
+    JSON.stringify(c17.ku));
+  check('C17b miras satırda pencere çekimi erişimi uzatmadı → e-posta "DEĞİŞTİRMEDİ" der, "KISALTMAZ" uyarısı YOK',
+    e17.includes(String(c17.sip)) && /erişimi DEĞİŞTİRMEDİ/.test(e17) && !/KISALTMAZ/.test(e17), e17);
+
+  // C18 — DENEME BİTTİ, tahsilat henüz gelmedi (inceleme Y1): erişimin +2 gün tamponu
+  // "sonraki çekim" DEĞİLDİR — çekim işleniyor: tarih yok, "her an".
+  {
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.kartliSatir('C18', BASIC, {
+      erisimSonu: new GercekDate(T0 + 2 * GUN - SAAT),
+      ek: { durum: 'DENEME', denemeSonu: new GercekDate(T0 - SAAT) },
+    });
+    const t = await d.teklif('C18', PRO, T0);
+    check('C18 deneme sonu geçmiş DENEME satırı: iyzico\'nun denemesinden sonrakiCekim=null, metin "her an" (erişim tamponu tarih diye yazılmaz)',
+      t.yanit?.kartUyarisi?.dogrulandi === true && t.yanit?.kartUyarisi?.sonrakiCekim === null &&
+        t.yanit?.kartUyarisi?.sonrakiCekimKaynagi === 'iyzico' &&
+        /her an/.test(String(t.yanit?.kartUyarisi?.mesaj)),
+      JSON.stringify(t.yanit?.kartUyarisi));
+  }
+
+  // C19 — AYNI webhook İKİ KEZ işlendi (inceleme O1): bir sipariş, iki `durum.degisti` olayı.
+  const c19 = await pencere((d, T0) => {
+    d.kartliSatir('C19', BASIC, { erisimSonu: new GercekDate(T0 + 5 * GUN) });
+    return { firmaId: 'C19', kod: 'sub-C19', cekimAni: T0 + 5 * GUN, baslangic: T0 + 5 * GUN, olay: 'cift' };
+  });
+  const cift19 = c19.d.olaylar(/^durum\.degisti$/, c19.ab.id)
+    .filter((o) => o.aktor === 'webhook' && o.veri?.siparisKodu === c19.sip).length;
+  check('C19 FIXTURE KANITI: aynı sipariş için İKİ webhook tahsilat olayı yazıldı (iyzico\'da tek çekim)',
+    cift19 === 2 && c19.d.iyz.basariliCekimler('sub-C19') === 1,
+    `olay=${cift19} iyzico=${c19.d.iyz.basariliCekimler('sub-C19')}`);
+  {
+    const e19 = c19.kartEpostasi[0]?.paragraflar.join(' ') ?? '';
+    check('C19 ⭐ aynı sipariş BİR kez bildirilir: yanıtta 1 çekim, olayda 1 sipariş, e-postada kod bir kez',
+      c19.yanit?.kartCekimleri?.length === 1 && c19.kartOlayi.length === 1 &&
+        (c19.kartOlayi[0].veri?.siparisler ?? []).length === 1 && e19.split(String(c19.sip)).length - 1 === 1,
+      `${bildirimOzeti(c19)} e-posta="${e19}"`);
+  }
+
+  // C20 — AYNI aboneliğe İKİ teklif, ikisi de onaylandı (inceleme O1): pencere çekimi ilk
+  // onayda bildirildi; ikinci onay aynı çekimi YENİDEN söylemez.
+  {
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.kartliSatir('C20', BASIC, { erisimSonu: new GercekDate(T0 + 5 * GUN) });
+    const t1 = await d.teklif('C20', PRO, T0);
+    const t2 = await d.teklif('C20', PRO, T0 + SAAT);
+    const sip = d.iyz.cekim('sub-C20', { baslangic: T0 + 5 * GUN, bitis: ayEkle(T0 + 5 * GUN, 1) })!;
+    await saatte(T0 + 5 * GUN, () => d.abonelik.tahsilatBasarili('sub-C20', sip));
+    const kartE = (a: number, b: number) => d.yoneticiye().slice(a, b).filter((e) => /kart/i.test(e.konu)).length;
+    const y0 = d.yoneticiye().length;
+    const bir = await d.onayla(t1.id!, T0 + 7 * GUN);
+    const y1 = d.yoneticiye().length;
+    const iki = await d.onayla(t2.id!, T0 + 8 * GUN);
+    const y2 = d.yoneticiye().length;
+    check('C20 FIXTURE KANITI: iki teklif de onaylandı; ilk onay pencere çekimini bildirdi',
+      bir?.kartCekimleri?.length === 1 && bir.kartCekimleri[0].siparisKodu === sip && kartE(y0, y1) === 1 &&
+        Array.isArray(iki?.kartCekimleri),
+      `bir=${JSON.stringify(bir?.kartCekimleri)} iki=${JSON.stringify(iki?.kartCekimleri)}`);
+    check('C20 ⭐ ikinci onay aynı çekimi YENİDEN bildirmez: yanıtta 0 çekim, ikinci kart e-postası yok, tek olay',
+      iki?.kartCekimleri?.length === 0 && kartE(y1, y2) === 0 && d.olaylar(/^havale\.onay\.kart\.cekimi$/).length === 1,
+      `iki=${JSON.stringify(iki?.kartCekimleri)} e-posta=${kartE(y1, y2)} olay=${d.olaylar(/^havale\.onay\.kart\.cekimi$/).length}`);
+  }
+
+  // C21 — KOMŞU FİRMA: başka firmanın pencere çekimi bu onayda sayılmaz (abonelik süzgeci).
+  {
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.kartliSatir('C21', BASIC, { erisimSonu: new GercekDate(T0 + 20 * GUN) });
+    d.kartliSatir('C21K', BASIC, { erisimSonu: new GercekDate(T0 + 5 * GUN) });
+    const t = await d.teklif('C21', PRO, T0);
+    const sip = d.iyz.cekim('sub-C21K', { baslangic: T0 + 5 * GUN, bitis: ayEkle(T0 + 5 * GUN, 1) })!;
+    await saatte(T0 + 5 * GUN, () => d.abonelik.tahsilatBasarili('sub-C21K', sip));
+    const y0 = d.yoneticiye().length;
+    const yanit = await d.onayla(t.id!, T0 + 7 * GUN);
+    const komsu = d.oku('C21K');
+    check('C21 FIXTURE KANITI: komşu firmanın çekimi teklifin penceresinde webhook\'tan işlendi',
+      d.olaylar(/^durum\.degisti$/, komsu.id).some((o) => o.aktor === 'webhook' && o.veri?.siparisKodu === sip),
+      JSON.stringify(d.olaylar(/^durum\.degisti$/, komsu.id).map((o) => o.veri)));
+    check('C21 ⭐ komşu firmanın kart çekimi bu onayda SAYILMAZ: yanıtta 0 çekim, kart e-postası yok',
+      yanit?.kartCekimleri?.length === 0 && d.yoneticiye().slice(y0).filter((e) => /kart/i.test(e.konu)).length === 0,
+      JSON.stringify(yanit?.kartCekimleri));
+  }
+
+  // C22 — PLANLI DÜŞÜRME + pencere çekimi: webhook aynı anda `paket.degisti` yazar (aktör
+  // webhook, yeni durum AKTIF) — çekim DEĞİLDİR, sayılmaz (olay tipi süzgeci).
+  const c22 = await pencere((d, T0) => {
+    d.kartliSatir('C22', PRO, {
+      erisimSonu: new GercekDate(T0 + 5 * GUN),
+      ek: { planliPaketSurumuId: BASIC, paketGecisTarihi: new GercekDate(T0 + 5 * GUN) },
+    });
+    return { firmaId: 'C22', kod: 'sub-C22', cekimAni: T0 + 5 * GUN, baslangic: T0 + 5 * GUN };
+  });
+  check('C22 FIXTURE KANITI: pencerede webhook paket.degisti yazdı (aktör webhook, yeni durum AKTIF)',
+    c22.d.olaylar(/^paket\.degisti$/, c22.ab.id).some((o) => o.aktor === 'webhook' && o.yeniDurum === 'AKTIF'),
+    JSON.stringify(c22.d.olaylar(/^paket\./, c22.ab.id).map((o) => ({ tip: o.tip, aktor: o.aktor, yeni: o.yeniDurum }))));
+  check('C22 ⭐ paket geçişi olayı çekim sayılmaz: yanıtta TEK çekim (bu sipariş)',
+    c22.yanit?.kartCekimleri?.length === 1 && c22.yanit.kartCekimleri[0].siparisKodu === c22.sip,
+    bildirimOzeti(c22));
+
+  // C23 — iyzico okuması ASILI (yanıt yok): teklif süre sınırında yerel kayıtla döner.
+  {
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.kartliSatir('C23', BASIC, { erisimSonu: new GercekDate(T0 + 5 * GUN) });
+    d.iyz.okumayiAs('sub-C23');
+    const bas = GercekDate.now();
+    const t = await d.teklif('C23', PRO, T0);
+    const sure = GercekDate.now() - bas;
+    check(`C23 okuma asılıyken teklif ~${KART_OKUMA_SURESI_MS} ms'de oluşur: dogrulandi=false, "doğrulanamadı", yerel tarih`,
+      t.id !== null && t.yanit?.kartUyarisi?.dogrulandi === false &&
+        /doğrulanamadı/.test(String(t.yanit?.kartUyarisi?.mesaj)) &&
+        t.yanit?.kartUyarisi?.sonrakiCekim === new GercekDate(T0 + 5 * GUN).toISOString() &&
+        sure >= KART_OKUMA_SURESI_MS - 50 && sure < KART_OKUMA_SURESI_MS + 3000,
+      `süre=${sure} ms uyari=${JSON.stringify(t.yanit?.kartUyarisi)}`);
+  }
+
+  // C24–C29 — SAF: `sonrakiKartCekimi` iyzico'nun ÖLÇÜLMÜŞ biçimiyle (20.08 tutanağı,
+  // docs/adim0-tutanak/adim0-ek-cikti.json: tarihler epoch ms SAYISI).
+  {
+    const detay = (orders: unknown[], ek: Record<string, unknown> = {}) =>
+      ({ referenceCode: 'x', pricingPlanReferenceCode: 'p', customerReferenceCode: 'c', subscriptionStatus: 'ACTIVE',
+        orders, ...ek }) as unknown as IyzicoAbonelikDetayi;
+    const odenmis = (s: unknown, e: unknown) =>
+      ({ referenceCode: 'o1', orderStatus: 'SUCCESS', startPeriod: s, endPeriod: e, paymentAttempts: [{ paymentStatus: 'SUCCESS' }] });
+    // $[9] UPGRADED detay: ödenmiş dönem + iyzico'nun ÖNCEDEN açtığı sonraki sipariş.
+    const u = detay([
+      { referenceCode: 'o2', orderStatus: 'SUBSCRIPTION_UPGRADED', startPeriod: 1789893544991, endPeriod: 1792485544991, paymentAttempts: [] },
+      odenmis(1787215144991, 1789893544991),
+    ], { subscriptionStatus: 'UPGRADED' });
+    const t24 = sonrakiKartCekimi(u, new GercekDate(1789893544991 - 5 * GUN));
+    check('C24 ölçülmüş biçim (ms sayısı): sonraki çekim = ödenmiş dönemin sonu',
+      t24 instanceof GercekDate && t24.getTime() === 1789893544991, String(t24));
+    // $[8] ACTIVE detay: tek sipariş WAITING, deneme yok, başlangıç = abonelik başı.
+    const bekleyen = [{ referenceCode: 'o3', orderStatus: 'WAITING', startPeriod: 1787215145248, endPeriod: 1789893545248, paymentAttempts: [] }];
+    const t25a = sonrakiKartCekimi(detay(bekleyen), new GercekDate(1787215145248 + SAAT));
+    const t25b = sonrakiKartCekimi(detay(bekleyen), new GercekDate(1787215145248 - SAAT));
+    check('C25 ödenmiş dönem yok: bekleyen (WAITING) siparişin başı — geçmişse null ("her an"), gelecekse o an',
+      t25a === null && t25b instanceof GercekDate && t25b.getTime() === 1787215145248, `${t25a} · ${t25b}`);
+    const t26 = sonrakiKartCekimi(detay(bekleyen, { trialEndDate: 1787215145248 + 20 * GUN }), new GercekDate(1787215145248 + GUN));
+    check('C26 süren deneme: sonraki çekim deneme sonu (trialEndDate), geçmiş WAITING başı değil',
+      t26 instanceof GercekDate && t26.getTime() === 1787215145248 + 20 * GUN, String(t26));
+    const t26b = sonrakiKartCekimi(
+      detay([odenmis(1787215145248 - 5 * GUN, 1787215145248)], { trialEndDate: 1787215145248 + 20 * GUN }),
+      new GercekDate(1787215145248 + GUN));
+    check('C26b deneme sürerken ödenmiş görünen sipariş (kart doğrulaması?) olsa da sonraki çekim DENEME SONU',
+      t26b instanceof GercekDate && t26b.getTime() === 1787215145248 + 20 * GUN, String(t26b));
+    check('C27 çözülecek bir şey yok → undefined (çağıran yerel kayda düşer)',
+      sonrakiKartCekimi(detay([]), new GercekDate(1787215145248)) === undefined, 'undefined değil');
+    check('C28 ödenmiş dönemin sonu geçmişse null ("her an")',
+      sonrakiKartCekimi(detay([odenmis(1787215144991, 1789893544991)]), new GercekDate(1789893544991 + SAAT)) === null,
+      'null değil');
+    const t29 = sonrakiKartCekimi(detay([odenmis('1787215144991', '1789893544991')]), new GercekDate(1789893544991 - GUN));
+    const t29b = sonrakiKartCekimi(
+      detay([{ ...odenmis(1787215144991, 1789893544991), paymentAttempts: [] }]), new GercekDate(1789893544991 - GUN));
+    check('C29 rakam-dizesi ms çözülür; ödeme denemesi OLMAYAN "SUCCESS" ödenmiş SAYILMAZ (tahsilat kanıtı kuralı)',
+      t29 instanceof GercekDate && t29.getTime() === 1789893544991 && t29b === undefined, `${t29} · ${t29b}`);
+    const t31 = sonrakiKartCekimi(
+      detay([odenmis(1787215144991, 1789893544991), { ...odenmis(1789893544991, 1792485544991), referenceCode: 'o4' }]),
+      new GercekDate(1789893544991 + GUN));
+    check('C31 birden çok ödenmiş dönem: sonraki çekim EN GEÇ ödenmiş dönemin sonu',
+      t31 instanceof GercekDate && t31.getTime() === 1792485544991, String(t31));
+    // C33 — yerel tahmin deneme TARİHİNE göre (inceleme D2; `beklenenGecisTarihi` ile aynı kural).
+    const an = new GercekDate(1787215145248);
+    const g = (gun: number) => new GercekDate(1787215145248 + gun * GUN);
+    const aylik = { periyot: 'MONTHLY', periyotAdedi: 1 };
+    const y1 = yerelSonrakiCekim({ durum: 'AKTIF', erisimSonu: g(5), denemeSonu: g(3), paketSurumu: aylik }, an);
+    const y2 = yerelSonrakiCekim({ durum: 'DENEME', erisimSonu: g(1), denemeSonu: g(-1), paketSurumu: aylik }, an);
+    const y3 = yerelSonrakiCekim({ durum: 'AKTIF', erisimSonu: g(20), denemeSonu: g(-40), paketSurumu: aylik }, an);
+    check('C33 yerel tahmin: süren deneme (AKTIF etiketli de) → deneme sonu; bitmiş DENEME → null; eski deneme + AKTIF → erişim sonu',
+      y1?.getTime() === g(3).getTime() && y2 === null && y3?.getTime() === g(20).getTime(),
+      `${y1?.toISOString()} · ${y2} · ${y3?.toISOString()}`);
+    // C35 — kart HER DÖNEM çekilir: erişim sonu bir dönemden (+7 gün pay) uzaksa yerel tarih kart dönemi olamaz.
+    const y4 = yerelSonrakiCekim({ durum: 'AKTIF', erisimSonu: g(300), denemeSonu: null, paketSurumu: aylik }, an);
+    const y5 = yerelSonrakiCekim({ durum: 'AKTIF', erisimSonu: g(33), denemeSonu: null, paketSurumu: aylik }, an);
+    const y6 = yerelSonrakiCekim(
+      { durum: 'AKTIF', erisimSonu: g(300), denemeSonu: null, paketSurumu: { periyot: 'YEARLY', periyotAdedi: 1 } }, an);
+    check('C35 yerel tahmin: aylık pakette erişim 300 gün uzakta → undefined (bilinmiyor); köprü (33 gün) pay içinde → erişim sonu; yıllıkta 300 gün → erişim sonu',
+      y4 === undefined && y5?.getTime() === g(33).getTime() && y6?.getTime() === g(300).getTime(),
+      `${y4} · ${y5?.toISOString()} · ${y6?.toISOString()}`);
+  }
+
+  // C30 — OLAY KAYDI OKUNAMIYOR (inceleme): yanıt `kartCekimleri: null` — "çekim yok" ([]) ile
+  // karışmaz; onay yine tamam, hata günlükte.
+  const c30 = await pencere((d, T0) => {
+    d.kartliSatir('C30', BASIC, { erisimSonu: new GercekDate(T0 + 5 * GUN) });
+    d.db.kancaKur(
+      'abonelikOlayi',
+      (arg) => arg?.where?.tip === 'durum.degisti' && arg?.where?.aktor === 'webhook',
+      async () => {
+        throw new Error('bağlantı koptu');
+      },
+      'findMany',
+    );
+    return { firmaId: 'C30', kod: 'sub-C30', cekimAni: T0 + 5 * GUN, baslangic: T0 + 5 * GUN };
+  });
+  check('C30 olay kaydı okunamazsa yanıtta kartCekimleri=null ("çekim yok" değil); onay yine AKTIF + HAVALE, hata günlükte',
+    c30.yanit !== null && c30.yanit?.kartCekimleri === null && c30.ab.odemeYontemi === 'HAVALE' && c30.ab.durum === 'AKTIF' &&
+      hatalarSonra(c30.g0).some((h) => /OKUNAMADI/.test(h)),
+    `yanıt=${JSON.stringify(c30.yanit?.kartCekimleri)} hata=${hatalarSonra(c30.g0).join(' · ')}`);
+
+  // C32 — iyzico OKUNDU ama tarih vermedi (siparişsiz kayıt; UPGRADED zincirinde canlı uç aramadan
+  // gelir ve sipariş taşımayabilir): tarih YEREL tahmindir — "doğrulanmış" gibi sunulmaz (inceleme D1).
+  {
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.kartliSatir('C32', BASIC, { erisimSonu: new GercekDate(T0 + 5 * GUN) });
+    const t = await d.teklif('C32', PRO, T0);
+    const k = t.yanit?.kartUyarisi;
+    check('C32 iyzico okundu ama siparişsiz: dogrulandi=true, kaynak "yerel", metin "kesin değil"',
+      k?.dogrulandi === true && k?.sonrakiCekimKaynagi === 'yerel' &&
+        k?.sonrakiCekim === new GercekDate(T0 + 5 * GUN).toISOString() && /kesin değil/.test(String(k?.mesaj)),
+      JSON.stringify(k));
+  }
+
+  // C34 — MİRAS satır + iyzico OKUNAMIYOR (inceleme tekrarı): korunan erişim sonu (T0+300) kart dönemi
+  // olamaz; "11 ay sonra (kesin değil)" yerine tarih BİLİNMİYOR denir.
+  {
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.kartliSatir('C34', BASIC, { erisimSonu: new GercekDate(T0 + 300 * GUN) });
+    d.iyz.okumayiBoz('sub-C34', new Error('fetch failed'));
+    const t = await d.teklif('C34', PRO, T0);
+    const k = t.yanit?.kartUyarisi;
+    check('C34 miras satır, iyzico okunamadı: sonrakiCekim=null, kaynak "bilinmiyor", metin "tarihi bilinmiyor" (300 gün sonrası yazılmaz)',
+      t.id !== null && k?.dogrulandi === false && k?.sonrakiCekim === null && k?.sonrakiCekimKaynagi === 'bilinmiyor' &&
+        /tarihi bilinmiyor/.test(String(k?.mesaj)) && !String(k?.mesaj).includes(tarihYaz(new GercekDate(T0 + 300 * GUN))),
+      JSON.stringify(k));
+  }
+
+  // C14 — planlı DÜŞÜRME (A1): sonraki çekim PLANLI paketin fiyatıyla yapılır.
+  {
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.kartliSatir('C14', PRO, {
+      erisimSonu: new GercekDate(T0 + 5 * GUN),
+      ek: { planliPaketSurumuId: BASIC, paketGecisTarihi: new GercekDate(T0 + 5 * GUN) },
+    });
+    const t = await d.teklif('C14', PRO, T0);
+    check('C14 planlı düşürmede uyarının tutarı PLANLI paketin (Basic 1.299) fiyatı, bugünkü Pro (1.649) değil',
+      t.yanit?.kartUyarisi?.tutar === '1299.00', JSON.stringify(t.yanit?.kartUyarisi));
+  }
+  // C15 — dönem sonu GEÇMİŞ (yenileme işleniyor): tarih yok, "her an".
+  {
+    const d = dunyaKur();
+    const T0 = GercekDate.now();
+    d.kartliSatir('C15', BASIC, { erisimSonu: new GercekDate(T0 - SAAT) });
+    const t = await d.teklif('C15', PRO, T0);
+    check('C15 dönem sonu geçmişse sonrakiCekim=null ve metin "her an" der (geçmiş tarih yazılmaz)',
+      t.yanit?.kartUyarisi?.iyzicoDurum === 'ACTIVE' && t.yanit?.kartUyarisi?.sonrakiCekim === null &&
+        /her an/.test(String(t.yanit?.kartUyarisi?.mesaj)),
+      JSON.stringify(t.yanit?.kartUyarisi));
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 //  G — YÖNETİCİ GÖRÜNÜMÜ
 // ═════════════════════════════════════════════════════════════════════════
 async function gBlogu(): Promise<void> {
@@ -1534,6 +2090,7 @@ async function main(): Promise<void> {
   await blok('A', aBlogu);
   await blok('W', wBlogu);
   await blok('S', sBlogu);
+  await blok('C', cBlogu);
   await blok('G', gBlogu);
   son();
   kapiBitti = true;
