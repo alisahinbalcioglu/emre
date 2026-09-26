@@ -144,66 +144,17 @@ export class DwgEngineService {
   }
 
   /**
-   * Layer listesi cikar (hizli, uzunluk hesaplamaz).
-   * Dosya Python tarafinda cache'lenir, file_id doner.
-   */
-  async listLayers(fileBuffer: Buffer, fileName: string) {
-    // FormData factory — retry icin her cagrida yeni body
-    const factory = (timeoutMs: number): RequestInit => {
-      const formData = new FormData();
-      const blob = new Blob([fileBuffer as any]);
-      formData.append('file', blob, fileName);
-      return {
-        method: 'POST',
-        body: formData,
-        headers: this.headers(),
-        signal: AbortSignal.timeout(timeoutMs),
-      };
-    };
-
-    try {
-      const response = await this.fetchWithRetry(
-        `${this.pythonServiceUrl}/layers`,
-        factory,
-        300_000, // 5 dakika - buyuk DWG icin
-        300_000, // retry de 5 dakika (zaten cok genis)
-        'listLayers',
-      );
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new HttpException(
-          `Layer listesi hatasi: ${error}`,
-          // 429 (CF rate limit) + 5xx → SERVICE_UNAVAILABLE — frontend retry yapsin.
-          // 4xx (validation, missing file) → UNPROCESSABLE_ENTITY — kalici hata.
-          response.status >= 500 || response.status === 429
-            ? HttpStatus.SERVICE_UNAVAILABLE
-            : HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
-
-      return await response.json();
-    } catch (error) {
-      this.translateError(error);
-    }
-  }
-
-  /**
-   * DWG/DXF parse edip layer bazinda metraj cikarir.
-   *
-   * fileId varsa: Python'daki cache'ten dosya kullanilir (fileBuffer gerekmez).
-   * fileId yoksa: fileBuffer yuklenir (geriye uyumlu mod).
+   * Motorun cache'indeki dosyanin (fileId, `/upload`tan) layer bazinda metrajini cikarir.
+   * Dosya govdeli "geriye uyumlu" mod 26.09'da kaldirildi (bkz. denetleyici).
    *
    * istemciKoptu: tarayici istegi iptal ederse motor istegi de kesilir (DWG
    * Analiz birim degisince ayirmayi iptal edip yeniden baslatir; kesilmezse
    * motor eski birimli isi sonuna kadar kosturuyordu). Bkz. fetchWithRetry.
    */
   async parseDwg(
-    fileBuffer: Buffer | null,
-    fileName: string,
+    fileId: string,
     discipline: string = 'mechanical',
     scale?: number,
-    fileId?: string,
     selectedLayers?: string[],
     layerHatTipi?: Record<string, string>,
     layerMaterialType?: Record<string, string>,
@@ -220,9 +171,7 @@ export class DwgEngineService {
       params.set('scale', String(scale));
     }
 
-    if (fileId) {
-      params.set('file_id', fileId);
-    }
+    params.set('file_id', fileId);
     if (selectedLayers && selectedLayers.length > 0) {
       params.set('selected_layers', JSON.stringify(selectedLayers));
     }
@@ -243,24 +192,14 @@ export class DwgEngineService {
     // layer_default_diameter + use_proximity_diameter KALDIRILDI —
     // otomatik cap atama motoru sokuldu, cap atamasi frontend'de manuel.
 
-    const factory = (timeoutMs: number): RequestInit => {
-      const opts: RequestInit = {
-        method: 'POST',
-        headers: this.headers(),
-        signal: AbortSignal.timeout(timeoutMs),
-      };
-
-      // file_id varsa dosya gondermeye gerek yok, bos form gonder
-      if (fileId) {
-        opts.body = new FormData();
-      } else if (fileBuffer) {
-        const formData = new FormData();
-        const blob = new Blob([fileBuffer as any]);
-        formData.append('file', blob, fileName);
-        opts.body = formData;
-      }
-      return opts;
-    };
+    // Motor govdeyi OKUMAZ; bos form on yuzun gonderdigi bicimin aynisi (motorun
+    // kopma bekcisi `test_parse_iptal.py` I5/I6'da bu bicimle olculdu).
+    const factory = (timeoutMs: number): RequestInit => ({
+      method: 'POST',
+      body: new FormData(),
+      headers: this.headers(),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
 
     try {
       const response = await this.fetchWithRetry(
@@ -290,37 +229,6 @@ export class DwgEngineService {
       return await response.json();
     } catch (error) {
       if (istemciKoptu?.aborted) this.istemciGitti('parseDwg', baslangic);
-      this.translateError(error);
-    }
-  }
-
-  async convertToDxf(fileBuffer: Buffer, fileName: string) {
-    const factory = (timeoutMs: number): RequestInit => {
-      const formData = new FormData();
-      const blob = new Blob([fileBuffer as any]);
-      formData.append('file', blob, fileName);
-      return {
-        method: 'POST',
-        body: formData,
-        headers: this.headers(),
-        signal: AbortSignal.timeout(timeoutMs),
-      };
-    };
-
-    try {
-      const response = await this.fetchWithRetry(
-        `${this.pythonServiceUrl}/convert`,
-        factory,
-        120_000,
-        180_000,
-        'convertToDxf',
-      );
-      if (!response.ok) {
-        const error = await response.text();
-        throw new HttpException(`DXF cevirme hatasi: ${error}`, HttpStatus.UNPROCESSABLE_ENTITY);
-      }
-      return await response.json();
-    } catch (error) {
       this.translateError(error);
     }
   }

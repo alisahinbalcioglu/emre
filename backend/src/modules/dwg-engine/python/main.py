@@ -2,9 +2,18 @@
 DWG Engine v2.2 — Layer secim + file cache + topoloji analizi.
 
 Akis:
-  1. POST /layers   → DWG yukle, layer listesi don (hizli, uzunluk yok), file_id dondur
-  2. POST /parse    → file_id ile secilen layer'larin metrajini hesapla + cap dagilimi
-  3. POST /convert  → DWG→DXF base64 (viewer icin)
+  1. POST /upload          → dosyayi diske yaz, file_id HEMEN don; DWG→DXF + parse
+                             upload_worker.py alt surecinde arka planda
+  2. GET  /status/{id}     → arka plan isinin durumu (layer listesi + birim onerisi)
+  3. GET  /geometry/{id}   → viewer koordinatlari (disk JSON cache)
+  4. POST /parse?file_id=  → secilen layer'larin metraji (parse_worker.py alt sureci)
+
+OLAY DONGUSU KURALI (26.09.2026): tek uvicorn iscisi (WORKERS=1) TUM kiracilara
+hizmet eder. `async def` uc icinde donusum, ezdxf okumasi ya da alt surec
+BEKLENMEZ — agir is alt surece gider, alt surec `asyncio.to_thread` icinde
+beklenir. Eski POST /layers, POST /convert ve dosya govdeli /parse donusumu
+dongude yapiyordu: tek istek motoru 120 sn'ye kadar dondurabiliyordu. Canlida
+kullanimlari SIFIR olculdu (ayni gun) ve kaldirildi. Kapi: tests/test_olay_dongusu.py.
 """
 
 import os
@@ -13,21 +22,18 @@ import json
 import math
 import time
 import uuid
-import base64
 import logging
 import tempfile
-from collections import defaultdict
-import ezdxf
 from fastapi import FastAPI, UploadFile, File, Query, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from converter import convert_dwg_to_dxf, read_dxf
+from converter import read_dxf
 from topology import analyze_topology
-from geometry import extract_geometry, extract_geometry_from_doc, GeometryResult
+from geometry import extract_geometry
 from models import (
     LayerInfo, LayerListResult,
-    LayerMetraj, MetrajResult, PipeSegment, EdgeSegment, SprinklerCandidate,
+    LayerMetraj, MetrajResult, EdgeSegment, SprinklerCandidate,
 )
 
 # backend/.env dosyasini yukle (env override icin — AI cap atama kaldirildi)
@@ -91,11 +97,10 @@ async def verify_internal_token(request: Request, call_next):
 # ═══════════════════════════════════════════════════════
 # Disk-uzerinde deterministic path: /tmp/dwg_cache_<file_id>.dxf
 # Bu sayede multi-worker uvicorn'da TUM worker'lar ayni file_id'yi gorebilir
-# (in-memory dict per-worker olurdu, /layers worker A'da, /geometry worker B'de
+# (in-memory dict per-worker olurdu, /upload worker A'da, /geometry worker B'de
 # olunca cache miss yasanirdi). Filesystem dogal sekilde paylasimli.
 # TTL kontrolu dosya mtime'i ile yapilir.
 
-import shutil
 import hashlib
 
 # CACHE TTL — SaaS gercegi: manuel etiketleme oturumu SAATLER surebilir.
@@ -210,19 +215,6 @@ def _cleanup_cache() -> None:
         pass
 
 
-def _cache_dxf(dxf_path: str) -> str:
-    """DXF temp dosyasini deterministic cache path'ine tasi, file_id dondur."""
-    _cleanup_cache()
-    file_id = uuid.uuid4().hex[:12]
-    cache_path = _cache_path(file_id)
-    # Once rename dene (ayni filesystem'de atomic), cross-fs ise shutil.move
-    try:
-        os.rename(dxf_path, cache_path)
-    except OSError:
-        shutil.move(dxf_path, cache_path)
-    return file_id
-
-
 def _get_cached_dxf(file_id: str) -> str:
     """Cache'ten DXF path al. Yoksa 404, expired ise 410."""
     cache_path = _cache_path(file_id)
@@ -247,50 +239,6 @@ def _get_cached_dxf(file_id: str) -> str:
 # ═══════════════════════════════════════════════════════
 #  YARDIMCI FONKSIYONLAR
 # ═══════════════════════════════════════════════════════
-
-def _prepare_dxf(content: bytes, filename: str) -> str:
-    """
-    Dosya icerigini temp'e yaz, DWG ise DXF'e cevir.
-    Donus: DXF dosya yolu (temp dizininde).
-    Not: Donen dosya SILINMEMELI — cache sistemi yonetir.
-    """
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if ext not in ("dwg", "dxf"):
-        raise HTTPException(400, f"Desteklenmeyen format: .{ext}. Sadece .dwg ve .dxf kabul edilir.")
-
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
-    tmp.write(content)
-    tmp.close()
-
-    try:
-        if ext == "dwg":
-            dxf_path = convert_dwg_to_dxf(tmp.name)
-            # Orijinal DWG temp dosyasini sil, DXF kalacak
-            try:
-                os.unlink(tmp.name)
-            except OSError:
-                pass
-            return dxf_path
-        else:
-            # Zaten DXF, temp dosyanin kendisi
-            return tmp.name
-    except Exception:
-        # Hata durumunda temp dosyayi temizle
-        try:
-            os.unlink(tmp.name)
-        except OSError:
-            pass
-        raise
-
-
-def extract_layer_info(dxf_path: str) -> LayerListResult:
-    """
-    DXF dosyasindan layer bilgilerini cikar.
-    SADECE layer adi ve entity sayisi — uzunluk hesaplamaz (hizli).
-    """
-    doc = read_dxf(dxf_path)
-    return extract_layer_info_from_doc(doc)
-
 
 def extract_layer_info_from_doc(doc) -> LayerListResult:
     """ezdxf doc'undan layer cikart — TEK PARSE icin paylasilmis doc kullanir.
@@ -1140,49 +1088,6 @@ def _run_upload_subprocess(file_id: str, src_path: str, timeout: int = 600) -> d
     raise RuntimeError(f"Islem hatasi (exit {proc.returncode}): {err_short or 'no stderr'}")
 
 
-def _safe_response(obj):
-    """Endpoint return helper: FastAPI encoder pipeline'ini BYPASS et.
-
-    DXF'ten gelen Pydantic model'ler/dict'ler icinde lone surrogate (\\udcXX),
-    NaN/Inf float, mojibake byte vb. olabiliyor. FastAPI'nin default
-    jsonable_encoder → JSONResponse pipeline'i bunlari serialize ederken
-    UnicodeEncodeError/ValueError atip 500 donduruyor.
-
-    Bu helper:
-      1. Pydantic model varsa model_dump ile dict'e çevir
-      2. _json_safe ile derin temizle (NaN→None, surrogate→U+FFFD)
-      3. json.dumps ile bytes'a encode (allow_nan=False, ensure_ascii=False)
-      4. Response(pre-encoded bytes) ile dondur — pipeline atlanir
-
-    Her zaman 200 doner (extreme fail durumunda hata mesaji icerikli body).
-    """
-    try:
-        if hasattr(obj, 'model_dump'):
-            data = obj.model_dump()
-        elif hasattr(obj, 'dict'):
-            data = obj.dict()
-        else:
-            data = obj
-        safe = _json_safe(data)
-        body = json.dumps(safe, allow_nan=False, ensure_ascii=False).encode('utf-8')
-        return Response(content=body, media_type="application/json")
-    except BaseException as e:
-        try:
-            logging.exception("_safe_response fail")
-        except BaseException:
-            pass
-        fallback = {
-            "error": f"Response encode fail: {type(e).__name__}: {str(e)[:200]}",
-        }
-        try:
-            return Response(
-                content=json.dumps(fallback, ensure_ascii=False).encode('utf-8'),
-                media_type="application/json",
-            )
-        except BaseException:
-            return Response(content=b'{"error":"encode_failure"}', media_type="application/json")
-
-
 def _detect_unit_from_dxf(doc):
     """Cizim birimini OTOMATIK tespit et. Donus: unit_detect.UnitDetection.
 
@@ -1436,73 +1341,6 @@ async def get_upload_status(file_id: str):
         }
 
 
-@app.post("/layers")
-async def list_layers(file: UploadFile = File(...)):
-    """
-    DWG/DXF dosyasindaki layer listesini cikar.
-    Uzunluk hesaplamaz — sadece layer adi ve entity sayisi doner.
-    Dosya cache'e kaydedilir, file_id ile /parse'a gonderilebilir.
-
-    F5A safe (14.05.2026): Bu endpoint TEK ezdxf parse ile hem layers cikartir
-    hem de entities.json pre-cache yazar. /geometry GET sonraki cagrida cache
-    hit yapar (100ms). Boylece kullanici sadece /layers'i beklemis olur.
-    """
-    if not file.filename:
-        raise HTTPException(400, "Dosya adi eksik")
-
-    content = await file.read()
-
-    try:
-        dxf_path = _prepare_dxf(content, file.filename)
-
-        # TEK ezdxf parse — hem layers hem geometry icin paylasilmis doc
-        doc = read_dxf(dxf_path)
-        result = extract_layer_info_from_doc(doc)
-
-        # DXF dosyasini cache'e kaydet (15dk)
-        file_id = _cache_dxf(dxf_path)
-        result.file_id = file_id
-
-        # F5A safe pre-cache: geometry'yi simdi disk'e yaz, /geometry GET cache hit yapsin.
-        # Pydantic v2 mode='json' nested model'leri JSON-safe primitives'e cevirir.
-        # Pre-cache fail olursa try/except yutar — /geometry GET fallback parse yapar.
-        try:
-            geom_result = extract_geometry_from_doc(doc, None)
-            geom_cache = _geometry_cache_path(file_id)
-            try:
-                data = geom_result.model_dump(mode='json')
-            except (AttributeError, TypeError):
-                data = geom_result.dict()
-            with open(geom_cache, "w", encoding="utf-8") as gf:
-                json.dump(data, gf)
-        except Exception:
-            # Log et — silent fail degil, gozlem icin
-            logging.exception("Pre-cache geometry failed for file_id=%s", file_id)
-
-        # DWG birimini OTOMATIK tespit et.
-        # Eskiden burada yalniz $INSUNITS okunuyordu ve tablo eksikti (14=desimetre
-        # YOKTU, bilinmeyen kod sessizce mm'e dusuyordu). Gercek bir projede
-        # $INSUNITS "mm" derken dogru birim desimetreydi — bu yol 100x hata
-        # uretiyordu. Artik cizimin kendi yazili beyani esas: unit_detect.py
-        det = _detect_unit_from_dxf(doc)
-        result.suggested_scale = det.scale
-        result.suggested_unit_label = det.unit_label
-        result.suggested_confidence = det.confidence
-        result.suggested_method = det.method
-        result.suggested_evidence = det.evidence[:5]
-
-        # Not: dxf_base64 alani kaldirildi — frontend kullanmiyordu, sadece I/O +
-        # network overhead'i (5MB DXF → 6.7MB base64 string) yaratıyordu.
-
-        # PIPELINE BYPASS: jsonable_encoder atla, surrogate'siz JSON donder
-        return _safe_response(result)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, f"Layer listesi cikarilirken hata: {str(e)}")
-
-
 async def _istemci_kopunca_iptal(request: Request, iptal: threading.Event) -> None:
     """NestJS baglantiyi kapatinca (tarayici istegi iptal etti) iptal bayragini kaldirir.
 
@@ -1524,8 +1362,7 @@ async def _istemci_kopunca_iptal(request: Request, iptal: threading.Event) -> No
 @app.post("/parse")
 async def parse_dwg(
     request: Request,
-    file: UploadFile | None = File(None),
-    file_id: str = Query("", description="Cache'teki dosyanin ID'si (/layers'tan donen)"),
+    file_id: str = Query("", description="Cache'teki dosyanin ID'si (/upload'tan donen)"),
     discipline: str = Query("mechanical"),
     scale: float | None = Query(None, description="Birim carpani (mm=0.001, cm=0.01, m=1.0). None ise OTOMATIK tespit ($INSUNITS + bound geometrisi)."),
     selected_layers: str = Query("", description="JSON array: secilen layer isimleri"),
@@ -1535,26 +1372,16 @@ async def parse_dwg(
     split_mode: str = Query("t", description="Bolme modu: 't' = T/kesisme/sprinkler bolmeleri (varsayilan), 'none' = bolme yok, her cizim entity'si bastan sona tek segment"),
 ):
     """
-    DWG/DXF dosyasini parse edip layer bazinda metraj cikarir.
+    /upload ile yuklenmis dosyanin (file_id) secilen layer'larinin metrajini cikarir.
 
-    Kullanim:
-      - file_id varsa: cache'teki dosyayi kullanir (dosya yuklemeye gerek yok)
-      - file_id yoksa: dosya yuklemesi gerekir (eski davranis, geriye uyumlu)
+    YALNIZ file_id (26.09.2026): dosya govdeli "geriye uyumlu" yol KALDIRILDI.
+    O yol DWG→DXF donusumunu olay dongusunde yapiyordu (tek isci 120 sn'ye kadar
+    donuyordu); canlida kullanimi sifir olculdu. Govde ISLENMEZ: NestJS bos
+    multipart gonderir, `_istemci_kopunca_iptal` onu okuyup atar.
     """
-    # ── DXF dosyasini bul ──
-    dxf_path: str | None = None
-    tmp_to_cleanup: str | None = None
-
-    if file_id:
-        # Cache'ten al
-        dxf_path = _get_cached_dxf(file_id)
-    elif file and file.filename:
-        # Dosya yuklendi (geriye uyumlu mod)
-        content = await file.read()
-        dxf_path = _prepare_dxf(content, file.filename)
-        tmp_to_cleanup = dxf_path  # Bu durumda biz yonetiriz, cache'e girmez
-    else:
-        raise HTTPException(400, "file_id veya file parametrelerinden biri gerekli")
+    if not file_id:
+        raise HTTPException(400, "file_id gerekli (dosya once /upload ile yuklenir)")
+    dxf_path = _get_cached_dxf(file_id)
 
     # ── Parametreleri parse et ──
     sel_layers: list[str] | None = None
@@ -1650,48 +1477,6 @@ async def parse_dwg(
         bekci.cancel()
         # Uc kendisi iptal edilirse (kapanis) thread alt sureci yine oldursun.
         iptal.set()
-        # Sadece cache'e girmeyen dosyalari temizle
-        if tmp_to_cleanup:
-            try:
-                os.unlink(tmp_to_cleanup)
-            except OSError:
-                pass
-
-
-@app.post("/convert")
-async def convert_to_dxf(file: UploadFile = File(...)):
-    """DWG dosyasini DXF'e cevirir (viewer icin)."""
-    if not file.filename:
-        raise HTTPException(400, "Dosya adi eksik")
-
-    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
-    if ext not in ("dwg", "dxf"):
-        raise HTTPException(400, f"Desteklenmeyen format: .{ext}")
-
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
-    try:
-        content = await file.read()
-        tmp.write(content)
-        tmp.close()
-
-        if ext == "dxf":
-            with open(tmp.name, "rb") as f:
-                dxf_bytes = f.read()
-        else:
-            dxf_path = convert_dwg_to_dxf(tmp.name)
-            with open(dxf_path, "rb") as f:
-                dxf_bytes = f.read()
-
-        import base64
-        return {
-            "dxf_base64": base64.b64encode(dxf_bytes).decode("ascii"),
-            "size": len(dxf_bytes),
-        }
-    finally:
-        try:
-            os.unlink(tmp.name)
-        except OSError:
-            pass
 
 
 if __name__ == "__main__":

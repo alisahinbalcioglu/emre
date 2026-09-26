@@ -291,7 +291,8 @@ function kablolama() {
     ['GET /quotes/:id/exports/:rev', QuotesController, 'downloadExport', Yetenek.CIKTI_INDIR],
     ['GET /quote-formats/:id/preview', QuoteFormatsController, 'preview', Yetenek.CIKTI_INDIR],
     ['GET /quote-formats/:id/preview-pdf', QuoteFormatsController, 'previewPdf', Yetenek.CIKTI_INDIR],
-    ['POST /dwg-engine/layers', DwgEngineController, 'listLayers', Yetenek.DWG_YUKLE],
+    // 26.09: `POST /dwg-engine/layers` (ve `convert`) KALDIRILDI — motor DWG→DXF
+    // donusumunu olay dongusunde yapiyordu; canlida kullanimi sifir olculdu.
     ['POST /dwg-engine/parse', DwgEngineController, 'parseDwg', Yetenek.DWG_YUKLE],
     ['POST /dwg-engine/upload', DwgEngineController, 'uploadAsync', Yetenek.DWG_YUKLE],
     // 10.09.2026 — abonelik SAGLIGI bu iki alana hic baglanmamisti:

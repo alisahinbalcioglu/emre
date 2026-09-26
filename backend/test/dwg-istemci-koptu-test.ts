@@ -27,8 +27,9 @@
  *   K  ⭐ KOPMA: istemci koparsa Nest motor baglantisini KAPATIR; yeniden
  *      deneme YOK (motor tek istek gorur); gunlukte tek "istemci koptu" satiri,
  *      "cold start retry" uyarisi ya da hata satiri YOK. `req.on('close')`
- *      tuzagi da burada yakalanir: Node 16+ onu govde okununca yayar, denetleyicide
- *      kurulan dinleyici hic tetiklenmez (olculdu, mutant K1'de oldu)
+ *      tuzagi: Node 16+ onu govde okununca yayar. Multer varken dinleyici hic
+ *      tetiklenmiyordu (mutant K1'de oldu); 26.09'dan beri govde denetleyicide
+ *      akitildigi icin dinleyici her istegi hemen iptal ederdi → N1 KIRMIZI
  *   N  ⭐ NORMAL: kopmayan istek (on yuz gibi BOS multipart govde) sonucu alir,
  *      motor baglantisi normal biter, iz satiri yok
  *   Y  sahiplik sorgusu surerken kopan istemci motora HIC istek gondermez ve
@@ -42,6 +43,17 @@
  *      Istek surerken GC ZORLANIR: Node 20'de AbortSignal.any kaynagi zayif tutar,
  *      zaman asimi sinyali toplanirsa hic tetiklenmez (kod incelemesi buldu;
  *      canli backend imajinda Node 20.20.2 olculdu). Node 24 bu hatayi gostermez.
+ *   E  ⭐ ESKI YOLLAR KAPALI (26.09): dosya govdeli, file_id'siz /parse 400;
+ *      `layers` ve `convert` 404; uc istegin HICBIRI motora gitmez. Motor bu
+ *      yollarda DWG→DXF donusumunu olay dongusunde yapiyordu — tek istek tek
+ *      isciyi 120 sn'ye kadar donduruyordu (canli kullanim 0 olculdu). file_id'li
+ *      istekte istemcinin gonderdigi dosya motora TASINMAZ (govde islenmez).
+ *      Motor tarafi: `python/tests/test_olay_dongusu.py`.
+ *   B  ⭐ BUYUK GOVDE (26.09): file_id + 256 KiB govdeli istemci koparsa da motor
+ *      baglantisi kapanir. Multer gidince govde okunmaz oldu; Node okunmayan
+ *      govde yuksek su isaretini asinca soketi okumayi birakip kopmayi GORMUYORDU
+ *      (inceleme olctu, Node 24: 16 KiB'ta goruldu, 64/256 KiB'ta 3 sn'de yok).
+ *      Denetleyici govdeyi akitir (`res.req.resume()`).
  *
  * Cikis kodu sozlesmesi: 0 = PASS · digeri = FAIL.
  * ⚠ `process.exit` YOK: Windows'ta acik fetch soketiyle `process.exit(1)`
@@ -109,17 +121,17 @@ const yakalayici: LoggerService = {
 const yeniSatirlar = (bas: number) => gunluk.slice(bas).filter((s) => s.includes('[parseDwg]'));
 
 // ── Taklit DWG motoru: istegi tutar ya da gec yanit verir, kapanisi kaydeder ──
-type MotorKaydi = { yol: string; geldi: number; kesildi: number | null; bitti: number | null };
+type MotorKaydi = { yol: string; geldi: number; kesildi: number | null; bitti: number | null; govdeBayt: number };
 const motorKayitlari: MotorKaydi[] = [];
 let motorKipi: 'askida' | 'gec-yanit' = 'askida';
 const motor = createServer((req: IncomingMessage, res: ServerResponse) => {
-  const kayit: MotorKaydi = { yol: req.url ?? '', geldi: Date.now(), kesildi: null, bitti: null };
+  const kayit: MotorKaydi = { yol: req.url ?? '', geldi: Date.now(), kesildi: null, bitti: null, govdeBayt: 0 };
   motorKayitlari.push(kayit);
   res.on('close', () => {
     if (res.writableFinished) kayit.bitti = Date.now();
     else kayit.kesildi = Date.now();
   });
-  req.resume();
+  req.on('data', (parca: Buffer) => { kayit.govdeBayt += parca.length; });
   if (motorKipi === 'gec-yanit') {
     setTimeout(() => {
       res.setHeader('content-type', 'application/json');
@@ -238,6 +250,36 @@ async function kBlogu(): Promise<void> {
     JSON.stringify(satirlar));
 }
 
+async function bBlogu(): Promise<void> {
+  console.log('\n── B) BUYUK GOVDE: file_id + 256 KiB govdeli istemci koparsa da motor baglantisi kapanir ──');
+  motorKipi = 'askida';
+  const bas = gunluk.length;
+  const oncekiMotor = motorKayitlari.length;
+  const ac = new AbortController();
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(256 * 1024).fill(0x42)]), 'proje.dwg');
+  const sorgu = new URLSearchParams({ discipline: 'mechanical', file_id: 'olcum-dosyasi' });
+  const istek = fetch(`http://127.0.0.1:${nestPort}/api/dwg-engine/parse?${sorgu}`, {
+    method: 'POST', body: form, signal: ac.signal,
+  }).then((r) => String(r.status), (e: any) => String(e?.name ?? 'hata'));
+  const geldi = await bekle(() => motorKayitlari.length === oncekiMotor + 1, 3_000);
+  check('B0 OLCUT: 256 KiB govdeli istek motora ulasti', geldi, `motor istegi=${motorKayitlari.length - oncekiMotor}`);
+  const kayit = motorKayitlari[oncekiMotor];
+  await uyu(300); // govde akitiliyorsa istemci yollamayi bitirir; akitilmiyorsa takili kalir
+  const kopmaAni = Date.now();
+  ac.abort();
+  const istemci = await istek;
+  const kesildi = await bekle(() => kayit?.kesildi != null, 1_500);
+  check('B1 ⭐ buyuk govdeli istemci kopunca Nest motor baglantisini KAPATTI (1,5 sn icinde)',
+    kesildi && kayit?.bitti === null,
+    `istemci=${istemci} kesildi=${kayit?.kesildi ? `${kayit.kesildi - kopmaAni} ms` : 'HAYIR — motor yetim isi surdurur'}`);
+  await uyu(2_500); // servisin yeniden deneme beklemesi 2 sn
+  check('B2 yeniden deneme YOK: motor bu istek icin TEK istek gordu',
+    motorKayitlari.length === oncekiMotor + 1, `motor istegi=${motorKayitlari.length - oncekiMotor}`);
+  check('B3 gunlukte "istemci koptu" satiri var',
+    yeniSatirlar(bas).some((s) => s.includes('istemci koptu')), JSON.stringify(yeniSatirlar(bas)));
+}
+
 async function nBlogu(): Promise<void> {
   console.log('\n── N) NORMAL: kopmayan istek sonucunu alir ──');
   motorKipi = 'gec-yanit';
@@ -316,6 +358,57 @@ async function zBlogu(): Promise<void> {
     JSON.stringify(yeniSatirlar(bas)));
 }
 
+async function eBlogu(): Promise<void> {
+  console.log('\n── E) ESKI YOLLAR KAPALI: dosya govdesi motora gitmez ──');
+  motorKipi = 'gec-yanit'; // yanlislikla motora giden istek asili kalmasin, sayilsin
+  // OLCUT: taklit motor govde baytini GERCEKTEN sayiyor — E4'un "bos form"
+  // sonucu bozuk sayactan gelmesin. Nest atlanir, motora dogrudan gonderilir.
+  const onceOlcut = motorKayitlari.length;
+  await fetch(`${process.env.DWG_ENGINE_URL}/olcut`, {
+    method: 'POST', body: new Uint8Array(5000), signal: AbortSignal.timeout(10_000),
+  }).then((r) => r.text());
+  check('E0-OLCUT taklit motor govde baytini sayiyor (5000 bayt)',
+    motorKayitlari[onceOlcut]?.govdeBayt === 5000, `sayilan=${motorKayitlari[onceOlcut]?.govdeBayt}`);
+
+  const oncekiMotor = motorKayitlari.length;
+  const DOSYA_BAYT = 256 * 1024;
+  const dosyali = () => {
+    const f = new FormData();
+    f.append('file', new Blob([new Uint8Array(DOSYA_BAYT).fill(0x41)]), 'proje.dwg');
+    return f;
+  };
+  const gonder = async (yol: string) => {
+    const r = await fetch(`http://127.0.0.1:${nestPort}/api/dwg-engine/${yol}`, {
+      method: 'POST', body: dosyali(), signal: AbortSignal.timeout(10_000),
+    });
+    return { durum: r.status, govde: await r.text() };
+  };
+
+  const govdeli = await gonder('parse?discipline=mechanical&scale=0.001');
+  check('E1 file_id\'siz, dosya govdeli /parse 400 (file_id gerekli)',
+    govdeli.durum === 400 && govdeli.govde.includes('file_id gerekli'),
+    `durum=${govdeli.durum} govde=${govdeli.govde.slice(0, 160)}`);
+  for (const yol of ['layers', 'convert']) {
+    const r = await gonder(yol);
+    check(`E2 POST /dwg-engine/${yol} YOK (404)`, r.durum === 404, `durum=${r.durum} govde=${r.govde.slice(0, 120)}`);
+  }
+  await uyu(200);
+  check('E3 ⭐ uc istegin HICBIRI motora ulasmadi (donusum baslayamaz)',
+    motorKayitlari.length === oncekiMotor,
+    JSON.stringify(motorKayitlari.slice(oncekiMotor).map((k) => k.yol)));
+
+  const sorgu = new URLSearchParams({ discipline: 'mechanical', file_id: 'olcum-dosyasi' });
+  const onceE4 = motorKayitlari.length; // E1-E3 motora gittiyse E4 onlarin kaydini OKUMASIN
+  const r = await gonder(`parse?${sorgu}`);
+  const kayit = motorKayitlari[onceE4];
+  check('E4-OLCUT file_id\'li istek motora ulasti ve sonucu dondu',
+    r.durum === 201 && motorKayitlari.length === onceE4 + 1 && !!kayit?.bitti
+      && kayit.yol.includes('file_id=olcum-dosyasi'),
+    `durum=${r.durum} motor istegi=${motorKayitlari.length - onceE4} yol=${kayit?.yol}`);
+  check(`E4 istemcinin ${DOSYA_BAYT} baytlik dosyasi motora TASINMADI (bos form)`,
+    !!kayit && kayit.govdeBayt < 1024, `motora giden govde=${kayit?.govdeBayt} bayt`);
+}
+
 async function main(): Promise<void> {
   sBlogu();
 
@@ -328,9 +421,11 @@ async function main(): Promise<void> {
   nestPort = (app.getHttpServer().address() as AddressInfo).port;
   try {
     await kBlogu();
+    await bBlogu();
     await nBlogu();
     await yBlogu();
     await zBlogu();
+    await eBlogu();
   } finally {
     await app.close();
     motor.closeAllConnections();

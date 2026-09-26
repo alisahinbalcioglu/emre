@@ -20,7 +20,7 @@ interface DwgUploaderProps {
  * YENI AKIS (tek ekran):
  *   1. Drag-drop veya dosya secimi
  *   2. Birim secimi (mm/cm/m)
- *   3. /layers cagrisi ile file_id cikart (cache)
+ *   3. /upload ile file_id al, /status ile hazir olmasini bekle (cache)
  *   4. Dogrudan DwgProjectWorkspace acilir:
  *      - Tum geometry cizilir (gri, tiklanabilir)
  *      - Kullanici boru layer'ina tiklar → sagda form → Hesapla

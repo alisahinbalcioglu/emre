@@ -283,7 +283,9 @@ async function bolumK(): Promise<void> {
   const dwgUclari = metotlar(DwgEngineController)
     .filter((m) => yetenekleri(DwgEngineController, m).includes(Yetenek.DWG_YUKLE))
     .map((m) => ({ cls: DwgEngineController, m }));
-  check('K2-FIXTURE KANITI: DWG denetleyicisinde 6 DWG_YUKLE ucu', dwgUclari.length === 6,
+  // 4 = parse · upload · status · geometry. 26.09'da `layers` ve `convert`
+  // kaldirildi (DWG→DXF donusumu motorun olay dongusundeydi, canli kullanim 0).
+  check('K2-FIXTURE KANITI: DWG denetleyicisinde 4 DWG_YUKLE ucu', dwgUclari.length === 4,
     js(dwgUclari.map((u) => u.m)));
   await izinBekle('K2 DWG', dwgUclari, 'dwg');
   const dwgSaglik = await sina(DwgEngineController, 'health', UYE_HICBIRI);

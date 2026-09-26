@@ -526,7 +526,13 @@ const SUITES: Suite[] = [
   //    FormData'da yakalanmamış istisna atıp süreci düşürüyordu (Y3; canlıdaki
   //    Node 20'de olmuyor, yükseltmede korur); zaman aşımı aynen.
   //    Motorun alt süreci öldürmesi: python `tests/test_parse_iptal.py` (CI'da yok).
-  { ad: 'DWG istemci koptu: saf sinyal · kopma motoru keser · normal istek · önceden kopmuş · zaman aşımı (S/K/N/Y/Z)', script: 'test:dwg-istemci-koptu', zincir: 'Z0' },
+  //    E (26.09): eski `layers`/`convert` ve dosya gövdeli `/parse` motora HİÇ
+  //    gitmez — motor bu yollarda DWG→DXF dönüşümünü olay döngüsünde yapıyordu,
+  //    tek istek tek işçiyi 120 sn'ye kadar donduruyordu (canlı kullanım 0).
+  //    B (26.09): gövde artık okunmadığı için Node büyük gövdede kopmayı
+  //    görmüyordu; denetleyici gövdeyi akıtır, 256 KiB'lık kopma da motoru keser.
+  //    Motor tarafı: python `tests/test_olay_dongusu.py` (CI'da yok).
+  { ad: 'DWG istemci koptu: saf sinyal · kopma motoru keser · büyük gövdede de · normal istek · önceden kopmuş · zaman aşımı · eski yollar kapalı (S/K/B/N/Y/Z/E)', script: 'test:dwg-istemci-koptu', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
   // T47 (22.09.2026): "fatura bilgisi eksik firma gercek bir fatura kesme
