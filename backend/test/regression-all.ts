@@ -659,6 +659,20 @@ const SUITES: Suite[] = [
   //    tekillik (P2002), ikinci gece, geç gelen gerçek webhook, ölü oynatmanın
   //    yeniden kurulması, çoklu kayıp sipariş, özet satırı, uçtan uca zincir.
   { ad: 'Mutabakat kayıp tahsilatı yeniden oynatır: saf kural · tarih · webhook ölçütü · kayıplar · negatifler · tekrar · gece · koruma · zincir (S/T/Ö/A/D/B/W/N/İ/G/K/Z)', script: 'test:mutabakat-kayip-tahsilat', zincir: 'Z0' },
+  // ── 26.09.2026 — ERİŞİMİ UZATMAYAN KAYIP TAHSİLAT (kural 7). DB/AĞ GEREKTİRMEZ.
+  //    Kural 2 kaybı yalnız erişimden okuyordu: miras (göç) satırında (~1 yıl
+  //    erişim, köprü NULL) ve denemesiz satın almanın ilk siparişinde (31+2
+  //    gün köprü) kaybolan webhook görünmüyordu — fatura 0, uyarı 0, özet
+  //    sıfır; ⭐ miras satırı dunning'deyken yeniden deneme tutup webhook
+  //    kaybolursa 10. gün KISITLI (ödemiş müşteri). Emre 26.09 "aynı yol,
+  //    süren dönem": faturasız + dönemi süren ödenmiş sipariş AYNI oynatmadan;
+  //    bitmiş dönem oynatılmaz (daha yeni reddin dunning'i silinmez) → 31 gün
+  //    "elle fatura" uyarısı + özet sayacı; deneme sürerken kural bakmaz.
+  //    Kod incelemesi engelleri (yalnız kural 7): sonraki dönem denenmiş ·
+  //    paket değişimi beklerken eski uç · webhook yolda (< 2 sa) → oynatma yok.
+  //    Satırlar GERÇEK satın alma yazımıyla kurulur; NES talebi GERÇEK fatura
+  //    kesim turundan (oynatma VUK 231/5 son gününü ertelemez). Eski hâl 52 kırmızı.
+  { ad: 'Mutabakat erişimi uzatmayan kayıp tahsilat: saf kural · ölçüt · miras · köprü · miras dunning · bitmiş dönem · engeller · deneme · tekrar · gece · NES son günü (S/Ö/M/K/R/B/E/D/İ/G/V)', script: 'test:mutabakat-faturasiz-tahsilat', zincir: 'Z0' },
   // ── 24.09.2026 — WEBHOOK GÖVDESİ TAHSİLAT KANITI DEĞİL. DB/AĞ GEREKTİRMEZ.
   //    Uç açık, imza varsayılan olarak zorunlu değil. Eski hâl (30 kırmızı):
   //    `tahsilatBasarili` siparişin VARLIĞINA bakıyordu — iyzico'nun önceden

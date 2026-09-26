@@ -53,6 +53,11 @@
  * ESKİ HÂL (kural yokken, 24.09 ölçüldü): Ö yeşil, A/D/B'nin 10 sonuç
  * assert'i kırmızı — B'de mutabakat ödeyen müşterinin erişimini KAPATIYORDU.
  *
+ * 26.09 — KURAL 7 (`test:mutabakat-faturasiz-tahsilat`): faturası olmayan ve
+ * dönemi süren ödenmiş sipariş de kayıptır. N fikstürleri işlenmiş dönemin
+ * faturasını TAŞIR (webhook'u işlenmiş sipariş gerçekte faturalıdır; taşımayan
+ * fikstür kural 7'yi tetikliyordu); özet satırı beşinci sayıyı taşır (G5/G7).
+ *
  * Çıkış kodu sözleşmesi: 0 = PASS · diğeri = FAIL (process.exitCode).
  */
 import 'reflect-metadata';
@@ -896,6 +901,10 @@ async function nBlogu(): Promise<void> {
   // UPGRADED abonelikte önceden açılmış gelecek sipariş GÖZLENDİ).
   const n1Son = simdi + 10 * GUN;
   const n1 = d.kartSatiri('F-N1', 'sub-n1', { durum: 'AKTIF', erisimSonu: new Date(n1Son) });
+  // İşlenmiş dönem = webhook geldi, faturası kuyrukta. 26.09'dan beri faturasız
+  // süren sipariş de kayıptır (kural 7, `test:mutabakat-faturasiz-tahsilat`):
+  // fikstür işlenmiş siparişin faturasını TAŞIMALI (N5 ve K2 de).
+  d.islenmisTahsilat(n1, 'sub-n1', 'ord-n1a', n1Son - 30 * GUN, n1Son);
   d.iyz.detaylar.set('sub-n1', iyzicoDetayi('sub-n1', 'ACTIVE', [
     siparis({ kod: 'ord-n1b', durum: 'WAITING', bas: n1Son, son: n1Son + 30 * GUN }),
     siparis({ kod: 'ord-n1a', durum: 'SUCCESS', bas: n1Son - 30 * GUN, son: n1Son, denemeler: ['SUCCESS'] }),
@@ -924,11 +933,15 @@ async function nBlogu(): Promise<void> {
   // N5 — webhook İŞLENMİŞ (dönem sonu = erisimSonu) + daha eski ödenmiş dönem.
   const n5Son = simdi + 5 * GUN;
   const n5 = d.kartSatiri('F-N5', 'sub-n5', { durum: 'AKTIF', erisimSonu: new Date(n5Son) });
+  d.islenmisTahsilat(n5, 'sub-n5', 'ord-n5b', n5Son - 30 * GUN, n5Son);
+  d.islenmisTahsilat(n5, 'sub-n5', 'ord-n5a', n5Son - 60 * GUN, n5Son - 30 * GUN);
   d.iyz.detaylar.set('sub-n5', iyzicoDetayi('sub-n5', 'ACTIVE', [
     siparis({ kod: 'ord-n5b', durum: 'SUCCESS', bas: n5Son - 30 * GUN, son: n5Son, denemeler: ['SUCCESS'] }),
     siparis({ kod: 'ord-n5a', durum: 'SUCCESS', bas: n5Son - 60 * GUN, son: n5Son - 30 * GUN, denemeler: ['SUCCESS'] }),
   ]));
 
+  const onceOlay = d.db.tablo('webhookOlayi').length;
+  const onceFatura = d.db.tablo('fatura').length;
   const g = await d.geceyiKos();
   check('N1 ⭐ dönem ortası + sonraki WAITING: oynatma yok, erisimSonu aynı', n1.erisimSonu.getTime() === n1Son &&
     n1.durum === 'AKTIF', `erisimSonu=${iso(n1.erisimSonu)}`);
@@ -941,9 +954,11 @@ async function nBlogu(): Promise<void> {
     `durum=${n4.durum} ilk=${iso(n4.ilkBasarisizlik)}`);
   check('N5 ⭐ işlenmiş dönem (sınır =) ve eski dönem: oynatma yok, erisimSonu KISALMADI', n5.erisimSonu.getTime() === n5Son,
     `erisimSonu=${iso(n5.erisimSonu)}`);
-  check('N6 ⭐ hiçbir WebhookOlayi yazılmadı, hiçbir fatura kuyruğa girmedi',
-    d.oynatilanlar().length === 0 && d.db.tablo('webhookOlayi').length === 0 && d.db.tablo('fatura').length === 0,
-    `olay=${d.db.tablo('webhookOlayi').map((o) => o.siparisKodu)} fatura=${d.db.tablo('fatura').map((f) => f.tahsilatKodu)}`);
+  check('N6 ⭐ hiçbir WebhookOlayi yazılmadı, hiçbir fatura kuyruğa girmedi (fikstürün işlenmiş dönemleri dışında)',
+    d.oynatilanlar().length === 0 && onceOlay === 3 && onceFatura === 3 &&
+      d.db.tablo('webhookOlayi').length === onceOlay && d.db.tablo('fatura').length === onceFatura,
+    `once=${onceOlay}/${onceFatura} olay=${d.db.tablo('webhookOlayi').map((o) => o.siparisKodu)} ` +
+      `fatura=${d.db.tablo('fatura').map((f) => f.tahsilatKodu)}`);
   check('N7 hata/uyarı yok', g.hatalar.length === 0 && g.uyarilar.length === 0, gunlukYaz(g));
 
   console.log('\n── N · kanıtsız ACTIVE AKTIF\'e çekmez (IPTAL → AKTIF hariç) ──');
@@ -970,6 +985,8 @@ async function nBlogu(): Promise<void> {
   k.iyz.detaylar.set('sub-k2', iyzicoDetayi('sub-k2', 'ACTIVE', [
     siparis({ kod: 'ord-k2', durum: 'SUCCESS', bas: gecmis.getTime() - 30 * GUN, son: gecmis.getTime(), denemeler: ['SUCCESS'] }),
   ]));
+  // Önceki dönem işlenmiş: faturası kuyrukta (bkz. N1 notu, kural 7).
+  k.islenmisTahsilat(bekleyen, 'sub-k2', 'ord-k2', gecmis.getTime() - 30 * GUN, gecmis.getTime());
   k.iyz.detaylar.set('sub-k3', iyzicoDetayi('sub-k3', 'ACTIVE', []));
   k.iyz.detaylar.set('sub-k4', iyzicoDetayi('sub-k4', 'ACTIVE', []));
   k.iyz.detaylar.set('sub-k5', iyzicoDetayi('sub-k5', 'ACTIVE', []));
@@ -1003,8 +1020,11 @@ async function nBlogu(): Promise<void> {
     ozet(gk).includes('Değişen: 1 ') && ozet(gk).includes("kanıtsız ACTIVE ile AKTIF'e çekilmeyen: 4") &&
       ozet(gk).includes('kayıp tahsilat yeniden oynatılan: 0') &&
       ozet(gk).includes("deneme sürdüğü için AKTIF'e çekilmeyen: 0"), `ozet="${ozet(gk)}"`);
-  check('N13 hata/uyarı yok, olay/fatura yok', gk.hatalar.length === 0 && gk.uyarilar.length === 0 &&
-    k.db.tablo('webhookOlayi').length === 0 && k.db.tablo('fatura').length === 0, gunlukYaz(gk));
+  check('N13 hata/uyarı yok, yeni olay/fatura yok (fikstürün işlenmiş ord-k2 dönemi dışında)',
+    gk.hatalar.length === 0 && gk.uyarilar.length === 0 &&
+      k.db.tablo('webhookOlayi').map((o) => o.siparisKodu).join(',') === 'ord-k2' &&
+      k.db.tablo('fatura').map((f) => f.tahsilatKodu).join(',') === 'ord-k2',
+    `${gunlukYaz(gk)} olay=${k.db.tablo('webhookOlayi').map((o) => o.siparisKodu)} fatura=${k.db.tablo('fatura').map((f) => f.tahsilatKodu)}`);
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -1172,16 +1192,18 @@ async function gBlogu(): Promise<void> {
   check('G4 ⭐ faturalar: yalnız iki oynatılan sipariş', d.db.tablo('fatura').map((f) => f.tahsilatKodu).sort().join(',') ===
     'ord-g1,ord-g2', `fatura=${d.db.tablo('fatura').map((f) => f.tahsilatKodu)}`);
   const ozet1 = ozet(gece);
-  check('G5 ⭐ özet (deploy sonrası ölçüm): "Değişen: 1 · deneme …: 1 · kayıp tahsilat yeniden oynatılan: 2 · kanıtsız …: 1"',
+  check('G5 ⭐ özet (deploy sonrası ölçüm): "Değişen: 1 · deneme …: 1 · kayıp tahsilat yeniden oynatılan: 2 · kanıtsız …: 1 · faturasız …: 0"',
     ozet1 === "Mutabakat bitti. Değişen: 1 · deneme sürdüğü için AKTIF'e çekilmeyen: 1 · " +
-      "kayıp tahsilat yeniden oynatılan: 2 · kanıtsız ACTIVE ile AKTIF'e çekilmeyen: 1", `ozet="${ozet1}"`);
+      "kayıp tahsilat yeniden oynatılan: 2 · kanıtsız ACTIVE ile AKTIF'e çekilmeyen: 1 · " +
+      'faturasız ödenmiş sipariş (elle fatura): 0', `ozet="${ozet1}"`);
   check('G6 hata YOK; uyarılar TAM OLARAK iki oynatma', yalnizOynatmaUyarisi(gece, ['ord-g1', 'ord-g2']), gunlukYaz(gece));
 
   // İkinci gece AYNI iş örneğiyle: sayaçlar sıfırlanmazsa birikir, ölçüm yalan söyler.
   const ikinci = await d.geceyiKos();
-  check('G7 ⭐ ikinci gece: "Değişen: 0 · …: 1 · …oynatılan: 0 · kanıtsız …: 1" (sayaçlar her gece sıfırlanır)',
+  check('G7 ⭐ ikinci gece: "Değişen: 0 · …: 1 · …oynatılan: 0 · kanıtsız …: 1 · faturasız …: 0" (sayaçlar her gece sıfırlanır)',
     ozet(ikinci) === "Mutabakat bitti. Değişen: 0 · deneme sürdüğü için AKTIF'e çekilmeyen: 1 · " +
-      "kayıp tahsilat yeniden oynatılan: 0 · kanıtsız ACTIVE ile AKTIF'e çekilmeyen: 1" &&
+      "kayıp tahsilat yeniden oynatılan: 0 · kanıtsız ACTIVE ile AKTIF'e çekilmeyen: 1 · " +
+      'faturasız ödenmiş sipariş (elle fatura): 0' &&
       ikinci.hatalar.length === 0 && ikinci.uyarilar.length === 0,
     `ozet="${ozet(ikinci)}" ${gunlukYaz(ikinci)}`);
 }
