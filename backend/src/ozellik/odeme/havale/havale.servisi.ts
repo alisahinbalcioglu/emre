@@ -418,6 +418,9 @@ export class HavaleServisi {
         );
       }
 
+      // 26.09 — teklifin paketi uzatmaya da geçer: miras (göç) satırından başka
+      // pakete geçişte ödenen dönem BUGÜN başlar, miras hakkı ayrı taşınır
+      // (`AbonelikServisi.erisimiUzat` → `miras-hakki.ts`).
       const abonelik = await this.abonelik.erisimiUzat(
         mevcut.abonelikId,
         mevcut.ayAdedi,
@@ -425,6 +428,7 @@ export class HavaleServisi {
           aktor: p.onaylayanId,
           aciklama: `Havale onayı — ${mevcut.teklifNo ?? p.havaleId} (${mevcut.ayAdedi} ay)`,
           tx,
+          hedefPaketSurumuId: mevcut.paketSurumuId ?? null,
         },
       );
 

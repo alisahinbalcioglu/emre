@@ -104,6 +104,11 @@ export function iptalOnayiEpostasi(b: {
   erisimSuruyor: boolean;
   /** Yükseltmenin ücreti başlamadan iptal: dönülen (ödenmiş) paket. */
   geriDonulenPaketAdi?: string | null;
+  /**
+   * 26.09 — MİRAS HAKKI sürüyor: ücretli dönem bitince hesap bu geçiş
+   * paketine döner (`miras-hakki.ts`). Yoksa `null` — metin eskisi gibi.
+   */
+  mirasaDonus?: { paketAdi: string; bitis: Date } | null;
   uygulamaUrl: string;
 }): MusteriEpostasi {
   const gun = tarihYaz(b.bitis);
@@ -130,6 +135,12 @@ export function iptalOnayiEpostasi(b: {
     paragraflar: [
       `${tek(b.firmaAdi)} için ${tek(b.paketAdi)} aboneliğinizin iptal talebi alındı.`,
       ...sure,
+      ...(b.mirasaDonus
+        ? [
+            `Ücretli paketinizin süresi bitince hesabınız geçiş paketinize (${tek(b.mirasaDonus.paketAdi)}) döner; ` +
+              `bu paketi ${tarihYaz(b.mirasaDonus.bitis)} tarihine kadar kullanmaya devam edebilirsiniz.`,
+          ]
+        : []),
       ...(b.geriDonulenPaketAdi
         ? [
             'Yükseltmenin yeni ücreti başlamadan iptal ettiğiniz için paketiniz ödediğiniz ' +

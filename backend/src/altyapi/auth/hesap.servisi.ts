@@ -607,7 +607,9 @@ export class HesapServisi {
     // kullanicinin hesabini kapatamamasi kabul edilemez.
     if (karar.izin && karar.firmaKapaniyor && user.firmaId) {
       try {
-        await this.satinAlma.iptalEt(user.firmaId, userId, 'hesap kapatma');
+        // 26.09 (Emre): firma kapanınca MİRAS HAKKI da biter — ücretli dönem
+        // bitince kapatılmış firmada AKTIF miras satırı doğmaz.
+        await this.satinAlma.iptalEt(user.firmaId, userId, 'hesap kapatma', { mirasiBitir: true });
       } catch (e) {
         this.logger.error(
           `Hesap kapatilirken abonelik iptali BASARISIZ (firma ${user.firmaId}): ` +

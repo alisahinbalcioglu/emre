@@ -64,9 +64,16 @@ export class DenemeHakkiServisi {
 
     const abonelik = await this.prisma.abonelik.findUnique({
       where: { firmaId: p.firmaId },
-      select: { paketSurumu: { select: { paket: { select: { kod: true } } } } },
+      select: {
+        mirasPaketSurumuId: true,
+        paketSurumu: { select: { paket: { select: { kod: true } } } },
+      },
     });
-    if (abonelik && mirasPaketiMi(abonelik.paketSurumu.paket.kod)) {
+    // 26.09 — İKİNCİ EMNİYET: miras hakkı bir kez yakalanmış firma (şu an
+    // ücretli pakette ya da dönemi bitmiş olsa da) göç firmasıdır. Asıl koruma
+    // `DenemeKullanimi kaynak='miras'` kaydıdır (göç 20260915100000); satır
+    // miras paketinden çıkınca önek artık tanımaz.
+    if (abonelik && (mirasPaketiMi(abonelik.paketSurumu.paket.kod) || abonelik.mirasPaketSurumuId != null)) {
       return { hak: false, gerekce: 'kullanildi', anahtarlar };
     }
 

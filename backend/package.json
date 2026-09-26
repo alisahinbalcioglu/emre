@@ -158,6 +158,7 @@
     "test:eposta-kodu": "ts-node test/yonetici-eposta-kodu-test.ts",
     "test:paket-degisimi": "ts-node test/paket-degisimi-test.ts",
     "test:miras-erisimi": "ts-node test/miras-erisimi-test.ts",
+    "test:miras-hakki": "ts-node test/miras-hakki-test.ts",
     "test:vitrin": "ts-node test/vitrin-test.ts",
     "test:yonetici-paket": "ts-node test/yonetici-paket-test.ts"
   },

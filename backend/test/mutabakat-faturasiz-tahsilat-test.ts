@@ -26,6 +26,16 @@
  * ODEME_BEKLIYOR'da kalır ve 10. gün KISITLI + "salt-okunur" e-postası —
  * ÖDEMİŞ müşteriye (KISITLI/ASKIDA `erisimSonu`na bakmaz).
  *
+ * ⚠ 26.09 (miras hakkı turu, `test:miras-hakki`): İLK madde KAPANDI — miras
+ * firma kartla ödeyince ödenen dönem artık BUGÜN başlar (`erisimSonu` =
+ * köprü, ilk tahsilat iyzico dönem sonuna düzeltir) ve göçün günleri
+ * `mirasPaketSurumuId`/`mirasErisimSonu`nda AYRI taşınır. Miras satırı artık
+ * köprü satırıyla AYNI biçimdedir; aşağıdaki miras dünyaları köprü sayesinde
+ * (33 gün > sipariş 31 gün) hâlâ "erişimi uzatmayan" siparişi üretir. Eski
+ * "erişim 340 gün" ölçütleri "miras hakkı 340 gün (ayrı alanda, DEĞİŞMEDİ) +
+ * köprü/ödenen dönem" oldu. Kural 7'nin kalan kaynakları: köprü (ilk sipariş)
+ * ve sonradan uzatılmış erişim (havale/yönetici uzatması, `test:miras-erisimi` V1).
+ *
  * ── KURAL 7 (Emre kararı 26.09 "aynı yol, süren dönem"): mutabakat.job.ts ─
  * Faturası olmayan (`Fatura.tahsilatKodu`) ve dönemi SÜREN ödenmiş sipariş de
  * kayıptır → kural 2'nin AYNI oynatması (tek olay, tek yol). Dönemi BİTMİŞ
@@ -628,6 +638,16 @@ const kararYaz = (k: KayipTahsilatKarari) =>
   `oynat=${k.oynatilacak ? `${k.oynatilacak.siparisKodu}/${k.oynatilacak.neden}` : '-'} ` +
   `elle=${k.elleFatura.map((o) => o.siparisKodu).join(',') || '-'}`;
 
+/**
+ * Göçün 340 günü AYRI alanda ve DEĞİŞMEDİ (26.09 miras hakkı turu): satın alma
+ * hakkı yakaladı (miras-core @ göç erişimi); oynatma, webhook ve dunning ona
+ * dokunmaz. Satır mirasa DÖNMEDİ (etkin paket hâlâ ücretli S30).
+ */
+const hakSabit = (ab: Satir, gocErisimi: Date) =>
+  ab.paketSurumuId === 'S30' && ab.mirasPaketSurumuId === 'SM' &&
+  ab.mirasErisimSonu instanceof Date && ab.mirasErisimSonu.getTime() === gocErisimi.getTime();
+const hakYaz = (ab: Satir) => `paket=${ab.paketSurumuId} hak=${ab.mirasPaketSurumuId}@${gunOlarak(ab.mirasErisimSonu)}`;
+
 /** "Kayıp tahsilat yeniden oynatıldı" satırı bu sipariş için mi? */
 const oynatmaSatiri = (u: string, kod: string) =>
   u.startsWith('Kayıp tahsilat yeniden oynatıldı') && u.includes(` sipariş ${kod} `);
@@ -790,6 +810,7 @@ function sBlogu(): void {
 async function mirasDunningDunyasi(firmaId: string, kod: string) {
   const d = dunyaKur();
   const { ab, gocErisimi } = await d.mirasSatinAlmasi(firmaId, kod);
+  const kopru = ab.erisimSonu.getTime();
   const simdi = Date.now();
   const onceki = { bas: simdi - 34 * GUN, son: simdi - 3 * GUN };
   const yenileme = { bas: onceki.son, son: onceki.son + 31 * GUN };
@@ -813,27 +834,28 @@ async function mirasDunningDunyasi(firmaId: string, kod: string) {
     siparis({ kod: siparis2, durum: 'SUCCESS', bas: yenileme.bas, son: yenileme.son, denemeler: ['FAILURE', 'SUCCESS'] }),
     ilk,
   ]));
-  return { d, ab, gocErisimi, yenileme, siparis1, siparis2, ret, retSonrasi, merdiven3 };
+  return { d, ab, gocErisimi, kopru, yenileme, siparis1, siparis2, ret, retSonrasi, merdiven3 };
 }
 
 /** Fikstürün DOĞRU dalı sürdüğünün kanıtı (başarısızlık → dunning → yeniden deneme). */
 function dunningFikstur(ad: string, w: Awaited<ReturnType<typeof mirasDunningDunyasi>>): void {
-  const { d, ab, gocErisimi, siparis2, ret, retSonrasi, merdiven3 } = w;
+  const { d, ab, gocErisimi, kopru, yenileme, siparis2, ret, retSonrasi, merdiven3 } = w;
   check(`${ad}-FIXTURE ret webhook'u GERÇEK yoldan: ODEME_BEKLIYOR + ilkBasarisizlik + ilk bildirim (deneme 1, tek e-posta)`,
     retSonrasi.durum === 'ODEME_BEKLIYOR' && retSonrasi.ilk instanceof Date && retSonrasi.deneme === 1 &&
       retSonrasi.eposta === 1 && ret.hatalar.length === 0,
     `durum=${retSonrasi.durum} ilk=${iso(retSonrasi.ilk)} deneme=${retSonrasi.deneme} eposta=${retSonrasi.eposta} ${gunlukYaz(ret)}`);
-  check(`${ad}-FIXTURE 3. gün merdiveni iyzico'ya ${siparis2}'yi yeniden denetti (deneme 2); erişim hâlâ 340 gün, köprü NULL`,
+  check(`${ad}-FIXTURE 3. gün merdiveni iyzico'ya ${siparis2}'yi yeniden denetti (deneme 2); ödenen dönem hâlâ köprü (33 gün, yenilemenin dönem sonundan İLERİDE → erişimi uzatmayan), miras hakkı 340 gün`,
     d.iyz.yenidenDenemeler.join(',') === siparis2 && ab.denemeSayisi === 2 && ab.durum === 'ODEME_BEKLIYOR' &&
-      ab.erisimSonu.getTime() === gocErisimi.getTime() && ab.kopruErisimSonu === null && merdiven3.hatalar.length === 0,
-    `denemeler=${d.iyz.yenidenDenemeler} deneme=${ab.denemeSayisi} durum=${ab.durum} ${gunlukYaz(merdiven3)}`);
+      yakin(ab.erisimSonu, 33) && ab.erisimSonu.getTime() === kopru && ab.kopruErisimSonu?.getTime() === kopru &&
+      yenileme.son < kopru && hakSabit(ab, gocErisimi) && merdiven3.hatalar.length === 0,
+    `denemeler=${d.iyz.yenidenDenemeler} deneme=${ab.denemeSayisi} durum=${ab.durum} erisim=${gunOlarak(ab.erisimSonu)} ${hakYaz(ab)} ${gunlukYaz(merdiven3)}`);
 }
 
 // ═════════════════════════════════════════════════════════════════════════
 //  Ö — ÖLÇÜT: webhook ALINIRSA aynı dünyalar istenen sonucu verir (kör değil)
 // ═════════════════════════════════════════════════════════════════════════
 async function oBlogu(): Promise<void> {
-  console.log('\n── Ö · ölçüt: webhook ALINIRSA fatura kuyrukta; miras erişimi değişmez, köprü düzelir, dunning toparlanır ──');
+  console.log('\n── Ö · ölçüt: webhook ALINIRSA fatura kuyrukta; miras hakkı değişmez, köprü düzelir, dunning toparlanır ──');
   {
     const d = dunyaKur();
     const { ab, gocErisimi } = await d.mirasSatinAlmasi('F-OM', 'sub-om');
@@ -842,10 +864,11 @@ async function oBlogu(): Promise<void> {
     d.iyz.detaylar.set('sub-om', iyzicoDetayi('sub-om', 'ACTIVE', [
       siparis({ kod: 'ord-om1', durum: 'SUCCESS', bas, son, denemeler: ['SUCCESS'] }),
     ]));
-    check('Ö-FIXTURE miras: GERÇEK satın alma yazımı KART + pro-mek, 340 gün KORUNDU, köprü NULL; sipariş dönem sonu erişimden ERKEN',
+    check('Ö-FIXTURE miras: GERÇEK satın alma yazımı KART + pro-mek; ödenen dönem BUGÜN (köprü 33 gün), göçün 340 günü AYRI alanda; sipariş dönem sonu köprüden ERKEN',
       ab.odemeYontemi === 'KART' && ab.paketSurumuId === 'S30' && ab.iyzicoAbonelikKodu === 'sub-om' &&
-        ab.erisimSonu.getTime() === gocErisimi.getTime() && ab.kopruErisimSonu === null && son < gocErisimi.getTime(),
-      `yontem=${ab.odemeYontemi} surum=${ab.paketSurumuId} erisim=${gunOlarak(ab.erisimSonu)} kopru=${iso(ab.kopruErisimSonu)}`);
+        yakin(ab.erisimSonu, 33) && ab.kopruErisimSonu?.getTime() === ab.erisimSonu.getTime() &&
+        hakSabit(ab, gocErisimi) && son < ab.erisimSonu.getTime(),
+      `yontem=${ab.odemeYontemi} surum=${ab.paketSurumuId} erisim=${gunOlarak(ab.erisimSonu)} kopru=${iso(ab.kopruErisimSonu)} ${hakYaz(ab)}`);
     d.gelenWebhook('sub-om', 'ord-om1', 'success');
     const g = await gunluguTopla(() => d.isleyici.bekleyenleriIsle());
     const f = d.faturalar(ab.id).filter((x) => x.tahsilatKodu === 'ord-om1');
@@ -853,10 +876,10 @@ async function oBlogu(): Promise<void> {
       f.length === 1 && f[0].donemBasi.getTime() === bas && f[0].donemSonu.getTime() === son,
       `faturalar=${JSON.stringify(f.map((x) => [x.tahsilatKodu, iso(x.donemBasi), iso(x.donemSonu)]))}`);
     const o = d.durumOlaylari(ab.id).filter((x) => x.veri?.siparisKodu === 'ord-om1');
-    check('Ö2 ⭐ miras: erişim DEĞİŞMEDİ (340 gün) — webhook siparişi GERÇEKTEN işledi, köprü düzeltilmedi (yalnız uzatır)',
-      ab.erisimSonu.getTime() === gocErisimi.getTime() && ab.durum === 'AKTIF' && o.length === 1 &&
-        o[0].veri?.kopruDuzeltildi === false,
-      `erisim=${gunOlarak(ab.erisimSonu)} olay=${JSON.stringify(o.map((x) => x.veri))}`);
+    check('Ö2 ⭐ miras: hak DEĞİŞMEDİ (340 gün, ayrı alanda); köprü iyzico dönemine düzeldi (33 → 31 gün, Ö4 ile aynı) — webhook siparişi GERÇEKTEN işledi',
+      ab.erisimSonu.getTime() === son && ab.kopruErisimSonu === null && hakSabit(ab, gocErisimi) &&
+        ab.durum === 'AKTIF' && o.length === 1 && o[0].veri?.kopruDuzeltildi === true,
+      `erisim=${gunOlarak(ab.erisimSonu)} ${hakYaz(ab)} olay=${JSON.stringify(o.map((x) => x.veri))}`);
     check('Ö3 miras: hata/uyarı yok, olay işlendi, tek "ödemeniz alındı"',
       g.hatalar.length === 0 && g.uyarilar.length === 0 && d.olaylar('ord-om1')[0]?.islendi === true && d.giden.length === 1,
       `${gunlukYaz(g)} giden=${JSON.stringify(d.giden)}`);
@@ -882,13 +905,13 @@ async function oBlogu(): Promise<void> {
   {
     const w = await mirasDunningDunyasi('F-OR', 'sub-or');
     dunningFikstur('Ö', w);
-    const { d, ab, gocErisimi, siparis2 } = w;
+    const { d, ab, gocErisimi, yenileme, siparis2 } = w;
     d.gelenWebhook('sub-or', siparis2, 'success');
     const onceGiden = d.giden.length;
     const g = await gunluguTopla(() => d.isleyici.bekleyenleriIsle());
-    check('Ö5 ⭐ miras dunning: webhook yolu TOPARLADI — AKTIF, sayaçlar sıfır, erişim 340 gün, fatura kuyrukta, tek "toparlandı"',
+    check('Ö5 ⭐ miras dunning: webhook yolu TOPARLADI — AKTIF, sayaçlar sıfır, ödenen dönem = yenilemenin dönemi, miras hakkı 340 gün (mirasa DÖNMEDİ), fatura kuyrukta, tek "toparlandı"',
       ab.durum === 'AKTIF' && ab.ilkBasarisizlik === null && ab.denemeSayisi === 0 &&
-        ab.erisimSonu.getTime() === gocErisimi.getTime() &&
+        ab.erisimSonu.getTime() === yenileme.son && hakSabit(ab, gocErisimi) &&
         d.faturalar(ab.id).filter((x) => x.tahsilatKodu === siparis2).length === 1 &&
         d.giden.length === onceGiden + 1 && g.hatalar.length === 0,
       `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} deneme=${ab.denemeSayisi} erisim=${gunOlarak(ab.erisimSonu)} ` +
@@ -910,9 +933,10 @@ async function mBlogu(): Promise<void> {
   d.iyz.detaylar.set('sub-m', iyzicoDetayi('sub-m', 'ACTIVE', [
     siparis({ kod: 'ord-m1', durum: 'SUCCESS', bas, son, denemeler: ['SUCCESS'] }),
   ]));
-  check('M-FIXTURE Ö ile aynı dünya, webhook YOK: 340 gün, köprü NULL, ord-m1 için olay ve fatura yok',
-    ab.erisimSonu.getTime() === gocErisimi.getTime() && ab.kopruErisimSonu === null && son < gocErisimi.getTime() &&
-      d.olaylar('ord-m1').length === 0 && d.faturalar(ab.id).length === 0);
+  check('M-FIXTURE Ö ile aynı dünya, webhook YOK: ödenen dönem köprü (33 gün, siparişten İLERİDE), miras hakkı 340 gün, ord-m1 için olay ve fatura yok',
+    yakin(ab.erisimSonu, 33) && ab.kopruErisimSonu?.getTime() === ab.erisimSonu.getTime() && hakSabit(ab, gocErisimi) &&
+      son < ab.erisimSonu.getTime() && d.olaylar('ord-m1').length === 0 && d.faturalar(ab.id).length === 0,
+    `erisim=${gunOlarak(ab.erisimSonu)} kopru=${gunOlarak(ab.kopruErisimSonu)} ${hakYaz(ab)}`);
 
   const g = await d.geceyiKos();
   const f = d.faturalar(ab.id).filter((x) => x.tahsilatKodu === 'ord-m1');
@@ -920,10 +944,10 @@ async function mBlogu(): Promise<void> {
     f.length === 1 && f[0].donemBasi.getTime() === bas && f[0].donemSonu.getTime() === son,
     `faturalar=${JSON.stringify(d.faturalar(ab.id).map((x) => [x.tahsilatKodu, iso(x.donemBasi), iso(x.donemSonu)]))}`);
   const o = d.durumOlaylari(ab.id).filter((x) => x.veri?.siparisKodu === 'ord-m1');
-  check('M2 ⭐ miras erişimi DEĞİŞMEDİ (340 gün), AKTIF — tahsilat yolundan (aktör webhook), köprü düzeltilmedi',
-    ab.erisimSonu.getTime() === gocErisimi.getTime() && ab.durum === 'AKTIF' && o.length === 1 &&
-      o[0].aktor === 'webhook' && o[0].veri?.kopruDuzeltildi === false,
-    `erisim=${gunOlarak(ab.erisimSonu)} durum=${ab.durum} olay=${JSON.stringify(o.map((x) => [x.aktor, x.veri]))}`);
+  check('M2 ⭐ miras hakkı DEĞİŞMEDİ (340 gün), AKTIF — tahsilat yolundan (aktör webhook), köprü iyzico dönemine düzeldi (webhook gelseydi de böyle: Ö2)',
+    ab.erisimSonu.getTime() === son && ab.kopruErisimSonu === null && hakSabit(ab, gocErisimi) && ab.durum === 'AKTIF' &&
+      o.length === 1 && o[0].aktor === 'webhook' && o[0].veri?.kopruDuzeltildi === true,
+    `erisim=${gunOlarak(ab.erisimSonu)} durum=${ab.durum} ${hakYaz(ab)} olay=${JSON.stringify(o.map((x) => [x.aktor, x.veri]))}`);
   const oy = d.oynatilanlar();
   check('M3 ⭐ BAĞLANTI: TEK yol — mutabakat olayı (tekil anahtar, imzasız, iyzico kaydı kanıt) işlendi; tahsilat yolu siparişi iyzico\'da YENİDEN aradı',
     oy.length === 1 && oy[0].tekilAnahtar === 'mutabakat:subscription.order.success:ord-m1' && oy[0].islendi === true &&
@@ -978,14 +1002,14 @@ async function rBlogu(): Promise<void> {
   console.log('\n── R · miras satırı: merdivenin yeniden denemesi tuttu, webhook kayboldu → gece → merdiven 10. gün ──');
   const w = await mirasDunningDunyasi('F-R', 'sub-r');
   dunningFikstur('R', w);
-  const { d, ab, gocErisimi, siparis2 } = w;
+  const { d, ab, gocErisimi, yenileme, siparis2 } = w;
   const onceGiden = d.giden.length;
 
   const g = await d.geceyiKos();
-  check('R1 ⭐⭐ ödeyen miras müşteri TOPARLANDI: AKTIF, dunning sayaçları sıfır, erişim 340 gün',
+  check('R1 ⭐⭐ ödeyen miras müşteri TOPARLANDI: AKTIF, dunning sayaçları sıfır, ödenen dönem = yenilemenin dönemi, miras hakkı 340 gün (mirasa DÖNMEDİ)',
     ab.durum === 'AKTIF' && ab.ilkBasarisizlik === null && ab.denemeSayisi === 0 &&
-      ab.erisimSonu.getTime() === gocErisimi.getTime(),
-    `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} deneme=${ab.denemeSayisi} erisim=${gunOlarak(ab.erisimSonu)}`);
+      ab.erisimSonu.getTime() === yenileme.son && hakSabit(ab, gocErisimi),
+    `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} deneme=${ab.denemeSayisi} erisim=${gunOlarak(ab.erisimSonu)} ${hakYaz(ab)}`);
   check('R2 ⭐ yenilemenin faturası kuyrukta (tek); ilk dönemin faturası TEKRAR girmedi',
     d.faturalar(ab.id).filter((x) => x.tahsilatKodu === siparis2).length === 1 &&
       d.faturalar(ab.id).filter((x) => x.tahsilatKodu === w.siparis1).length === 1,
@@ -1021,6 +1045,7 @@ async function bBlogu(): Promise<void> {
   {
     const d = dunyaKur();
     const { ab, gocErisimi } = await d.mirasSatinAlmasi('F-B', 'sub-b');
+    const kopru = ab.erisimSonu.getTime();
     const simdi = Date.now();
     const b1 = siparis({ kod: 'ord-b1', durum: 'SUCCESS', bas: simdi - 34 * GUN, son: simdi - 3 * GUN, denemeler: ['SUCCESS'] });
     const b2Ret = siparis({ kod: 'ord-b2', durum: 'FAILED', bas: simdi - 3 * GUN, son: simdi + 28 * GUN, denemeler: ['FAILURE'] });
@@ -1037,10 +1062,10 @@ async function bBlogu(): Promise<void> {
     // mutabakat sipariş listesine bakar ve bitmiş faturasız ord-b1'i görür.
     d.iyz.detaylar.set('sub-b', iyzicoDetayi('sub-b', 'ACTIVE', [b2Ret, b1]));
     const g = await d.geceyiKos();
-    check('B1 ⭐⭐ bitmiş dönemin siparişi OYNATILMADI: ODEME_BEKLIYOR, ilkBasarisizlik ve deneme AYNI (daha yeni reddin dunning\'i SİLİNMEDİ), erişim 340 gün, fatura yok',
+    check('B1 ⭐⭐ bitmiş dönemin siparişi OYNATILMADI: ODEME_BEKLIYOR, ilkBasarisizlik ve deneme AYNI (daha yeni reddin dunning\'i SİLİNMEDİ), erişim (köprü) ve miras hakkı dokunulmadı, fatura yok',
       ab.durum === 'ODEME_BEKLIYOR' && ab.ilkBasarisizlik?.getTime() === iz.ilk && ab.denemeSayisi === iz.deneme &&
-        ab.erisimSonu.getTime() === gocErisimi.getTime() && d.oynatilanlar().length === 0 && d.faturalar(ab.id).length === 0,
-      `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} deneme=${ab.denemeSayisi} oynatilan=${d.oynatilanlar().length}`);
+        ab.erisimSonu.getTime() === kopru && hakSabit(ab, gocErisimi) && d.oynatilanlar().length === 0 && d.faturalar(ab.id).length === 0,
+      `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} deneme=${ab.denemeSayisi} erisim=${gunOlarak(ab.erisimSonu)} ${hakYaz(ab)} oynatilan=${d.oynatilanlar().length}`);
     const elle = elleFaturaSatirlari(g);
     check('B2 ⭐ SESSİZ değil: tek "elle fatura" uyarısı ord-b1 ile (ödenmemiş ord-b2 anılmaz); özet "elle fatura: 1"',
       elle.length === 1 && elle[0].includes('ord-b1') && !elle[0].includes('ord-b2') && elle[0].includes('elle fatura') &&
@@ -1078,6 +1103,7 @@ async function eBlogu(): Promise<void> {
     // en kötü hâl), abonelik hâlâ ACTIVE. Ret webhook'u GERÇEK yoldan işlendi.
     const d = dunyaKur();
     const { ab, gocErisimi } = await d.mirasSatinAlmasi('F-E1', 'sub-e1');
+    const kopru = ab.erisimSonu.getTime();
     const simdi = Date.now();
     const bu = siparis({ kod: 'ord-e1a', durum: 'SUCCESS', bas: simdi - 29 * GUN, son: simdi + 2 * GUN, denemeler: ['SUCCESS'] });
     const sonraki = {
@@ -1092,11 +1118,11 @@ async function eBlogu(): Promise<void> {
       iz.durum === 'ODEME_BEKLIYOR' && typeof iz.ilk === 'number' && iz.deneme === 1 && iz.giden === 1 && ret.hatalar.length === 0,
       `durum=${iz.durum} deneme=${iz.deneme} giden=${iz.giden} ${gunlukYaz(ret)}`);
     const g = await d.geceyiKos();
-    check('E1 ⭐⭐ bu ayın faturasız siparişi OYNATILMADI: ret dunning\'i yerinde (ODEME_BEKLIYOR, ilkBasarisizlik/deneme AYNI), "ödemeniz alındı" YOK, erişim 340 gün',
+    check('E1 ⭐⭐ bu ayın faturasız siparişi OYNATILMADI: ret dunning\'i yerinde (ODEME_BEKLIYOR, ilkBasarisizlik/deneme AYNI), "ödemeniz alındı" YOK, erişim (köprü) ve miras hakkı dokunulmadı',
       ab.durum === 'ODEME_BEKLIYOR' && ab.ilkBasarisizlik?.getTime() === iz.ilk && ab.denemeSayisi === iz.deneme &&
         d.giden.length === iz.giden && d.oynatilanlar().length === 0 && d.faturalar(ab.id).length === 0 &&
-        ab.erisimSonu.getTime() === gocErisimi.getTime(),
-      `durum=${ab.durum} deneme=${ab.denemeSayisi} giden=${JSON.stringify(d.giden)} oynatilan=${d.oynatilanlar().length}`);
+        ab.erisimSonu.getTime() === kopru && hakSabit(ab, gocErisimi),
+      `durum=${ab.durum} deneme=${ab.denemeSayisi} erisim=${gunOlarak(ab.erisimSonu)} ${hakYaz(ab)} giden=${JSON.stringify(d.giden)} oynatilan=${d.oynatilanlar().length}`);
     const elle = elleFaturaSatirlari(g);
     check('E1b SESSİZ değil: tek "elle fatura" uyarısı ord-e1a; özet "elle fatura: 1"',
       elle.length === 1 && elle[0].includes('ord-e1a') && !elle[0].includes('ord-e1b') && ozet(g).endsWith(elleFaturaOzeti(1)) &&
@@ -1114,6 +1140,7 @@ async function eBlogu(): Promise<void> {
       tutar: 999, paraBirimi: 'TRY', iyzicoPlanKodu: 'plan-20', satistaMi: true,
     });
     const { ab, gocErisimi } = await d.mirasSatinAlmasi('F-E2', 'sub-e2');
+    const kopru = ab.erisimSonu.getTime();
     const simdi = Date.now();
     const gecis = new Date(simdi + 21 * GUN);
     Object.assign(ab, {
@@ -1125,9 +1152,9 @@ async function eBlogu(): Promise<void> {
       ab.iyzicoAbonelikKodu === 'sub-e2-yeni' && ab.paketSurumuId === 'S30' && ab.planliPaketSurumuId === 'S20' &&
         ab.paketGecisTarihi?.getTime() === gecis.getTime() && d.faturalar(ab.id).length === 0);
     const g = await d.geceyiKos();
-    check('E2 ⭐⭐ eski ucun siparişi yeni ucun tahsilatı sayılmadı: OYNATILMADI; etkin paket, planlı düşürme ve KİLİT yerinde; erişim 340 gün',
+    check('E2 ⭐⭐ eski ucun siparişi yeni ucun tahsilatı sayılmadı: OYNATILMADI; etkin paket, planlı düşürme ve KİLİT yerinde; erişim (köprü) ve miras hakkı dokunulmadı',
       d.oynatilanlar().length === 0 && ab.paketSurumuId === 'S30' && ab.planliPaketSurumuId === 'S20' &&
-        ab.paketGecisTarihi?.getTime() === gecis.getTime() && ab.erisimSonu.getTime() === gocErisimi.getTime() &&
+        ab.paketGecisTarihi?.getTime() === gecis.getTime() && ab.erisimSonu.getTime() === kopru && hakSabit(ab, gocErisimi) &&
         d.faturalar(ab.id).length === 0,
       `oynatilan=${d.oynatilanlar().length} paket=${ab.paketSurumuId} planli=${ab.planliPaketSurumuId} kilit=${iso(ab.paketGecisTarihi)}`);
     const elle = elleFaturaSatirlari(g);
@@ -1193,18 +1220,19 @@ async function mirasKayipDunyasi(firmaId: string, kod: string) {
   const d = dunyaKur();
   const { ab, gocErisimi } = await d.mirasSatinAlmasi(firmaId, kod);
   const bas = Date.now() - 8 * SAAT; // bkz. M: gece çekimden saatler sonra
+  const son = bas + 31 * GUN;
   const siparisKodu = `${kod}-ord-1`;
   const detay = iyzicoDetayi(kod, 'ACTIVE', [
-    siparis({ kod: siparisKodu, durum: 'SUCCESS', bas, son: bas + 31 * GUN, denemeler: ['SUCCESS'] }),
+    siparis({ kod: siparisKodu, durum: 'SUCCESS', bas, son, denemeler: ['SUCCESS'] }),
   ]);
   d.iyz.detaylar.set(kod, detay);
-  return { d, ab, gocErisimi, detay, siparisKodu };
+  return { d, ab, gocErisimi, detay, siparisKodu, son };
 }
 
 async function iBlogu(): Promise<void> {
   console.log('\n── İ · ikinci gece + geç gelen GERÇEK webhook ──');
   {
-    const { d, ab, gocErisimi, siparisKodu } = await mirasKayipDunyasi('F-I1', 'sub-i1');
+    const { d, ab, gocErisimi, siparisKodu, son } = await mirasKayipDunyasi('F-I1', 'sub-i1');
     await d.geceyiKos();
     const ikinci = await d.geceyiKos();
     check('İ1 ⭐ ikinci gece: yeni olay yok, yeni fatura yok, uyarı yok, özet "oynatılan: 0 · elle fatura: 0", makbuz hâlâ tek',
@@ -1215,16 +1243,16 @@ async function iBlogu(): Promise<void> {
     // iyzico'nun kendi tekrarı geç geldi (kesinti bitti): GERÇEK olay.
     d.gelenWebhook('sub-i1', siparisKodu, 'success');
     const gec = await gunluguTopla(() => d.isleyici.bekleyenleriIsle());
-    check('İ2 ⭐ geç gelen gerçek webhook işlendi ama İKİNCİ fatura ve İKİNCİ makbuz YOK, erişim 340 gün',
+    check('İ2 ⭐ geç gelen gerçek webhook işlendi ama İKİNCİ fatura ve İKİNCİ makbuz YOK; ödenen dönem iyzico dönemi (oynatmada düzeldi, geç webhook değiştirmedi), miras hakkı 340 gün',
       d.olaylar(siparisKodu).length === 2 && d.olaylar(siparisKodu).every((o) => o.islendi === true) &&
-        d.faturalar(ab.id).length === 1 && d.giden.length === 1 && ab.erisimSonu.getTime() === gocErisimi.getTime() &&
-        gec.hatalar.length === 0,
-      `olaylar=${JSON.stringify(d.olaylar(siparisKodu).map((o) => [o.kaynak, o.islendi]))} giden=${d.giden.length} ${gunlukYaz(gec)}`);
+        d.faturalar(ab.id).length === 1 && d.giden.length === 1 && ab.erisimSonu.getTime() === son &&
+        ab.kopruErisimSonu === null && hakSabit(ab, gocErisimi) && gec.hatalar.length === 0,
+      `olaylar=${JSON.stringify(d.olaylar(siparisKodu).map((o) => [o.kaynak, o.islendi]))} giden=${d.giden.length} erisim=${gunOlarak(ab.erisimSonu)} ${hakYaz(ab)} ${gunlukYaz(gec)}`);
   }
 
   console.log('\n── İ · oynatılan olay işlenemedi (5 deneme) → sonraki gece YENİDEN KURULUR ──');
   {
-    const { d, ab, gocErisimi, detay, siparisKodu } = await mirasKayipDunyasi('F-I3', 'sub-i3');
+    const { d, ab, gocErisimi, detay, siparisKodu, son } = await mirasKayipDunyasi('F-I3', 'sub-i3');
     // Gece: mutabakat olayı yazar; o sırada iyzico siparişi listesinden düşürmüş
     // olsun (tahsilat yolu doğrulayamaz → olay hata alır) — 03:30 kesintisi.
     await gunluguTopla(() => d.mutabakat.geceMutabakati());
@@ -1245,10 +1273,10 @@ async function iBlogu(): Promise<void> {
         g.uyarilar[0].includes('doğrulanamadı'),
       `oynatilan=${d.oynatilanlar().length} deneme=${olu?.denemeSayisi} ${gunlukYaz(g)}`);
     const isle = await gunluguTopla(() => d.isleyici.bekleyenleriIsle());
-    check('İ4 ⭐ yeniden kurulan olay işlendi: fatura kuyrukta, erişim 340 gün (ödeme kaybolmadı)',
+    check('İ4 ⭐ yeniden kurulan olay işlendi: fatura kuyrukta, ödenen dönem iyzico dönemine düzeldi, miras hakkı 340 gün (ödeme kaybolmadı)',
       olu?.islendi === true && d.faturalar(ab.id).filter((f) => f.tahsilatKodu === siparisKodu).length === 1 &&
-        ab.erisimSonu.getTime() === gocErisimi.getTime() && isle.hatalar.length === 0,
-      `islendi=${olu?.islendi} faturalar=${d.faturalar(ab.id).map((f) => f.tahsilatKodu)} ${gunlukYaz(isle)}`);
+        ab.erisimSonu.getTime() === son && hakSabit(ab, gocErisimi) && isle.hatalar.length === 0,
+      `islendi=${olu?.islendi} faturalar=${d.faturalar(ab.id).map((f) => f.tahsilatKodu)} erisim=${gunOlarak(ab.erisimSonu)} ${hakYaz(ab)} ${gunlukYaz(isle)}`);
     // SENTETİK (canlıda fatura silinmez): işlenmiş olay + fatura yine yok →
     // yalnız uyarı metninin NEDENİ doğru söylediğini ölçer.
     const tablo = d.db.tablo('fatura');
@@ -1272,9 +1300,10 @@ async function gBlogu(): Promise<void> {
   const simdi = Date.now();
   const ode = (kod: string, bas: number, sonu: number) =>
     siparis({ kod, durum: 'SUCCESS', bas, son: sonu, denemeler: ['SUCCESS'] });
-  // g1 — miras: bu ayın siparişi kayıp → oynat (erişim dokunulmaz)
+  // g1 — miras: bu ayın siparişi kayıp → oynat (köprü iyzico dönemine düzelir, miras hakkı dokunulmaz)
   const { ab: g1, gocErisimi } = await d.mirasSatinAlmasi('F-G1', 'sub-g1');
-  d.iyz.detaylar.set('sub-g1', iyzicoDetayi('sub-g1', 'ACTIVE', [ode('ord-g1', simdi - 2 * GUN, simdi + 29 * GUN)]));
+  const g1Son = simdi + 29 * GUN;
+  d.iyz.detaylar.set('sub-g1', iyzicoDetayi('sub-g1', 'ACTIVE', [ode('ord-g1', simdi - 2 * GUN, g1Son)]));
   // g2 — köprü: denemesiz satın almanın ilk siparişi kayıp → oynat (köprü düzelir)
   const g2 = await d.yeniFirmaSatinAlmasi('F-G2', 'sub-g2');
   const g2Son = simdi - 8 * SAAT + 31 * GUN;
@@ -1308,10 +1337,14 @@ async function gBlogu(): Promise<void> {
       d.oynatilanlar().map((o) => o.siparisKodu).sort().join(',') === 'ord-g1,ord-g2' &&
       d.faturalar(g5.id).length === 0 && d.faturalar(baska.id).length === 1,
     `faturalar=${kodlar()} oynatilan=${d.oynatilanlar().map((o) => o.siparisKodu)}`);
-  check('G2 erişim: g1/g3/g4 340 gün (dokunulmadı), g2 köprüsü iyzico dönemine düzeldi; hepsi AKTIF',
-    g1.erisimSonu.getTime() === gocErisimi.getTime() && yakin(g3.erisimSonu, MIRAS_GUN) && yakin(g4.erisimSonu, MIRAS_GUN) &&
-      g2.erisimSonu.getTime() === g2Son && [g1, g2, g3, g4].every((r) => r.durum === 'AKTIF'),
-    `g1=${gunOlarak(g1.erisimSonu)} g2=${gunOlarak(g2.erisimSonu)} g3=${gunOlarak(g3.erisimSonu)} g4=${gunOlarak(g4.erisimSonu)}`);
+  // 26.09 (miras hakkı turu): miras satırlarında ödenen dönem köprüdür; göçün
+  // 340 günü `mirasErisimSonu`nda AYRI durur ve gece ona dokunmaz.
+  check('G2 erişim: oynatılan g1/g2 köprüsü iyzico dönemine düzeldi; g3/g4 köprüsü dokunulmadı (33 gün); g1/g3/g4 miras hakkı 340 gün; hepsi AKTIF',
+    g1.erisimSonu.getTime() === g1Son && g2.erisimSonu.getTime() === g2Son && yakin(g3.erisimSonu, 33) && yakin(g4.erisimSonu, 33) &&
+      hakSabit(g1, gocErisimi) && [g3, g4].every((r) => r.mirasPaketSurumuId === 'SM' && yakin(r.mirasErisimSonu, MIRAS_GUN)) &&
+      [g1, g2, g3, g4].every((r) => r.durum === 'AKTIF'),
+    `g1=${gunOlarak(g1.erisimSonu)} g2=${gunOlarak(g2.erisimSonu)} g3=${gunOlarak(g3.erisimSonu)} g4=${gunOlarak(g4.erisimSonu)} ` +
+      `haklar=${[g1, g3, g4].map(hakYaz).join(' | ')}`);
   const beklenen =
     "Mutabakat bitti. Değişen: 0 · deneme sürdüğü için AKTIF'e çekilmeyen: 0 · kayıp tahsilat yeniden oynatılan: 2 · " +
     "kanıtsız ACTIVE ile AKTIF'e çekilmeyen: 0 · faturasız ödenmiş sipariş (elle fatura): 1";

@@ -1057,6 +1057,11 @@ async function tBlogu(): Promise<void> {
     // İPTAL dalı: `endDate`in ANLAMI (dönem sonu mu, iptal anı mı) ÖLÇÜLMEDİ —
     // kapı anlamı KİLİTLEMEZ, yalnız çözümü: rakam-dizesi, AYNI değerin sayı
     // hâliyle birebir aynı sonucu vermeli (fark ölçütü).
+    // ⚠ 26.09 (miras hakkı turu): İPTAL dalı `endDate`i ARTIK OKUMAZ — iki
+    // iptal yolu (uygulama `iptalEt`, iyzico tarafı) aynı: ödenmiş dönem sonu
+    // `erisimSonu`nda kalır (sandbox'ta CANCELED ayrıntısında `endDate` hiç
+    // yoktu, 26.09 ölçüm). T3 bu yüzden "aynı sonuç"tan "hiçbiri değiştirmedi"ye
+    // keskinleşti; tarih çözücüsünü T1/T2/T5 ölçer.
     const d = dunyaKur();
     const simdi = Date.now();
     const son = simdi + 20 * GUN;
@@ -1068,9 +1073,9 @@ async function tBlogu(): Promise<void> {
     const bozuk = d.kartSatiri('F-T5', 'sub-t5', { durum: 'AKTIF', erisimSonu: new Date(son) });
     d.iyz.detaylar.set('sub-t5', iyzicoDetayi('sub-t5', 'CANCELED', [], { endDate: 'bozuk' }));
     const g = await d.geceyiKos();
-    check('T3 ⭐ İPTAL dalı: endDate rakam-dizesi, sayı hâliyle AYNI sonucu verdi (IPTAL, aynı erisimSonu)',
-      dize.durum === 'IPTAL' && sayi.durum === 'IPTAL' && Number.isFinite(dize.erisimSonu.getTime()) &&
-        dize.erisimSonu.getTime() === sayi.erisimSonu.getTime(),
+    check('T3 ⭐ İPTAL dalı: endDate (sayı da rakam-dizesi de) erişimi DEĞİŞTİRMEDİ — IPTAL, erisimSonu ödenmiş dönem sonunda',
+      dize.durum === 'IPTAL' && sayi.durum === 'IPTAL' &&
+        dize.erisimSonu.getTime() === son && sayi.erisimSonu.getTime() === son,
       `sayi=${sayi.durum}/${iso(sayi.erisimSonu)} dize=${dize.durum}/${iso(dize.erisimSonu)} ${gunlukYaz(g)}`);
     check('T4 çözülemeyen endDate: iptal YİNE yazıldı, erisimSonu UYDURULMADI (endDate yokmuş gibi, aynı)',
       bozuk.durum === 'IPTAL' && bozuk.erisimSonu.getTime() === son,
