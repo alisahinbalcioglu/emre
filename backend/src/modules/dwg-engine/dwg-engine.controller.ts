@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Get, Param, UploadedFile,
+  BadRequestException, Controller, Post, Get, Param, UploadedFile,
   UseGuards, UseInterceptors, Query, Res,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -24,38 +24,14 @@ export class DwgEngineController {
   ) {}
 
   /**
-   * Layer listesi cikar (hizli, uzunluk hesaplamaz).
-   * file_id doner — bu ID ile /parse cagirilabilir.
+   * `/upload` ile yuklenmis dosyanin (file_id) secilen layer'larinin metrajini cikarir.
    *
-   * Dosya boyut limiti 200MB (buyuk mimari projeler icin). DWG->DXF
-   * donustume (ODA converter) bazen uzun surer, timeout 180 saniyeye
-   * kadar tolerans verilir.
-   */
-  @Post('layers')
-  @GerekliYetenek(Yetenek.DWG_YUKLE)
-  @UseInterceptors(FileInterceptor('file', {
-    storage: memoryStorage(),
-    limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
-  }))
-  async listLayers(
-    @CurrentUser() kullanici: unknown,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
-    const { firmaId, userId } = kimlikCoz(kullanici);
-    if (!file) {
-      return { error: 'Dosya yuklenemedi' };
-    }
-    const yanit = await this.dwgEngine.listLayers(file.buffer, file.originalname);
-    // G2: uretilen file_id FIRMAYA baglanir — tuketici uclarin kapisi budur.
-    await this.sahiplik.kaydet(yanit, firmaId, userId, file.originalname);
-    return yanit;
-  }
-
-  /**
-   * DWG/DXF parse edip layer bazinda metraj cikarir.
-   *
-   * file_id varsa: cache'teki dosya kullanilir (dosya yuklemeye gerek yok).
-   * file_id yoksa: dosya yuklenmeli (geriye uyumlu).
+   * YALNIZ file_id (26.09): dosya govdeli "geriye uyumlu" yol KALDIRILDI —
+   * eski `layers` ve `convert` uclariyla birlikte. Motor o yollarda DWG→DXF
+   * donusumunu olay dongusunde yapiyordu: tek istek tek isciyi (WORKERS=1)
+   * 120 sn'ye kadar dondurup TUM kiracilari bekletebiliyordu. Canlida kullanimi
+   * sifir olculdu (on yuz 21.05'ten beri yalniz /upload + file_id). Dosya alici
+   * (multer, istek basina 1 GB'a kadar bellekte) da gitti: govde OKUNMAZ.
    *
    * ISTEMCI KOPARSA (26.09): on yuz birim degisince ayirmayi iptal edip yeni
    * birimle yeniden baslatir. Motor istegi de kesilir — kesilmezse motor eski
@@ -65,13 +41,8 @@ export class DwgEngineController {
    */
   @Post('parse')
   @GerekliYetenek(Yetenek.DWG_YUKLE)
-  @UseInterceptors(FileInterceptor('file', {
-    storage: memoryStorage(),
-    limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
-  }))
   async parseDwg(
     @CurrentUser() kullanici: unknown,
-    @UploadedFile() file: Express.Multer.File,
     @Res({ passthrough: true }) res: Response,
     @Query('discipline') discipline?: string,
     @Query('scale') scale?: string,
@@ -83,13 +54,15 @@ export class DwgEngineController {
     @Query('sprinkler_layers') sprinklerLayers?: string,
   ) {
     const istemciKoptu = istemciKopmaSinyali(res);
-    // file_id varsa dosya gerekmez, yoksa dosya zorunlu
-    // G2: cache'ten okuyorsa (fileId var) sahiplik DOGRULANIR; dosya
-    // govdeden geliyorsa kapi konusu degildir (kendi dosyasini yukluyor).
-    await this.sahiplik.dogrula(fileId, kimlikCoz(kullanici).firmaId);
-    if (!fileId && !file) {
-      return { error: 'file_id veya dosya yuklenmeli' };
+    // Govde islenmez ama AKITILIR: okunmayan govde yuksek su isaretini (16 KiB)
+    // asinca Node soketi okumayi birakir ve istemcinin kopusunu GORMEZ — iptal
+    // zinciri yalniz kucuk govdede calisirdi (olculdu 26.09, kapi B). Veri atilir.
+    res.req.resume();
+    if (!fileId) {
+      throw new BadRequestException('file_id gerekli (dosya once /dwg-engine/upload ile yuklenir)');
     }
+    // G2: cache'teki dosyanin sahipligi DOGRULANIR (baska firmanin dosyasi 403).
+    await this.sahiplik.dogrula(fileId, kimlikCoz(kullanici).firmaId);
 
     // selected_layers JSON array parse
     let parsedLayers: string[] | undefined;
@@ -136,15 +109,13 @@ export class DwgEngineController {
     // Cap atamasi frontend dwg-tagging modulunde manuel yapilir.
 
     return this.dwgEngine.parseDwg(
-      file?.buffer ?? null,
-      file?.originalname ?? '',
+      fileId,
       discipline || 'mechanical',
       // AUTO-MODE: scale gonderilmezse resolveScaleParam undefined doner ve
       // parametre Python'a HIC gitmez -> motor cizim birimini KENDI okur
       // (python/unit_detect.py: antet pafta olcusu + "ÖLÇEK 1/N" kesisimi).
       // 0.001'e zorlamak bu dali OLU KODA cevirir — daha once oyleydi.
       resolveScaleParam(scale),
-      fileId,
       parsedLayers,
       parsedHatTipi,
       parsedMaterialType,
@@ -155,17 +126,6 @@ export class DwgEngineController {
       splitMode,
       istemciKoptu,
     );
-  }
-
-  @Post('convert')
-  @GerekliYetenek(Yetenek.DWG_YUKLE)
-  @UseInterceptors(FileInterceptor('file', {
-    storage: memoryStorage(),
-    limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
-  }))
-  async convertToDxf(@UploadedFile() file: Express.Multer.File) {
-    if (!file) return { error: 'Dosya yuklenemedi' };
-    return this.dwgEngine.convertToDxf(file.buffer, file.originalname);
   }
 
   @Get('health')

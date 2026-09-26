@@ -20,8 +20,8 @@ import { PrismaService } from '../../altyapi/db/prisma.service';
  *  Python servisi `klasor-duzeni.txt`te DONMUS BLOK olarak ilan edilmistir.
  *  Izolasyonu oraya tasimak donmus bloga dokunmak ve iki serviste birden
  *  kimlik tasimak demekti. Bunun yerine bag Nest tarafinda kurulur:
- *  URETICI uclar (layers/upload) kaydi YAZAR, TUKETICI uclar
- *  (parse/status/geometry) DOGRULAR. Python servisi degismez.
+ *  URETICI uc (upload; `layers` 26.09'da kaldirildi) kaydi YAZAR, TUKETICI
+ *  uclar (parse/status/geometry) DOGRULAR. Python servisi degismez.
  *
  *  ── ESKI DOSYALAR (kayitsizlar) ──────────────────────────────────────────
  *  Bu tablo bugun BOS baslar; bu degisiklikten ONCE yuklenmis dosyalarin
@@ -69,7 +69,9 @@ export class DwgSahiplikServisi {
 
   /** Tuketici uclarin kapisi. Baska firmanin dosyasiysa 403. */
   async dogrula(fileId: string | undefined, firmaId: string): Promise<void> {
-    if (!fileId) return; // fileId yoksa dosya govdeden geliyordur — kapi konusu degil
+    // Kimliksiz istek kapidan GECMEZ (26.09). Eskiden "fileId yok = dosya
+    // govdeden geliyor" sayilip izin veriliyordu; govdeli /parse kaldirildi.
+    if (!fileId) throw new ForbiddenException('Dosya kimligi (file_id) eksik.');
 
     const kayit = await this.prisma.dwgDosya.findUnique({ where: { fileId } });
 

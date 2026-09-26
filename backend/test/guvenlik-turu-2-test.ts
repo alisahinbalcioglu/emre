@@ -164,8 +164,10 @@ async function g2_dwgSahiplik() {
       'govdede dogrula cagrisi yok',
     );
   }
-  // URETICI uclar sahipligi YAZMALI
-  for (const metot of ['listLayers', 'uploadAsync']) {
+  // URETICI uclar sahipligi YAZMALI. `listLayers` 26.09'da KALDIRILDI (motor
+  // DWG→DXF donusumunu olay dongusunde yapiyordu, canlida kullanimi sifir
+  // olculdu); yerini tutan tek uretici uc `uploadAsync` burada olculuyor.
+  for (const metot of ['uploadAsync']) {
     const govde = String(p[metot] ?? '');
     check(
       `G2-b ${metot} sahiplik yaziyor (sahiplik.kaydet cagrisi)`,
@@ -180,10 +182,13 @@ async function g2_dwgSahiplik() {
 
   // ── Davranis: baska firmanin dosyasi 403 ─────────────────────────────
   const sahteKayit: any = { fileId: 'F1', firmaId: 'FIRMA-A' };
+  let sorguSayisi = 0;
   const sahtePrisma: any = {
     dwgDosya: {
-      findUnique: async ({ where }: any) =>
-        where.fileId === 'F1' ? sahteKayit : null,
+      findUnique: async ({ where }: any) => {
+        sorguSayisi++;
+        return where.fileId === 'F1' ? sahteKayit : null;
+      },
       upsert: async () => sahteKayit,
     },
   };
@@ -222,6 +227,23 @@ async function g2_dwgSahiplik() {
     'G2-e kaydi OLMAYAN eski dosya gecer (bilincli aciklik — deploy calisan ekrani kirmasin)',
     eskiHata === null,
   );
+
+  // Kimliksiz istek (26.09): eskiden "fileId yok = dosya govdeden geliyor"
+  // sayilip SORGUSUZ geciyordu. Govdeli /parse kaldirildi; kapi artik kapali.
+  for (const eksik of [undefined, '']) {
+    const once = sorguSayisi;
+    let hata: any = null;
+    try {
+      await servis.dogrula(eksik, 'FIRMA-A');
+    } catch (e) {
+      hata = e;
+    }
+    check(
+      `G2-f kimliksiz istek (${JSON.stringify(eksik) ?? 'undefined'}) 403 — gecis izni YOK`,
+      hata?.getStatus?.() === 403 && sorguSayisi === once,
+      `durum=${hata?.getStatus?.() ?? 'hata yok'} sorgu=${sorguSayisi - once}`,
+    );
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
