@@ -104,6 +104,13 @@ export type YeniAbonelikEngeli = 'ABONELIK_ZATEN_VAR' | 'KART_ABONELIGI_ACIK';
  * SONA_ERDI · ASKIDA (geri donen musteri) — ⚠ 24.09: iyzico'daki kart
  * aboneligi hala ACIK degilse (`KART_ABONELIGI_ACIK`, bkz.
  * `iyzicoAboneligiAcikMi`).
+ *
+ * ⚠ 26.09 — MIRAS SATIRI DA ACIK KARTA TAKILIR. Eskiden miras muafiyeti
+ * iyzico denetiminden ONCE geliyordu: goc satirinin iyzico bagi yoktu. Artik
+ * ucretli donemi biten satir miras paketine DONER (`miras-hakki.ts`) ve eski
+ * kart kodunu tasir; havalede kart kapatilamamissa (`iyzicoDurum` ACTIVE)
+ * yeni kart aboneligi CIFT CEKIM olurdu. Goc satirinda `iyzicoDurum` NULL →
+ * etkilenmez.
  */
 export function yeniAbonelikEngeli(
   mevcut: {
@@ -112,7 +119,10 @@ export function yeniAbonelikEngeli(
     paketSurumu: { paket: { kod: string } };
   } | null,
 ): YeniAbonelikEngeli | null {
-  if (!mevcut || mirasPaketiMi(mevcut.paketSurumu.paket.kod)) return null;
+  if (!mevcut) return null;
+  if (mirasPaketiMi(mevcut.paketSurumu.paket.kod)) {
+    return iyzicoAboneligiAcikMi(mevcut) ? 'KART_ABONELIGI_ACIK' : null;
+  }
   if (!geriDonenMusteriDurumuMu(mevcut.durum)) return 'ABONELIK_ZATEN_VAR';
   return iyzicoAboneligiAcikMi(mevcut) ? 'KART_ABONELIGI_ACIK' : null;
 }

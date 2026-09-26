@@ -2017,6 +2017,27 @@ async function cBlogu(): Promise<void> {
         /her an/.test(String(t.yanit?.kartUyarisi?.mesaj)),
       JSON.stringify(t.yanit?.kartUyarisi));
   }
+
+  // C36 — 26.09 (miras hakkı turu, kod incelemesi D1): İPTAL edilmiş satırda
+  // (kart bildiğimiz kadarıyla kapalı: `iptalTalebi` dolu) geç gelen başarılı
+  // çekim satırı IPTAL BIRAKIR (`tahsilatBasarili` · `iptalKorundu`) — olay
+  // `yeniDurum: IPTAL` taşır. Onayın kart bildirimi yalnız AKTIF'e baksaydı bu
+  // çekimi KAÇIRIRDI: müşteri kart + havale öder, yönetici uyarılmaz.
+  const c36 = await pencere((d, T0) => {
+    d.kartliSatir('C36', BASIC, {
+      erisimSonu: new GercekDate(T0 + 5 * GUN),
+      ek: { durum: 'IPTAL', iptalTalebi: new GercekDate(T0 - GUN), iptalNedeni: 'müşteri' },
+    });
+    return { firmaId: 'C36', kod: 'sub-C36', cekimAni: T0 + 5 * GUN, baslangic: T0 + 5 * GUN };
+  });
+  const c36Olay = c36.d.olaylar(/^durum\.degisti$/, c36.ab.id).filter((o: Satir) => o.aktor === 'webhook');
+  check('C36-FIXTURE geç çekim İPTAL satırı IPTAL bıraktı (olay yeniDurum IPTAL, iptalKorundu)',
+    c36Olay.length === 1 && c36Olay[0].yeniDurum === 'IPTAL' && c36Olay[0].veri?.iptalKorundu === true,
+    JSON.stringify(c36Olay.map((o: Satir) => [o.yeniDurum, o.veri?.iptalKorundu])));
+  check('C36 ⭐ onay: iptal edilmiş satırdaki geç kart çekimi de bildirildi (TEK e-posta + olay + yanıt)',
+    c36.kartEpostasi.length === 1 && c36.kartEpostasi[0].paragraflar.join(' ').includes(String(c36.sip)) &&
+      c36.kartOlayi.length === 1 && c36.yanit?.kartCekimleri?.length === 1,
+    bildirimOzeti(c36));
 }
 
 // ═════════════════════════════════════════════════════════════════════════

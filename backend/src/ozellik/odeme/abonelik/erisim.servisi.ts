@@ -6,8 +6,10 @@ import {
   type KapaliHesapDurumu,
 } from '../../../altyapi/auth/kapali-hesap';
 import { abonelikErisimi } from '../../../altyapi/auth/abonelik-erisim';
-import { kisitlamayaKalanGun } from '../dunning/kisit-gunu';
+import { dunningKisitGunu, kisitlamayaKalanGun } from '../dunning/kisit-gunu';
+import { tarihYaz } from '../dunning/dunning.metinleri';
 import { kartGuncellenebilirMi } from './kart-kapatma';
+import { mirasGecerliMi } from './miras-hakki';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -203,6 +205,31 @@ export class ErisimServisi {
   }
 
   /**
+   * 26.09 — ücretli pakette AYRI taşınan miras hakkı, GEÇİŞ ANINDA (`an`:
+   * iptalde dönem sonu, ödeme sorununda kısıt anı) hâlâ geçerliyse: satır o
+   * an bu pakete döner (`miras-hakki.ts`). Şerit bunu söylemezse miras firma
+   * "aboneliğiniz sona eriyor" okur; hak o andan önce bitiyorsa söz VERİLMEZ.
+   * Ek sorgu YALNIZ hak varken (paket adı için).
+   */
+  private async mirasBilgisi(
+    ab: {
+      paketSurumuId: string;
+      erisimSonu: Date;
+      mirasPaketSurumuId: string | null;
+      mirasErisimSonu: Date | null;
+      paketSurumu: { paket: { kod: string } };
+    },
+    an: Date,
+  ): Promise<{ paketAdi: string; bitis: Date } | null> {
+    if (!ab.mirasPaketSurumuId || !ab.mirasErisimSonu || !mirasGecerliMi(ab, an)) return null;
+    const s = await this.prisma.paketSurumu.findUnique({
+      where: { id: ab.mirasPaketSurumuId },
+      select: { paket: { select: { ad: true } } },
+    });
+    return { paketAdi: s?.paket?.ad ?? 'geçiş paketi', bitis: ab.mirasErisimSonu };
+  }
+
+  /**
    * Firmanın güncel erişim durumunu döndürür.
    *
    * Not: `erisimSonu` geçmişse durum ne olursa olsun erişim kapanır.
@@ -366,9 +393,16 @@ export class ErisimServisi {
           uyari: {
             seviye: 'uyari',
             baslik: 'Ödemeniz alınamadı',
-            metin:
-              'Kayıtlı kartınızdan tahsilat yapılamadı. Kartınızı ' +
-              'güncellerseniz kesinti yaşamazsınız.',
+            metin: await this.mirasBilgisi(
+              ab,
+              // Dönüş kısıt ANINDA olur (dunning, `kisit-gunu.ts` ile aynı gün sayısı).
+              ab.ilkBasarisizlik ? new Date(ab.ilkBasarisizlik.getTime() + dunningKisitGunu() * 86_400_000) : simdi,
+            ).then((miras) =>
+              miras
+                ? 'Kayıtlı kartınızdan tahsilat yapılamadı. Kartınızı güncellerseniz kesinti yaşamazsınız; ' +
+                  `ödeme alınamazsa ücretli paketiniz sona erer ve hesabınız geçiş paketinize (${miras.paketAdi}) döner.`
+                : 'Kayıtlı kartınızdan tahsilat yapılamadı. Kartınızı ' + 'güncellerseniz kesinti yaşamazsınız.',
+            ),
             eylem: odemeEylemi('Kartı güncelle'),
           },
         };
@@ -410,6 +444,9 @@ export class ErisimServisi {
       case AbonelikDurumu.IPTAL: {
         // İptal edildi ama ödenmiş dönem sürüyor — sonuna kadar tam erişim.
         const kalan = this.gunFarki(ab.erisimSonu, simdi);
+        // 26.09 — miras hakkı DÖNEM SONUNDA hâlâ geçerliyse hesap o gün geçiş
+        // paketine döner.
+        const miras = await this.mirasBilgisi(ab, suresiDoldu ? simdi : ab.erisimSonu);
         return {
           ...temel,
           erisimVar: e.erisimVar,
@@ -418,7 +455,10 @@ export class ErisimServisi {
           uyari: {
             seviye: 'bilgi',
             baslik: `Aboneliğiniz ${kalan > 0 ? `${kalan} gün sonra` : 'bugün'} sona eriyor`,
-            metin: 'İsterseniz bu tarihe kadar aboneliğinizi geri alabilirsiniz.',
+            metin: miras
+              ? `Bu tarihten sonra hesabınız geçiş paketinize (${miras.paketAdi}) döner; bu paketi ` +
+                `${tarihYaz(miras.bitis)} tarihine kadar kullanabilirsiniz. İsterseniz aboneliğinizi sürdürebilirsiniz.`
+              : 'İsterseniz bu tarihe kadar aboneliğinizi geri alabilirsiniz.',
             eylem: { etiket: 'Aboneliği sürdür', yol: '/abonelik' },
           },
         };

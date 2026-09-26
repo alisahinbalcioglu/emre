@@ -868,7 +868,21 @@ const SUITES: Suite[] = [
   // `kopruErisimSonu`na yazar; webhook yalnız `erisimSonu` hâlâ o değerse
   // kısaltır. Kapı gerçek `donusIyzicodan` → gerçek `tahsilatBasarili` koşar.
   // DB/AĞ/iyzico GEREKTİRMEZ.
+  // ⚠ 26.09: miras satırında `max` kuralı KALKTI (bkz. alttaki miras hakkı
+  // kapısı) — kapının miras ölçütü "340 gün `erisimSonu`nda" yerine "hak ayrı
+  // alanda 340 gün, ödenen dönem bugünden" oldu; amaç aynı.
   { ad: 'Miras erişimi: köprü yazımı · yeniden sonuçlandırma · miras uçtan uca · köprü düzeltmesi · sonradan verilen erişim · olay izi · bağlantı (K/Y/M/D/V/O/B)', script: 'test:miras-erisimi', zincir: 'Z0' },
+  // 26.09 (Emre kararı 24.09 "miras hakkı AYRI taşınsın, kart erişimi bitince
+  // miras paketine düşsün"): miras tarihi `erisimSonu`nda "ödenmiş erişim" gibi
+  // taşınıyordu — 1 aylık Pro (kart `max`, havale `max(erisimSonu, şimdi)`)
+  // Pro'yu miras bitişine kadar veriyordu; mutabakat İPTAL dalının `endDate`
+  // yazımı ve dunning kısıt/askı basamakları hakkı silebiliyordu. Hak artık
+  // `mirasPaketSurumuId`/`mirasErisimSonu`nda; ödenen dönem bugün başlar,
+  // bitince satır mirasa DÖNER (tek geçit `durumDegistir(SONA_ERDI)` +
+  // 10 dk dönüş işi + dunning kısıt günü). GERÇEK MutabakatJob + Abonelik +
+  // SatinAlma + Havale + Dunning + Webhook + Erisim + MirasDonusuJob; yarışlar
+  // okuma kancasıyla, TZ=UTC. DB/AĞ/iyzico GEREKTİRMEZ.
+  { ad: 'Miras hakkı: saf kural · kart · iptal yolları · dönüş · havale · dunning · kapı · deneme · metinler · kapatma · bağlantı (S/K/İ/D/H/N/G/T/E/C/B/Z)', script: 'test:miras-hakki', zincir: 'Z0' },
   // 23.09 (Emre kararı): paketsiz YENİ hesap duvar görmez, uygulamayı GEZER
   // ("yalnızca gezsin"); Malzeme Havuzu'nda "fiyatlar paketle açılsın".
   // ⚠ En kritik kalkan V5: vitrin sunucuda HİÇBİR yetenek açmaz — "gezsin"

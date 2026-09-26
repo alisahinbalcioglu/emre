@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { AbonelikDurumu, KapatmaNedeni, OdemeYontemi, Prisma } from '@prisma/client';
+import type { Abonelik } from '@prisma/client';
 import {
   IyzicoClient,
   IyzicoAbonelikDetayi,
@@ -18,6 +19,17 @@ import {
   siparisiBul,
   tahsilatBasarisizligiKarari,
 } from '../iyzico/tahsilat-kaniti';
+// Saf modüller (Prisma/Nest bilmez) — döngüsel import YOK.
+import { mirasPaketiMi } from './deneme-hakki';
+import {
+  DonemSonuKarari,
+  donemSonuKarari,
+  mirasaDonusVerisi,
+  mirasiAyir,
+  mirasiBitirVerisi,
+  mirastanCikisMi,
+  odenenDonemTabani,
+} from './miras-hakki';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -75,6 +87,26 @@ export class GecersizGecisHatasi extends Error {
     this.name = 'GecersizGecisHatasi';
   }
 }
+
+/**
+ * 26.09 — SONA_ERDI istendi ama satırın miras hakkı geçerli ve ücretli dönemi
+ * BİTMEMİŞ (taze okuma): çağıranın aday okuması bayat — arada ödeme ya da
+ * satın alma geldi. Hiçbir şey yazılmaz; sonraki tur taze satırla karar verir.
+ */
+export class DonemBitmediHatasi extends Error {
+  constructor(abonelikId: string) {
+    super(`Abonelik ${abonelikId}: ücretli dönem sürüyor (miras hakkı geçerli) — SONA_ERDI yazılmadı`);
+    this.name = 'DonemBitmediHatasi';
+  }
+}
+
+/** `AbonelikServisi.mirasaDon` sonucu. */
+export type MirasaDonusSonucu =
+  | { sonuc: 'dondu'; oncekiPaketSurumuId: string; mirasPaketSurumuId: string; mirasErisimSonu: Date }
+  /** Hak yok / dolmuş / satır zaten mirasta: çağıran kendi yoluna devam eder. */
+  | { sonuc: 'hak-yok' }
+  /** Hak geçerli ama ücretli dönem sürüyor (taze okuma): dönüş YOK. */
+  | { sonuc: 'donem-suruyor' };
 
 /** iyzico durumunun bizim durumumuza etkisi. */
 export function iyzicoDurumunuYorumla(
@@ -210,6 +242,11 @@ export class AbonelikServisi {
        * yerine olay yeniden denenir ve havale dalına düşer (inceleme ORTA-2).
        */
       kosul?: Omit<Prisma.AbonelikWhereInput, 'id' | 'firmaId' | 'iyzicoAbonelikKodu'>;
+      /**
+       * 26.09 — iyzico aboneliği EXPIRED dedi (gece mutabakatı): ücretli dönem
+       * iyzico'da bitti. Mirasa dönüş kararı bunu da "dönem bitti" sayar.
+       */
+      iyzicoBitti?: boolean;
       tx?: Prisma.TransactionClient;
     } = {},
   ) {
@@ -218,6 +255,30 @@ export class AbonelikServisi {
     const mevcut = await db.abonelik.findUniqueOrThrow({
       where: { id: abonelikId },
     });
+
+    // ⚠ 26.09 — MİRAS HAKKI GEÇİDİ (Emre: "kart erişimi bitince miras paketine
+    // düşsün"). SONA_ERDI'ye giden HER yol buradan geçer — saatlik süre dolumu,
+    // gece mutabakatının EXPIRED'ı, dunning'in 160 günü ve ileride eklenecek
+    // olan. Ücretli dönemi biten satırın miras hakkı sürüyorsa satır SONA_ERDI
+    // yerine miras paketine DÖNER (kural `miras-hakki.ts` → `donemSonuKarari`).
+    // Hak yoksa / dolmuşsa / satır zaten mirastaysa aşağıdaki yazım AYNEN.
+    // BEKLE: taze satırın dönemi SÜRÜYOR — çağıranın aday okuması bayat (arada
+    // satın alma, ödeme ya da MİRASA DÖNÜŞ geldi); hiçbir şey yazılmaz. Mirasa
+    // dönmüş satır da buraya düşer: saatlik işin bayat adayı onu SONA_ERDI
+    // yapamaz (26.09 kod incelemesi Y1, `test:miras-hakki` D8).
+    if (yeniDurum === AbonelikDurumu.SONA_ERDI && mevcut.mirasPaketSurumuId && mevcut.mirasErisimSonu) {
+      const karar = await this.donemSonuKarariOku(db, mevcut, new Date(), p.iyzicoBitti);
+      if (karar === 'MIRAS') {
+        return this.mirasaDonusYaz(db, mevcut, {
+          aktor: p.aktor ?? 'sistem',
+          aciklama: p.aciklama ?? 'Ücretli dönem bitti',
+          istenen: AbonelikDurumu.SONA_ERDI,
+          kosul: p.kosul,
+          veri: p.veri,
+        });
+      }
+      if (karar === 'BEKLE') throw new DonemBitmediHatasi(abonelikId);
+    }
 
     if (!this.gecisGecerliMi(mevcut.durum, yeniDurum)) {
       throw new GecersizGecisHatasi(mevcut.durum, yeniDurum);
@@ -254,6 +315,192 @@ export class AbonelikServisi {
     this.logger.log(
       `Abonelik ${abonelikId}: ${mevcut.durum} → ${yeniDurum}` +
         (p.aciklama ? ` (${p.aciklama})` : ''),
+    );
+    return guncel;
+  }
+
+  /**
+   * ═════════════════════════════════════════════════════════════════════
+   *  MİRASA DÖNÜŞ — dunning ve 10 dakikalık dönüş işinin girişi (26.09)
+   * ═════════════════════════════════════════════════════════════════════
+   *  Ücretli dönemi biten/düşen satırı miras paketine döndürür. SONA_ERDI
+   *  YAZMAZ: hak yoksa `hak-yok` döner, çağıran kendi yoluna devam eder
+   *  (dunning → KISITLI). Dönem sürüyorsa (taze okuma) `donem-suruyor` —
+   *  dönüş yok. Yazım `durumDegistir`in SONA_ERDI geçidiyle AYNI yazıcıdan
+   *  (`mirasaDonusYaz`): koşullu, tek olay.
+   *  `kosul`: çağıranın bayat okuması yazım anında hâlâ tutmalı (dunning:
+   *  aynı başarısızlık döngüsü, kira boş) — tutmazsa P2025, hiçbir şey yazılmaz.
+   */
+  async mirasaDon(
+    abonelikId: string,
+    p: {
+      aktor: string;
+      aciklama: string;
+      kosul?: Omit<Prisma.AbonelikWhereInput, 'id' | 'firmaId' | 'iyzicoAbonelikKodu'>;
+      iyzicoBitti?: boolean;
+    },
+  ): Promise<MirasaDonusSonucu> {
+    const mevcut = await this.prisma.abonelik.findUniqueOrThrow({ where: { id: abonelikId } });
+    if (!mevcut.mirasPaketSurumuId || !mevcut.mirasErisimSonu) return { sonuc: 'hak-yok' };
+    const karar = await this.donemSonuKarariOku(this.prisma, mevcut, new Date(), p.iyzicoBitti);
+    if (karar === 'SONA_ERDI') return { sonuc: 'hak-yok' };
+    if (karar === 'BEKLE') return { sonuc: 'donem-suruyor' };
+    await this.mirasaDonusYaz(this.prisma, mevcut, { ...p, istenen: 'MIRAS' });
+    return {
+      sonuc: 'dondu',
+      oncekiPaketSurumuId: mevcut.paketSurumuId,
+      mirasPaketSurumuId: mevcut.mirasPaketSurumuId,
+      mirasErisimSonu: mevcut.mirasErisimSonu,
+    };
+  }
+
+  /**
+   * ═════════════════════════════════════════════════════════════════════
+   *  MİRAS HAKKINI BİTİR — hesap kapatma / yönetici silme (26.09, Emre)
+   * ═════════════════════════════════════════════════════════════════════
+   *  Kural `mirasiBitirVerisi`: ücretli pakette taşınan hak bugüne çekilir
+   *  (ödenmiş dönem KORUNUR); satır mirastaysa miras erişimi de bugün biter.
+   *  `SatinAlmaServisi.iptalEt` bunu iptalin geri kalanından ÖNCE ve ondan
+   *  BAĞIMSIZ çağırır: eskiden veri koşullu iptal yazımının içindeydi ve iyzico
+   *  iptali düşünce, durum geçişi geçersizken (ASKIDA/SONA_ERDI → IPTAL) ya da
+   *  eşzamanlı müşteri iptali o yazımı kazanınca HİÇ yazılmıyordu — çağıranlar
+   *  hatayı yalnız günlüğe yazar, hak sürer ve kapatılmış firmanın satırı dönem
+   *  sonunda mirasa dönerdi (26.09 inceleme: güvenlik DÜŞÜK-1, kod O3b).
+   *  KOŞULLU: taze okumanın paket · erişim · miras alanları yazım anında hâlâ
+   *  tutmalı; arada mirasa dönüş yazıldıysa yeniden okunur (satır artık
+   *  mirasta → miras erişimi de bugün biter). Olay `miras.bitirildi` (iz).
+   *  DÖNÜŞ: satırın yeni `erisimSonu`su (değiştiyse), yoksa `null`.
+   */
+  async mirasiBitir(
+    abonelikId: string,
+    p: { aktor: string; neden?: string; simdi?: Date },
+  ): Promise<{ erisimSonu: Date | null }> {
+    const simdi = p.simdi ?? new Date();
+    for (let deneme = 0; deneme < 3; deneme++) {
+      const taze = await this.prisma.abonelik.findUniqueOrThrow({
+        where: { id: abonelikId },
+        include: { paketSurumu: { select: { paket: { select: { kod: true } } } } },
+      });
+      const veri = mirasiBitirVerisi(taze, simdi);
+      if (Object.keys(veri).length === 0) return { erisimSonu: null };
+      const yazim = await this.prisma.abonelik.updateMany({
+        where: {
+          id: abonelikId,
+          paketSurumuId: taze.paketSurumuId,
+          erisimSonu: taze.erisimSonu,
+          mirasPaketSurumuId: taze.mirasPaketSurumuId,
+          mirasErisimSonu: taze.mirasErisimSonu,
+        },
+        data: veri,
+      });
+      if (yazim.count !== 1) continue; // arada yazıldı: taze satırla yeniden karar
+      await this.prisma.abonelikOlayi.create({
+        data: {
+          abonelikId,
+          tip: 'miras.bitirildi',
+          oncekiDurum: taze.durum,
+          yeniDurum: taze.durum,
+          aciklama: `Miras hakkı bitirildi (${p.neden ?? 'kapatma'})`,
+          veri: {
+            mirasPaketSurumuId: taze.mirasPaketSurumuId,
+            oncekiMirasErisimSonu: taze.mirasErisimSonu?.toISOString() ?? null,
+            ...(veri.erisimSonu ? { oncekiErisimSonu: taze.erisimSonu.toISOString() } : {}),
+          },
+          aktor: p.aktor,
+        },
+      });
+      this.logger.log(`Abonelik ${abonelikId}: miras hakkı bitirildi (${p.neden ?? 'kapatma'})`);
+      return { erisimSonu: veri.erisimSonu ?? null };
+    }
+    throw new Error(`Miras hakkı bitirilemedi (abonelik ${abonelikId}): satır üç denemede de değişti`);
+  }
+
+  /** Etkin paketin kodu — mirastan çıkış/dönüş kararının önek denetimi için. */
+  private async paketKodu(db: PrismaService, paketSurumuId: string): Promise<string | null> {
+    const s = await db.paketSurumu.findUnique({
+      where: { id: paketSurumuId },
+      select: { paket: { select: { kod: true } } },
+    });
+    return s?.paket?.kod ?? null;
+  }
+
+  /**
+   * `donemSonuKarari` TAZE satırla. Paket kodu yalnız hak ayrı taşınırken
+   * sorulur (satır miras sürümündeyse eşitlik zaten "mirasta" der).
+   */
+  private async donemSonuKarariOku(
+    db: PrismaService,
+    ab: { paketSurumuId: string; mirasPaketSurumuId: string | null; durum: AbonelikDurumu; erisimSonu: Date; mirasErisimSonu: Date | null },
+    simdi: Date,
+    iyzicoBitti?: boolean,
+  ): Promise<DonemSonuKarari> {
+    const kod = ab.paketSurumuId === ab.mirasPaketSurumuId ? null : await this.paketKodu(db, ab.paketSurumuId);
+    return donemSonuKarari({ ...ab, paketSurumu: { paket: { kod } } }, simdi, { iyzicoBitti });
+  }
+
+  /**
+   * Mirasa dönüşün TEK yazıcısı. KOŞULLU: taze okunan durum · erişim · paket ·
+   * ödeme yöntemi · miras alanları (ve çağıranın `kosul`u) yazım anında hâlâ
+   * tutmalı — arada ödeme, satın alma ya da hakkı bitiren kapatma
+   * (`mirasiBitir`) yazıldıysa P2025, hiçbir şey yazılmaz. Miras alanları
+   * anlık görüntüde OLMASAYDI kapatmadan önce okuyan iş eski bitişi
+   * `erisimSonu`na yazar, kapatılmış firmada AKTIF miras satırı doğardı (26.09
+   * kod incelemesi O3a, `test:miras-hakki` C5). İki iş (saatlik + 10 dk) aynı
+   * satıra gelirse yalnız biri yazar: TEK olay.
+   * Olay `durum.degisti` (gerçek yeni durum AKTIF) + `veri.mirasaDonus`.
+   */
+  private async mirasaDonusYaz(
+    db: PrismaService,
+    mevcut: Abonelik,
+    p: {
+      aktor: string;
+      aciklama: string;
+      istenen: string;
+      kosul?: Omit<Prisma.AbonelikWhereInput, 'id' | 'firmaId' | 'iyzicoAbonelikKodu'>;
+      veri?: Prisma.InputJsonValue;
+    },
+  ) {
+    const veri = mirasaDonusVerisi(mevcut);
+    const guncel = await db.abonelik.update({
+      where: {
+        id: mevcut.id,
+        AND: [
+          p.kosul ?? {},
+          {
+            durum: mevcut.durum,
+            erisimSonu: mevcut.erisimSonu,
+            paketSurumuId: mevcut.paketSurumuId,
+            odemeYontemi: mevcut.odemeYontemi,
+            mirasPaketSurumuId: mevcut.mirasPaketSurumuId,
+            mirasErisimSonu: mevcut.mirasErisimSonu,
+          },
+        ],
+      },
+      data: veri,
+    });
+    const ek = p.veri && typeof p.veri === 'object' && !Array.isArray(p.veri) ? (p.veri as Prisma.InputJsonObject) : {};
+    await db.abonelikOlayi.create({
+      data: {
+        abonelikId: mevcut.id,
+        tip: 'durum.degisti',
+        oncekiDurum: mevcut.durum,
+        yeniDurum: AbonelikDurumu.AKTIF,
+        aciklama: `${p.aciklama} — geçiş (miras) paketine dönüldü`,
+        veri: {
+          ...ek,
+          mirasaDonus: true,
+          istenen: p.istenen,
+          oncekiPaketSurumuId: mevcut.paketSurumuId,
+          oncekiErisimSonu: mevcut.erisimSonu.toISOString(),
+          oncekiOdemeYontemi: mevcut.odemeYontemi,
+          mirasPaketSurumuId: veri.paketSurumuId,
+          mirasErisimSonu: veri.erisimSonu.toISOString(),
+        },
+        aktor: p.aktor,
+      },
+    });
+    this.logger.log(
+      `Abonelik ${mevcut.id}: ${mevcut.durum} → AKTIF (miras paketine dönüş, ${veri.erisimSonu.toISOString()}'e kadar; ${p.aciklama})`,
     );
     return guncel;
   }
@@ -645,7 +892,17 @@ export class AbonelikServisi {
     });
     const dunningdenCikti = donguKapandi.count > 0;
 
-    await this.durumDegistir(ab.id, AbonelikDurumu.AKTIF, {
+    // ⚠ 26.09 — İPTAL EDİLMİŞ SATIR İPTAL KALIR. Müşteri ilk tahsilat
+    // webhook'u gelmeden iptal ettiyse (iyzico webhook'u ~45 dk tekrarlar) geç
+    // gelen başarı satırı AKTIF KART'a çeviriyordu: iptal edilmiş abonelik
+    // "aktif" görünüyor, ne saatlik iş ne mirasa dönüş işi onu görüyordu (gece
+    // mutabakatı CANCELED'ı görene dek). Kart aboneliği bildiğimiz kadarıyla
+    // KAPALIYSA (`kartAboneligiKapaliMi` — iptal kuralıyla TEK kural) satır
+    // IPTAL kalır; tahsilat yine uygulanır: erişim/köprü düzeltilir, fatura
+    // kesilir. Kapı: `test:miras-hakki` İ7.
+    const iptalKorunur = ab.durum === AbonelikDurumu.IPTAL && kartAboneligiKapaliMi(ab);
+
+    await this.durumDegistir(ab.id, iptalKorunur ? AbonelikDurumu.IPTAL : AbonelikDurumu.AKTIF, {
       kosul: { odemeYontemi: OdemeYontemi.KART }, // 24.09 yarış: arada havale onaylandıysa P2025 → yeniden dene
       aciklama: `Tahsilat başarılı (sipariş ${siparisKodu})`,
       aktor: 'webhook',
@@ -655,6 +912,7 @@ export class AbonelikServisi {
         siparisKodu,
         iyzicoDurum: detay.subscriptionStatus,
         guncelUcMu,
+        iptalKorundu: iptalKorunur,
         // 24.09: erisimin bu tahsilatta nasil degistigi olaydan okunabilsin.
         oncekiErisimSonu: ab.erisimSonu.toISOString(),
         kopruDuzeltildi: kopruDuzeltilir,
@@ -1139,20 +1397,46 @@ export class AbonelikServisi {
     return d;
   }
 
-  /** Havale akışı ve yönetici müdahalesi için: erişimi elle uzat. */
+  /** Havale akışı için: erişimi elle uzat (tek çağıranı `HavaleServisi.odemeyiOnayla`). */
   async erisimiUzat(
     abonelikId: string,
     ayAdedi: number,
-    p: { aktor: string; aciklama: string; tx?: Prisma.TransactionClient },
+    p: {
+      aktor: string;
+      aciklama: string;
+      tx?: Prisma.TransactionClient;
+      /**
+       * 26.09 — ÖDENEN paket (havale teklifinin paketi). Satır mirastan BAŞKA
+       * bir pakete geçiyorsa ödenen dönem BUGÜN başlar ve miras hakkı ayrı
+       * yakalanır. Verilmezse ya da paket aynıysa bugünkü kural.
+       */
+      hedefPaketSurumuId?: string | null;
+    },
   ) {
     const db = (p.tx ?? this.prisma) as PrismaService;
     const ab = await db.abonelik.findUniqueOrThrow({ where: { id: abonelikId } });
-
-    // Süresi geçmişse bugünden, geçmemişse mevcut bitişten uzat.
     const simdi = new Date();
-    const baslangic = ab.erisimSonu > simdi ? ab.erisimSonu : simdi;
+
+    // ⚠ 26.09 — MİRAS TARİHİ ÖDENMİŞ ERİŞİM DEĞİLDİR. Eski taban
+    // `max(erisimSonu, şimdi)` göç satırında 2027-09-01 idi: 1 aylık Pro
+    // havalesi Pro'yu 340 + 30 gün veriyor, fatura dönemini de öyle yazıyordu
+    // (`test:miras-hakki` H1). Kural satın almayla TEK: `odenenDonemTabani`.
+    // Süren ÖDENMİŞ erişim (miras dışı yenileme) eskisi gibi bitişinden uzar;
+    // "miras yenilemesi" (teklif = satış dışı miras sürümü) de öyle.
+    const hedef = p.hedefPaketSurumuId && p.hedefPaketSurumuId !== ab.paketSurumuId ? p.hedefPaketSurumuId : null;
+    const kodlar = hedef ? await Promise.all([this.paketKodu(db, ab.paketSurumuId), this.paketKodu(db, hedef)]) : null;
+    const satir = { ...ab, paketSurumu: { paket: { kod: kodlar?.[0] ?? null } } };
+    const hedefPaket = hedef ? { paketSurumuId: hedef, mirasPaketi: mirasPaketiMi(kodlar?.[1]) } : null;
+    const mirastanCikis = !!hedefPaket && mirastanCikisMi(satir, hedefPaket);
+    const baslangic = odenenDonemTabani(satir, hedefPaket, simdi);
     const yeniSon = new Date(baslangic);
     yeniSon.setMonth(yeniSon.getMonth() + ayAdedi);
+
+    if (mirastanCikis) {
+      // Hak AYRI yakalanır: ödenen dönem bitince satır miras paketine döner
+      // (`MirasDonusuJob`). Etkin paketi onay yazar (`odenenPaketiYaz`).
+      await db.abonelik.update({ where: { id: abonelikId }, data: mirasiAyir(satir) });
+    }
 
     // §4.6 — HAVALE yolu buradan gecer (havale.servisi:odemeyiOnayla) ve
     // kendi transaction'ini verir: erisim uzatma ile geri acma AYNI islemde
@@ -1171,7 +1455,7 @@ export class AbonelikServisi {
       sayaclariSifirla: true,
       aktor: p.aktor,
       aciklama: p.aciklama,
-      veri: { ayAdedi, oncekiErisimSonu: ab.erisimSonu.toISOString() },
+      veri: { ayAdedi, oncekiErisimSonu: ab.erisimSonu.toISOString(), ...(mirastanCikis ? { mirastanCikis: true } : {}) },
       tx: p.tx,
     });
   }
@@ -1254,7 +1538,17 @@ export class AbonelikServisi {
    */
   async havaleIcinKartAboneliginiKapat(
     abonelikId: string,
-    p: { aktor: string; neden: string; yoneticiyeYaz?: boolean },
+    p: {
+      aktor: string;
+      neden: string;
+      yoneticiyeYaz?: boolean;
+      /**
+       * 26.09 — kart aboneliğini neden kapatıyoruz: havale onayı (varsayılan)
+       * ya da kart ödemesi düşen satırın miras paketine dönüşü (dunning).
+       * Yalnız yöneticiye giden e-postanın metnini değiştirir; kural aynı.
+       */
+      baglam?: 'havale' | 'miras';
+    },
   ): Promise<KartKapatmaSonucu> {
     const ab = await this.prisma.abonelik.findUnique({
       where: { id: abonelikId },
@@ -1294,14 +1588,19 @@ export class AbonelikServisi {
         ),
       );
       if (p.yoneticiyeYaz !== false) {
+        const miras = p.baglam === 'miras';
         await this.yoneticiyeYaz(ab.firmaId, {
           konu: 'Kart aboneliği iptal edilemedi',
-          baslik: "Havale onaylandı ama iyzico'daki kart aboneliği kapatılamadı",
+          baslik: miras
+            ? "Müşteri geçiş (miras) paketine döndü ama iyzico'daki kart aboneliği kapatılamadı"
+            : "Havale onaylandı ama iyzico'daki kart aboneliği kapatılamadı",
           paragraflar: [
             `iyzico aboneliği: ${ab.iyzicoAbonelikKodu}`,
             `İşlem: ${p.neden}`,
             `iyzico yanıtı: ${mesaj}`,
-            'Havale onayı geri alınmadı; müşterinin erişimi uzatıldı.',
+            miras
+              ? 'Kart ödemesi alınamadığı için müşteri geçiş (miras) paketine döndürüldü; bu dönüş geri alınmadı.'
+              : 'Havale onayı geri alınmadı; müşterinin erişimi uzatıldı.',
             "Kart aboneliği iyzico'da açık kalabilir ve bir sonraki dönemde karttan da " +
               'çekim yapılabilir. iyzico panelinden elle iptal edin.',
           ],

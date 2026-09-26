@@ -11,9 +11,11 @@ import { kartGuncellenebilirMi } from '../abonelik/kart-kapatma';
 import { EpostaServisi } from '../eposta/eposta.servisi';
 import {
   DUNNING_METINLERI,
+  type MetinBaglami,
   tarihYaz,
   tutarYaz,
 } from './dunning.metinleri';
+import { mirasGecerliMi } from '../abonelik/miras-hakki';
 import { dunningKisitGunu, kisitlamayaKalanGun } from './kisit-gunu';
 import {
   AnindaDenemeSonucu,
@@ -162,6 +164,28 @@ export class DunningServisi {
       (Date.now() - ab.ilkBasarisizlik!.getTime()) / 86_400_000,
     );
 
+    // ⚠ 26.09 — MİRAS HAKKI (Emre: "kart erişimi bitince miras paketine
+    // düşsün"). Miras hakkı süren (göç) firmanın kartı düşünce kısıt günü
+    // salt-okunur (KISITLI), 30. gün kapalı (ASKIDA) oluyordu: miras dönemi de
+    // gidiyordu. Artık tolerans (0 → kısıt günü) ücretli pakette AYNEN sürer;
+    // kısıt günü ve SONRASI (bir gün kaçarsa ertesi gün) satır miras paketine
+    // döner, kart aboneliği iyzico'da kapatılır, "kısıtlandı" yerine tek bir
+    // "geçiş paketinize döndünüz" bildirimi gider. Dönüşten sonra satır HAVALE +
+    // `ilkBasarisizlik` boş → merdiven onu bir daha taramaz. Hak yoksa/dolmuşsa
+    // merdiven aynen. Kapı: `test:miras-hakki` N.
+    if (gecenGun >= this.kisitGunu() && mirasGecerliMi(ab, new Date())) {
+      // Müşterinin anlık denemesi (kira) sürüyorsa bugün dönülmez: ödeme
+      // gelirse dönüş gereksizdi; gelmezse yarın taze bilgiyle dönülür.
+      if (ab.tahsilatKirasi && ab.tahsilatKirasi.getTime() > Date.now()) {
+        this.logger.log(
+          `Abonelik ${abonelikId}: tahsilat denemesi sürüyor (kira ${ab.tahsilatKirasi.toISOString()}) — mirasa dönüş yarına`,
+        );
+        return;
+      }
+      const sonuc = await this.mirasaDonus(ab, gecenGun);
+      if (sonuc !== 'hak-yok') return;
+    }
+
     if (gecenGun > this.AZAMI_GUN) {
       this.logger.warn(
         `Abonelik ${abonelikId}: 160 günlük yeniden deneme penceresi aşıldı`,
@@ -295,6 +319,67 @@ export class DunningServisi {
       where: { id: abonelikId },
       data: { denemeSayisi: basamakNo, sonDeneme: new Date() },
     });
+  }
+
+  /** Merdivenin KISITLI basamağının günü (ortam ayarıyla aynı sayı). */
+  private kisitGunu(): number {
+    return this.basamaklar.find((x) => x.yeniDurum === AbonelikDurumu.KISITLI)?.gun ?? dunningKisitGunu();
+  }
+
+  /**
+   * 26.09 — kısıt günü (ve sonrası) miras hakkı süren satırı miras paketine
+   * döndürür (`AbonelikServisi.mirasaDon` — tek yazıcı, koşullu). Dönünce:
+   * kart aboneliği iyzico'da kapatılır (havale onayıyla AYNI yardımcı;
+   * kapatılamazsa olay + yöneticiye e-posta, dönüş geri ALINMAZ) ve müşteriye
+   * TEK bildirim gider. `donem-suruyor`: satır okunduktan sonra ödeme
+   * toparlandı — hiçbir şey yapılmaz. `hak-yok`: merdiven aynen sürer.
+   */
+  private async mirasaDonus(
+    ab: {
+      id: string;
+      ilkBasarisizlik: Date | null;
+      paketSurumu: { tutar: Prisma.Decimal | number; paraBirimi: string; paket: { ad: string } };
+    },
+    gecenGun: number,
+  ): Promise<'dondu' | 'hak-yok' | 'donem-suruyor'> {
+    const sonuc = await this.abonelik.mirasaDon(ab.id, {
+      aktor: 'dunning',
+      aciklama: `Kart ödemesi alınamadı (${gecenGun}. gün)`,
+      // Bayat okuma yazım anında hâlâ tutmalı: AYNI başarısızlık döngüsü,
+      // kart, kira boş/geçmiş (`anindaDene` ile iki yönlü dışlama — kiraAl da
+      // KART + dolu `ilkBasarisizlik` ister).
+      kosul: {
+        odemeYontemi: OdemeYontemi.KART,
+        ilkBasarisizlik: ab.ilkBasarisizlik,
+        OR: [{ tahsilatKirasi: null }, { tahsilatKirasi: { lt: new Date() } }],
+      },
+    });
+    if (sonuc.sonuc !== 'dondu') return sonuc.sonuc;
+
+    // UNPAID aboneliğin iptali iyzico dokümanında TARİF EDİLMİYOR (bkz.
+    // `AbonelikServisi` havale ↔ kart notu): kapatılamazsa geç gelen çekim
+    // HAVALE satırının "çift tahsilat — iade" dalına düşer. iyzico hatasını o
+    // yol zaten yutar; DB hatası da YUTULUR ve günlüğe yazılır: dönüş yazıldı,
+    // satır artık HAVALE — merdiven onu bir daha görmez, müşteri e-postası
+    // burada gitmezse HİÇ gitmezdi (26.09 kod incelemesi D2).
+    await this.abonelik
+      .havaleIcinKartAboneliginiKapat(ab.id, {
+        aktor: 'dunning',
+        neden: `Miras paketine dönüş — kart ödemesi alınamadı (${gecenGun}. gün)`,
+        baglam: 'miras',
+      })
+      .catch((e) =>
+        this.logger.error(
+          `Mirasa dönüşte kart aboneliği kapatılamadı (abonelik ${ab.id}): ` +
+            `${e instanceof Error ? e.message : String(e)} — iyzico'da ELLE kapatın`,
+        ),
+      );
+    // Metnin paketi/tutarı SONA EREN ücretli paketindir: satır artık mirasta.
+    await this.gonder(ab.id, 'mirasaDonuldu', undefined, {
+      paketAdi: ab.paketSurumu.paket.ad,
+      tutar: tutarYaz(Number(ab.paketSurumu.tutar), ab.paketSurumu.paraBirimi),
+    });
+    return 'dondu';
   }
 
   // ── Tahsilat toparlandığında ────────────────────────────────────────────
@@ -572,10 +657,41 @@ export class DunningServisi {
     return adet > 0;
   }
 
+  /**
+   * 26.09 — metnin MİRAS bağlamı. Dönüş bildiriminde satır ARTIK mirasta:
+   * geçiş paketi etkin paketin kendisi. Öncesinde yalnız hak KISIT TARİHİNDE
+   * hâlâ geçerliyse (o gün dönülecek) doldurulur — miras kısıt gününden önce
+   * bitiyorsa müşteriye dönüş sözü verilmez, metin kısıt dilinde kalır. Ek
+   * sorgu YALNIZ hak varken (paket adı için).
+   */
+  private async mirasBaglami(
+    ab: {
+      paketSurumuId: string;
+      erisimSonu: Date;
+      mirasPaketSurumuId: string | null;
+      mirasErisimSonu: Date | null;
+      paketSurumu: { paket: { ad: string; kod: string } };
+    },
+    anahtar: keyof typeof DUNNING_METINLERI,
+    kisitTarihi: Date,
+  ): Promise<Pick<MetinBaglami, 'mirasPaketAdi' | 'mirasBitisi'>> {
+    if (anahtar === 'mirasaDonuldu') {
+      return { mirasPaketAdi: ab.paketSurumu.paket.ad, mirasBitisi: tarihYaz(ab.erisimSonu) };
+    }
+    if (!ab.mirasPaketSurumuId || !ab.mirasErisimSonu || !mirasGecerliMi(ab, kisitTarihi)) return {};
+    const s = await this.prisma.paketSurumu.findUnique({
+      where: { id: ab.mirasPaketSurumuId },
+      select: { paket: { select: { ad: true } } },
+    });
+    return { mirasPaketAdi: s?.paket?.ad ?? 'geçiş paketi', mirasBitisi: tarihYaz(ab.mirasErisimSonu) };
+  }
+
   private async gonder(
     abonelikId: string,
     anahtar: keyof typeof DUNNING_METINLERI,
     siparisKodu?: string,
+    /** Hesaplanan bağlamın ÜSTÜNE yazılır (mirasa dönüş: sona eren paket/tutar). */
+    ek: Partial<MetinBaglami> = {},
   ): Promise<void> {
     const b = await this.baglam(abonelikId);
     if (!b) return;
@@ -607,6 +723,8 @@ export class DunningServisi {
       kisitTarihi: tarihYaz(
         anahtar === 'sonUyari' ? askiTarihi : kisitTarihi,
       ),
+      ...(await this.mirasBaglami(ab, anahtar, kisitTarihi)),
+      ...ek,
     });
 
     await this.eposta.gonder({
@@ -618,7 +736,13 @@ export class DunningServisi {
       // formuna değil panele götürür (25.09; kart sayfası yokken ikisi de 404'tü).
       dugme: {
         etiket: metin.dugmeEtiketi,
-        url: anahtar === 'toparlandi' ? `${this.uygulamaUrl}/dashboard` : kartUrl,
+        // Mirasa dönüşte kart aboneliği kapandı: kart formu değil abonelik sayfası.
+        url:
+          anahtar === 'toparlandi'
+            ? `${this.uygulamaUrl}/dashboard`
+            : anahtar === 'mirasaDonuldu'
+              ? `${this.uygulamaUrl}/abonelik`
+              : kartUrl,
       },
       altNot: metin.altNot,
     });

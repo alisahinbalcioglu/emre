@@ -350,7 +350,7 @@ async function main() {
   // degere bakar (donen nesne sahte, yuk gercek).
   console.log('\n── P8 ⭐ erisim kisaltilmiyor ──');
   {
-    function yukYakalayanPrisma(mevcutErisimSonu: Date | null) {
+    function yukYakalayanPrisma(mevcutErisimSonu: Date | null, ek: Record<string, unknown> = {}) {
       const yazilan: any[] = [];
       return {
         yazilan,
@@ -359,7 +359,7 @@ async function main() {
             findUnique: async () =>
               mevcutErisimSonu === null
                 ? null
-                : { id: 'a1', erisimSonu: mevcutErisimSonu },
+                : { id: 'a1', erisimSonu: mevcutErisimSonu, ...ek },
             update: async (arg: any) => {
               yazilan.push(arg.data);
               return { id: 'a1', ...arg.data };
@@ -377,8 +377,8 @@ async function main() {
       };
     }
 
-    async function erisimSonuYazilan(mevcut: Date | null) {
-      const y = yukYakalayanPrisma(mevcut);
+    async function erisimSonuYazilan(mevcut: Date | null, ek: Record<string, unknown> = {}) {
+      const y = yukYakalayanPrisma(mevcut, ek);
       const servis = servisKur(y.prisma, sahteIyzico().istemci);
       await (servis as any).aboneligiAcVeyaGuncelle({
         firmaId: 'f1',
@@ -402,14 +402,29 @@ async function main() {
       `gun=${yeniGun} (beklenen 32)`,
     );
 
-    // ⭐ Miras satiri: 365 gunluk erisim KISALMAMALI.
+    // ⭐ ODENMIS 365 gunluk erisim (miras DISI — or. 12 aylik havale): KISALMAMALI.
+    // ⚠ 26.09 (miras hakki turu): MIRAS satiri bu kurala artik GIRMEZ (P8.4) —
+    // fikstur paket kodu tasimaz, yani miras DISI satirdir.
     const uzun = new Date(simdi + 365 * gun);
     const mirasli = await erisimSonuYazilan(uzun);
     check(
-      'P8.1 ⭐ 365 gunluk erisim odeme sonrasi KISALMIYOR',
+      'P8.1 ⭐ 365 gunluk ODENMIS erisim (miras disi) odeme sonrasi KISALMIYOR',
       new Date(mirasli.yuk.erisimSonu).getTime() === uzun.getTime(),
       `yazilan=${new Date(mirasli.yuk.erisimSonu).toISOString().slice(0, 10)} ` +
         `beklenen=${uzun.toISOString().slice(0, 10)}`,
+    );
+
+    // ⭐ 26.09 MIRAS satiri (paket `miras-`): odenen donem BUGUN baslar (yeni
+    // satin almayla ayni 30+2 gun, kopru), 365 gun AYRI alana yakalanir —
+    // "odemek odememekten kotu olmasin" iki bitisin buyuguyle korunur
+    // (kural: `abonelik/miras-hakki.ts`, uctan uca: `test:miras-hakki`).
+    const goc = await erisimSonuYazilan(uzun, { paketSurumuId: 's-miras', paketSurumu: { paket: { kod: 'miras-core' } } });
+    const gocGun = Math.round((new Date(goc.yuk.erisimSonu).getTime() - simdi) / gun);
+    check(
+      'P8.4 ⭐ miras satiri: odenen donem 32 gun (kopru), 365 gunluk hak AYRI yakalandi (miras-core @ 365 gun)',
+      gocGun === 32 && new Date(goc.yuk.kopruErisimSonu).getTime() === new Date(goc.yuk.erisimSonu).getTime() &&
+        goc.yuk.mirasPaketSurumuId === 's-miras' && new Date(goc.yuk.mirasErisimSonu).getTime() === uzun.getTime(),
+      `gun=${gocGun} kopru=${goc.yuk.kopruErisimSonu} hak=${goc.yuk.mirasPaketSurumuId}@${goc.yuk.mirasErisimSonu}`,
     );
 
     // Suresi GECMIS satir: yeni tarih kazanmali (geri donen musteri yolu).
