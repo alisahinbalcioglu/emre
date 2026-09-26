@@ -49,6 +49,7 @@ import { CAPSIZ_RENGI, diameterToColor } from '@/components/dwg-metraj/diameter-
 import { isUnassignedDiameter } from '@/components/dwg-metraj/constants';
 import { resolveHoverLength } from './segment-length';
 import { canliCapliVarlik, canliSegmentiBul, sabitSecimGecersiz } from './canli-cap';
+import { gorunumKutusu } from './gorunum-kutusu';
 import { useViewport } from './useViewport';
 import { aciToColor } from './aci-colors';
 
@@ -287,11 +288,17 @@ const DxfCanvasViewer = forwardRef<CizimKontrolleri, DxfCanvasViewerProps>(funct
     return null;
   }, [calculatedEdgesByLayer]);
 
-  // Bounds (DWG world). "Tümünü sığdır" TUM cizime sigdirir — eskiden once
-  // parcalar geliyordu ve bir layer ayrildiktan sonra "sigdir" yalniz
-  // borulara yakinlasiyordu.
+  // Bounds (DWG world). "Tümünü sığdır" cizimin GOVDESINE sigdirir (yalniz
+  // parcalara degil — eskiden bir layer ayrildiktan sonra "sigdir" yalniz
+  // borulara yakinlasiyordu).
+  // 26.09: motorun HAM kutusu degil GORUNUM KUTUSU (gorunum-kutusu.ts) — birkac
+  // uzak nesne ham kutuyu cizimin binlerce katina sisiriyor, proje acilista nokta
+  // kadar kaliyordu. Noktalarin %2'sinden azini tasiyan uzak pafta cercevede
+  // yoktur (uzaklasarak bulunur). Yalniz geometri degisince, dosya basina bir kez
+  // hesaplanir (olculdu: 1,5 M cizgide ~0,3 sn).
+  const cizimKutusu = useMemo(() => (geometry ? gorunumKutusu(geometry) : null), [geometry]);
   const bounds = useMemo<[number, number, number, number]>(() => {
-    if (geometry?.bounds) return geometry.bounds;
+    if (cizimKutusu) return cizimKutusu;
     if (allEdgeSegments && allEdgeSegments.length > 0) {
       let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
       for (const es of allEdgeSegments) {
@@ -304,7 +311,7 @@ const DxfCanvasViewer = forwardRef<CizimKontrolleri, DxfCanvasViewerProps>(funct
       return [mnx, mny, mxx, mxy];
     }
     return [0, 0, 100, 100];
-  }, [geometry, allEdgeSegments]);
+  }, [cizimKutusu, allEdgeSegments]);
 
   const { viewport, fitView, zoomToBounds, zoomIn, zoomOut, wasDragged, isDragging, pointerHandlers } = useViewport({
     bounds,
