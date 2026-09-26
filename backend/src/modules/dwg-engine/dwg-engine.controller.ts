@@ -1,10 +1,12 @@
 import {
   Controller, Post, Get, Param, UploadedFile,
-  UseGuards, UseInterceptors, Query,
+  UseGuards, UseInterceptors, Query, Res,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
+import { istemciKopmaSinyali } from '../../altyapi/http/istemci-koptu';
 import { DwgEngineService } from './dwg-engine.service';
 import { resolveScaleParam } from './scale-param';
 import { CurrentUser } from '../../altyapi/auth/decorators/current-user.decorator';
@@ -54,6 +56,12 @@ export class DwgEngineController {
    *
    * file_id varsa: cache'teki dosya kullanilir (dosya yuklemeye gerek yok).
    * file_id yoksa: dosya yuklenmeli (geriye uyumlu).
+   *
+   * ISTEMCI KOPARSA (26.09): on yuz birim degisince ayirmayi iptal edip yeni
+   * birimle yeniden baslatir. Motor istegi de kesilir — kesilmezse motor eski
+   * birimli isi sonuna kadar kosturup yeni istekle CPU paylasiyordu.
+   * Sinyal ILK satirda kurulur: sahiplik sorgusu surerken kopan istemci de
+   * motora hic istek gondermez.
    */
   @Post('parse')
   @GerekliYetenek(Yetenek.DWG_YUKLE)
@@ -64,6 +72,7 @@ export class DwgEngineController {
   async parseDwg(
     @CurrentUser() kullanici: unknown,
     @UploadedFile() file: Express.Multer.File,
+    @Res({ passthrough: true }) res: Response,
     @Query('discipline') discipline?: string,
     @Query('scale') scale?: string,
     @Query('split_mode') splitMode?: string,
@@ -73,6 +82,7 @@ export class DwgEngineController {
     @Query('layer_material_type') layerMaterialType?: string,
     @Query('sprinkler_layers') sprinklerLayers?: string,
   ) {
+    const istemciKoptu = istemciKopmaSinyali(res);
     // file_id varsa dosya gerekmez, yoksa dosya zorunlu
     // G2: cache'ten okuyorsa (fileId var) sahiplik DOGRULANIR; dosya
     // govdeden geliyorsa kapi konusu degildir (kendi dosyasini yukluyor).
@@ -143,6 +153,7 @@ export class DwgEngineController {
       // her cizim entity'si bastan sona tek segment; kullanici hatta tek tikla
       // cap atayabilsin). Dogrulama Python'da (gecersiz deger 400).
       splitMode,
+      istemciKoptu,
     );
   }
 

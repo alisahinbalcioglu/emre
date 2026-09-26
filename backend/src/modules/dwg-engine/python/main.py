@@ -889,6 +889,7 @@ def get_geometry(
 # kaldirildi: restart'ta kaybolmuyor, WORKERS>1'e hazir, RAM'de buyumuyor.
 
 import asyncio
+import threading
 
 # /upload dedup kritik bolgesi icin lock: ayni hash'li es zamanli iki istekten
 # yalniz biri yeni pipeline baslatir. (Process-ici lock; WORKERS=1'de tam
@@ -972,7 +973,31 @@ def _json_safe(obj):
         return "<unrepr>"
 
 
-def _run_parse_subprocess(dxf_path: str, params: dict, timeout: int = 180) -> dict:
+# Istemci koptugunda parse alt surecinin en gec ne kadar sonra durdurulacagi:
+# communicate() bu aralikla yoklanir (iptal gecikmesinin ust siniri).
+_IPTAL_YOKLAMA_SN = 0.25
+# parse_worker.py engine dizininde, main.py ile ayni yerde (testler taklit
+# isciyle degistirir: tests/test_parse_iptal.py).
+_PARSE_WORKER_YOLU = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parse_worker.py")
+
+
+class ParseIptalEdildi(Exception):
+    """Istemci (NestJS) baglantiyi kapatti; parse alt sureci olduruldu."""
+
+
+def _alt_sureci_durdur(proc) -> None:
+    """Hala kosan alt sureci oldurur ve bekler — sahipsiz (yetim) is kalmaz."""
+    if proc.poll() is not None:
+        return
+    proc.kill()
+    try:
+        proc.communicate(timeout=10)
+    except Exception as e:
+        logging.warning("parse_worker %s olduruldu, borulari kapanmadi: %r", proc.pid, e)
+
+
+def _run_parse_subprocess(dxf_path: str, params: dict, timeout: int = 180,
+                          iptal: threading.Event | None = None) -> dict:
     """analyze_dxf_metraj'i IZOLE subprocess'te calistir — OOM-safe.
 
     Render free tier 512MB single-worker'da bulk-parse OOM kill yapiyor
@@ -987,40 +1012,69 @@ def _run_parse_subprocess(dxf_path: str, params: dict, timeout: int = 180) -> di
       exit 0 → BASARILI
       exit 1 → HATA (stderr'de detay)
       exit -9 → SIGKILL (OOM)
-      timeout → process.kill, TimeoutError
+      timeout → alt surec oldurulur, RuntimeError("Parse subprocess timeout ...")
+
+    IPTAL (26.09): `iptal` kurulunca (istemci koptu) alt surec OLDURULUR ve
+    ParseIptalEdildi firlatilir. Bu thread'in tek isi alt sureci beklemektir;
+    CPU isi alt surecte oldugu icin iptal isi GERCEKTEN durdurur. Eskiden
+    `subprocess.run` sonucu kimse beklemese de sonuna kadar kosuyordu (olculdu:
+    3. saniyede kesilen ayirma 44-48 sn daha kostu, tam CPU; yeni istek %51-63
+    uzadi). Zaman asimi ve beklenmeyen hata yolunda da alt surec oldurulur.
 
     Donus: result dict (model_dump cikti). Hata durumunda RuntimeError firlatir.
     """
     import subprocess as _sp
 
-    # parse_worker.py engine dizininde, main.py ile ayni yerde
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parse_worker.py")
+    worker_path = _PARSE_WORKER_YOLU
     if not os.path.isfile(worker_path):
         raise RuntimeError(f"parse_worker.py bulunamadi: {worker_path}")
+    if iptal is not None and iptal.is_set():
+        raise ParseIptalEdildi("istemci koptu, parse_worker baslatilmadi")
 
     payload = json.dumps({"dxf_path": dxf_path, **params})
 
+    proc = _sp.Popen(
+        [sys.executable, worker_path],
+        stdin=_sp.PIPE, stdout=_sp.PIPE, stderr=_sp.PIPE, text=True,
+    )
+    son_an = time.monotonic() + timeout
     try:
-        proc = _sp.run(
-            [sys.executable, worker_path],
-            input=payload,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-        )
-    except _sp.TimeoutExpired:
-        logging.error("parse_worker timeout (%ds) for %s", timeout, dxf_path)
-        raise RuntimeError(f"Parse subprocess timeout ({timeout}s) — dosya cok kompleks olabilir")
+        # Girdi yoklama dongusunden ONCE, TEK seferde yazilir. communicate()'e
+        # verilseydi Python 3.11 POSIX yeniden denemede (input=None) kalanini
+        # yazmaz, stdin'i kapatmaz: ilk 0,25 sn girdi bitmeden dolarsa (ör. buyuk
+        # json.dumps GIL'i tutarken) isci stdin.read()'de takilir, 180 sn sonra
+        # 504 (canli 3.11.16 kaynaginda okundu; kapi I7). Stdin'i ilk communicate() kapatir.
+        # Yazma bloklamaz: yuk sorgu parametrelerinden gelir, h11 istek basi siniri
+        # (16 KB) yuzunden boru tamponunu (64 KB) asamaz.
+        try:
+            proc.stdin.write(payload)
+            proc.stdin.flush()
+        except OSError:
+            pass  # isci erken oldu (EPIPE/EINVAL): cikis kodu ve stderr asagida okunur
+        while True:
+            if iptal is not None and iptal.is_set():
+                raise ParseIptalEdildi(f"istemci koptu, parse_worker {proc.pid} durduruldu")
+            kalan = son_an - time.monotonic()
+            if kalan <= 0:
+                logging.error("parse_worker timeout (%ds) for %s", timeout, dxf_path)
+                raise RuntimeError(f"Parse subprocess timeout ({timeout}s) — dosya cok kompleks olabilir")
+            try:
+                stdout, stderr = proc.communicate(timeout=min(_IPTAL_YOKLAMA_SN, kalan))
+                break
+            except _sp.TimeoutExpired:
+                continue  # cikti kaybolmaz; bir sonraki yoklamada okunmaya devam eder
+    finally:
+        _alt_sureci_durdur(proc)
 
     if proc.returncode == 0:
         try:
-            return json.loads(proc.stdout)
+            return json.loads(stdout)
         except json.JSONDecodeError as je:
-            logging.error("parse_worker stdout JSON parse fail: %s\nstdout[:500]: %s", je, proc.stdout[:500])
+            logging.error("parse_worker stdout JSON parse fail: %s\nstdout[:500]: %s", je, stdout[:500])
             raise RuntimeError(f"Subprocess sonuc JSON degil: {str(je)[:200]}")
 
     # Non-zero exit code — error
-    err_short = (proc.stderr or "")[:500]
+    err_short = (stderr or "")[:500]
     if proc.returncode == -9 or proc.returncode == 137:
         # SIGKILL — OOM kill
         logging.error("parse_worker OOM-killed (exit %d) for %s", proc.returncode, dxf_path)
@@ -1449,8 +1503,27 @@ async def list_layers(file: UploadFile = File(...)):
         raise HTTPException(500, f"Layer listesi cikarilirken hata: {str(e)}")
 
 
+async def _istemci_kopunca_iptal(request: Request, iptal: threading.Event) -> None:
+    """NestJS baglantiyi kapatinca (tarayici istegi iptal etti) iptal bayragini kaldirir.
+
+    `request.is_disconnected()` KULLANILMAZ: `verify_internal_token`
+    (@app.middleware("http") = BaseHTTPMiddleware) receive'i sarar ve iptal
+    edilmis kapsamda yoklanan is_disconnected kopmayi GORMEZ (olculdu 26.09,
+    fastapi 0.115.6 / starlette 0.41.3 / uvicorn 0.34.0: 8 sn'de hic gormedi;
+    ara katmansiz 1,0 sn). Govde okunduysa sonraki receive() yalniz
+    `http.disconnect` doner; okunmamis govde parcasi (`http.request`) gelirse
+    dongu onu atlar. Starlette StreamingResponse'un kopma dinleyicisi ayni desendir.
+    """
+    while True:
+        mesaj = await request.receive()
+        if mesaj["type"] == "http.disconnect":
+            iptal.set()
+            return
+
+
 @app.post("/parse")
 async def parse_dwg(
+    request: Request,
     file: UploadFile | None = File(None),
     file_id: str = Query("", description="Cache'teki dosyanin ID'si (/layers'tan donen)"),
     discipline: str = Query("mechanical"),
@@ -1530,6 +1603,11 @@ async def parse_dwg(
     # Render free tier 512MB'da bulk parse OOM kill yapiyor. Her parse'i
     # ayri Python subprocess'te calistir — OOM olursa parent worker SAGLAM.
     # asyncio.to_thread sayesinde main event loop bloke olmaz.
+    # IPTAL (26.09): NestJS baglantiyi kapatirsa (tarayici istegi iptal etti —
+    # DWG Analiz'de birim ayirma surerken degisti) alt surec oldurulur; yetim is
+    # yeniden baslayan istekle CPU paylasmaz.
+    iptal = threading.Event()
+    bekci = asyncio.create_task(_istemci_kopunca_iptal(request, iptal))
     try:
         params = {
             "scale": scale,
@@ -1541,7 +1619,7 @@ async def parse_dwg(
         }
         # Subprocess'i async thread'de calistir, FastAPI event loop bloke olmasin
         result_dict = await asyncio.to_thread(
-            _run_parse_subprocess, dxf_path, params, 180
+            _run_parse_subprocess, dxf_path, params, 180, iptal
         )
         # Subprocess zaten _json_safe ile sanitize ettiği için direkt response
         body = json.dumps(result_dict, allow_nan=False, ensure_ascii=False).encode('utf-8')
@@ -1549,6 +1627,10 @@ async def parse_dwg(
 
     except HTTPException:
         raise
+    except ParseIptalEdildi as e:
+        # Yanit kimseye ulasmaz (baglanti kapali); iz yalniz bu satir.
+        logging.warning("Parse iptal: %s", e)
+        return Response(status_code=499)
     except RuntimeError as e:
         # Subprocess OOM, timeout, veya parse hatasi — net mesaj
         err_msg = str(e)
@@ -1565,6 +1647,9 @@ async def parse_dwg(
         logging.error("DWG analiz hatasi: %s\n%s", repr(e), _trace)
         raise HTTPException(500, f"DWG analiz hatasi: {type(e).__name__}: {str(e) or repr(e)}")
     finally:
+        bekci.cancel()
+        # Uc kendisi iptal edilirse (kapanis) thread alt sureci yine oldursun.
+        iptal.set()
         # Sadece cache'e girmeyen dosyalari temizle
         if tmp_to_cleanup:
             try:

@@ -515,6 +515,18 @@ const SUITES: Suite[] = [
   //    mutabakatının ilk çağrısı takılıyordu). POST, zaman aşımı ve kodlu red
   //    yeniden DENENMEZ (Z8).
   { ad: 'iyzico zaman aşımı: sinyal · kesim · işaretli kodsuz hata · belirsiz dal · firma sırası · dunning · okuma yeniden denemesi (Z1-Z8)', script: 'test:iyzico-zaman-asimi', zincir: 'Z0' },
+  // ── 26.09.2026 — DWG İSTEMCİ KOPTU. AĞ/DB GEREKTİRMEZ: gerçek denetleyici +
+  //    servis 127.0.0.1'de, motor yerine süreç içi taklit sunucu, istemci GERÇEKTEN
+  //    kopar. DWG Analiz birim değişince ayırmayı iptal ediyordu ama iptal yalnız
+  //    tarayıcıdaydı: Nest motor çağrısını sonuna kadar bekliyor, motor yetim işi
+  //    bitiriyordu (ölçüldü: kesilen ayırma 44-48 sn daha koştu, yeni istek %51-63;
+  //    üç hızlı birim değişiminde %142-159 uzadı). Kopunca motor bağlantısı kapanır,
+  //    yeniden deneme yok; kopmayan istek (boş multipart) etkilenmez (`req 'close'`
+  //    tuzağı); ÖNCEDEN iptal edilmiş sinyalle fetch çağrılmaz — undici 7 (Node 24)
+  //    FormData'da yakalanmamış istisna atıp süreci düşürüyordu (Y3; canlıdaki
+  //    Node 20'de olmuyor, yükseltmede korur); zaman aşımı aynen.
+  //    Motorun alt süreci öldürmesi: python `tests/test_parse_iptal.py` (CI'da yok).
+  { ad: 'DWG istemci koptu: saf sinyal · kopma motoru keser · normal istek · önceden kopmuş · zaman aşımı (S/K/N/Y/Z)', script: 'test:dwg-istemci-koptu', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
   // T47 (22.09.2026): "fatura bilgisi eksik firma gercek bir fatura kesme

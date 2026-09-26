@@ -43,6 +43,12 @@ export class DwgEngineService {
    *
    * Multipart body'lerde dikkat: FormData stream tek seferlik. Retry icin
    * factory pattern: caller her cagri icin yeni RequestInit doner.
+   *
+   * istemciKoptu (26.09): tarayici istegi iptal edince iptal olan sinyal
+   * (`altyapi/http/istemci-koptu.ts`). Motor istegi `AbortSignal.any([zaman
+   * asimi, istemciKoptu])` ile gider — istemci koparsa motor baglantisi da
+   * kapanir ve motor alt sureci durdurur. Istemci gittiyse YENIDEN DENEME YOK:
+   * kimsenin beklemedigi ikinci bir is baslatilmaz.
    */
   private async fetchWithRetry(
     url: string,
@@ -50,9 +56,23 @@ export class DwgEngineService {
     initialTimeout: number,
     retryTimeout: number = 90_000,
     label: string = 'request',
+    istemciKoptu?: AbortSignal,
   ): Promise<Response> {
     const tryOnce = async (timeout: number): Promise<Response> => {
-      return fetch(url, optionsFactory(timeout));
+      // Iptal edilmis sinyalle fetch CAGRILMAZ: undici 7 (Node 24) FormData govdeli
+      // istekte reddin USTUNE yakalanmamis istisna atiyor ("Invalid state:
+      // ReadableStream is already closed") — surec duser. Olculdu 26.09: Node 24
+      // once iptal 2/2, fetch'ten sonra ayni tick'te iptal 0/30; canlidaki Node
+      // 20.20.2 (undici 6.24.1) 0/2. Node yukseltmesinde de guvende kalsin. Kapi: Y.
+      istemciKoptu?.throwIfAborted();
+      const opts = optionsFactory(timeout);
+      if (!istemciKoptu || !opts.signal) return fetch(url, opts);
+      // Node 20'de AbortSignal.any kaynak sinyali ZAYIF tutar; undici'nin dinleyicisi
+      // birlesik sinyalde oldugu icin zaman asimi sinyali GC'de toplanir ve HIC
+      // tetiklenmez (olculdu 26.09, canli imaj Node 20.20.2: gc() sonrasi zaman asimi
+      // yok; Node 24'te var). Bu dinleyici onu tetiklenene dek tutar. Kapi: Z (gc'li).
+      opts.signal.addEventListener('abort', () => undefined, { once: true });
+      return fetch(url, { ...opts, signal: AbortSignal.any([opts.signal, istemciKoptu]) });
     };
 
     try {
@@ -80,6 +100,8 @@ export class DwgEngineService {
       }
       return r;
     } catch (err: any) {
+      // Karar sinyalden: hatanin adi iptal nedenine gore degisir (AbortError da olabilir).
+      if (istemciKoptu?.aborted) throw err;
       const errName = err?.name ?? '';
       const isTransient = errName === 'TimeoutError' || errName === 'AbortError';
       if (!isTransient) throw err;
@@ -92,6 +114,17 @@ export class DwgEngineService {
 
   private delay(ms: number): Promise<void> {
     return new Promise((res) => setTimeout(res, ms));
+  }
+
+  /**
+   * Istemci yanit beklemeden gitti, motor istegi kesildi. Yanit kimseye
+   * ulasmaz: 499 (nginx "Client Closed Request") sessiz bir HttpException —
+   * 503 "motor calismiyor" ya da yeniden deneme uyarisi gunluge YAZILMAZ.
+   * Tek satirlik iz canlida iptalin calistigini gosterir.
+   */
+  private istemciGitti(label: string, baslangic: number): never {
+    this.logger.log(`[${label}] istemci koptu — motor istegi ${Date.now() - baslangic} ms sonra kesildi`);
+    throw new HttpException('Istemci baglantiyi kapatti', 499);
   }
 
   /** Cold-start veya kisa-kesintili hata mesajlari — handler kullanilir */
@@ -160,6 +193,10 @@ export class DwgEngineService {
    *
    * fileId varsa: Python'daki cache'ten dosya kullanilir (fileBuffer gerekmez).
    * fileId yoksa: fileBuffer yuklenir (geriye uyumlu mod).
+   *
+   * istemciKoptu: tarayici istegi iptal ederse motor istegi de kesilir (DWG
+   * Analiz birim degisince ayirmayi iptal edip yeniden baslatir; kesilmezse
+   * motor eski birimli isi sonuna kadar kosturuyordu). Bkz. fetchWithRetry.
    */
   async parseDwg(
     fileBuffer: Buffer | null,
@@ -172,7 +209,9 @@ export class DwgEngineService {
     layerMaterialType?: Record<string, string>,
     sprinklerLayers?: string[],
     splitMode?: string,
+    istemciKoptu?: AbortSignal,
   ) {
+    const baslangic = Date.now();
     const params = new URLSearchParams({ discipline });
     // Auto-mode: scale undefined -> parametreyi HIC gonderme. Python query
     // default'u None olur -> unit_detect.detect_unit calisir (antet+olcek
@@ -230,6 +269,7 @@ export class DwgEngineService {
         300_000,
         300_000,
         'parseDwg',
+        istemciKoptu,
       );
 
       if (!response.ok) {
@@ -249,6 +289,7 @@ export class DwgEngineService {
 
       return await response.json();
     } catch (error) {
+      if (istemciKoptu?.aborted) this.istemciGitti('parseDwg', baslangic);
       this.translateError(error);
     }
   }
