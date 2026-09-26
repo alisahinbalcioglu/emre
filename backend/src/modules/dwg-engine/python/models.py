@@ -12,18 +12,10 @@ class LayerInfo(BaseModel):
 
 
 class LayerListResult(BaseModel):
+    # file_id / suggested_* / dxf_base64 alanlari 26.09'da kaldirildi: yalniz
+    # eski POST /layers yaziyordu. Birim onerisi upload_worker → state'te tasinir.
     layers: list[LayerInfo] = []
     total_layers: int = 0
-    file_id: str = ""       # cache'teki DXF dosyasinin ID'si (tekrar yukleme gerek yok)
-    dxf_base64: str = ""    # DXF dosyasi base64 (frontend DxfViewer icin)
-    # OTOMATIK tespit edilen cizim birimi. Kaynak artik sadece $INSUNITS DEGIL:
-    # antet pafta olcusu + "ÖLÇEK 1/N" metni (kapali form) > yazi yuksekligi >
-    # fizik elemesi > $INSUNITS. Ayrinti: unit_detect.py
-    suggested_scale: float = 0.001    # metre / cizim birimi
-    suggested_unit_label: str = "mm"  # mm | cm | dm | m | inch | ft
-    suggested_confidence: str = "dusuk"   # kesin | yuksek | orta | dusuk
-    suggested_method: str = ""            # antet+olcek | yazi+olcek | fizik | insunits | varsayilan
-    suggested_evidence: list[str] = []    # kullaniciya gosterilecek kanit satirlari
     warnings: list[str] = []
 
 

@@ -3,9 +3,9 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 829
-Toplam satir: 219184
-Uc nokta: 239
+Kod dosyasi: 830
+Toplam satir: 219545
+Uc nokta: 237
 test:* scripti: 133
 
 ## 1 · Dosyalar ve satir sayilari
@@ -87,25 +87,26 @@ test:* scripti: 133
 | `backend/src/altyapi/http/cors.ts` | 69 |
 | `backend/src/altyapi/http/govde-siniri.ts` | 35 |
 | `backend/src/altyapi/http/guvenlik-basliklari.ts` | 51 |
-| `backend/src/altyapi/http/istemci-koptu.ts` | 36 |
+| `backend/src/altyapi/http/istemci-koptu.ts` | 37 |
 | `backend/src/app.module.ts` | 72 |
 | `backend/src/health.controller.ts` | 33 |
 | `backend/src/main.ts` | 87 |
-| `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | 228 |
+| `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | 188 |
 | `backend/src/modules/dwg-engine/dwg-engine.module.ts` | 14 |
-| `backend/src/modules/dwg-engine/dwg-engine.service.ts` | 461 |
-| `backend/src/modules/dwg-engine/dwg-sahiplik.servisi.ts` | 105 |
+| `backend/src/modules/dwg-engine/dwg-engine.service.ts` | 369 |
+| `backend/src/modules/dwg-engine/dwg-sahiplik.servisi.ts` | 107 |
 | `backend/src/modules/dwg-engine/python/converter.py` | 598 |
 | `backend/src/modules/dwg-engine/python/deploy-to-cloudrun.sh` | 71 |
 | `backend/src/modules/dwg-engine/python/geometry.py` | 757 |
 | `backend/src/modules/dwg-engine/python/graph.py` | 356 |
-| `backend/src/modules/dwg-engine/python/main.py` | 1709 |
-| `backend/src/modules/dwg-engine/python/models.py` | 99 |
+| `backend/src/modules/dwg-engine/python/main.py` | 1494 |
+| `backend/src/modules/dwg-engine/python/models.py` | 91 |
 | `backend/src/modules/dwg-engine/python/parse_worker.py` | 83 |
 | `backend/src/modules/dwg-engine/python/pipe_segments.py` | 1875 |
 | `backend/src/modules/dwg-engine/python/tests/__init__.py` | 1 |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | 104 |
 | `backend/src/modules/dwg-engine/python/tests/test_detector_version_kapisi.py` | 144 |
+| `backend/src/modules/dwg-engine/python/tests/test_olay_dongusu.py` | 587 |
 | `backend/src/modules/dwg-engine/python/tests/test_parse_iptal.py` | 256 |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | 85 |
 | `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | 127 |
@@ -323,9 +324,9 @@ test:* scripti: 133
 | `backend/test/deploy-olcum-test.ts` | 155 |
 | `backend/test/dn-koprusu-test.ts` | 343 |
 | `backend/test/dunning-toparlandi-test.ts` | 979 |
-| `backend/test/dwg-istemci-koptu-test.ts` | 354 |
-| `backend/test/ekip-izinleri-test.ts` | 566 |
-| `backend/test/erisim-kapisi-test.ts` | 691 |
+| `backend/test/dwg-istemci-koptu-test.ts` | 449 |
+| `backend/test/ekip-izinleri-test.ts` | 568 |
+| `backend/test/erisim-kapisi-test.ts` | 692 |
 | `backend/test/erken-kurtarma-test.ts` | 402 |
 | `backend/test/excel-grid-test.ts` | 257 |
 | `backend/test/export-format-test.ts` | 442 |
@@ -353,7 +354,7 @@ test:* scripti: 133
 | `backend/test/gs6b-teshis.ts` | 85 |
 | `backend/test/guvenlik-basliklari-test.ts` | 137 |
 | `backend/test/guvenlik-paket1-test.ts` | 509 |
-| `backend/test/guvenlik-turu-2-test.ts` | 382 |
+| `backend/test/guvenlik-turu-2-test.ts` | 404 |
 | `backend/test/guvenlik-uclari-test.ts` | 462 |
 | `backend/test/havale-iyzico-cakismasi-test.ts` | 1679 |
 | `backend/test/havale-onay-yarisi-test.ts` | 1871 |
@@ -410,7 +411,7 @@ test:* scripti: 133
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 940 |
+| `backend/test/regression-all.ts` | 946 |
 | `backend/test/s45-malzeme-aile-test.ts` | 441 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 883 |
@@ -922,12 +923,13 @@ test:* scripti: 133
 | `backend/src/modules/dwg-engine/python/converter.py` | `dataclasses` `pathlib` `ezdxf` |
 | `backend/src/modules/dwg-engine/python/geometry.py` | `__future__` `typing` `pydantic` `converter` |
 | `backend/src/modules/dwg-engine/python/graph.py` | `collections` `typing` `converter` |
-| `backend/src/modules/dwg-engine/python/main.py` | `collections` `fastapi` `fastapi.middleware.cors` `fastapi.middleware.gzip` `fastapi.responses` `converter` `topology` `geometry` `models` `unit_detect` `pipe_segments` |
+| `backend/src/modules/dwg-engine/python/main.py` | `fastapi` `fastapi.middleware.cors` `fastapi.middleware.gzip` `fastapi.responses` `converter` `topology` `geometry` `models` `unit_detect` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/models.py` | `pydantic` |
 | `backend/src/modules/dwg-engine/python/parse_worker.py` | `main` |
 | `backend/src/modules/dwg-engine/python/pipe_segments.py` | `typing` `ezdxf` `converter` `collections` |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | `__future__` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/tests/test_detector_version_kapisi.py` | `__future__` |
+| `backend/src/modules/dwg-engine/python/tests/test_olay_dongusu.py` | `subprocess` `time` `converter` |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | `__future__` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | `__future__` `main` |
 | `backend/src/modules/dwg-engine/python/tests/test_split_mode.py` | `pipe_segments` |
@@ -1595,9 +1597,7 @@ test:* scripti: 133
 | `backend/src/altyapi/auth/mfa/mfa.controller.ts` | `POST /auth/mfa/kurtarma-kodlari/yenile` |
 | `backend/src/altyapi/auth/mfa/mfa.controller.ts` | `POST /auth/mfa/sirket-girisinde-de-sor` |
 | `backend/src/health.controller.ts` | `GET /health` |
-| `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | `POST /dwg-engine/layers` |
 | `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | `POST /dwg-engine/parse` |
-| `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | `POST /dwg-engine/convert` |
 | `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | `GET /dwg-engine/health` |
 | `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | `POST /dwg-engine/upload` |
 | `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | `GET /dwg-engine/status/:fileId` |

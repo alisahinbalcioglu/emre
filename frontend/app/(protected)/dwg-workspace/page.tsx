@@ -13,7 +13,7 @@
  *
  * Akis:
  *   1. Buraya direk gel (Dashboard'dan veya quotes/new "DWG analizi" butonu)
- *   2. DwgUploader → /layers → DwgProjectWorkspace
+ *   2. DwgUploader → /upload + /status → DwgProjectWorkspace
  *   3. "Tumunu Onayla" → metraj sessionStorage'a kaydedilir
  *   4. /quotes/new?from=dwg-workspace adresine yonlendirilir, fiyatlandirma akisi
  *      mevcut Excel akisi ile ayni kalir.
