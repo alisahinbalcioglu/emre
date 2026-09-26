@@ -129,11 +129,17 @@ export function ipucu(g: {
   ayriliyor: string | null;
   /** Motorun su an uyguladigi yontem ("Bölmeden" → "hatları çıkarılıyor"). */
   ayrilanYontem?: 't' | 'none';
+  /** Sirali yeniden ayirma oturumu (birim degisti): hangi layer, kacinci. */
+  yenidenAyirma?: { sira: number; toplam: number } | null;
 }): Ipucu {
   const renk = g.layerRengi ?? GRI;
   if (g.ayriliyor) {
     const is = g.ayrilanYontem === 'none' ? 'hatları çıkarılıyor…' : 'parçalara ayrılıyor…';
-    return { vurgu: `${g.ayriliyor} ${is}`, metin: 'birkaç saniye sürebilir', renk, esc: false };
+    // 25.09 canli: gercek motor bir layer'i ~23 sn'de ayirdi — "birkaç saniye"
+    // vaadi tutmuyordu. Oturumda ilerleme yazilir.
+    const r = g.yenidenAyirma;
+    const metin = r && r.toplam > 1 ? `yeniden ayırma ${r.sira}/${r.toplam}` : 'büyük çizimde yarım dakikayı bulabilir';
+    return { vurgu: `${g.ayriliyor} ${is}`, metin, renk, esc: false };
   }
   if (g.adim.adim1 === 'sec') {
     return { vurgu: "Boru layer'ını seçin", metin: 'çizimde bir boruya tıklayın', renk: GRI, esc: false };

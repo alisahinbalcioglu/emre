@@ -10,8 +10,8 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, X } from 'lucide-react';
-import { BIRIMLER, birimBul, guvenAciklamasi, guvenilirMi } from './birimler';
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react';
+import { BIRIMLER, ayirmaNotu, birimBul, guvenAciklamasi, guvenilirMi } from './birimler';
 import { radyoOkTusu } from './adim-parcalari';
 
 export interface BirimTespiti {
@@ -27,8 +27,10 @@ export interface BirimPenceresiProps {
   tespit: BirimTespiti | null;
   /** Kullanici birimi elle secmis mi (otomatik tespiti ezmis)? */
   elle: boolean;
-  /** Parcalara ayirma surerken birim degistirilemez. */
-  kilitli: boolean;
+  /** Parcalara ayirma suruyor: Kaydet KAPANMAZ — suren ayirma durdurulur ve
+   *  yeni birimle yeniden baslar; pencere bunu GORUNUR soyler (25.09 canli:
+   *  Kaydet sessizce kapaliydi, nedeni yalniz fare ipucundaydi). */
+  ayirmaSuruyor: boolean;
   /** Tespit zayif ve kullanici henuz onaylamadi: ayni birimle "Kaydet"
    *  de gecerlidir (birimi dogruladim — dugme yesile doner). */
   dogrulanmali: boolean;
@@ -36,7 +38,7 @@ export interface BirimPenceresiProps {
   onKaydet: (scale: number) => void;
 }
 
-export default function BirimPenceresi({ scale, tespit, elle, kilitli, dogrulanmali, onKapat, onKaydet }: BirimPenceresiProps) {
+export default function BirimPenceresi({ scale, tespit, elle, ayirmaSuruyor, dogrulanmali, onKapat, onKaydet }: BirimPenceresiProps) {
   const [secim, setSecim] = useState(scale);
   const [ayrintiAcik, setAyrintiAcik] = useState(false);
   const kutuRef = useRef<HTMLDivElement>(null);
@@ -69,6 +71,7 @@ export default function BirimPenceresi({ scale, tespit, elle, kilitli, dogrulanm
   const seciliSira = secili ? BIRIMLER.indexOf(secili) : -1;
   const tespitBirimi = tespit ? birimBul(tespit.scale) : null;
   const degisti = Math.abs(secim - scale) / scale > 1e-6;
+  const not = ayirmaNotu(ayirmaSuruyor, degisti);
 
   let kutu: React.ReactNode;
   if (elle) {
@@ -193,6 +196,12 @@ export default function BirimPenceresi({ scale, tespit, elle, kilitli, dogrulanm
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         Birimi değiştirirseniz hesaplanan layer&apos;lar yeniden parçalara ayrılır; çap etiketleri korunur.
       </div>
+      {not && (
+        <div role="note" className="mt-2 flex gap-2 rounded-lg bg-[#eff6ff] px-2.5 py-2 text-xs leading-normal text-[#1e40af]">
+          <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
+          {not}
+        </div>
+      )}
       <div className="mt-4 flex justify-end gap-2">
         <button
           type="button"
@@ -203,9 +212,8 @@ export default function BirimPenceresi({ scale, tespit, elle, kilitli, dogrulanm
         </button>
         <button
           type="button"
-          disabled={(!degisti && !dogrulanmali) || kilitli}
+          disabled={!degisti && !dogrulanmali}
           onClick={() => onKaydet(secim)}
-          title={kilitli ? 'Parçalara ayırma sürerken birim değiştirilemez' : undefined}
           className="h-9 rounded-lg bg-[#0f172a] px-4 text-[13px] font-semibold text-white hover:bg-[#1e293b] disabled:cursor-not-allowed disabled:bg-[#e5e7eb] disabled:text-[#6b7280]"
         >
           Kaydet

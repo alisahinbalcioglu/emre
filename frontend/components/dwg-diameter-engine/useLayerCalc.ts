@@ -19,7 +19,8 @@
  * ISTEK IPTALI (25.09 inceleme): bilesen kaldirilinca suren istekler iptal
  * edilir ve sonuclari / hatalari HIC islenmez. Eskiden "Yeni DWG" sonrasi
  * gelen eski 404, sokulmus bilesenin `onFileIdInvalid` zincirini calistirip
- * YENI dosyanin yukleme durumunu siliyordu.
+ * YENI dosyanin yukleme durumunu siliyordu. Ayni yol `iptalEt` ile kullaniciya
+ * da acik: birim ayirma surerken degisince eski birimli istek durdurulur.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -53,13 +54,21 @@ export function useLayerCalc({ fileId, onResult, onFileIdInvalid }: UseLayerCalc
   const [calculatingLayer, setCalculatingLayer] = useState<string | null>(null);
 
   const denetleyicilerRef = useRef(new Set<AbortController>());
-  useEffect(() => {
+  /** Suren istekleri iptal eder — sonuclari / hatalari HIC islenmez. */
+  const surenleriIptalEt = useCallback(() => {
     const kume = denetleyicilerRef.current;
-    return () => {
-      kume.forEach((d) => d.abort());
-      kume.clear();
-    };
+    kume.forEach((d) => d.abort());
+    kume.clear();
   }, []);
+  useEffect(() => surenleriIptalEt, [surenleriIptalEt]);
+
+  /** KULLANICI iptali (birim ayirma surerken degisti): istek durur, gosterge
+   *  hemen kapanir. Iptal edilen istegin `finally`si gostergeye DOKUNMAZ —
+   *  arkasindan baslayan yeni istegin "ayriliyor" durumunu silmesin. */
+  const iptalEt = useCallback(() => {
+    surenleriIptalEt();
+    setCalculatingLayer(null);
+  }, [surenleriIptalEt]);
 
   const calculateLayer = useCallback(
     async (layer: string, opts: HesapSecenekleri): Promise<boolean> => {
@@ -162,5 +171,5 @@ export function useLayerCalc({ fileId, onResult, onFileIdInvalid }: UseLayerCalc
     [fileId, onResult, onFileIdInvalid],
   );
 
-  return { calculatingLayer, calculateLayer };
+  return { calculatingLayer, calculateLayer, iptalEt };
 }

@@ -25,6 +25,9 @@ export interface Adim3Props {
   durum: Adim3Durumu;
   layer: string | null;
   toplamMetre: number;
+  /** Birim degisti, yeniden ayirma bitmedi: toplam yeni birime cevrilmis on
+   *  hesaptir ("≈"; 25.09 canli: eski birimin sayisi kesin gibi duruyordu). */
+  yaklasik: boolean;
   capsiz: number;
   /** Onay dugmesi neden kapali (`null` = acik). */
   engel: string | null;
@@ -58,7 +61,12 @@ export default function Adim3Onay(p: Adim3Props) {
       <div className="flex items-center gap-2.5">
         <AdimRozeti no={3} durum={onayli ? 'tamam' : 'aktif'} />
         <h2 id={BASLIK_ID} className="m-0 flex-1 text-[15px] font-semibold text-[#111827]">Metrajı onaylayın</h2>
-        <span className="text-xl font-semibold tracking-[-0.01em] text-[#111827]">{metre(p.toplamMetre)}</span>
+        <span
+          title={p.yaklasik ? 'Yeni birime çevrilmiş ön hesap — parçalar yeniden ayrılınca kesinleşir' : undefined}
+          className="text-xl font-semibold tracking-[-0.01em] text-[#111827]"
+        >
+          {metre(p.toplamMetre, p.yaklasik)}
+        </span>
       </div>
       {p.durum === 'onayli' && (
         <div className="mt-3 flex items-center gap-2.5 rounded-lg border border-[#bbf7d0] bg-[#f0fdf4] px-3 py-2.5">

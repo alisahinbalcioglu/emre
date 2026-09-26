@@ -107,6 +107,9 @@ interface DxfCanvasViewerProps {
   hamCizilenLayerlar?: Set<string>;
   /** Secim varken diger boru layer'lari: kendi renginde %22 (tiklanabilir). */
   soluklasanLayerlar?: Set<string>;
+  /** Birimi degismis, yeniden ayirma bitmemis layer'lar: parca uzunlugu yeni
+   *  birime cevrilmis ON HESAPTIR — bilgi kutusu "≈" yazar (25.09 canli). */
+  yaklasikLayerlar?: Set<string>;
   /** "Çapsızları göster": secili layer'in CAPLI parcalari solar. */
   capsizOdak?: boolean;
   /** Adim 2: yalniz bu layer'in parcalari (ve yazilar) fareye yanit verir —
@@ -243,6 +246,7 @@ const DxfCanvasViewer = forwardRef<CizimKontrolleri, DxfCanvasViewerProps>(funct
   useDiameterColors = true,
   hamCizilenLayerlar,
   soluklasanLayerlar,
+  yaklasikLayerlar,
   capsizOdak = false,
   kilitliLayer = null,
   etkilesimModu = 'layer-sec',
@@ -1241,7 +1245,7 @@ const DxfCanvasViewer = forwardRef<CizimKontrolleri, DxfCanvasViewerProps>(funct
         coords: best.coords,
         polyline: best.polyline,
         length: (best.type === 'line' || best.type === 'edge')
-          ? resolveHoverLength(best as { type: 'line' | 'edge'; length?: number; coords: [number, number, number, number]; polyline?: Array<[number, number]> }, scale)
+          ? resolveHoverLength({ ...(best as { type: 'line' | 'edge'; length?: number; coords: [number, number, number, number]; polyline?: Array<[number, number]> }), length: liveSeg?.length ?? best.length }, scale)
           : undefined,
         diameter: liveSeg?.diameter || undefined,
         isInherited: liveSeg?.is_inherited || false,
@@ -1411,6 +1415,7 @@ const DxfCanvasViewer = forwardRef<CizimKontrolleri, DxfCanvasViewerProps>(funct
           seciliLayer={selectedLayer ?? null}
           layerRengi={tooltipLayerRengi}
           genislik={containerRef.current?.clientWidth ?? 0}
+          yaklasik={!!yaklasikLayerlar?.has(tooltipEntity.layer)}
         />
       )}
 
@@ -1486,6 +1491,8 @@ interface TooltipProps {
   layerRengi: string;
   /** Kap genisligi — kutu sag kenardan tasarsa imlecin soluna gecer. */
   genislik: number;
+  /** Parca uzunlugu yeni birime cevrilmis on hesap ("≈"). */
+  yaklasik: boolean;
 }
 
 const tr1 = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -1493,7 +1500,7 @@ const tr1 = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 1,
  *  yuzdesiyle ayni bicim (25.09 inceleme: nokta/virgul karisikti). */
 const tr2 = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function Tooltip({ entity, screenX, screenY, pinned, mod, seciliLayer, layerRengi, genislik }: TooltipProps) {
+function Tooltip({ entity, screenX, screenY, pinned, mod, seciliLayer, layerRengi, genislik, yaklasik }: TooltipProps) {
   const KUTU = 240;
   const solda = genislik > 0 && screenX + 18 + KUTU > genislik;
   const stil: React.CSSProperties = solda
@@ -1516,7 +1523,7 @@ function Tooltip({ entity, screenX, screenY, pinned, mod, seciliLayer, layerReng
       />
     );
     baslik = capli ? (entity.diameter as string) : 'Çapsız parça';
-    alt = `Parça: ${tr1(entity.length ?? 0)} m · ${entity.layer}`;
+    alt = `Parça: ${yaklasik ? '≈' : ''}${tr1(entity.length ?? 0)} m · ${entity.layer}`;
   } else {
     isaret = <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: layerRengi }} />;
     baslik = `Layer: ${entity.layer}`;

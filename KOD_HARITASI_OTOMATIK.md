@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 826
-Toplam satir: 217969
+Kod dosyasi: 827
+Toplam satir: 218755
 Uc nokta: 239
 test:* scripti: 133
 
@@ -488,7 +488,7 @@ test:* scripti: 133
 | `frontend/app/verify-email/page.tsx` | 94 |
 | `frontend/components/dwg-diameter-engine/index.ts` | 16 |
 | `frontend/components/dwg-diameter-engine/types.ts` | 28 |
-| `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | 167 |
+| `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | 176 |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | 36 |
 | `frontend/components/dwg-metraj/DwgSayfaCercevesi.tsx` | 31 |
 | `frontend/components/dwg-metraj/DwgUploader.tsx` | 646 |
@@ -501,37 +501,38 @@ test:* scripti: 133
 | `frontend/components/dwg-metraj/unit-detection.ts` | 79 |
 | `frontend/components/dwg-tagging/index.ts` | 14 |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | 110 |
-| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 1545 |
+| `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 1552 |
 | `frontend/components/dwg-viewer/aci-colors.ts` | 38 |
-| `frontend/components/dwg-viewer/canli-cap.test.ts` | 288 |
-| `frontend/components/dwg-viewer/canli-cap.ts` | 97 |
+| `frontend/components/dwg-viewer/canli-cap.test.ts` | 299 |
+| `frontend/components/dwg-viewer/canli-cap.ts` | 101 |
 | `frontend/components/dwg-viewer/gorunum-olcek.test.ts` | 41 |
 | `frontend/components/dwg-viewer/index.ts` | 7 |
 | `frontend/components/dwg-viewer/segment-length.test.ts` | 54 |
 | `frontend/components/dwg-viewer/segment-length.ts` | 48 |
 | `frontend/components/dwg-viewer/types.ts` | 76 |
 | `frontend/components/dwg-viewer/useViewport.ts` | 249 |
-| `frontend/components/dwg-workspace/Adim1BoruLayer.tsx` | 331 |
-| `frontend/components/dwg-workspace/Adim2CapAta.tsx` | 271 |
-| `frontend/components/dwg-workspace/Adim3Onay.tsx` | 118 |
-| `frontend/components/dwg-workspace/BirimPenceresi.tsx` | 217 |
+| `frontend/components/dwg-workspace/Adim1BoruLayer.tsx` | 338 |
+| `frontend/components/dwg-workspace/Adim2CapAta.tsx` | 277 |
+| `frontend/components/dwg-workspace/Adim3Onay.tsx` | 126 |
+| `frontend/components/dwg-workspace/BirimPenceresi.tsx` | 225 |
 | `frontend/components/dwg-workspace/CalismaBasligi.tsx` | 116 |
 | `frontend/components/dwg-workspace/CizimAracCubugu.tsx` | 114 |
 | `frontend/components/dwg-workspace/CizimUstu.tsx` | 129 |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 851 |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | 918 |
 | `frontend/components/dwg-workspace/KatmanlarPaneli.tsx` | 270 |
-| `frontend/components/dwg-workspace/adim-durumu.test.ts` | 240 |
-| `frontend/components/dwg-workspace/adim-durumu.ts` | 186 |
-| `frontend/components/dwg-workspace/adim-parcalari.tsx` | 101 |
-| `frontend/components/dwg-workspace/belge-islemleri.ts` | 198 |
-| `frontend/components/dwg-workspace/birim-bayatlik.test.ts` | 54 |
-| `frontend/components/dwg-workspace/birim-bayatlik.ts` | 31 |
-| `frontend/components/dwg-workspace/birimler.test.ts` | 65 |
-| `frontend/components/dwg-workspace/birimler.ts` | 57 |
+| `frontend/components/dwg-workspace/adim-durumu.test.ts` | 253 |
+| `frontend/components/dwg-workspace/adim-durumu.ts` | 192 |
+| `frontend/components/dwg-workspace/adim-parcalari.tsx` | 102 |
+| `frontend/components/dwg-workspace/belge-islemleri.ts` | 229 |
+| `frontend/components/dwg-workspace/birim-bayatlik.test.ts` | 123 |
+| `frontend/components/dwg-workspace/birim-bayatlik.ts` | 70 |
+| `frontend/components/dwg-workspace/birim-gosterimi.test.ts` | 169 |
+| `frontend/components/dwg-workspace/birimler.test.ts` | 84 |
+| `frontend/components/dwg-workspace/birimler.ts` | 67 |
 | `frontend/components/dwg-workspace/boru-adaylari.test.ts` | 72 |
 | `frontend/components/dwg-workspace/boru-adaylari.ts` | 86 |
-| `frontend/components/dwg-workspace/calisma-alani-baglanti.test.ts` | 679 |
-| `frontend/components/dwg-workspace/calisma-kaydi.test.ts` | 498 |
+| `frontend/components/dwg-workspace/calisma-alani-baglanti.test.ts` | 915 |
+| `frontend/components/dwg-workspace/calisma-kaydi.test.ts` | 564 |
 | `frontend/components/dwg-workspace/calisma-kaydi.ts` | 289 |
 | `frontend/components/dwg-workspace/cap-gruplari.test.ts` | 163 |
 | `frontend/components/dwg-workspace/cap-gruplari.ts` | 181 |
@@ -1300,13 +1301,14 @@ test:* scripti: 133
 | `frontend/components/dwg-workspace/CalismaBasligi.tsx` | `react` `next/link` `lucide-react` |
 | `frontend/components/dwg-workspace/CizimAracCubugu.tsx` | `react` `lucide-react` |
 | `frontend/components/dwg-workspace/CizimUstu.tsx` | `react` `lucide-react` `./adim-durumu` `../dwg-metraj/diameter-colors` |
-| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | `react` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/components/dwg-viewer` `@/components/dwg-metraj/types` `@/components/dwg-diameter-engine` `@/components/dwg-tagging` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./useWorkspaceState` `./onay-revizyon` `./birim-bayatlik` `./boru-adaylari` `./belge-islemleri` `./birimler` `./CalismaBasligi` `./BirimPenceresi` `./CizimAracCubugu` `./CizimUstu` `./KatmanlarPaneli` `./Adim1BoruLayer` `./Adim2CapAta` `./Adim3Onay` |
+| `frontend/components/dwg-workspace/DwgProjectWorkspace.tsx` | `react` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/components/dwg-viewer` `@/components/dwg-metraj/types` `@/components/dwg-diameter-engine` `@/components/dwg-tagging` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./useWorkspaceState` `./onay-revizyon` `./boru-adaylari` `./belge-islemleri` `./types` `./birimler` `./CalismaBasligi` `./BirimPenceresi` `./CizimAracCubugu` `./CizimUstu` `./KatmanlarPaneli` `./Adim1BoruLayer` `./Adim2CapAta` `./Adim3Onay` |
 | `frontend/components/dwg-workspace/KatmanlarPaneli.tsx` | `react` `./boru-adaylari` `./adim-parcalari` |
 | `frontend/components/dwg-workspace/adim-durumu.test.ts` | `vitest` `./types` |
 | `frontend/components/dwg-workspace/adim-durumu.ts` | `./types` `./birim-bayatlik` `./sprinkler-bayatlik` |
 | `frontend/components/dwg-workspace/adim-parcalari.tsx` | `react` `lucide-react` |
 | `frontend/components/dwg-workspace/belge-islemleri.ts` | `./types` `../dwg-metraj/constants` `../dwg-metraj/diameter-colors` `./etiket-aktarimi` `./birim-bayatlik` |
-| `frontend/components/dwg-workspace/birim-bayatlik.test.ts` | `vitest` `./birim-bayatlik` |
+| `frontend/components/dwg-workspace/birim-bayatlik.test.ts` | `vitest` |
+| `frontend/components/dwg-workspace/birim-gosterimi.test.ts` | `react` `react-dom/server` `vitest` `./adim-parcalari` `./Adim1BoruLayer` `./Adim2CapAta` `./Adim3Onay` `./BirimPenceresi` `./types` |
 | `frontend/components/dwg-workspace/birimler.test.ts` | `vitest` `./birimler` |
 | `frontend/components/dwg-workspace/boru-adaylari.test.ts` | `vitest` `./boru-adaylari` |
 | `frontend/components/dwg-workspace/calisma-alani-baglanti.test.ts` | `node:fs` `node:path` `typescript` `vitest` |

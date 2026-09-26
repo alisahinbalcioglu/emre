@@ -42,7 +42,14 @@ import {
   onayKutusuAcikMi,
   yaziAlaniMi,
 } from './adim-durumu';
-import { ayniOlcek, birimBayatMi, yerelOlceklenebilir } from './birim-bayatlik';
+import {
+  ayniOlcek,
+  birimBayatMi,
+  yarimKalanAyirma,
+  yenidenAyirmaSirasi,
+  yerelOlceklenebilir,
+  type KesilenAyirma,
+} from './birim-bayatlik';
 import { boruAdayiMi, boruAdaylari } from './boru-adaylari';
 import {
   capAra,
@@ -53,7 +60,8 @@ import {
   sonrakiParca,
   type CapSatiri,
 } from './cap-gruplari';
-import { capsizParcalar } from './belge-islemleri';
+import { capsizParcalar, gosterimHesabi } from './belge-islemleri';
+import type { CalculatedLayer } from './types';
 import { birimKisa, guvenilirMi } from './birimler';
 import CalismaBasligi from './CalismaBasligi';
 import BirimPenceresi, { type BirimTespiti } from './BirimPenceresi';
@@ -152,9 +160,27 @@ export default function DwgProjectWorkspace({
     onReset();
   }, [onReset]);
 
-  const { calculatingLayer, calculateLayer } = useLayerCalc({ fileId, onResult: hesapGeldi, onFileIdInvalid: dosyaGecersiz });
-  /** Motor calisirken gecmis ve birim kilitli. */
+  const { calculatingLayer, calculateLayer, iptalEt } = useLayerCalc({ fileId, onResult: hesapGeldi, onFileIdInvalid: dosyaGecersiz });
+  /** Motor calisirken gecmis, onay ve fiyatlandirma kilitli. Birim KILITLI
+   *  DEGIL: degisirse suren ayirma durdurulup yeni birimle baslar. */
   const kilit = !!calculatingLayer || !!yenidenAyirma;
+
+  // ── Gosterim: bayat layer'in uzunluklari SIMDIKI birimle (≈) ─────────────
+  // Belge degismez (`scaleUsed` eski kalir); yalniz ekrana giden sayilar.
+  // 25.09 canli: yeniden ayirma layer basina ~23 sn surerken eski birimin
+  // sayilari kesin sonuc gibi duruyordu ("ölçüler değişmedi").
+  const gorunenKatmanlar = useMemo(() => {
+    const m: Record<string, CalculatedLayer> = {};
+    Object.keys(state.calculatedLayers).forEach((ad) => { m[ad] = gosterimHesabi(state.calculatedLayers[ad], scale); });
+    return m;
+  }, [state.calculatedLayers, scale]);
+  const seciliGorunen = secili ? gorunenKatmanlar[secili] ?? null : null;
+  const seciliYaklasik = !!seciliHesap && birimBayatMi(seciliHesap, scale);
+  /** Cizimdeki bilgi kutusu bu layer'larin parca uzunluguna "≈" yazar. */
+  const yaklasikSet = useMemo(() => {
+    const ad = Object.keys(state.calculatedLayers).filter((l) => birimBayatMi(state.calculatedLayers[l], scale));
+    return ad.length > 0 ? new Set(ad) : bosSet;
+  }, [state.calculatedLayers, scale]);
 
   const adim = adimDurumu({ seciliLayer: secili, hesap: seciliHesap, scale, sprinklerLayers: state.sprinklerLayers });
 
@@ -194,9 +220,9 @@ export default function DwgProjectWorkspace({
   // ── Viewer girdileri (kimlikleri kararli: sahne onbellegi bunlara bakar) ─
   const tumParcalar = useMemo(() => {
     const m: Record<string, EdgeSegment[]> = {};
-    Object.keys(state.calculatedLayers).forEach((ad) => { m[ad] = state.calculatedLayers[ad].edgeSegments; });
+    Object.keys(gorunenKatmanlar).forEach((ad) => { m[ad] = gorunenKatmanlar[ad].edgeSegments; });
     return m;
-  }, [state.calculatedLayers]);
+  }, [gorunenKatmanlar]);
   const hamSet = useMemo(() => {
     const s = new Set<string>();
     Object.keys(state.calculatedLayers).forEach((ad) => {
@@ -222,7 +248,9 @@ export default function DwgProjectWorkspace({
   const sprinklerSet = useMemo(() => new Set(state.sprinklerLayers), [state.sprinklerLayers]);
 
   // ── Cap listesi + gezinme ────────────────────────────────────────────────
-  const seciliParcalar = seciliHesap?.edgeSegments;
+  // Cap listesi ve ilerleme GORUNEN uzunluklardan (bayatsa yeni birimle ≈);
+  // parca numaralari ve surum ayni — eylemler `seciliHesap` ile yazilir.
+  const seciliParcalar = seciliGorunen?.edgeSegments;
   const tumSatirlar = useMemo(() => capSatirlari(kalemler, seciliParcalar ?? []), [kalemler, seciliParcalar]);
   const gruplar = useMemo(() => capGruplari(capAra(tumSatirlar, capSorgu)), [tumSatirlar, capSorgu]);
   const ilerleme = useMemo(() => capIlerlemesi(seciliParcalar ?? []), [seciliParcalar]);
@@ -324,51 +352,84 @@ export default function DwgProjectWorkspace({
     void calculateLayer(secili, { splitMode: yontem, scale, sprinklerLayers: state.sprinklerLayers });
   };
 
-  /** Bayat layer'lari SIRAYLA yeniden ayirir; etiketler aktarilir. "Bölmeden"
+  /** Suren oturumun numarasi. Birim ayirma surerken degisince `null`a cekilir:
+   *  eski dongu bir sonraki adimda cikar ve YENI oturumun durumuna dokunmaz. */
+  const aktifOturumRef = useRef<number | null>(null);
+
+  /** Layer'lari VERILEN SIRAYLA yeniden ayirir; etiketler aktarilir. "Bölmeden"
    *  layer'da birim degisimi motora gitmez — yerelde olceklenir. Birden cok
-   *  layer bir OTURUMDUR: bildirimleri tek ozette toplanir (kayiplar adiyla). */
-  const yenidenAyir = useCallback(async (layerlar: string[]) => {
-    if (layerlar.length === 0) return;
+   *  layer bir OTURUMDUR: bildirimleri tek ozette toplanir (kayiplar adiyla).
+   *  `kesilen`: birim degisince yarida kalan ILK ayirma — listede henuz
+   *  hesaplanmamis olan o layer'in yontemi buradan okunur (sira:
+   *  `yenidenAyirmaSirasi`, kesilen EN BASTA). */
+  const yenidenAyir = useCallback(async (isler: string[], kesilen: KesilenAyirma | null = null) => {
+    if (isler.length === 0) return;
     kalemiBirak();
     setSilgi(false);
     oturumSayaciRef.current += 1;
-    const oturum = layerlar.length > 1 ? oturumSayaciRef.current : undefined;
+    const benim = oturumSayaciRef.current;
+    aktifOturumRef.current = benim;
+    const oturum = isler.length > 1 ? benim : undefined;
     oturumRef.current = oturum;
-    setYenidenAyirma({ sira: 0, toplam: layerlar.length });
+    setYenidenAyirma({ sira: 0, toplam: isler.length });
     try {
-      for (let i = 0; i < layerlar.length; i++) {
-        if (iptalRef.current) break;
-        const cl = stateRef.current.calculatedLayers[layerlar[i]];
-        if (!cl) continue;
-        setYenidenAyirma({ sira: i + 1, toplam: layerlar.length });
-        if (birimBayatMi(cl, scaleRef.current) && yerelOlceklenebilir(cl)) {
+      for (let i = 0; i < isler.length; i++) {
+        if (iptalRef.current || aktifOturumRef.current !== benim) break;
+        const cl: CalculatedLayer | undefined = stateRef.current.calculatedLayers[isler[i]];
+        const ilk = !cl && kesilen?.layer === isler[i] ? kesilen : null;
+        if (!cl && !ilk) continue;
+        setYenidenAyirma({ sira: i + 1, toplam: isler.length });
+        if (cl && birimBayatMi(cl, scaleRef.current) && yerelOlceklenebilir(cl)) {
           olcekle(cl.layer, scaleRef.current, oturum);
           continue;
         }
-        setAyrilanYontem(cl.splitMode ?? 't');
+        const splitMode = cl ? cl.splitMode ?? 't' : ilk?.splitMode ?? 't';
+        setAyrilanYontem(splitMode);
         // eslint-disable-next-line no-await-in-loop
-        const tamam = await calculateLayer(cl.layer, {
-          splitMode: cl.splitMode ?? 't',
+        const tamam = await calculateLayer(isler[i], {
+          splitMode,
           scale: scaleRef.current,
           sprinklerLayers: stateRef.current.sprinklerLayers,
-          hatIsmi: cl.hatIsmi,
-          materialType: cl.materialType,
+          hatIsmi: cl?.hatIsmi,
+          materialType: cl?.materialType,
         });
         if (!tamam) break;
       }
     } finally {
-      oturumRef.current = undefined;
-      if (!iptalRef.current) setYenidenAyirma(null);
+      // Yerini yeni oturum aldiysa (birim yeniden degisti) onun durumu korunur.
+      if (aktifOturumRef.current === benim) {
+        aktifOturumRef.current = null;
+        oturumRef.current = undefined;
+        if (!iptalRef.current) setYenidenAyirma(null);
+      }
     }
   }, [calculateLayer, kalemiBirak, olcekle]);
+
+  /** Suren ayirmayi (ilk ayirma ya da yeniden ayirma oturumu) durdurur: motor
+   *  istegi iptal edilir, sonucu islenmez; dongu bir sonraki adimda cikar. */
+  const ayirmayiDurdur = () => {
+    aktifOturumRef.current = null;
+    oturumRef.current = undefined;
+    setYenidenAyirma(null);
+    iptalEt();
+  };
 
   // Birim penceresinde Kaydet → ust bilesen birimi degistirir → yeni birim
   // gelince bayat layer'lar sirayla yeniden ayrilir (pencere metni boyle vaat
   // ediyor: "hesaplanan layer'lar yeniden parçalara ayrılır").
+  // 25.09 canli: ayirma surerken Kaydet KAPALIYDI (nedeni yalniz fare ipucunda),
+  // motor layer basina ~23 sn surdu — kullanici "birim degistirilemiyor" dedi.
+  // Artik suren ESKI birimli is durdurulur ve yeni birimle yeniden baslar.
   const birimSonrasiAyirRef = useRef(false);
+  const kesilenAyirmaRef = useRef<KesilenAyirma | null>(null);
   const birimKaydet = (yeni: number) => {
     setBirimAcik(false);
-    if (!ayniOlcek(yeni, scale)) birimSonrasiAyirRef.current = true;
+    if (!ayniOlcek(yeni, scale)) {
+      const yarim = yarimKalanAyirma(calculatingLayer, state.calculatedLayers, ayrilanYontem);
+      if (yarim) kesilenAyirmaRef.current = yarim;
+      if (kilit) ayirmayiDurdur();
+      birimSonrasiAyirRef.current = true;
+    }
     onBirimDegistir?.(yeni);
   };
   useEffect(() => {
@@ -377,7 +438,9 @@ export default function DwgProjectWorkspace({
     const bayat = Object.values(stateRef.current.calculatedLayers)
       .filter((cl) => birimBayatMi(cl, scale))
       .map((cl) => cl.layer);
-    void yenidenAyir(bayat);
+    const kesilen = kesilenAyirmaRef.current;
+    kesilenAyirmaRef.current = null;
+    void yenidenAyir(yenidenAyirmaSirasi(bayat, stateRef.current.selectedLayer, kesilen), kesilen);
     // Yalniz birim degisimine tepki verilir.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scale]);
@@ -601,11 +664,11 @@ export default function DwgProjectWorkspace({
         renk: layerRengi(cl.layer),
         parca: cl.edgeSegments.length,
         bolmeden: cl.splitMode === 'none',
-        metre: cl.totalLength,
+        metre: gorunenKatmanlar[cl.layer].totalLength,
         capsiz: cl.edgeSegments.filter((es) => isUnassignedDiameter(es.diameter)).length,
         durum: birimBayatMi(cl, scale) ? 'bayat' : cl.approved ? 'onayli' : 'bekliyor',
       })),
-    [state.calculatedLayers, scale, layerRengi],
+    [state.calculatedLayers, gorunenKatmanlar, scale, layerRengi],
   );
   const hesapDurumu = useMemo(() => {
     const m: Record<string, KatmanHesapDurumu> = {};
@@ -622,6 +685,7 @@ export default function DwgProjectWorkspace({
     silgi,
     ayriliyor: calculatingLayer,
     ayrilanYontem,
+    yenidenAyirma,
   });
   const fiyatEngeli = fiyatlandirmaEngeli(fiyat, kilit);
 
@@ -647,7 +711,7 @@ export default function DwgProjectWorkspace({
             scale={scale}
             tespit={birimTespiti}
             elle={birimElle}
-            kilitli={kilit}
+            ayirmaSuruyor={kilit}
             dogrulanmali={birimTuruncu}
             onKapat={() => setBirimAcik(false)}
             onKaydet={birimKaydet}
@@ -701,6 +765,7 @@ export default function DwgProjectWorkspace({
             dimmedLayers={dimmedSet}
             hamCizilenLayerlar={hamSet}
             soluklasanLayerlar={solukSet}
+            yaklasikLayerlar={yaklasikSet}
             capsizOdak={capsizOdak && adim.adim2Acik}
             kilitliLayer={adim.adim2Acik ? secili : null}
             etkilesimModu={adim.adim2Acik ? 'cap-ata' : 'layer-sec'}
@@ -794,7 +859,7 @@ export default function DwgProjectWorkspace({
               seciliLayer={secili}
               layerRengi={layerRengi(secili)}
               layerCizgi={secili ? katmanRenk.get(secili)?.cizgi ?? null : null}
-              hesap={seciliHesap}
+              hesap={seciliGorunen}
               adaylar={adaylar}
               katmanSayisi={bilgi?.katmanlar.length ?? 0}
               calisilanlar={calisilanlar}
@@ -830,12 +895,14 @@ export default function DwgProjectWorkspace({
               sprinklerIpucu={sprinklerIpucu}
               onKatmanlariAc={() => setKatmanlarAcik(true)}
               onayli={adim.adim3 === 'onayli' || adim.adim3 === 'onayli-bayat'}
+              yaklasik={seciliYaklasik}
             />
           </div>
           <Adim3Onay
             durum={adim.adim3}
             layer={secili}
-            toplamMetre={seciliHesap?.totalLength ?? 0}
+            toplamMetre={seciliGorunen?.totalLength ?? 0}
+            yaklasik={seciliYaklasik}
             capsiz={ilerleme.capsiz}
             engel={adim.adim3 === 'onayla' ? onayEngel : null}
             ayriliyor={kilit}

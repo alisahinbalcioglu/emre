@@ -3,7 +3,26 @@
  * ayni tablodan okur. Yanlis birim adi = yanlis metraj kanisi.
  */
 import { describe, expect, it } from 'vitest';
-import { BIRIMLER, birimBul, birimKisa, guvenAciklamasi, guvenilirMi } from './birimler';
+import { BIRIMLER, ayirmaNotu, birimBul, birimKisa, guvenAciklamasi, guvenilirMi } from './birimler';
+
+describe('ayirmaNotu — birim penceresi ayirma surerken ne soyler', () => {
+  it('ayirma surmuyorsa not YOK', () => {
+    expect(ayirmaNotu(false, true)).toBeNull();
+  });
+
+  it('baska birim secildiyse Kaydet\'in yapacagini soyler (durdurulur, yeniden baslar)', () => {
+    expect(ayirmaNotu(true, true)).toBe('Şu an parçalara ayırma sürüyor. Kaydederseniz durdurulur ve yeni birimle yeniden başlar.');
+  });
+
+  // 25.09 inceleme: ayni birimle Kaydet yalniz dogrulamadir, hicbir sey durmaz.
+  it('birim degismediyse "durdurulur" DENMEZ', () => {
+    expect(ayirmaNotu(true, false)).not.toContain('durdurulur');
+  });
+
+  it('birim degismediyse de ayirmanin surdugu ve nasil yeniden baslayacagi yazilir', () => {
+    expect(ayirmaNotu(true, false)).toBe('Şu an parçalara ayırma sürüyor. Başka bir birim seçip kaydederseniz yeni birimle yeniden başlar.');
+  });
+});
 
 describe('birim tablosu', () => {
   it('alti birim, metre carpaniyla', () => {
