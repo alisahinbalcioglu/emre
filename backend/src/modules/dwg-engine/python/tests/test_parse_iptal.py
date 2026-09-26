@@ -192,7 +192,8 @@ def test_I7_girdi_ilk_yoklamada_bitmese_de_tamami_gider(taklit, monkeypatch):
 @pytest.fixture
 def sunucu(taklit, monkeypatch):
     monkeypatch.setattr(main, "_INTERNAL_API_TOKEN", "")
-    file_id = "iptaltest" + uuid.uuid4().hex[:8]
+    # Motor bicimi (`uuid4().hex[:12]`): bicimsiz kimlige yol kurulmaz (26.09, test_dedup_kapsam V4).
+    file_id = uuid.uuid4().hex[:12]
     onbellek = main._cache_path(file_id)
     with open(onbellek, "w", encoding="utf-8") as f:
         f.write("0\nEOF\n")  # taklit isci DXF okumaz; uc yalniz varligina bakar

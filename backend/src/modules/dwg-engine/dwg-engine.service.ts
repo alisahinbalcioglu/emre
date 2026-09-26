@@ -276,12 +276,17 @@ export class DwgEngineService {
    * Async upload (OCERP pattern). Python dosyayi diske yazip file_id doner
    * (~1-2sn); DWG→DXF donusumu + parse izole subprocess'te arka planda.
    * Frontend /status ile poll eder.
+   *
+   * kapsam (26.09): firmaya ozgu opak tekillestirme anahtari (`dedupKapsami`).
+   * Motor ayni icerigi yalniz ayni kapsamda tekillestirir; kapsamsiz yukleme hic
+   * tekillestirilmez.
    */
-  async uploadAsync(fileBuffer: Buffer, fileName: string) {
+  async uploadAsync(fileBuffer: Buffer, fileName: string, kapsam: string) {
     const factory = (timeoutMs: number): RequestInit => {
       const formData = new FormData();
       const blob = new Blob([fileBuffer as any]);
       formData.append('file', blob, fileName);
+      formData.append('kapsam', kapsam);
       return {
         method: 'POST',
         body: formData,
