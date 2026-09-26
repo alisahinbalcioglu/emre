@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 835
-Toplam satir: 223825
+Toplam satir: 223881
 Uc nokta: 238
 test:* scripti: 136
 
@@ -106,7 +106,7 @@ test:* scripti: 136
 | `backend/src/modules/dwg-engine/python/tests/__init__.py` | 1 |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | 104 |
 | `backend/src/modules/dwg-engine/python/tests/test_dedup_kapsam.py` | 244 |
-| `backend/src/modules/dwg-engine/python/tests/test_detector_version_kapisi.py` | 144 |
+| `backend/src/modules/dwg-engine/python/tests/test_detector_version_kapisi.py` | 200 |
 | `backend/src/modules/dwg-engine/python/tests/test_olay_dongusu.py` | 588 |
 | `backend/src/modules/dwg-engine/python/tests/test_parse_iptal.py` | 257 |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | 85 |
