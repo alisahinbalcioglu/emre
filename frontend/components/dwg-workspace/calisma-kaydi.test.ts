@@ -24,7 +24,7 @@ import {
   type KayitEylemi,
 } from './calisma-kaydi';
 import { birimBayatMi } from './birim-bayatlik';
-import { capsizParcalar } from './belge-islemleri';
+import { capsizParcalar, gosterimHesabi } from './belge-islemleri';
 
 function parca(id: number, noktalar: [number, number][], cap = '', layer = 'a-yağmur'): EdgeSegment {
   let uzunluk = 0;
@@ -319,6 +319,72 @@ describe('birim ve yukleme', () => {
     const e: KayitEylemi = { tur: 'cap', id: 2, layer: 'a-yağmur', idler: [1], surum: 1, cap: 'Ø50' };
     expect(JSON.stringify(ind(k, e))).toBe(JSON.stringify(ind(k, e)));
     expect(JSON.stringify(k)).toBe(kopya);
+  });
+});
+
+// 25.09 canli: birim dm → cm degisti; motor layer basina ~23 sn yeniden ayirirken
+// ekran eski birimin sayisini (3.795,6 m) kesin sonuc gibi gosterdi.
+describe('gosterimHesabi — bayat layer yeni birimle GOSTERILIR, belgeye yazilmaz', () => {
+  // IKI_PARCA: 100 + 60 cizim birimi; scaleUsed 0.1 → 10 m + 6 m.
+  it('birimi guncel layer AYNI nesne (gorunum onbellekleri bozulmaz)', () => {
+    const cl = hesap('a-yağmur', IKI_PARCA, { scaleUsed: 0.1 });
+    expect(gosterimHesabi(cl, 0.1)).toBe(cl);
+  });
+
+  it('scaleUsed yoksa (eski kayit — yuklemede yazilir) AYNI nesne', () => {
+    const cl = hesap('a-yağmur', IKI_PARCA, { scaleUsed: undefined });
+    expect(gosterimHesabi(cl, 0.01)).toBe(cl);
+  });
+
+  it('bayat layer: parca uzunluklari yeni birimle', () => {
+    const g = gosterimHesabi(hesap('a-yağmur', IKI_PARCA, { scaleUsed: 0.1 }), 0.01);
+    expect(g.edgeSegments.map((s) => s.length)).toEqual([1, 0.6]);
+  });
+
+  it('bayat layer: toplam yeni birimle', () => {
+    const g = gosterimHesabi(hesap('a-yağmur', IKI_PARCA, { scaleUsed: 0.1 }), 0.01);
+    expect(g.totalLength).toBeCloseTo(1.6, 9);
+  });
+
+  it('oranla degil GEOMETRIDEN: yuvarlanmis eski metre buyutulmez (cm → m)', () => {
+    // 1234,5678 cizim birimi: cm'de 12,346 m (motor yuvarlar). Oranla m'ye
+    // 1234,6 cikardi; motorun formulu 1234,568 verir.
+    const p = { ...parca(1, [[0, 0], [1234.5678, 0]]), length: 12.346 };
+    const g = gosterimHesabi(hesap('a-yağmur', [p], { scaleUsed: 0.01 }), 1);
+    expect(g.edgeSegments[0].length).toBe(1234.568);
+  });
+
+  it('belgeye YAZILMAZ: scaleUsed eski kalir — onay ve fiyatlandirma kapali kalir', () => {
+    const g = gosterimHesabi(hesap('a-yağmur', IKI_PARCA, { scaleUsed: 0.1 }), 0.01);
+    expect(birimBayatMi(g, 0.01)).toBe(true);
+  });
+
+  it('parca numaralari, caplar ve parcalama surumu korunur (eylemler ayni parcaya yazar)', () => {
+    const cl = hesap('a-yağmur', [parca(7, [[0, 0], [100, 0]], 'Ø50'), parca(9, [[100, 0], [100, 60]])], {
+      scaleUsed: 0.1, computedAt: 42,
+    });
+    const g = gosterimHesabi(cl, 0.01);
+    expect([g.computedAt, g.edgeSegments.map((s) => [s.segment_id, s.diameter])]).toEqual([42, [[7, 'Ø50'], [9, '']]]);
+  });
+
+  it('girdi degismez (saf)', () => {
+    const cl = hesap('a-yağmur', IKI_PARCA, { scaleUsed: 0.1 });
+    const kopya = JSON.stringify(cl);
+    gosterimHesabi(cl, 0.01);
+    expect(JSON.stringify(cl)).toBe(kopya);
+  });
+
+  // Bayat donemde her cap tiki butun bayat layer'lari yeniden cevirmesin
+  // (700K parcalik layer'da tik basina O(N); 25.09 inceleme).
+  it('ayni hesap + ayni birim → AYNI gosterim nesnesi (onbellek)', () => {
+    const cl = hesap('a-yağmur', IKI_PARCA, { scaleUsed: 0.1 });
+    expect(gosterimHesabi(cl, 0.01)).toBe(gosterimHesabi(cl, 0.01));
+  });
+
+  it('birim yeniden degisince onbellek eski birimin gosterimini VERMEZ', () => {
+    const cl = hesap('a-yağmur', IKI_PARCA, { scaleUsed: 0.1 });
+    gosterimHesabi(cl, 0.01);
+    expect(gosterimHesabi(cl, 0.001).edgeSegments.map((s) => s.length)).toEqual([0.1, 0.06]);
   });
 });
 

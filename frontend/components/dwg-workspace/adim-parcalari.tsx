@@ -65,9 +65,10 @@ export function UyariSatiri({
   );
 }
 
-/** "245,9 m" — Turkce, bir ondalik. */
-export function metre(n: number): string {
-  return `${n.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
+/** "245,9 m" — Turkce, bir ondalik. `yaklasik`: birim degisti, yeniden ayirma
+ *  bitmedi — sayi yeni birime cevrilmis ON HESAPTIR ("≈245,9 m"). */
+export function metre(n: number, yaklasik = false): string {
+  return `${yaklasik ? '≈' : ''}${n.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
 }
 
 /** "1.234" — sayac ve adetler Turkce binlik ayraciyla (baslikla ayni). */

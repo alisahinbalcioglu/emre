@@ -168,6 +168,19 @@ describe('ipucu — cizimdeki ipucu hapi', () => {
     expect(ipucu({ ...g, ayriliyor: 'a-pis su', ayrilanYontem: 'none' }).vurgu).toBe('a-pis su hatları çıkarılıyor…');
   });
 
+  // 25.09 canli: gercek motor bir layer'i ~23 sn'de ayirdi; "birkaç saniye" tutmadi.
+  it('tek ayirmada "birkaç saniye" vaadi YOK — sure dogru soylenir', () => {
+    expect(ipucu({ ...g, ayriliyor: 'a-yağmur' }).metin).toBe('büyük çizimde yarım dakikayı bulabilir');
+  });
+
+  it('yeniden ayirma oturumunda ilerleme yazilir (2/3)', () => {
+    expect(ipucu({ ...g, ayriliyor: 'a-yağmur', yenidenAyirma: { sira: 2, toplam: 3 } }).metin).toBe('yeniden ayırma 2/3');
+  });
+
+  it('tek layer\'lik yeniden ayirmada "1/1" yazilmaz', () => {
+    expect(ipucu({ ...g, ayriliyor: 'a-yağmur', yenidenAyirma: { sira: 1, toplam: 1 } }).metin).toBe('büyük çizimde yarım dakikayı bulabilir');
+  });
+
   it('onayli layer: yesil "onaylandı"', () => {
     const adim = adimDurumu({ ...temel, seciliLayer: 'a-yağmur', hesap: hesap({ approved: true }) });
     expect(ipucu({ ...g, adim, seciliLayer: 'a-yağmur' }).renk).toBe('#16a34a');

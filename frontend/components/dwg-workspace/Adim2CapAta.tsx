@@ -39,12 +39,16 @@ export interface Adim2Props {
   sprinklerIpucu: { layer: string; on_pipe: number } | null;
   onKatmanlariAc: () => void;
   onayli: boolean;
+  /** Birim degisti, yeniden ayirma bitmedi: metreler yeni birime cevrilmis
+   *  on hesaptir ("≈"). */
+  yaklasik: boolean;
 }
 
 function Satir({
   s,
   aktif,
   gosterilen,
+  yaklasik,
   onSec,
   onGoster,
   onSil,
@@ -52,6 +56,7 @@ function Satir({
   s: CapSatiri;
   aktif: boolean;
   gosterilen: { cap: string; sira: number; toplam: number } | null;
+  yaklasik: boolean;
   onSec: () => void;
   onGoster: () => void;
   onSil: (() => void) | null;
@@ -71,7 +76,7 @@ function Satir({
           {s.cap}
         </span>
         <span className={`shrink-0 text-xs tabular-nums ${aktif ? 'text-[#1d4ed8]' : 'text-[#6b7280]'}`}>
-          {gezinme ?? (s.parca > 0 ? `${metre(s.metre)} · ${adet(s.parca)}` : '—')}
+          {gezinme ?? (s.parca > 0 ? `${metre(s.metre, yaklasik)} · ${adet(s.parca)}` : '—')}
         </span>
         {aktif
           ? <Check className="h-[15px] w-[15px] shrink-0 text-[#2563eb]" strokeWidth={2.5} aria-hidden="true" />
@@ -154,7 +159,7 @@ export default function Adim2CapAta(p: Adim2Props) {
               className="flex min-w-0 items-center gap-2 text-left text-xs text-[#92400e] hover:underline"
             >
               <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: CAPSIZ_RENGI }} />
-              {adet(capsiz)} parça çapsız · {metre(capsizMetre)}
+              {adet(capsiz)} parça çapsız · {metre(capsizMetre, p.yaklasik)}
               {p.gosterilen && p.gosterilen.cap === '' ? ` (${adet(p.gosterilen.sira + 1)}/${adet(p.gosterilen.toplam)})` : ''}
             </button>
             <button
@@ -255,6 +260,7 @@ export default function Adim2CapAta(p: Adim2Props) {
                     s={s}
                     aktif={p.aktifCap === s.cap}
                     gosterilen={p.gosterilen}
+                    yaklasik={p.yaklasik}
                     onSec={() => p.onCapSec(s)}
                     onGoster={() => p.onGoster(s.cap)}
                     onSil={s.kalemId ? () => p.onKalemSil(s.kalemId as string) : null}

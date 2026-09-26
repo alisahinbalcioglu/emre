@@ -11,7 +11,9 @@
  * nesneyi tutar (bkz. `setHovered(prev => ...)`).
  *
  * KURAL: cap ve miras bilgisi fotograftan DEGIL, guncel segment dizisinden
- * okunur — `computeHovered` ile ayni kaynak ve ayni bicim.
+ * okunur — `computeHovered` ile ayni kaynak ve ayni bicim. Uzunluk da canli:
+ * birim degisince (yeniden ayirma bitene dek) calisma alani ayni parcalari
+ * YENI birimle cizer; fotograftaki uzunluk eski birimin sayisidir (25.09 canli).
  *
  * ⚠ INDEX TEK BASINA KIMLIK DEGIL: onaylanan layer'in segmentleri diziden
  * duser (`capRenkliGorunur`), onayi kaldirilinca dizinin BASINA doner;
@@ -35,6 +37,8 @@ export interface CapliVarlik {
   polyline?: Cizgi;
   diameter?: string;
   isInherited?: boolean;
+  /** Metre — bilgi kutusundaki "Parça: 12,3 m". */
+  length?: number;
 }
 
 /** Mekansal indeksle ayni kural: 2 noktadan az polyline YOK sayilir
@@ -83,7 +87,7 @@ export function canliCapliVarlik<T extends CapliVarlik>(
   if (varlik.type !== 'edge') return varlik;
   const canli = canliSegmentiBul(varlik, segmentler);
   if (!canli) return varlik;
-  return { ...varlik, diameter: canli.diameter || undefined, isInherited: canli.is_inherited || false };
+  return { ...varlik, diameter: canli.diameter || undefined, isInherited: canli.is_inherited || false, length: canli.length };
 }
 
 /** Sabit secim artik gecersiz mi: edge'in segmenti viewer dizisinde yok

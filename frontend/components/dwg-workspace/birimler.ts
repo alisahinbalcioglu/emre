@@ -54,3 +54,13 @@ export function guvenAciklamasi(guven: string): string {
 export function guvenilirMi(guven: string | null | undefined): boolean {
   return guven === 'kesin' || guven === 'yuksek';
 }
+
+/** Birim penceresinin ayirma notu. Ayirma surmuyorsa YOK. Secili birim
+ *  degismediyse (ayni birimle Kaydet = yalniz dogrulama, hicbir sey durmaz)
+ *  "durdurulur" DENMEZ — 25.09 inceleme: not bu durumda da soyluyordu. */
+export function ayirmaNotu(ayirmaSuruyor: boolean, birimDegisti: boolean): string | null {
+  if (!ayirmaSuruyor) return null;
+  return birimDegisti
+    ? 'Şu an parçalara ayırma sürüyor. Kaydederseniz durdurulur ve yeni birimle yeniden başlar.'
+    : 'Şu an parçalara ayırma sürüyor. Başka bir birim seçip kaydederseniz yeni birimle yeniden başlar.';
+}

@@ -4,7 +4,14 @@
  * istegi ve onayin dusmesi; yanlis "guncel" = eski birimle metraj teklife gider.
  */
 import { describe, expect, it } from 'vitest';
-import { ayniOlcek, birimBayatMi, yerelOlceklenebilir } from './birim-bayatlik';
+import {
+  ayniOlcek,
+  birimBayatMi,
+  yarimKalanAyirma,
+  yenidenAyirmaSirasi,
+  yerelOlceklenebilir,
+  type KesilenAyirma,
+} from './birim-bayatlik';
 
 describe('ayniOlcek — goreli tolerans', () => {
   it('kayan nokta gurultusu ayni olcektir (0,1 × (1 + 1e-9))', () => {
@@ -49,5 +56,67 @@ describe('yerelOlceklenebilir — yalniz "Bölmeden" layer', () => {
 
   it('yontemi kayitsiz eski kayit T sayilir (varsayilan) — yerelde olceklenmez', () => {
     expect(yerelOlceklenebilir({})).toBe(false);
+  });
+});
+
+// ── Birim AYIRMA SURERKEN degisti (25.09 canli hata + inceleme) ─────────────
+
+describe('yarimKalanAyirma — Kaydet aninda suren is ilk ayirma mi', () => {
+  it('henuz hesaplanmamis layer ayriliyorsa yeni birimle yeniden baslatilmak uzere doner', () => {
+    expect(yarimKalanAyirma('X', { A: 1 }, 'none')).toEqual({ layer: 'X', splitMode: 'none' });
+  });
+
+  it('suren is YENIDEN ayirmaysa (layer hesapli) null — bayat listesiyle gelir', () => {
+    expect(yarimKalanAyirma('A', { A: 1 }, 't')).toBeNull();
+  });
+
+  it('motor bossa null', () => {
+    expect(yarimKalanAyirma(null, { A: 1 }, 't')).toBeNull();
+  });
+});
+
+describe('yenidenAyirmaSirasi', () => {
+  const X: KesilenAyirma = { layer: 'X', splitMode: 't' };
+
+  it('yarida kalan ilk ayirma EN BASTA', () => {
+    expect(yenidenAyirmaSirasi(['A', 'B'], null, X)).toEqual(['X', 'A', 'B']);
+  });
+
+  it('secili bayat layer digerlerinden once (ekrandaki sayilar once kesinlesir)', () => {
+    expect(yenidenAyirmaSirasi(['A', 'B', 'C'], 'C', null)).toEqual(['C', 'A', 'B']);
+  });
+
+  it('kesilen, secili ve digerleri — bu sirayla', () => {
+    expect(yenidenAyirmaSirasi(['A', 'B', 'C'], 'B', X)).toEqual(['X', 'B', 'A', 'C']);
+  });
+
+  it('secili layer bayat degilse listeye EKLENMEZ', () => {
+    expect(yenidenAyirmaSirasi(['A'], 'Z', null)).toEqual(['A']);
+  });
+
+  it('kesilen bayat listesinde de varsa (sonucu Kaydet\'ten hemen once geldi) BIR kez', () => {
+    expect(yenidenAyirmaSirasi(['A', 'X'], 'X', X)).toEqual(['X', 'A']);
+  });
+
+  it('bos liste + kesilen yok: bos (oturum acilmaz)', () => {
+    expect(yenidenAyirmaSirasi([], 'A', null)).toEqual([]);
+  });
+
+  // INCELEME BULGUSU: X ilk kez ayrilirken dm → cm; oturum A'yi ayirirken cm → mm.
+  // Ikinci Kaydet aninda suren is A (hesapli) → yarimKalanAyirma null; X ancak
+  // listede A'dan ONCE ise ya bitmis (bayat) ya suruyor (yine yakalanir) olur.
+  it('ikinci birim degisiminde yarida kalan ilk ayirma KAYBOLMAZ (X ilk sirada)', () => {
+    const oturum1 = yenidenAyirmaSirasi(['A', 'B'], 'X', X);
+    // Ikinci Kaydet oturum1'in ILK isi surerken gelir: suren is X'tir.
+    const suren = oturum1[0];
+    expect(yarimKalanAyirma(suren, { A: 1, B: 1 }, 't')).toEqual(X);
+  });
+
+  it('ESKI davranis (sona ekleme) X\'i ikinci degisimde dusuruyordu (kriteri ihlal eder)', () => {
+    const eskiOturum1 = ['A', 'B', 'X'];
+    const suren = eskiOturum1[0];
+    const kesilen2 = yarimKalanAyirma(suren, { A: 1, B: 1 }, 't');
+    const oturum2 = yenidenAyirmaSirasi(['A', 'B'], 'X', kesilen2);
+    expect(oturum2.includes('X')).toBe(false);
   });
 });

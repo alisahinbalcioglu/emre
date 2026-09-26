@@ -397,9 +397,18 @@ describe('Birim Kaydet → bayat layer\'lar yeniden ayrilir (etiketler korunur)'
       .toEqual(['scaleRef.current']);
   });
 
-  it('yenidenAyir layer\'in kendi bolme yontemini korur', () => {
-    expect(motorCagrilari().map((c) => { const s = ozellik(c.arguments[1], 'splitMode'); return s ? metin(s) : null; }))
-      .toEqual(["cl.splitMode ?? 't'"]);
+  it('yenidenAyir layer\'in kendi bolme yontemini korur (yarida kalan ilk ayirmada onunkini)', () => {
+    const g = govde(bildirim(CALISMA, 'yenidenAyir'));
+    const c = motorCagrilari();
+    const o = c.length === 1 ? c[0].arguments[1] : undefined;
+    const p = o && ts.isObjectLiteralExpression(o)
+      ? o.properties.find((q) => !!q.name && metin(q.name) === 'splitMode')
+      : undefined;
+    // `{ splitMode }` kisaltmasi → ayni adli yerel degiskenin degeri.
+    const deger = p && ts.isShorthandPropertyAssignment(p)
+      ? bul(g, (n): n is ts.VariableDeclaration => ts.isVariableDeclaration(n) && metin(n.name) === 'splitMode')[0]?.initializer
+      : p && ts.isPropertyAssignment(p) ? p.initializer : undefined;
+    expect(deger ? metin(deger) : null).toBe("cl ? cl.splitMode ?? 't' : ilk?.splitMode ?? 't'");
   });
 
   it('"Bölmeden" layer motora gitmez: yerelOlceklenebilir → olcekle', () => {
@@ -652,6 +661,233 @@ describe('motor istegi bilesen kaldirilinca iptal edilir (sonucu islenmez)', () 
     const iptaller = bul(MOTOR, (n): n is ts.CallExpression =>
       ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'abort');
     expect(iptaller).toHaveLength(1);
+  });
+});
+
+// ── K) BIRIM DEGISIMI: GOSTERIM + IPTAL (25.09 canli hata) ─────────────────
+// Canli: motor layer basina ~23 sn yeniden ayirirken ekran eski birimin
+// sayisini gosterdi ve Kaydet sessizce kapaliydi. Bilesenlerin "≈" cizdigi
+// birim-gosterimi.test.ts'te; burada calisma alaninin onlari BAGLADIGI.
+
+describe('birim degisince ekran yeni birimle gosterir (≈)', () => {
+  it('gorunen katmanlar gosterimHesabi(…, scale) ile turetilir', () => {
+    const d = bildirim(CALISMA, 'gorunenKatmanlar');
+    const c = bul(d, (n): n is ts.CallExpression => cagriMi(n, 'gosterimHesabi'));
+    expect(c.map((x) => (x.arguments[1] ? metin(x.arguments[1]) : null))).toEqual(['scale']);
+  });
+
+  it('secili layer\'in gorunen hesabi gorunen katmanlardan', () => {
+    expect(adlar(bildirim(CALISMA, 'seciliGorunen'))).toContain('gorunenKatmanlar');
+  });
+
+  it('"≈" bayraginin olcutu birimBayatMi(seciliHesap, scale)', () => {
+    const c = bul(bildirim(CALISMA, 'seciliYaklasik'), (n): n is ts.CallExpression => cagriMi(n, 'birimBayatMi'));
+    expect(c.map((x) => x.arguments.map(metin))).toEqual([['seciliHesap', 'scale']]);
+  });
+
+  it('Adim 1 satiri gorunen hesaptan (hesap={seciliGorunen})', () => {
+    expect(nitelikMetni(tekOge(CALISMA, 'Adim1BoruLayer'), 'hesap')).toBe('seciliGorunen');
+  });
+
+  it('Adim 3 toplami gorunen hesaptan', () => {
+    expect(adlar(nitelik(tekOge(CALISMA, 'Adim3Onay'), 'toplamMetre'))).toContain('seciliGorunen');
+  });
+
+  it('Adim 3 "≈" bayragi seciliYaklasik', () => {
+    expect(nitelikMetni(tekOge(CALISMA, 'Adim3Onay'), 'yaklasik')).toBe('seciliYaklasik');
+  });
+
+  it('Adim 2 "≈" bayragi seciliYaklasik', () => {
+    expect(nitelikMetni(tekOge(CALISMA, 'Adim2CapAta'), 'yaklasik')).toBe('seciliYaklasik');
+  });
+
+  it('cap listesi ve ilerleme gorunen parcalardan (seciliParcalar ← seciliGorunen)', () => {
+    expect(adlar(bildirim(CALISMA, 'seciliParcalar'))).toContain('seciliGorunen');
+  });
+
+  it('calisilan layer listesinin metresi gorunen katmandan', () => {
+    const d = bildirim(CALISMA, 'calisilanlar');
+    const m = bul(d, (n): n is ts.PropertyAssignment => ts.isPropertyAssignment(n) && metin(n.name) === 'metre');
+    expect(m.length === 1 ? adlar(m[0].initializer) : []).toContain('gorunenKatmanlar');
+  });
+
+  it('cizime giden parcalar gorunen katmanlardan (ipucundaki uzunluk)', () => {
+    // Ad aramasi YETMEZ: bagimlilik dizisindeki ad, govde ham belgeyi okusa da
+    // kapiyi yesil tutuyordu (mutasyon U21 yasadi). Olcut govdedeki atama.
+    const d = bildirim(CALISMA, 'tumParcalar');
+    const fn = cagriMi(d, 'useMemo') ? d.arguments[0] : undefined;
+    const atama = fonksiyonMu(fn) ? bul(fn.body, (n): n is ts.BinaryExpression =>
+      ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken && metin(n.left) === 'm[ad]') : [];
+    expect(atama.map((a) => metin(a.right))).toEqual(['gorunenKatmanlar[ad].edgeSegments']);
+  });
+
+  it('viewer ipucu parca uzunlugunu CANLI parcadan okur (agac ayni parmak iziyle kurulmaz)', () => {
+    const c = bul(VIEWER, (n): n is ts.CallExpression => cagriMi(n, 'resolveHoverLength'));
+    const o = c.length === 1 ? c[0].arguments[0] : undefined;
+    const u = o && ts.isObjectLiteralExpression(o) ? ozellik(o, 'length') : undefined;
+    expect(u ? metin(u) : null).toBe('liveSeg?.length ?? best.length');
+  });
+
+  it('viewer\'a "≈" layer\'lari verilir (yaklasikLayerlar={yaklasikSet})', () => {
+    expect(nitelikMetni(tekOge(CALISMA, 'DxfCanvasViewer'), 'yaklasikLayerlar')).toBe('yaklasikSet');
+  });
+
+  it('"≈" layer kumesi birimBayatMi ile secilir', () => {
+    expect(cagiriyor(bildirim(CALISMA, 'yaklasikSet'), 'birimBayatMi')).toBe(true);
+  });
+
+  it('viewer bilgi kutusuna layer\'in "≈" durumunu verir', () => {
+    expect(nitelikMetni(tekOge(VIEWER, 'Tooltip'), 'yaklasik')).toBe('!!yaklasikLayerlar?.has(tooltipEntity.layer)');
+  });
+
+  it('bilgi kutusu parca uzunluguna "≈" yazar (yaklasik iken)', () => {
+    const fonk = bul(VIEWER, (n): n is ts.FunctionDeclaration => ts.isFunctionDeclaration(n) && n.name?.text === 'Tooltip');
+    const sablon = fonk.length === 1 ? bul(fonk[0], (n): n is ts.TemplateExpression =>
+      ts.isTemplateExpression(n) && n.head.text.startsWith('Parça: ')) : [];
+    expect(sablon.length === 1 ? metin(sablon[0].templateSpans[0].expression) : null).toBe("yaklasik ? '≈' : ''");
+  });
+
+  it('pencere notu birimin DEGISIP degismedigine gore (ayirmaNotu(ayirmaSuruyor, degisti))', () => {
+    const c = bul(BIRIM, (n): n is ts.CallExpression => cagriMi(n, 'ayirmaNotu'));
+    expect(c.map((x) => x.arguments.map(metin))).toEqual([['ayirmaSuruyor', 'degisti']]);
+  });
+
+  it('ipucu hapi oturum ilerlemesini alir (yenidenAyirma)', () => {
+    const c = bul(CALISMA, (n): n is ts.CallExpression => cagriMi(n, 'ipucuHesapla'));
+    const o = c.length === 1 ? c[0].arguments[0] : undefined;
+    const p = o && ts.isObjectLiteralExpression(o) ? o.properties.map((q) => (q.name ? metin(q.name) : '')) : [];
+    expect(p).toContain('yenidenAyirma');
+  });
+});
+
+describe('birim ayirma surerken degisebilir: eski is durur, yeni birimle baslar', () => {
+  it('<BirimPenceresi ayirmaSuruyor={kilit}> (pencere durumu soyler)', () => {
+    expect(nitelikMetni(tekOge(CALISMA, 'BirimPenceresi'), 'ayirmaSuruyor')).toBe('kilit');
+  });
+
+  /** birimKaydet icindeki `if (!ayniOlcek(yeni, scale)) { … }` blogu. */
+  const birimDegistiDali = (): ts.IfStatement => {
+    const d = bul(govde(bildirim(CALISMA, 'birimKaydet')), (n): n is ts.IfStatement =>
+      ts.isIfStatement(n) && metin(n.expression) === '!ayniOlcek(yeni, scale)');
+    if (d.length !== 1) throw new Error(`birim degisti dali tek degil (${d.length})`);
+    return d[0];
+  };
+
+  it('birim degisince suren ayirma durdurulur (ayirmayiDurdur)', () => {
+    expect(cagiriyor(birimDegistiDali().thenStatement, 'ayirmayiDurdur')).toBe(true);
+  });
+
+  it('yarida kalan ILK ayirma sorulur: yarimKalanAyirma(calculatingLayer, state.calculatedLayers, ayrilanYontem)', () => {
+    const c = bul(birimDegistiDali().thenStatement, (n): n is ts.CallExpression => cagriMi(n, 'yarimKalanAyirma'));
+    expect(c.map((x) => x.arguments.map(metin))).toEqual([['calculatingLayer', 'state.calculatedLayers', 'ayrilanYontem']]);
+  });
+
+  it('yarida kalan ayirma kesilenAyirmaRef\'e yazilir (yarimKalanAyirma sonucu)', () => {
+    const dal = birimDegistiDali().thenStatement;
+    const a = bul(dal, (n): n is ts.BinaryExpression =>
+      ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      && metin(n.left) === 'kesilenAyirmaRef.current');
+    const sag = a.length === 1 ? a[0].right : undefined;
+    const kaynak = sag && ts.isIdentifier(sag)
+      ? bul(dal, (n): n is ts.VariableDeclaration => ts.isVariableDeclaration(n) && metin(n.name) === sag.text)[0]?.initializer
+      : sag;
+    expect(cagriMi(kaynak, 'yarimKalanAyirma')).toBe(true);
+  });
+
+  it('yeni oturumun listesi yenidenAyirmaSirasi(bayat, secili, kesilen) — kesilen EN BASTA', () => {
+    const e = bul(CALISMA, (n): n is ts.CallExpression => {
+      if (!cagriMi(n, 'useEffect')) return false;
+      const bag = n.arguments[1];
+      return !!bag && ts.isArrayLiteralExpression(bag) && bag.elements.map(metin).join(',') === 'scale'
+        && cagiriyor(n.arguments[0], 'yenidenAyir');
+    });
+    const c = e.length === 1 ? bul(e[0].arguments[0], (n): n is ts.CallExpression => cagriMi(n, 'yenidenAyir')) : [];
+    const ilk = c.length === 1 ? c[0].arguments[0] : undefined;
+    expect(cagriMi(ilk, 'yenidenAyirmaSirasi') ? ilk.arguments.map(metin) : null)
+      .toEqual(['bayat', 'stateRef.current.selectedLayer', 'kesilen']);
+  });
+
+  it('birim etkisi yarida kalan ayirmayi yeni oturuma verir (yenidenAyir 2. arguman)', () => {
+    const e = bul(CALISMA, (n): n is ts.CallExpression => {
+      if (!cagriMi(n, 'useEffect')) return false;
+      const bag = n.arguments[1];
+      return !!bag && ts.isArrayLiteralExpression(bag) && bag.elements.map(metin).join(',') === 'scale'
+        && cagiriyor(n.arguments[0], 'yenidenAyir');
+    });
+    const c = e.length === 1 ? bul(e[0].arguments[0], (n): n is ts.CallExpression => cagriMi(n, 'yenidenAyir')) : [];
+    const ikinci = c.length === 1 ? c[0].arguments[1] : undefined;
+    const kaynak = ikinci && ts.isIdentifier(ikinci)
+      ? bul(e[0].arguments[0], (n): n is ts.VariableDeclaration => ts.isVariableDeclaration(n) && metin(n.name) === ikinci.text)[0]?.initializer
+      : undefined;
+    expect(kaynak ? metin(kaynak) : null).toBe('kesilenAyirmaRef.current');
+  });
+
+  it('ayirmayiDurdur motor istegini iptal eder (iptalEt)', () => {
+    expect(cagiriyor(govde(bildirim(CALISMA, 'ayirmayiDurdur')), 'iptalEt')).toBe(true);
+  });
+
+  it('ayirmayiDurdur oturumun sahipligini birakir (aktifOturumRef.current = null)', () => {
+    const a = bul(govde(bildirim(CALISMA, 'ayirmayiDurdur')), (n): n is ts.BinaryExpression =>
+      ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken && metin(n.left) === 'aktifOturumRef.current');
+    expect(a.map((x) => metin(x.right))).toEqual(['null']);
+  });
+
+  it('ayirmayiDurdur kilidi kaldirir (setYenidenAyirma(null))', () => {
+    const c = bul(govde(bildirim(CALISMA, 'ayirmayiDurdur')), (n): n is ts.CallExpression => cagriMi(n, 'setYenidenAyirma'));
+    expect(c.map((x) => x.arguments.map(metin))).toEqual([['null']]);
+  });
+
+  it('eski dongu sahipligini kaybedince cikar (aktifOturumRef.current !== benim)', () => {
+    const d = bul(govde(bildirim(CALISMA, 'yenidenAyir')), (n): n is ts.IfStatement =>
+      ts.isIfStatement(n) && ts.isBreakStatement(n.thenStatement)
+      && metin(n.expression).includes('aktifOturumRef.current !== benim'));
+    expect(d).toHaveLength(1);
+  });
+
+  it('eski dongunun finally\'si YENI oturumun durumuna dokunmaz (sahiplik kosulu)', () => {
+    const t = bul(govde(bildirim(CALISMA, 'yenidenAyir')), (n): n is ts.TryStatement => ts.isTryStatement(n));
+    const f = t.length === 1 ? t[0].finallyBlock : undefined;
+    const ilk = f?.statements[0];
+    expect(!!ilk && f?.statements.length === 1 && ts.isIfStatement(ilk)
+      && metin(ilk.expression) === 'aktifOturumRef.current === benim').toBe(true);
+  });
+
+  it('calisma alani motor kancasindan iptalEt alir', () => {
+    const c = bul(CALISMA, (n): n is ts.VariableDeclaration =>
+      ts.isVariableDeclaration(n) && ts.isObjectBindingPattern(n.name) && cagriMi(n.initializer, 'useLayerCalc'));
+    expect(c.length === 1 ? (c[0].name as ts.ObjectBindingPattern).elements.map((e) => metin(e.name)) : []).toContain('iptalEt');
+  });
+});
+
+describe('motor kancasi: kullanici iptali', () => {
+  it('kanca iptalEt dondurur', () => {
+    const d = bul(MOTOR, (n): n is ts.ReturnStatement =>
+      ts.isReturnStatement(n) && !!n.expression && ts.isObjectLiteralExpression(n.expression)
+      && n.expression.properties.some((p) => !!p.name && metin(p.name) === 'calculatingLayer'));
+    const alanlar = d.length === 1 ? (d[0].expression as ts.ObjectLiteralExpression).properties.map((p) => (p.name ? metin(p.name) : '')) : [];
+    expect(alanlar).toContain('iptalEt');
+  });
+
+  it('iptalEt suren istekleri iptal eder (surenleriIptalEt)', () => {
+    expect(cagiriyor(govde(bildirim(MOTOR, 'iptalEt')), 'surenleriIptalEt')).toBe(true);
+  });
+
+  it('iptalEt "ayriliyor" gostergesini hemen kapatir', () => {
+    const c = bul(govde(bildirim(MOTOR, 'iptalEt')), (n): n is ts.CallExpression => cagriMi(n, 'setCalculatingLayer'));
+    expect(c.map((x) => x.arguments.map(metin))).toEqual([['null']]);
+  });
+
+  it('bilesen kaldirilinca da ayni iptal calisir (etkinin temizleyicisi surenleriIptalEt)', () => {
+    const e = bul(MOTOR, (n): n is ts.CallExpression =>
+      cagriMi(n, 'useEffect') && fonksiyonMu(n.arguments[0]) && metin((n.arguments[0] as ts.ArrowFunction).body) === 'surenleriIptalEt');
+    expect(e).toHaveLength(1);
+  });
+
+  it('iptal edilen istegin finally\'si gostergeye DOKUNMAZ (yeni istegin durumunu silmesin)', () => {
+    const t = bul(MOTOR, (n): n is ts.TryStatement => ts.isTryStatement(n) && !!n.finallyBlock);
+    const d = t.length === 1 ? bul(t[0].finallyBlock!, (n): n is ts.IfStatement =>
+      ts.isIfStatement(n) && cagiriyor(n.thenStatement, 'setCalculatingLayer')) : [];
+    expect(d.map((x) => metin(x.expression))).toEqual(['!denetleyici.signal.aborted']);
   });
 });
 

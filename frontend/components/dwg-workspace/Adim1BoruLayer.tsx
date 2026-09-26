@@ -115,7 +115,7 @@ function Calisilanlar({ liste, onSec }: { liste: CalisilanLayer[]; onSec: (ad: s
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-semibold text-[#111827]">{c.ad}</span>
                   <span className="block text-xs text-[#6b7280]">
-                    {adet(c.parca)} {c.bolmeden ? 'hat' : 'parça'} · {metre(c.metre)}
+                    {adet(c.parca)} {c.bolmeden ? 'hat' : 'parça'} · {metre(c.metre, c.durum === 'bayat')}
                     {c.capsiz > 0 ? ` · ${adet(c.capsiz)} çapsız` : ''}
                   </span>
                 </span>
@@ -297,14 +297,21 @@ export default function Adim1BoruLayer(p: Adim1Props) {
         <span className="min-w-0 flex-1 text-[13px] text-[#111827]">
           <b className="break-all">{p.seciliLayer}</b>{' '}
           <span className="text-[#6b7280]">
-            · {adet(p.hesap?.edgeSegments.length ?? 0)} {bolmeden ? 'hat · bölmeden' : 'parça'} · {metre(p.hesap?.totalLength ?? 0)}
+            · {adet(p.hesap?.edgeSegments.length ?? 0)} {bolmeden ? 'hat · bölmeden' : 'parça'} · {metre(p.hesap?.totalLength ?? 0, p.birimBayat)}
           </span>
         </span>
       </div>
       {p.yenidenAyirma ? (
-        <div className="ml-[34px] mt-3 flex items-center gap-2 text-xs text-[#475569]">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-          Yeniden ayrılıyor: {p.yenidenAyirma.sira}/{p.yenidenAyirma.toplam}
+        <div className="ml-[34px] mt-3 text-xs text-[#475569]">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            Yeniden ayrılıyor: {p.yenidenAyirma.sira}/{p.yenidenAyirma.toplam}
+          </div>
+          {p.birimBayat && (
+            <div className="mt-1 text-[#6b7280]">
+              ≈ Uzunluklar yeni birime çevrildi; parçalar ayrılınca kesinleşir.
+            </div>
+          )}
         </div>
       ) : p.birimBayat ? (
         <div className="ml-[34px]">

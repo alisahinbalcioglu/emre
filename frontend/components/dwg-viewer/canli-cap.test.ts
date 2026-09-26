@@ -69,12 +69,23 @@ describe('atama ve geri alma sonrasi sabit kutu', () => {
     expect(canliCapliVarlik(fotograf({ isInherited: true }), atanmis).isInherited).toBe(false);
   });
 
-  it('cap disindaki alanlar fotograftan korunur (uzunluk, kimlik, geometri)', () => {
+  it('cap, miras ve uzunluk disindaki alanlar fotograftan korunur (kimlik, geometri)', () => {
     const f = fotograf({ polyline: [[0, 0], [500, 0], [1000, 0]] });
-    const dizi = [segment({ segment_id: 7, polyline: [[0, 0], [500, 0], [1000, 0]], diameter: 'Ø50' })];
-    const { diameter: _d, isInherited: _m, ...geriKalan } = canliCapliVarlik(f, dizi);
-    const { diameter: _fd, isInherited: _fm, ...beklenen } = f;
+    const dizi = [segment({ segment_id: 7, polyline: [[0, 0], [500, 0], [1000, 0]], diameter: 'Ø50', length: 0.32 })];
+    const { diameter: _d, isInherited: _m, length: _u, ...geriKalan } = canliCapliVarlik(f, dizi);
+    const { diameter: _fd, isInherited: _fm, length: _fu, ...beklenen } = f;
     expect(geriKalan).toEqual(beklenen);
+  });
+
+  // 25.09 canli: birim dm → cm degisti; yeniden ayirma bitene dek calisma alani
+  // ayni parcalari yeni birimle cizer — kutu eski birimin sayisini gostermemeli.
+  it('uzunluk da canli: parca yeni birimle cizilince kutu yeni uzunlugu gosterir', () => {
+    const yeniBirimle = [segment({ segment_id: 7, length: 0.32 })];
+    expect(canliCapliVarlik(fotograf({ length: 3.2 }), yeniBirimle).length).toBe(0.32);
+  });
+
+  it('ESKI davranis fotograftaki eski birimli uzunlugu tutuyordu (kriteri ihlal eder)', () => {
+    expect(eski(fotograf({ length: 3.2 })).length).toBe(3.2);
   });
 });
 

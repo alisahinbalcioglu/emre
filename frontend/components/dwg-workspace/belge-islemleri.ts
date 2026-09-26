@@ -12,7 +12,7 @@ import type { CalculatedLayer, WorkspaceState } from './types';
 import { isUnassignedDiameter } from '../dwg-metraj/constants';
 import { canonicalizeDiameter } from '../dwg-metraj/diameter-colors';
 import { aktarimPayi, etiketleriAktar, segmentKosegeni, segmentYolu } from './etiket-aktarimi';
-import { ayniOlcek } from './birim-bayatlik';
+import { ayniOlcek, birimBayatMi } from './birim-bayatlik';
 
 export interface Belge {
   selectedLayer: string | null;
@@ -178,20 +178,51 @@ function yolUzunlugu(noktalar: ReadonlyArray<readonly [number, number]>): number
   return t;
 }
 
+/** Parcalarin uzunlugunu verilen birimle GEOMETRIDEN yeniden hesaplar. Motor
+ *  uzunlugu `round(yol_uzunlugu * birim, 3)` diye verir (main.py); eski
+ *  yuvarlanmis metreyi oranla carpmak yuvarlama hatasini buyuturdu (cm → m:
+ *  parca basina 5 cm'ye kadar). */
+function birimleUzunluklar(cl: CalculatedLayer, scale: number): Pick<CalculatedLayer, 'edgeSegments' | 'totalLength'> {
+  const edgeSegments = cl.edgeSegments.map((es) => ({
+    ...es,
+    length: Math.round(yolUzunlugu(segmentYolu(es)) * scale * 1000) / 1000,
+  }));
+  return { edgeSegments, totalLength: edgeSegments.reduce((t, es) => t + es.length, 0) };
+}
+
 /**
- * "Bolmeden" layer'i yeni birime gore YERELDE gunceller (motor cagrisi yok).
- * Motor bu kipte uzunlugu `round(yol_uzunlugu * birim, 3)` diye verir
- * (main.py); ayni formul geometriden yeniden hesaplanir — eski yuvarlanmis
- * metreyi carpmak mm'lik hatayi buyuturdu. Onay KALKAR (uzunluk degisti).
+ * "Bolmeden" layer'i yeni birime gore YERELDE gunceller (motor cagrisi yok) —
+ * bu kipte parcalama birimden bagimsizdir. Onay KALKAR (uzunluk degisti).
  */
 export function yerelOlcekle(s: WorkspaceState, layer: string, scale: number): WorkspaceState {
   const cl = s.calculatedLayers[layer];
   if (!cl || !(scale > 0)) return s;
   if (cl.scaleUsed !== undefined && ayniOlcek(cl.scaleUsed, scale)) return s;
-  const edgeSegments = cl.edgeSegments.map((es) => ({
-    ...es,
-    length: Math.round(yolUzunlugu(segmentYolu(es)) * scale * 1000) / 1000,
-  }));
-  const totalLength = edgeSegments.reduce((t, es) => t + es.length, 0);
-  return layerYaz(s, { ...cl, edgeSegments, totalLength, scaleUsed: scale, approved: false, approvedAt: undefined });
+  return layerYaz(s, { ...cl, ...birimleUzunluklar(cl, scale), scaleUsed: scale, approved: false, approvedAt: undefined });
+}
+
+/** Hesap nesneleri degismez (indirgeyici yeni nesne uretir): bayat donemde
+ *  her cap tikinda DOKUNULMAMIS bayat layer'lar yeniden cevrilmez (700K
+ *  parcalik layer'da tik basina O(N); 25.09 inceleme). Anahtar nesnenin
+ *  kendisi — dusen hesap bellekten de duser. */
+const gosterimOnbellegi = new WeakMap<CalculatedLayer, { scale: number; sonuc: CalculatedLayer }>();
+
+/**
+ * GOSTERIM icin: birimi bayat layer'in uzunluklari SIMDIKI birimle (≈).
+ * Belgeye YAZILMAZ — `scaleUsed` eski kalir, layer bayat sayilmaya devam eder
+ * (onay ve fiyatlandirma kapali), yeniden ayirma kesin sonucu yazar.
+ *
+ * 25.09 canli: birim dm → cm degisti, motor layer basina ~23 sn yeniden
+ * ayirirken ekran eski birimin sayilarini (3.795,6 m) KESIN sonuc gibi
+ * gosterdi; kullanici "birim degisti ama olculer ayni kaldi" dedi.
+ * Bayat degilse AYNI nesne doner (gorunum onbellekleri bozulmasin); ayni hesap
+ * nesnesi + ayni birim de AYNI gosterimi dondurur (asagidaki onbellek).
+ */
+export function gosterimHesabi(cl: CalculatedLayer, scale: number): CalculatedLayer {
+  if (!birimBayatMi(cl, scale) || !(scale > 0)) return cl;
+  const onceki = gosterimOnbellegi.get(cl);
+  if (onceki && onceki.scale === scale) return onceki.sonuc;
+  const sonuc = { ...cl, ...birimleUzunluklar(cl, scale) };
+  gosterimOnbellegi.set(cl, { scale, sonuc });
+  return sonuc;
 }

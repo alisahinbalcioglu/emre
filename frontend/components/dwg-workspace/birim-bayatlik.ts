@@ -28,3 +28,42 @@ export function birimBayatMi(cl: { scaleUsed?: number }, scale: number): boolean
 export function yerelOlceklenebilir(cl: { splitMode?: 't' | 'none' }): boolean {
   return cl.splitMode === 'none';
 }
+
+/** Birim degisince yarida kalan ILK ayirma (layer henuz hesaplanmamisti). */
+export interface KesilenAyirma {
+  layer: string;
+  splitMode: 't' | 'none';
+}
+
+/** Kaydet aninda motorda suren is ILK ayirma mi (layer henuz hesaplanmamis)?
+ *  Oyleyse yeni birimle yeniden baslatilmak uzere dondurulur. Suren is
+ *  yeniden ayirmaysa `null`: o layer bayat listesiyle gelir. */
+export function yarimKalanAyirma(
+  ayrilan: string | null,
+  hesaplananlar: Readonly<Record<string, unknown>>,
+  yontem: 't' | 'none',
+): KesilenAyirma | null {
+  return ayrilan && !hesaplananlar[ayrilan] ? { layer: ayrilan, splitMode: yontem } : null;
+}
+
+/**
+ * Birim degisimi sonrasi yeniden ayirma SIRASI (tekrarsiz):
+ *  1. yarida kalan ilk ayirma — kullanicinin su an bekledigi is. EN BASTA
+ *     olmali: ikinci bir birim degisiminde ya hala suruyordur (yine
+ *     yakalanir) ya bitmistir (bayat listesiyle gelir) — KAYBOLMAZ. 25.09
+ *     inceleme: sona eklenince ona sira gelmeden gelen ikinci degisim onu
+ *     sessizce dusuruyordu;
+ *  2. secili layer — ekrandaki "≈" sayilar once kesinlesir (canlida secili
+ *     layer 2. siradaydi, 46 sn bekledi);
+ *  3. digerleri gelis sirasiyla.
+ */
+export function yenidenAyirmaSirasi(
+  bayat: readonly string[],
+  secili: string | null,
+  kesilen: KesilenAyirma | null,
+): string[] {
+  const one: string[] = [];
+  if (kesilen) one.push(kesilen.layer);
+  if (secili && bayat.includes(secili) && !one.includes(secili)) one.push(secili);
+  return [...one, ...bayat.filter((l) => !one.includes(l))];
+}
