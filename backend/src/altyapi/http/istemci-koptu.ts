@@ -11,9 +11,10 @@ import type { Response } from 'express';
  *
  * NEDEN `res` 'close' + `writableFinished`:
  *  - `req.on('close')` KULLANILMAZ: Node 16+'da IncomingMessage 'close'u GOVDE
- *    OKUNUNCA yayar (olculdu, Node 24: `req end` ile ayni an). Denetleyiciye
- *    gelindiginde multer govdeyi coktan okumustur: dinleyici HIC tetiklenmez,
- *    iptal sessizce calismaz (mutant `test:dwg-istemci-koptu` K1'de oldu).
+ *    OKUNUNCA yayar (olculdu, Node 24: `req end` ile ayni an) — kopmayla ilgisi
+ *    yok. Multer govdeyi denetleyiciden ONCE okurken dinleyici hic tetiklenmiyordu
+ *    (mutant K1'de oldu); 26.09'dan beri /parse govdeyi denetleyicide akitir,
+ *    dinleyici govde biter bitmez tetiklenip HER istegi iptal ederdi (kapi N).
  *  - Yanit tamamlaninca da 'close' gelir; o an `writableFinished` true → iptal YOK.
  *  - Dinleyici kurulmadan once kopmus baglanti (`res.destroyed`) aninda iptal.
  */
