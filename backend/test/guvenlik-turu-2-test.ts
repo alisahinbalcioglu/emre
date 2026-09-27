@@ -22,6 +22,10 @@
  *       kullaniciyi parametre olarak bile ALMIYORDU (firma suzgeci yapisal
  *       olarak imkansizdi). fileId'yi bilen herhangi bir oturumlu kullanici
  *       BASKA firmanin cizim GEOMETRISINI okuyabiliyordu.
+ *       26.09 (Emre): kaydi OLMAYAN fileId'ye gecis izni ("bilincli aciklik",
+ *       28.08'de tablo bos basladigi icin) KAPANDI — 403, yaniti baska
+ *       firmanin dosyasiyla ayni. Bicimsiz fileId 400 ve DB'ye gitmez.
+ *       Kiraci dedup'i (ayni cizim, iki firma): `test:dwg-kiraci-dedup`.
  *
  *   G3  ISCILIK KATALOGU HERKESE ACIKTI. LaborItem KURESEL bir katalogdur
  *       (sahiplik kolonu YOK, isGlobal @default(true)) ve LaborPrice ona
@@ -181,15 +185,18 @@ async function g2_dwgSahiplik() {
   );
 
   // ── Davranis: baska firmanin dosyasi 403 ─────────────────────────────
-  const sahteKayit: any = { fileId: 'F1', firmaId: 'FIRMA-A' };
+  // Kimlikler motorun bicimindedir (`uuid4().hex[:12]`); bicimsiz kimlik G2-g'de.
+  const F1 = 'a1b2c3d4e5f6';
+  const BILINMEYEN = '0123456789ab';
+  const sahteKayit: any = { fileId: F1, firmaId: 'FIRMA-A' };
   let sorguSayisi = 0;
   const sahtePrisma: any = {
     dwgDosya: {
       findUnique: async ({ where }: any) => {
         sorguSayisi++;
-        return where.fileId === 'F1' ? sahteKayit : null;
+        return where.fileId === F1 ? { ...sahteKayit } : null;
       },
-      upsert: async () => sahteKayit,
+      upsert: async () => ({ ...sahteKayit }),
     },
   };
   const servis = new DwgSahiplikServisi(sahtePrisma);
@@ -197,7 +204,7 @@ async function g2_dwgSahiplik() {
   // OLCUT: kendi firmasi GECMELI (kapi her seye 403 demiyor)
   let kendiHata: any = null;
   try {
-    await servis.dogrula('F1', 'FIRMA-A');
+    await servis.dogrula(F1, 'FIRMA-A');
   } catch (e) {
     kendiHata = e;
   }
@@ -206,7 +213,7 @@ async function g2_dwgSahiplik() {
 
   let capraHata: any = null;
   try {
-    await servis.dogrula('F1', 'FIRMA-B');
+    await servis.dogrula(F1, 'FIRMA-B');
   } catch (e) {
     capraHata = e;
   }
@@ -216,17 +223,37 @@ async function g2_dwgSahiplik() {
     `durum=${capraHata?.getStatus?.() ?? 'hata yok'}`,
   );
 
-  // Kaydi olmayan (bu degisiklikten onceki) dosya: BILINCLI aciklik.
+  // Kaydi olmayan dosya (26.09, Emre): 28.08'deki "bilincli aciklik" KAPANDI.
+  // Tablo o gun bos basladigi icin kayitsiz kimlik geciyordu; onbellek TTL'i
+  // 24 saat, pencere coktan kapandi (canli 26.09: motordaki 2 kaydin 2'si kayitli).
   let eskiHata: any = null;
   try {
-    await servis.dogrula('BILINMEYEN', 'FIRMA-B');
+    await servis.dogrula(BILINMEYEN, 'FIRMA-B');
   } catch (e) {
     eskiHata = e;
   }
   check(
-    'G2-e kaydi OLMAYAN eski dosya gecer (bilincli aciklik — deploy calisan ekrani kirmasin)',
-    eskiHata === null,
+    'G2-e kaydi OLMAYAN dosya 403 — yaniti baska firmanin dosyasiyla AYNI (var/yok ayirt edilemez)',
+    eskiHata?.getStatus?.() === 403
+      && JSON.stringify(eskiHata?.getResponse?.()) === JSON.stringify(capraHata?.getResponse?.()),
+    `durum=${eskiHata?.getStatus?.() ?? 'hata yok'} yanit=${JSON.stringify(eskiHata?.getResponse?.())}`,
   );
+
+  // Bicimsiz kimlik (26.09): motor onu dosya yoluna katiyordu. DB'ye bile gitmez.
+  for (const kotu of ['F1', 'ABCDEF012345', '../../etc/passwd', '0123456789abc']) {
+    const once = sorguSayisi;
+    let hata: any = null;
+    try {
+      await servis.dogrula(kotu, 'FIRMA-A');
+    } catch (e) {
+      hata = e;
+    }
+    check(
+      `G2-g bicimsiz file_id ${JSON.stringify(kotu)} 400 — DB sorgusu YOK`,
+      hata?.getStatus?.() === 400 && sorguSayisi === once,
+      `durum=${hata?.getStatus?.() ?? 'hata yok'} sorgu=${sorguSayisi - once}`,
+    );
+  }
 
   // Kimliksiz istek (26.09): eskiden "fileId yok = dosya govdeden geliyor"
   // sayilip SORGUSUZ geciyordu. Govdeli /parse kaldirildi; kapi artik kapali.

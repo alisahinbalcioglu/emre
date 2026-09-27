@@ -533,6 +533,17 @@ const SUITES: Suite[] = [
   //    görmüyordu; denetleyici gövdeyi akıtır, 256 KiB'lık kopma da motoru keser.
   //    Motor tarafı: python `tests/test_olay_dongusu.py` (CI'da yok).
   { ad: 'DWG istemci koptu: saf sinyal · kopma motoru keser · büyük gövdede de · normal istek · önceden kopmuş · zaman aşımı · eski yollar kapalı (S/K/B/N/Y/Z/E)', script: 'test:dwg-istemci-koptu', zincir: 'Z0' },
+  // DWG kiracı dedup (26.09.2026): motor aynı içeriği TÜM kiracılar arasında
+  //    tekilleştiriyordu; ikinci firma birincinin file_id'sini `dedup: true` ile
+  //    alıp kendi yüklemesinde 403 yiyor, çizimi başkasının yüklediğini öğreniyordu
+  //    (ihale çizimi). Gerçek denetleyici+servis+sahiplik, bellek içi DB, taklit
+  //    motor. R: kapsam işaretsiz (eski) motorda HER yükleme aynı 503 — dosyaya
+  //    özgü sinyal yok · L: "kapsamladım" deyip tekilleştiren motorda başka
+  //    firmanın kimliği verilmez · U: Nest firmaya özgü opak kapsam gönderir,
+  //    ikinci firma kendi kimliğiyle çalışır · F: biçimsiz file_id 400 ·
+  //    G: kayıtsız kimlik 403 (Emre 26.09), sahiplik yazılamazsa yükleme hata
+  //    verir · Y: P2002 yarışı. Motor: `tests/test_dedup_kapsam.py`.
+  { ad: 'DWG kiracı dedup: eski motor · yalancı motor · kapsamlı motor · biçim · kayıtsız kimlik · yarış (R/L/U/F/G/Y)', script: 'test:dwg-kiraci-dedup', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
   // T47 (22.09.2026): "fatura bilgisi eksik firma gercek bir fatura kesme

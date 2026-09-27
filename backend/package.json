@@ -119,6 +119,7 @@
     "test:iyzico-basligi": "ts-node test/iyzico-imza-basligi-test.ts",
     "test:iyzico-zaman-asimi": "ts-node test/iyzico-zaman-asimi-test.ts",
     "test:dwg-istemci-koptu": "ts-node test/dwg-istemci-koptu-test.ts",
+    "test:dwg-kiraci-dedup": "ts-node test/dwg-kiraci-dedup-test.ts",
     "test:olcum-sorgu": "ts-node test/abonelik-olcum-sorgu-test.ts",
     "test:satinalma": "ts-node test/satinalma-yolu-test.ts",
     "test:deneme-geri-sayim": "ts-node test/deneme-geri-sayim-test.ts",

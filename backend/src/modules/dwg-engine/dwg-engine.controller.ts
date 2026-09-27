@@ -11,7 +11,7 @@ import { DwgEngineService } from './dwg-engine.service';
 import { resolveScaleParam } from './scale-param';
 import { CurrentUser } from '../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../altyapi/auth/kimlik';
-import { DwgSahiplikServisi } from './dwg-sahiplik.servisi';
+import { DwgSahiplikServisi, dedupKapsami } from './dwg-sahiplik.servisi';
 import { ErisimGuard, GerekliYetenek } from '../../ozellik/odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../ozellik/odeme/abonelik/erisim.servisi';
 
@@ -138,6 +138,10 @@ export class DwgEngineController {
    * F5C — Async upload (OCERP pattern). 2sn'de file_id doner, parse arka
    * planda. Frontend /status/:fileId ile durumu sorar, "ready" olunca
    * /geometry/:fileId cache hit (50ms).
+   *
+   * KIRACI DEDUP (26.09): motor ayni icerigi YALNIZ bu firmanin kapsaminda
+   * tekillestirir. Kapsamsizken ikinci firma birincinin file_id'sini aliyor,
+   * kendi yuklemesinde 403 yiyordu. Bkz. `dwg-sahiplik.servisi.ts`.
    */
   @Post('upload')
   @GerekliYetenek(Yetenek.DWG_YUKLE)
@@ -151,9 +155,11 @@ export class DwgEngineController {
   ) {
     if (!file) return { error: 'Dosya yuklenemedi' };
     const { firmaId, userId } = kimlikCoz(kullanici);
-    const yanit = await this.dwgEngine.uploadAsync(file.buffer, file.originalname);
+    const yanit = await this.dwgEngine.uploadAsync(file.buffer, file.originalname, dedupKapsami(firmaId));
     await this.sahiplik.kaydet(yanit, firmaId, userId, file.originalname);
-    return yanit;
+    // Istemciye yalniz on yuzun kullandigi alanlar: motorun ic alanlari (kapsamli…) gecmez.
+    const { file_id, status, dedup } = yanit as { file_id: string; status: string; dedup?: boolean };
+    return dedup === true ? { file_id, status, dedup } : { file_id, status };
   }
 
   /**

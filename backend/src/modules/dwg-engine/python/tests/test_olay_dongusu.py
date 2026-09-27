@@ -288,7 +288,8 @@ def taklit_parse(ortam, tmp_path, monkeypatch):
     isci = tmp_path / "taklit_parse_iscisi.py"
     isci.write_text(TAKLIT_PARSE_ISCISI, encoding="utf-8")
     monkeypatch.setattr(main, "_PARSE_WORKER_YOLU", str(isci))
-    file_id = "dongutest" + uuid.uuid4().hex[:3]
+    # Motor bicimi (`uuid4().hex[:12]`): bicimsiz kimlige yol kurulmaz (26.09, test_dedup_kapsam V4).
+    file_id = uuid.uuid4().hex[:12]
     with open(main._cache_path(file_id), "w", encoding="utf-8") as f:
         f.write("0\nEOF\n")  # taklit isci DXF okumaz; uc yalniz varligina bakar
     return file_id
