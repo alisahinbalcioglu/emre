@@ -237,15 +237,15 @@ export class DwgEngineService {
    * DXF geometrisini (LINE/POLYLINE koordinatlari) getir.
    * Frontend Canvas2D viewer (dwg-viewer klasoru) kullanir.
    *
+   * Motor YALNIZ onbellekten, hazir yaniti aynen doner (26.09); onbellek yoksa
+   * 409 → burada 422 → on yuz "yeniden yukleyin" der. Katman suzgeci kaldirildi.
+   *
    * Cold-start hassasiyeti yuksek — kullanici dogrudan bekliyor. Initial 60s,
    * retry 90s. Toplam max ~150s + 2s backoff. Kullanici gozunde "uyandiriliyor"
    * olarak gosterilir (frontend B2 retry mantik).
    */
-  async getGeometry(fileId: string, layers: string = '') {
-    const params = new URLSearchParams();
-    if (layers) params.set('layers', layers);
-    const qs = params.toString();
-    const url = `${this.pythonServiceUrl}/geometry/${encodeURIComponent(fileId)}${qs ? '?' + qs : ''}`;
+  async getGeometry(fileId: string) {
+    const url = `${this.pythonServiceUrl}/geometry/${encodeURIComponent(fileId)}`;
 
     const factory = (timeoutMs: number): RequestInit => ({
       method: 'GET',

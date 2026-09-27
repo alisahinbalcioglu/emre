@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 833
-Toplam satir: 222934
+Toplam satir: 223443
 Uc nokta: 238
 test:* scripti: 135
 
@@ -91,7 +91,7 @@ test:* scripti: 135
 | `backend/src/app.module.ts` | 72 |
 | `backend/src/health.controller.ts` | 33 |
 | `backend/src/main.ts` | 87 |
-| `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | 188 |
+| `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | 189 |
 | `backend/src/modules/dwg-engine/dwg-engine.module.ts` | 14 |
 | `backend/src/modules/dwg-engine/dwg-engine.service.ts` | 369 |
 | `backend/src/modules/dwg-engine/dwg-sahiplik.servisi.ts` | 107 |
@@ -99,15 +99,15 @@ test:* scripti: 135
 | `backend/src/modules/dwg-engine/python/deploy-to-cloudrun.sh` | 71 |
 | `backend/src/modules/dwg-engine/python/geometry.py` | 757 |
 | `backend/src/modules/dwg-engine/python/graph.py` | 356 |
-| `backend/src/modules/dwg-engine/python/main.py` | 1494 |
+| `backend/src/modules/dwg-engine/python/main.py` | 1512 |
 | `backend/src/modules/dwg-engine/python/models.py` | 91 |
-| `backend/src/modules/dwg-engine/python/parse_worker.py` | 83 |
+| `backend/src/modules/dwg-engine/python/parse_worker.py` | 87 |
 | `backend/src/modules/dwg-engine/python/pipe_segments.py` | 1875 |
 | `backend/src/modules/dwg-engine/python/tests/__init__.py` | 1 |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | 104 |
 | `backend/src/modules/dwg-engine/python/tests/test_detector_version_kapisi.py` | 144 |
-| `backend/src/modules/dwg-engine/python/tests/test_olay_dongusu.py` | 587 |
-| `backend/src/modules/dwg-engine/python/tests/test_parse_iptal.py` | 256 |
+| `backend/src/modules/dwg-engine/python/tests/test_olay_dongusu.py` | 1029 |
+| `backend/src/modules/dwg-engine/python/tests/test_parse_iptal.py` | 257 |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | 85 |
 | `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | 127 |
 | `backend/src/modules/dwg-engine/python/tests/test_split_mode.py` | 149 |
@@ -116,7 +116,7 @@ test:* scripti: 135
 | `backend/src/modules/dwg-engine/python/tests/test_unit_detect.py` | 597 |
 | `backend/src/modules/dwg-engine/python/topology.py` | 268 |
 | `backend/src/modules/dwg-engine/python/unit_detect.py` | 766 |
-| `backend/src/modules/dwg-engine/python/upload_worker.py` | 107 |
+| `backend/src/modules/dwg-engine/python/upload_worker.py` | 150 |
 | `backend/src/modules/dwg-engine/scale-param.test.ts` | 59 |
 | `backend/src/modules/dwg-engine/scale-param.ts` | 30 |
 | `backend/src/ozellik/cikti/quote-formats/format-engine.ts` | 602 |
@@ -926,13 +926,13 @@ test:* scripti: 135
 | `backend/src/modules/dwg-engine/python/converter.py` | `dataclasses` `pathlib` `ezdxf` |
 | `backend/src/modules/dwg-engine/python/geometry.py` | `__future__` `typing` `pydantic` `converter` |
 | `backend/src/modules/dwg-engine/python/graph.py` | `collections` `typing` `converter` |
-| `backend/src/modules/dwg-engine/python/main.py` | `fastapi` `fastapi.middleware.cors` `fastapi.middleware.gzip` `fastapi.responses` `converter` `topology` `geometry` `models` `unit_detect` `pipe_segments` |
+| `backend/src/modules/dwg-engine/python/main.py` | `fastapi` `fastapi.middleware.cors` `fastapi.responses` `converter` `topology` `models` `unit_detect` `pipe_segments` `geometry` |
 | `backend/src/modules/dwg-engine/python/models.py` | `pydantic` |
 | `backend/src/modules/dwg-engine/python/parse_worker.py` | `main` |
 | `backend/src/modules/dwg-engine/python/pipe_segments.py` | `typing` `ezdxf` `converter` `collections` |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | `__future__` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/tests/test_detector_version_kapisi.py` | `__future__` |
-| `backend/src/modules/dwg-engine/python/tests/test_olay_dongusu.py` | `subprocess` `time` `converter` |
+| `backend/src/modules/dwg-engine/python/tests/test_olay_dongusu.py` | `subprocess` `time` `converter` `geometry` |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | `__future__` `pipe_segments` |
 | `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | `__future__` `main` |
 | `backend/src/modules/dwg-engine/python/tests/test_split_mode.py` | `pipe_segments` |
