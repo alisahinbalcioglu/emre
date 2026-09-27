@@ -1,0 +1,9 @@
+# Yalniz testler icin: CI regression-gate `dwg-engine` isi, dwg-motor-kararlilik
+# olcumu, elle ve canli imajda kosumlar. Uretim imaji bunu KURMAZ (Dockerfile
+# yalniz requirements.txt'i kurar).
+-r requirements.txt
+pytest==9.0.3
+# fastapi.testclient (tests/test_dedup_kapsam.py) httpx ister. Eksikken dosya
+# TOPLANAMIYOR ve pytest tum oturumu hic test kosmadan kesiyordu (CI olcumu 27.09:
+# 25 kosucunun 25'inde; canli motor imajinda yeniden uretildi).
+httpx==0.28.1
