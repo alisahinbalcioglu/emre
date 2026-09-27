@@ -301,15 +301,22 @@ export class DwgEngineService {
    * kati). Govde elle kurulur (FormData dosya yoluyla akitamaz), uzunluk bilinir:
    * motor Content-Length'li istek alir. Yeniden denemede akis bastan kurulur.
    *
+   * kapsam (26.09): firmaya ozgu opak tekillestirme anahtari (`dedupKapsami`).
+   * Motor ayni icerigi yalniz ayni kapsamda tekillestirir; kapsamsiz yukleme hic
+   * tekillestirilmez. Govdede `file`dan once ayri `kapsam` parcasi (64 hex).
+   *
    * istemciKoptu: tarayici iletim surerken giderse motor istegi kesilir, yeniden
    * denenmez (bkz. fetchWithRetry); sessiz 499 + tek iz satiri — /parse ile ayni.
    */
-  async uploadAsync(dosyaYolu: string, boyut: number, dosyaAdi: string, istemciKoptu?: AbortSignal) {
+  async uploadAsync(
+    dosyaYolu: string, boyut: number, dosyaAdi: string, kapsam: string, istemciKoptu?: AbortSignal,
+  ) {
     const baslangic = Date.now();
     const factory = (timeoutMs: number): RequestInit => {
       const sinir = `----metaprice-dwg-${randomBytes(12).toString('hex')}`;
       const bas = Buffer.from(
-        `--${sinir}\r\nContent-Disposition: form-data; name="file"; filename="${baslikGuvenliAd(dosyaAdi)}"\r\n`
+        `--${sinir}\r\nContent-Disposition: form-data; name="kapsam"\r\n\r\n${kapsam}\r\n`
+          + `--${sinir}\r\nContent-Disposition: form-data; name="file"; filename="${baslikGuvenliAd(dosyaAdi)}"\r\n`
           + 'Content-Type: application/octet-stream\r\n\r\n',
         'utf8',
       );

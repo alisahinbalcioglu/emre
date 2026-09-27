@@ -10,7 +10,7 @@ import { DwgEngineService } from './dwg-engine.service';
 import { resolveScaleParam } from './scale-param';
 import { CurrentUser } from '../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../altyapi/auth/kimlik';
-import { DwgSahiplikServisi } from './dwg-sahiplik.servisi';
+import { DwgSahiplikServisi, dedupKapsami } from './dwg-sahiplik.servisi';
 import { DwgGeciciDepo, geciciDosyayiSil, yuklenenDosyaAdi } from './dwg-gecici-depo';
 import { DWG_YUKLEME_AZAMI_BAYT, DwgYuklemeKapisi } from './dwg-yukleme-kapisi';
 import { ErisimGuard, GerekliYetenek } from '../../ozellik/odeme/abonelik/erisim.guard';
@@ -140,6 +140,10 @@ export class DwgEngineController {
    * planda. Frontend /status/:fileId ile durumu sorar, "ready" olunca
    * /geometry/:fileId cache hit (50ms).
    *
+   * KIRACI DEDUP (26.09): motor ayni icerigi YALNIZ bu firmanin kapsaminda
+   * tekillestirir. Kapsamsizken ikinci firma birincinin file_id'sini aliyor,
+   * kendi yuklemesinde 403 yiyordu. Bkz. `dwg-sahiplik.servisi.ts`.
+   *
    * BELLEKSIZ YUKLEME (26.09): govde diske akar (`DwgGeciciDepo`), motora
    * diskten akarak gider, is bitince (basari ya da hata) gecici dosya silinir.
    * Eskiden multer memoryStorage (1 GB sinir) + motora Blob kopyasi: istek basina
@@ -169,9 +173,13 @@ export class DwgEngineController {
     try {
       const { firmaId, userId } = kimlikCoz(kullanici);
       const dosyaAdi = yuklenenDosyaAdi(file.originalname);
-      const yanit = await this.dwgEngine.uploadAsync(file.path, file.size, dosyaAdi, istemciKoptu);
+      const yanit = await this.dwgEngine.uploadAsync(
+        file.path, file.size, dosyaAdi, dedupKapsami(firmaId), istemciKoptu,
+      );
       await this.sahiplik.kaydet(yanit, firmaId, userId, dosyaAdi);
-      return yanit;
+      // Istemciye yalniz on yuzun kullandigi alanlar: motorun ic alanlari (kapsamli…) gecmez.
+      const { file_id, status, dedup } = yanit as { file_id: string; status: string; dedup?: boolean };
+      return dedup === true ? { file_id, status, dedup } : { file_id, status };
     } finally {
       await geciciDosyayiSil(file.path);
     }

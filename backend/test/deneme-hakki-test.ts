@@ -790,9 +790,16 @@ async function digerBloklar(): Promise<void> {
     // Migration miras KAYDI yazmamis varsayimi: calisma anindaki dal TEK BASINA olculur.
     const r = await d.satinAl({ firmaId: 'FM', kullaniciId: 'UM', eposta: 'gecis@firma.com', telefon: '0533 123 45 67', kod: 'sub-m' });
     check('M1 ⭐ K-P3: miras firma deneme ALMAZ → DENEMESIZ plan', r.planKodu === 'plan-30-denemesiz', `plan=${r.planKodu}`);
-    check('M2 abonelik AKTIF, 300 gunluk gecis erisimi KISALMADI, deneme kaydi yok',
-      r.ab.durum === 'AKTIF' && r.ab.erisimSonu.getTime() > Date.now() + 299 * GUN && kayitSayisi(d) === 0,
-      `durum=${r.ab.durum} kayit=${kayitSayisi(d)}`);
+    // ⚠ 26.09 (miras hakki turu, Emre karari) ANLAM DEGISTI: gecis erisimi
+    // ARTIK `erisimSonu`nda tasinmaz — odenen donem BUGUN baslar (kopru), 300
+    // gunluk hak `mirasPaketSurumuId`/`mirasErisimSonu`na YAKALANIR ve donem
+    // bitince satir oraya doner (kural: `abonelik/miras-hakki.ts`). Olcut ayni:
+    // gecis hakki KAYBOLMADI.
+    check('M2 abonelik AKTIF, 300 gunluk gecis hakki AYRI tasindi (kaybolmadi), odenen donem bugun basladi, deneme kaydi yok',
+      r.ab.durum === 'AKTIF' && r.ab.mirasPaketSurumuId === 'SM' &&
+        r.ab.mirasErisimSonu?.getTime() > Date.now() + 299 * GUN &&
+        r.ab.erisimSonu.getTime() < Date.now() + 40 * GUN && kayitSayisi(d) === 0,
+      `durum=${r.ab.durum} erisimSonu=${r.ab.erisimSonu?.toISOString?.()} miras=${r.ab.mirasPaketSurumuId}@${r.ab.mirasErisimSonu?.toISOString?.()} kayit=${kayitSayisi(d)}`);
   }
 
   // ── V · e-posta dogrulanmamis (K-P4) ───────────────────────────────────

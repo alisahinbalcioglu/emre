@@ -22,6 +22,7 @@ import { PaketOnerisiServisi } from './abonelik/yonetici/paket-onerisi.servisi';
 import { FiyatController } from './abonelik/fiyat.controller';
 import { CeviriKotaServisi } from './abonelik/ceviri-kota.servisi';
 import { MutabakatJob } from './abonelik/mutabakat.job';
+import { MirasDonusuJob } from './abonelik/miras-donusu.job';
 import { DunningServisi } from './dunning/dunning.servisi';
 import { FaturaServisi } from './fatura/fatura.servisi';
 import {
@@ -92,6 +93,8 @@ import { EpostaServisi } from './eposta/eposta.servisi';
     ErisimServisi,
     CeviriKotaServisi,
     MutabakatJob,
+    // 26.09: ücretli dönemi biten satırı miras (göç) paketine döndürür (@Cron 10 dk).
+    MirasDonusuJob,
     DunningServisi,
     FaturaServisi,
     HavaleServisi,

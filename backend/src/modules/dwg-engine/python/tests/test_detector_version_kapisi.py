@@ -4,8 +4,8 @@ NEDEN VAR (02.09.2026 — gercek kusur, denetimde yakalandi):
 `main.py` yaninda su yorum duruyordu: "unit_detect.py'de karar mantigi
 degistiginde BU DEGERI ARTIR." Sprinkler fizik capasi (`_sprinkler_spacing`)
 patlatilmis sembol kumelemesiyle DEGISTI ve deger artirilmadan commit edildi.
-Sonuc: `dwg_cache` KALICI volume + 24 saat TTL + hash-tabanli GLOBAL dedup
-(`main.py` upload_async) yuzunden deploy'dan sonra 24 saat boyunca daha once
+Sonuc: `dwg_cache` KALICI volume + 24 saat TTL + hash-tabanli dedup (`main.py`
+upload_async; 26.09'dan beri firma kapsaminda) yuzunden deploy'dan sonra 24 saat boyunca daha once
 yuklenmis HER dosya, dedup'a takilip ESKI birim onerisiyle donecekti. Yorum
 kanit degildir; kapi olmayan sozlesme sessizce ihlal edilir.
 
@@ -23,6 +23,13 @@ KIRMIZI YANDIYSA NE YAPMALI:
 
 Karar mantigini DEGISTIRMEDIYSEN (yalniz yorum/docstring eklediysen) parmak izi
 zaten degismez; test yesil kalir.
+
+SURUMDEN BAGIMSIZ (26.09.2026): parmak izi eskiden `ast.dump`tan hesaplaniyordu,
+onun bicimi Python surumune gore degisir (asagida `_kanonik`). Olculdu: ayni
+unit_detect.py canli motor imajinda (Python 3.11.16) 024ee56fe3503d3f, yerelde
+(3.14.3) 730d708755e33d18 veriyordu — kapi canlida kod degismeden KIRMIZIYDI,
+saklanan deger yalniz yerel surumde gecerliydi. Once `test_kanonik_bicim_surumden_bagimsiz`
+kirmiziysa sorun Python surumudur: DETECTOR_VERSION ARTIRMA, `_kanonik`i duzelt.
 """
 from __future__ import annotations
 
@@ -41,7 +48,8 @@ _UNIT_DETECT = os.path.join(_PY_DIR, "unit_detect.py")
 # (DETECTOR_VERSION, unit_detect karar mantigi parmak izi) CIFTI.
 # Ikisi BIRLIKTE guncellenir — biri degisip digeri kalirsa kapi kirmizi yanar.
 BEKLENEN_SURUM = "2026-09-02-patlatilmis-sembol"
-BEKLENEN_PARMAK_IZI = "730d708755e33d18"
+# 26.09: `_kanonik` ile yeniden hesaplandi (unit_detect.py DEGISMEDI); 3.11.16 ve 3.14.3'te ayni.
+BEKLENEN_PARMAK_IZI = "3101f18fba3ddf3f"
 
 
 def _docstringsiz(agac: ast.AST) -> ast.AST:
@@ -63,6 +71,29 @@ def _docstringsiz(agac: ast.AST) -> ast.AST:
     return agac
 
 
+def _kanonik(dugum) -> str:
+    """Python SURUMUNDEN BAGIMSIZ AST metni (`ast.dump` yerine).
+
+    `ast.dump` bicimi surume gore degisir: 3.11 bos listeleri yazar
+    (`decorator_list=[]`, `type_ignores=[]`), 3.13+ atar. Her alani (None/[]
+    dahil) yazmak da YETMEZ: 3.12 FunctionDef/ClassDef'e `type_params` ekledi,
+    3.11'de o alan hic yok (olculdu 26.09: 055c8d50... ile d4a8a84b...). Burada
+    None ve [] alanlar HER surumde atlanir — yoklukla bosluk ayni sayilir; alan
+    adlari yazildigi icin iki farkli agac ayni metni vermez. Konum ozellikleri
+    (lineno, col_offset...) alan degildir, `iter_fields`te zaten yoktur.
+    """
+    if isinstance(dugum, ast.AST):
+        alanlar = ",".join(
+            f"{ad}={_kanonik(deger)}"
+            for ad, deger in ast.iter_fields(dugum)
+            if deger is not None and deger != []
+        )
+        return f"{type(dugum).__name__}({alanlar})"
+    if isinstance(dugum, list):
+        return "[" + ",".join(_kanonik(x) for x in dugum) + "]"
+    return repr(dugum)
+
+
 def karar_mantigi_parmak_izi(kaynak: str) -> str:
     """Kaynagin AST ozeti (docstring'siz) -> 16 haneli sha256 on eki.
 
@@ -70,7 +101,7 @@ def karar_mantigi_parmak_izi(kaynak: str) -> str:
     parmak izini ETKILEMEMELI — bunlar karar mantigi degildir.
     """
     agac = _docstringsiz(ast.parse(kaynak))
-    return hashlib.sha256(ast.dump(agac).encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(_kanonik(agac).encode("utf-8")).hexdigest()[:16]
 
 
 def test_karar_mantigi_degistiyse_surum_de_degismeli():
@@ -83,7 +114,32 @@ def test_karar_mantigi_degistiyse_surum_de_degismeli():
         "  1) main.py icindeki DETECTOR_VERSION'i ARTIR (yoksa onbellekteki\n"
         "     dosyalar 24 saat boyunca ESKI birim onerisiyle doner),\n"
         f"  2) BEKLENEN_PARMAK_IZI = \"{simdiki}\" yap,\n"
-        "  3) ikisini ayni commit'te gonder."
+        "  3) ikisini ayni commit'te gonder.\n"
+        "  (Once test_kanonik_bicim_surumden_bagimsiz'a bak: o da kirmiziysa\n"
+        "   sebep Python surumudur, mantik degil — surumu ARTIRMA.)"
+    )
+
+
+# Kucuk kaynagin kanonik metni. Surume duyarli yapilari icerir: bos listeler
+# (decorator_list, defaults, type_ignores), 3.12+ `type_params`, istege bagli
+# None alanlar, f-string. Olculdu 26.09: 3.11.16 (canli imaj) ve 3.14.3'te ayni.
+_KANONIK_ORNEK_KAYNAK = 'class K:\n    def f(self, x, *, y=None):\n        return g(f"{x}!", k=1)\n'
+_KANONIK_ORNEK = (
+    "Module(body=[ClassDef(name='K',body=[FunctionDef(name='f',args=arguments("
+    "args=[arg(arg='self'),arg(arg='x')],kwonlyargs=[arg(arg='y')],kw_defaults=[Constant()]),"
+    "body=[Return(value=Call(func=Name(id='g',ctx=Load()),args=[JoinedStr(values=["
+    "FormattedValue(value=Name(id='x',ctx=Load()),conversion=-1),Constant(value='!')])],"
+    "keywords=[keyword(arg='k',value=Constant(value=1))]))])])])"
+)
+
+
+def test_kanonik_bicim_surumden_bagimsiz():
+    """Parmak izi olcutunun KENDISI surume bagli olmamali (26.09: `ast.dump`
+    canlidaki 3.11'de baska, yereldeki 3.14'te baska metin veriyordu). Bu
+    kirmiziysa DETECTOR_VERSION'a dokunma — `_kanonik` bu Python'da farkli yaziyor."""
+    simdiki = _kanonik(ast.parse(_KANONIK_ORNEK_KAYNAK))
+    assert simdiki == _KANONIK_ORNEK, (
+        f"Python {sys.version.split()[0]} kanonik metni farkli yaziyor:\n{simdiki}"
     )
 
 

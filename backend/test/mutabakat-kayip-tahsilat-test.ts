@@ -1291,8 +1291,17 @@ async function kBlogu(): Promise<void> {
     const eski = { durum: 'SONA_ERDI', iyzicoDurum: 'ACTIVE', iyzicoAbonelikKodu: 'sub-eski', paketSurumu: { paket: { kod: 'pro-mek' } } };
     check('K9 ⭐ ikinci form tamamlanırsa da (yarış) yeni abonelik İKİNCİ sayılır; iyzico kapalıysa sayılmaz',
       ikinciAbonelikMi(eski, 'sub-yeni') === true && ikinciAbonelikMi({ ...eski, iyzicoDurum: 'CANCELED' }, 'sub-yeni') === false);
-    check('K10 miras satırı muaf (iyzico durumu ne olursa olsun)',
-      yeniAbonelikEngeli({ durum: 'AKTIF', iyzicoDurum: 'ACTIVE', paketSurumu: { paket: { kod: 'miras-pro' } } }) === null);
+    // ⚠ 26.09 (miras hakki turu) ANLAM DEGISTI: miras muafiyeti iyzico ACTIVE
+    // denetiminden SONRA gelir. Kart dönemi bitip mirasa DÖNEN satırda kart
+    // iyzico'da kapatılamadıysa ikinci kart aboneliği açılmasın (çift çekim).
+    // Göç satırlarında `iyzicoDurum` NULL → muafiyet AYNEN.
+    const mirasEngeli = (iyzicoDurum: string | null) =>
+      yeniAbonelikEngeli({ durum: 'AKTIF', iyzicoDurum, paketSurumu: { paket: { kod: 'miras-pro' } } });
+    const acikOlmayan = [null, 'CANCELED', 'UNPAID', 'EXPIRED'].map((dur) => `${dur}:${mirasEngeli(dur)}`);
+    check('K10 miras satırı muaf — iyzico kartı AÇIK değilse (NULL/CANCELED/UNPAID/EXPIRED → engel yok)',
+      acikOlmayan.every((s) => s.endsWith(':null')), acikOlmayan.join(' | '));
+    check('K10b ⭐ mirasa dönmüş satırda kart iyzico\'da hâlâ ACTIVE → KART_ABONELIGI_ACIK (ikinci abonelik açılmaz)',
+      mirasEngeli('ACTIVE') === 'KART_ABONELIGI_ACIK', String(mirasEngeli('ACTIVE')));
   }
 
   console.log('\n── K · iptalEt iyzico durumunu tazeler (yanlış engel yok) ──');

@@ -542,6 +542,17 @@ const SUITES: Suite[] = [
   //    Motor tarafı (döngü dışı kopya/özet, ayrı sınırlı semaforlar): python
   //    `tests/test_olay_dongusu.py` D4 + Y1-Y3 (CI'da yok).
   { ad: 'DWG yükleme: Caddy↔Nest tavan · kapı sırası · 200 MB bayt bayt ve bellek dışı · ön 413 · multer 413 · firma başına 429 · kopmada temizlik · motor hatası (C/M/G/S/O/L/E/A/H)', script: 'test:dwg-yukleme', zincir: 'Z0' },
+  // DWG kiracı dedup (26.09.2026): motor aynı içeriği TÜM kiracılar arasında
+  //    tekilleştiriyordu; ikinci firma birincinin file_id'sini `dedup: true` ile
+  //    alıp kendi yüklemesinde 403 yiyor, çizimi başkasının yüklediğini öğreniyordu
+  //    (ihale çizimi). Gerçek denetleyici+servis+sahiplik, bellek içi DB, taklit
+  //    motor. R: kapsam işaretsiz (eski) motorda HER yükleme aynı 503 — dosyaya
+  //    özgü sinyal yok · L: "kapsamladım" deyip tekilleştiren motorda başka
+  //    firmanın kimliği verilmez · U: Nest firmaya özgü opak kapsam gönderir,
+  //    ikinci firma kendi kimliğiyle çalışır · F: biçimsiz file_id 400 ·
+  //    G: kayıtsız kimlik 403 (Emre 26.09), sahiplik yazılamazsa yükleme hata
+  //    verir · Y: P2002 yarışı. Motor: `tests/test_dedup_kapsam.py`.
+  { ad: 'DWG kiracı dedup: eski motor · yalancı motor · kapsamlı motor · biçim · kayıtsız kimlik · yarış (R/L/U/F/G/Y)', script: 'test:dwg-kiraci-dedup', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
   // T47 (22.09.2026): "fatura bilgisi eksik firma gercek bir fatura kesme
@@ -883,7 +894,21 @@ const SUITES: Suite[] = [
   // `kopruErisimSonu`na yazar; webhook yalnız `erisimSonu` hâlâ o değerse
   // kısaltır. Kapı gerçek `donusIyzicodan` → gerçek `tahsilatBasarili` koşar.
   // DB/AĞ/iyzico GEREKTİRMEZ.
+  // ⚠ 26.09: miras satırında `max` kuralı KALKTI (bkz. alttaki miras hakkı
+  // kapısı) — kapının miras ölçütü "340 gün `erisimSonu`nda" yerine "hak ayrı
+  // alanda 340 gün, ödenen dönem bugünden" oldu; amaç aynı.
   { ad: 'Miras erişimi: köprü yazımı · yeniden sonuçlandırma · miras uçtan uca · köprü düzeltmesi · sonradan verilen erişim · olay izi · bağlantı (K/Y/M/D/V/O/B)', script: 'test:miras-erisimi', zincir: 'Z0' },
+  // 26.09 (Emre kararı 24.09 "miras hakkı AYRI taşınsın, kart erişimi bitince
+  // miras paketine düşsün"): miras tarihi `erisimSonu`nda "ödenmiş erişim" gibi
+  // taşınıyordu — 1 aylık Pro (kart `max`, havale `max(erisimSonu, şimdi)`)
+  // Pro'yu miras bitişine kadar veriyordu; mutabakat İPTAL dalının `endDate`
+  // yazımı ve dunning kısıt/askı basamakları hakkı silebiliyordu. Hak artık
+  // `mirasPaketSurumuId`/`mirasErisimSonu`nda; ödenen dönem bugün başlar,
+  // bitince satır mirasa DÖNER (tek geçit `durumDegistir(SONA_ERDI)` +
+  // 10 dk dönüş işi + dunning kısıt günü). GERÇEK MutabakatJob + Abonelik +
+  // SatinAlma + Havale + Dunning + Webhook + Erisim + MirasDonusuJob; yarışlar
+  // okuma kancasıyla, TZ=UTC. DB/AĞ/iyzico GEREKTİRMEZ.
+  { ad: 'Miras hakkı: saf kural · kart · iptal yolları · dönüş · havale · dunning · kapı · deneme · metinler · kapatma · bağlantı (S/K/İ/D/H/N/G/T/E/C/B/Z)', script: 'test:miras-hakki', zincir: 'Z0' },
   // 23.09 (Emre kararı): paketsiz YENİ hesap duvar görmez, uygulamayı GEZER
   // ("yalnızca gezsin"); Malzeme Havuzu'nda "fiyatlar paketle açılsın".
   // ⚠ En kritik kalkan V5: vitrin sunucuda HİÇBİR yetenek açmaz — "gezsin"

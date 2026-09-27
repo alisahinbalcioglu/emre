@@ -21,11 +21,22 @@
  * durumda yalniz uzatir. Kopru yalniz erisimi BITMIS (ya da hic olmayan)
  * satirda yazilir.
  *
+ * ⚠ 26.09 (miras hakki turu, Emre karari 24.09 "miras hakki AYRI tasinsin")
+ * MIRAS SATIRINDA ANLAM DEGISTI: miras gunleri ARTIK `erisimSonu`nda
+ * "odenmis erisim" gibi tasinmaz — `max` kurali miras-core firmaya 1 ay Pro
+ * odeyip iptalle Pro'yu miras bitisine kadar kullandiriyordu. Mirastan cikan
+ * satirda odenen donem BUGUN baslar (kopru yazilir, ilk tahsilat iyzico donem
+ * sonuna duzeltir), hak `mirasPaketSurumuId`/`mirasErisimSonu`na YAKALANIR ve
+ * ucretli donem bitince satir oraya DONER (kural: `abonelik/miras-hakki.ts`,
+ * uctan uca kapi: `test:miras-hakki`). Bu kapinin amaci AYNI kaldi — odemek,
+ * odememekten kotu olmasin: `max(erisimSonu, mirasErisimSonu)` 340 gunun
+ * altina INMEZ. Miras DISI satirda kurallar aynen.
+ *
  * ── BLOKLAR ──────────────────────────────────────────────────────────────
  *   K · Kopru yazimi: satin alma hangi satirda kopru yazar, hangisinde NULL;
  *       ayni aboneligin yeniden sonuclandirilmasi kopruyu korur (K7/K8)
  *   Y · Yeniden sonuclandirma uctan uca: TAMAMLANDI yazilamadi → ikinci donus
- *   M · ⭐ Miras uctan uca: donus → webhook → 340 gun KORUNUR (asil kusur)
+ *   M · ⭐ Miras uctan uca: donus → webhook → 340 gunluk hak KORUNUR (ayri alanda)
  *   D · Kopru duzeltmesi SURER: yeni firma → webhook → 33 → 30 gun (W8'in ikizi)
  *   V · Sonradan verilen erisim (havale/yonetici uzatmasi) kisalmaz; eski halka
  *   O · Olay izi: erisimin nasil degistigi olay kaydindan okunur
@@ -119,8 +130,23 @@ const SURUMLER: Satir[] = [
   surum('pro-mek'),
 ];
 
-/** Goc satiri (miras): HAVALE, iyzico bagi YOK — migration'in yazdigi bicim. */
+/**
+ * Goc satiri (miras): HAVALE, iyzico bagi YOK — migration'in yazdigi bicim.
+ * ⚠ 26.09: paketi `miras-` olan satir goc DOLDURMASINI da tasir (20260926150000:
+ * `mirasPaketSurumuId`/`mirasErisimSonu` = kendi paketi/erisimi). Baska pakete
+ * cevrilen fikstur (K2/K4/K5/V2) doldurma ALMAZ — canlidaki gibi.
+ */
 function mirasSatiri(erisimSonu: Date, o: Satir = {}): Satir {
+  const s = mirasSatiriHam(erisimSonu, o);
+  const gocDoldurmasi = s.paketSurumuId === 's-miras-core';
+  return {
+    mirasPaketSurumuId: gocDoldurmasi ? s.paketSurumuId : null,
+    mirasErisimSonu: gocDoldurmasi ? s.erisimSonu : null,
+    ...s,
+  };
+}
+
+function mirasSatiriHam(erisimSonu: Date, o: Satir): Satir {
   return {
     id: 'ab1',
     firmaId: 'f1',
@@ -346,25 +372,38 @@ async function kBlogu(): Promise<void> {
     check('K2 suresi gecmis satir: erisimSonu 33 gun VE kopru = erisimSonu', yakin(s.erisimSonu, 33) && s.kopruErisimSonu instanceof Date && s.kopruErisimSonu.getTime() === s.erisimSonu.getTime(), `e=${gunOlarak(s.erisimSonu)} k=${gunOlarak(s.kopruErisimSonu)}`);
   }
 
-  // K3 · ⭐ miras satiri (340 gun kaldi) → 340 KORUNUR, kopru NULL.
+  // K3 · ⭐ miras satiri (340 gun kaldi). ⚠ 26.09 ANLAM DEGISTI (eski: 340
+  // `erisimSonu`nda KORUNUR, kopru NULL): odenen donem BUGUN baslar — kopru
+  // yazilir; 340 gunluk hak AYRI alana yakalanir (kaybolmaz).
   {
     const miras = gunSonra(340);
     const d = dunya({ abonelik: mirasSatiri(miras) });
     await basarir('K3', () => aboneligiAc(d, 0));
     const s = d.db.satir();
-    check('K3 ⭐ miras: erisimSonu 340 gun KORUNDU (02.09 kurali)', s.erisimSonu.getTime() === miras.getTime(), gunOlarak(s.erisimSonu));
-    check('K3b ⭐ miras: kopru NULL (korunan tarih kopru DEGIL)', s.kopruErisimSonu === null, String(s.kopruErisimSonu));
+    check('K3 ⭐ miras: odenen donem BUGUN basladi — erisimSonu 33 gun VE kopru = erisimSonu', yakin(s.erisimSonu, 33) && s.kopruErisimSonu instanceof Date && s.kopruErisimSonu.getTime() === s.erisimSonu.getTime(), `e=${gunOlarak(s.erisimSonu)} k=${gunOlarak(s.kopruErisimSonu)}`);
+    check('K3b ⭐ miras: 340 gunluk hak AYRI tasindi (miras-core @ 340 gun, kaybolmadi)', s.mirasPaketSurumuId === 's-miras-core' && s.mirasErisimSonu instanceof Date && s.mirasErisimSonu.getTime() === miras.getTime(), `${s.mirasPaketSurumuId} @ ${gunOlarak(s.mirasErisimSonu)}`);
   }
 
   // K4 · erisimi SUREN ama kopruden KISA satir (5 gun) → kopru tarihi yazilir,
   // kopru isareti NULL. BILINCLI BEDEL: webhook bunu kisaltmaz, musteri en
   // fazla kopru ile iyzico donemi farki kadar (≤5 gun) fazla erisir —
-  // verilmis erisimi kesmek yerine.
+  // verilmis erisimi kesmek yerine. ⚠ 26.09: fikstur miras DISI (havaleyle
+  // odenmis Pro) — miras satiri artik mirastan cikis dalindadir (K4m).
   {
-    const d = dunya({ abonelik: mirasSatiri(gunSonra(5)) });
+    const d = dunya({ abonelik: mirasSatiri(gunSonra(5), { paketSurumuId: 's-pro-mek' }) });
     await basarir('K4', () => aboneligiAc(d, 0));
     const s = d.db.satir();
     check('K4 suren kisa erisim (5 gun): erisimSonu 33 gun, kopru NULL (bilincli bedel)', yakin(s.erisimSonu, 33) && s.kopruErisimSonu === null, `e=${gunOlarak(s.erisimSonu)} k=${String(s.kopruErisimSonu)}`);
+    check('K4-FIXTURE miras disi satir: hak alani bos kaldi', s.mirasPaketSurumuId === null && s.mirasErisimSonu === null, `${s.mirasPaketSurumuId}`);
+  }
+  // K4m · ayni kisa sure MIRAS satirinda: mirastan cikis → kopru ACIK (webhook
+  // iyzico donem sonuna duzeltir), 5 gunluk hak yakalanir.
+  {
+    const miras = gunSonra(5);
+    const d = dunya({ abonelik: mirasSatiri(miras) });
+    await basarir('K4m', () => aboneligiAc(d, 0));
+    const s = d.db.satir();
+    check('K4m miras 5 gun: erisimSonu = kopru = 33 gun, hak 5 gun yakalandi', yakin(s.erisimSonu, 33) && s.kopruErisimSonu?.getTime() === s.erisimSonu.getTime() && s.mirasErisimSonu?.getTime() === miras.getTime(), `e=${gunOlarak(s.erisimSonu)} k=${gunOlarak(s.kopruErisimSonu)} m=${gunOlarak(s.mirasErisimSonu)}`);
   }
 
   // K5 · BAYAT KOPRU TASINMAZ: onceki satin almadan kalan kopru BUGUNKU
@@ -435,45 +474,55 @@ async function yBlogu(): Promise<void> {
 // ═══════════════════════════════════════════════════════════════════════════
 //  M · ⭐ MIRAS UCTAN UCA — donus (satin alma) → webhook (ilk tahsilat)
 // ═══════════════════════════════════════════════════════════════════════════
+// ⚠ 26.09 (miras hakki turu) ANLAM DEGISTI: eski olcut "340 gun `erisimSonu`nda
+// duruyor"du. Yeni modelde `erisimSonu` ODENEN donemdir (kopru 33 → ilk
+// tahsilat 30 → yenileme 61); 340 gunluk hak `mirasErisimSonu`nda sabit durur
+// ve ucretli donem bitince satir oraya doner (`test:miras-hakki` İ/D/H). Amac
+// AYNI: odeme hakki SILMEZ → `max(erisimSonu, mirasErisimSonu)` ≥ 340 gun.
 async function mBlogu(): Promise<void> {
-  console.log('\n── M · ⭐ miras uctan uca: odeme 340 gunu SILMEZ ──');
+  console.log('\n── M · ⭐ miras uctan uca: odeme 340 gunluk hakki SILMEZ ──');
   const miras = gunSonra(340);
   const d = dunya({ abonelik: mirasSatiri(miras) });
+  const hak = () => d.db.satir().mirasErisimSonu as Date | null;
+  /** Odemek odememekten kotu olmasin: iki bitisin buyugu 340 gunun altina inmez. */
+  const kaybolmadi = () =>
+    d.db.satir().mirasPaketSurumuId === 's-miras-core' && hak()?.getTime() === miras.getTime() &&
+    Math.max(d.db.satir().erisimSonu.getTime(), hak()!.getTime()) >= miras.getTime();
 
-  // FIXTURE KANITI: senaryo AYIRT EDICI mi? Siparisin donem sonu erisimden
-  // ERKEN olmali — yoksa eski kod da "uzatir" ve kusur olculmez.
-  check('M-FIXTURE satir miras-core · HAVALE · iyzico bagi yok · 340 gun', d.db.satir().paketSurumuId === 's-miras-core' && d.db.satir().odemeYontemi === 'HAVALE' && d.db.satir().iyzicoAbonelikKodu === null && d.db.satir().erisimSonu.getTime() === miras.getTime());
+  // FIXTURE KANITI: senaryo AYIRT EDICI mi? Siparisin donem sonu miras
+  // bitisinden ERKEN olmali — yoksa "hak silindi" olculemez.
+  check('M-FIXTURE satir miras-core · HAVALE · iyzico bagi yok · 340 gun · goc doldurmasi', d.db.satir().paketSurumuId === 's-miras-core' && d.db.satir().odemeYontemi === 'HAVALE' && d.db.satir().iyzicoAbonelikKodu === null && d.db.satir().erisimSonu.getTime() === miras.getTime() && d.db.satir().mirasErisimSonu?.getTime() === miras.getTime());
 
   const donus = await basarir('M0', () => d.satinAlma.donusIyzicodan('tok-1'));
   check('M0 donus: satin alma TAMAMLANDI (gercek giris noktasi)', donus === 'tamam' && d.db.niyetler[0].durum === 'TAMAMLANDI', `donus=${donus} niyet=${d.db.niyetler[0].durum}`);
-  check('M0b satir KART + pro-mek + sub-1, erisim 340 gun (satin alma korudu)', d.db.satir().odemeYontemi === 'KART' && d.db.satir().paketSurumuId === 's-pro-mek' && d.db.satir().iyzicoAbonelikKodu === 'sub-1' && d.db.satir().erisimSonu.getTime() === miras.getTime(), gunOlarak(d.db.satir().erisimSonu));
+  check('M0b satir KART + pro-mek + sub-1, odenen donem BUGUN basladi (kopru 33 gun), hak 340 gun AYRI', d.db.satir().odemeYontemi === 'KART' && d.db.satir().paketSurumuId === 's-pro-mek' && d.db.satir().iyzicoAbonelikKodu === 'sub-1' && yakin(d.db.satir().erisimSonu, 33) && kaybolmadi(), `e=${gunOlarak(d.db.satir().erisimSonu)} m=${gunOlarak(hak())}`);
 
   // Ilk tahsilat (denemesiz ikiz: form aninda cekildi) — donem sonu 30 gun.
   const ilkDonem = gunSonra(30);
   d.siparisEkle('sub-1', 'sip-1', ilkDonem);
-  check('M-FIXTURE siparis donem sonu (30 gun) erisimden (340 gun) ERKEN', ilkDonem.getTime() < miras.getTime());
+  check('M-FIXTURE siparis donem sonu (30 gun) miras bitisinden (340 gun) ERKEN', ilkDonem.getTime() < miras.getTime());
   await basarir('M1', () => d.abonelik.tahsilatBasarili('sub-1', 'sip-1'));
-  check('M1 ⭐⭐ ILK TAHSILAT miras erisimini SILMEDI: 340 gun duruyor', d.db.satir().erisimSonu.getTime() === miras.getTime(), gunOlarak(d.db.satir().erisimSonu));
+  check('M1 ⭐⭐ ILK TAHSILAT miras hakkini SILMEDI: hak 340 gun, odenen donem iyzico donem sonu (30 gun)', kaybolmadi() && d.db.satir().erisimSonu.getTime() === ilkDonem.getTime(), `e=${gunOlarak(d.db.satir().erisimSonu)} m=${gunOlarak(hak())}`);
   const m1 = isledi(d, 'sip-1');
-  check('M1-KANIT webhook siparisi GERCEKTEN isledi (olay var, kopru duzeltilMEDI)', m1.length === 1 && m1[0].veri?.guncelUcMu === true && m1[0].veri?.kopruDuzeltildi === false, JSON.stringify(m1.map((o: Satir) => o.veri)));
+  check('M1-KANIT webhook siparisi GERCEKTEN isledi (olay var, kopru DUZELTILDI)', m1.length === 1 && m1[0].veri?.guncelUcMu === true && m1[0].veri?.kopruDuzeltildi === true, JSON.stringify(m1.map((o: Satir) => o.veri)));
   check('M1b durum AKTIF, dunning sayaclari sifir', d.db.satir().durum === AbonelikDurumu.AKTIF && d.db.satir().denemeSayisi === 0);
 
   // Ayni siparisin webhook'u iyzico tarafindan TEKRAR gonderilir (~45 dk).
   await basarir('M2', () => d.abonelik.tahsilatBasarili('sub-1', 'sip-1'));
-  check('M2 ayni siparis ikinci kez: erisim yine 340 gun', d.db.satir().erisimSonu.getTime() === miras.getTime(), gunOlarak(d.db.satir().erisimSonu));
+  check('M2 ayni siparis ikinci kez: odenen donem yine 30 gun, hak 340 gun', kaybolmadi() && d.db.satir().erisimSonu.getTime() === ilkDonem.getTime(), `e=${gunOlarak(d.db.satir().erisimSonu)} m=${gunOlarak(hak())}`);
   check('M2-KANIT ikinci teslim de islendi (2 olay)', isledi(d, 'sip-1').length === 2);
 
   // Sonraki yenileme (2. ay): donem sonu hala miras bitisinden once.
   d.siparisEkle('sub-1', 'sip-2', gunSonra(61));
   await basarir('M3', () => d.abonelik.tahsilatBasarili('sub-1', 'sip-2'));
-  check('M3 ⭐ yenileme (61 gun) de KISALTMAZ: 340 gun', d.db.satir().erisimSonu.getTime() === miras.getTime(), gunOlarak(d.db.satir().erisimSonu));
+  check('M3 ⭐ yenileme odenen donemi UZATIR (61 gun), hak 340 gunde SABIT', kaybolmadi() && yakin(d.db.satir().erisimSonu, 61), `e=${gunOlarak(d.db.satir().erisimSonu)} m=${gunOlarak(hak())}`);
   check('M3-KANIT yenileme siparisi islendi', isledi(d, 'sip-2').length === 1);
 
   // Donem sonu miras bitisini GECINCE erisim uzar.
   const otesi = gunSonra(370);
   d.siparisEkle('sub-1', 'sip-13', otesi);
   await basarir('M4', () => d.abonelik.tahsilatBasarili('sub-1', 'sip-13'));
-  check('M4 donem sonu miras bitisini gecince (370 gun) erisim UZAR', d.db.satir().erisimSonu.getTime() === otesi.getTime(), gunOlarak(d.db.satir().erisimSonu));
+  check('M4 donem sonu miras bitisini gecince (370 gun) erisim UZAR; hak sabit (340)', d.db.satir().erisimSonu.getTime() === otesi.getTime() && hak()?.getTime() === miras.getTime(), `e=${gunOlarak(d.db.satir().erisimSonu)} m=${gunOlarak(hak())}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -568,15 +617,19 @@ async function oBlogu(): Promise<void> {
     const d = dunya({ abonelik: mirasSatiri(miras) });
     await basarir('O1', () => d.satinAlma.donusIyzicodan('tok-1'));
     const acildi = d.db.olaylar.find((o: Satir) => o.tip === 'abonelik.yeniden.acildi');
+    // ⚠ 26.09 (miras hakki turu): olay mirastan cikisi ve yakalanan hakki da
+    // yazar — "340 gun nereye gitti" sorusu olay kaydindan cevaplanir.
+    const v = acildi?.veri;
     check(
-      'O1 yeniden acilma olayi: onceki + yazilan erisim 340 gun, kopru null',
-      acildi?.veri?.oncekiErisimSonu === miras.toISOString() && acildi?.veri?.erisimSonu === miras.toISOString() && acildi?.veri?.kopruErisimSonu === null,
-      JSON.stringify(acildi?.veri),
+      'O1 yeniden acilma olayi: onceki erisim 340 gun, yazilan = kopru (33 gun), mirastan cikis + hak miras-core @ 340 gun',
+      v?.oncekiErisimSonu === miras.toISOString() && yakin(new Date(v?.erisimSonu), 33) && v?.kopruErisimSonu === v?.erisimSonu &&
+        v?.mirastanCikis === true && v?.mirasPaketSurumuId === 's-miras-core' && v?.mirasErisimSonu === miras.toISOString(),
+      JSON.stringify(v),
     );
     d.siparisEkle('sub-1', 'sip-1', gunSonra(30));
     await basarir('O2', () => d.abonelik.tahsilatBasarili('sub-1', 'sip-1'));
     const tahsilat = d.db.olaylar.filter((o: Satir) => o.tip === 'durum.degisti' && o.aktor === 'webhook').pop();
-    check('O2 tahsilat olayi: onceki erisim 340 gun, kopru DUZELTILMEDI', tahsilat?.veri?.oncekiErisimSonu === miras.toISOString() && tahsilat?.veri?.kopruDuzeltildi === false, JSON.stringify(tahsilat?.veri));
+    check('O2 tahsilat olayi: onceki erisim KOPRU (33 gun), kopru DUZELTILDI; satirda hak 340 gun', yakin(new Date(tahsilat?.veri?.oncekiErisimSonu), 33) && tahsilat?.veri?.kopruDuzeltildi === true && d.db.satir().mirasErisimSonu?.getTime() === miras.getTime(), JSON.stringify(tahsilat?.veri));
   }
   {
     const d = dunya({ abonelik: null });

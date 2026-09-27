@@ -35,7 +35,7 @@ SOZLESME (esik 1 sn; taklit agir is 6 sn surer, dongu serbestken /health ms'lerd
      ve birbirini BEKLETMEZ. Eskiden ikisi de varsayilan havuzu (cpu+4 is parcacigi)
      paylasiyordu: cpu+4 yavas yukleme her kiracinin /parse'ini kuyruga sokabilirdi.
      a) hat 1'e sinirliyken ikinci donusum birincinin BITISINI bekler; kuyruk
-        doluyken yeni icerik 429 alir, AYNI icerik (dedup) yine kabul edilir; hat
+        doluyken yeni icerik 429 alir, AYNI kapsamda AYNI icerik (dedup) yine kabul edilir; hat
         doluyken /parse hemen baslar. b) /parse 1'e sinirliyken ikinci ayirma
         birincinin bitisini bekler; /parse doluyken donusum hemen baslar.
 
@@ -83,6 +83,10 @@ import main  # noqa: E402
 
 ESIK_SN = 1.0
 AGIR_IS_SN = 6.0
+# Nest her yuklemeye firmaya ozgu `kapsam` ekler (26.09, kiraci dedup); testler de
+# ekler — kapsamsiz yukleme hic tekillestirilmez (test_dedup_kapsam K4), Y3a'nin
+# dedup adimi kapsam ister. Parca, Nest'teki gibi dosyadan ONCE gelir.
+KAPSAM = hashlib.sha256(b"dongu-testi-firmasi").hexdigest()
 
 TAKLIT_DWG2DXF = r'''
 import os, shutil, sys, time
@@ -141,9 +145,13 @@ def _istek(port: int, yontem: str, yol: str, govde: bytes | None = None,
         conn.close()
 
 
+def _kapsam_parcasi(sinir: str) -> bytes:
+    return f"--{sinir}\r\nContent-Disposition: form-data; name=\"kapsam\"\r\n\r\n{KAPSAM}\r\n".encode()
+
+
 def _multipart(ad: str, icerik: bytes) -> tuple[bytes, dict]:
     sinir = "----dongutest" + uuid.uuid4().hex[:8]
-    govde = (
+    govde = _kapsam_parcasi(sinir) + (
         f"--{sinir}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{ad}\"\r\n"
         "Content-Type: application/octet-stream\r\n\r\n"
     ).encode() + icerik + f"\r\n--{sinir}--\r\n".encode()
@@ -305,7 +313,8 @@ def taklit_parse(ortam, tmp_path, monkeypatch):
     isci = tmp_path / "taklit_parse_iscisi.py"
     isci.write_text(TAKLIT_PARSE_ISCISI, encoding="utf-8")
     monkeypatch.setattr(main, "_PARSE_WORKER_YOLU", str(isci))
-    file_id = "dongutest" + uuid.uuid4().hex[:3]
+    # Motor bicimi (`uuid4().hex[:12]`): bicimsiz kimlige yol kurulmaz (26.09, test_dedup_kapsam V4).
+    file_id = uuid.uuid4().hex[:12]
     with open(main._cache_path(file_id), "w", encoding="utf-8") as f:
         f.write("0\nEOF\n")  # taklit isci DXF okumaz; uc yalniz varligina bakar
     return file_id
@@ -373,8 +382,9 @@ def _buyuk_yukle(port: int, ad: str, blok: bytes, adet: int, kutu: dict) -> None
     kadar), Content-Length'li — Nest'in motora gonderdigi bicim. Asama anlarini
     (duvar saati) `kutu`ya yazar: basladi · gonderildi (son bayt yazildi) · yanitlandi."""
     sinir = "----dongutest" + uuid.uuid4().hex[:8]
-    bas = (f"--{sinir}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{ad}\"\r\n"
-           "Content-Type: application/octet-stream\r\n\r\n").encode()
+    bas = _kapsam_parcasi(sinir) + (
+        f"--{sinir}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{ad}\"\r\n"
+        "Content-Type: application/octet-stream\r\n\r\n").encode()
     son = f"\r\n--{sinir}--\r\n".encode()
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=300)
     try:
@@ -523,7 +533,7 @@ def taklit_parse_y3(ortam, tmp_path, monkeypatch):
     isci = tmp_path / "taklit_parse_iscisi_y3.py"
     isci.write_text(TAKLIT_PARSE_ISCISI_Y3, encoding="utf-8")
     monkeypatch.setattr(main, "_PARSE_WORKER_YOLU", str(isci))
-    file_id = "dongutest" + uuid.uuid4().hex[:3]
+    file_id = uuid.uuid4().hex[:12]  # motor bicimi (bkz. taklit_parse)
     with open(main._cache_path(file_id), "w", encoding="utf-8") as f:
         f.write("0\nEOF\n")
     return file_id

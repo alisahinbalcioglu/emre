@@ -20,6 +20,7 @@ Kapi: tests/test_olay_dongusu.py.
 """
 
 import os
+import re
 import sys
 import json
 import math
@@ -28,7 +29,7 @@ import uuid
 import logging
 import tempfile
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, Query, HTTPException, Request, Response
+from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -83,18 +84,16 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 # Locale (env yoksa) auth kontrol atlanir — geliştirme engel olmasin.
 
 _INTERNAL_API_TOKEN = os.environ.get("INTERNAL_API_TOKEN", "").strip()
-_PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/debug/info"}
-# Path prefix-bazli public paths (debug endpoint'leri)
-_PUBLIC_PATH_PREFIXES = ("/debug/",)
+# /debug/* JETON ISTER (26.09): jetonsuzken ic agdaki her konteyner okuyabiliyordu.
+# Bilinmeyen kimlikte `all_keys` baska firmalarin kimliklerini, kayitta hash/kapsam/
+# katmanlari donduruyordu. Kullanan arac yok (olculdu 26.09); isletmeci jetonla cagirir.
+_PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 
 
 @app.middleware("http")
 async def verify_internal_token(request: Request, call_next):
     path = request.url.path
-    is_public = (
-        path in _PUBLIC_PATHS
-        or any(path.startswith(prefix) for prefix in _PUBLIC_PATH_PREFIXES)
-    )
+    is_public = path in _PUBLIC_PATHS
     if _INTERNAL_API_TOKEN and not is_public:
         provided = request.headers.get("x-internal-token", "")
         if provided != _INTERNAL_API_TOKEN:
@@ -129,7 +128,8 @@ import hashlib
 DETECTOR_VERSION = "2026-09-02-patlatilmis-sembol"
 
 # Default 24 saat; env DWG_CACHE_TTL (saniye) ile ayarlanabilir.
-# Disk maliyeti kabul edilebilir: dedup ayni dosyayi coklamaz, cleanup her
+# Disk maliyeti kabul edilebilir: dedup ayni firmada ayni dosyayi coklamaz
+# (firmalar arasi tekillestirme YOK, bkz. upload_async KAPSAM), cleanup her
 # upload'da kosar, 75GB diskte gunluk DXF hacmi sorun degil.
 _CACHE_TTL = int(os.environ.get("DWG_CACHE_TTL") or 86400)  # 24 saat
 _CACHE_DIR = tempfile.gettempdir()
@@ -146,26 +146,40 @@ _GEOMETRY_CACHE_SUFFIX = ".geom.json"
 _STATE_SUFFIX = ".state.json"
 # Ham yuklenen dosya (dwg/dxf) — donusum background'da yapilir, kaynak burada.
 _SRC_INFIX = ".src."
+# FILE_ID BICIMI (26.09): motorun kimligi `uuid.uuid4().hex[:12]`. Yol kuran HER
+# yardimci bicimi dogrular: /status, /geometry, /parse ve /debug yollarindan
+# gelen deger onbellek dizini disina yol KURAMAZ; bicimsiz kimlik 404 degil 400
+# alir. Nest de ayni kurali uygular (dwg-sahiplik.servisi.ts DWG_FILE_ID_BICIMI).
+_FILE_ID_BICIMI = re.compile(r"[0-9a-f]{12}")
+# DEDUP KAPSAMI (26.09): NestJS'in firmaya ozgu opak anahtari (sha256 hex).
+_KAPSAM_BICIMI = re.compile(r"[0-9a-f]{64}")
+
+
+def _file_id_dogrula(file_id: str) -> str:
+    """Bicimsiz kimlik → 400. Donen deger yola guvenle katilabilir."""
+    if not isinstance(file_id, str) or not _FILE_ID_BICIMI.fullmatch(file_id):
+        raise HTTPException(400, "Gecersiz file_id")
+    return file_id
 
 
 def _cache_path(file_id: str) -> str:
     """file_id → deterministic disk path. In-memory map'e gerek yok."""
-    return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{file_id}{_CACHE_SUFFIX}")
+    return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{_file_id_dogrula(file_id)}{_CACHE_SUFFIX}")
 
 
 def _geometry_cache_path(file_id: str) -> str:
     """file_id → geometry JSON cache path."""
-    return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{file_id}{_GEOMETRY_CACHE_SUFFIX}")
+    return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{_file_id_dogrula(file_id)}{_GEOMETRY_CACHE_SUFFIX}")
 
 
 def _state_path(file_id: str) -> str:
     """file_id → upload state JSON path."""
-    return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{file_id}{_STATE_SUFFIX}")
+    return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{_file_id_dogrula(file_id)}{_STATE_SUFFIX}")
 
 
 def _src_path(file_id: str, ext: str) -> str:
     """file_id → ham yuklenen dosyanin (henuz donusmemis) path'i."""
-    return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{file_id}{_SRC_INFIX}{ext}")
+    return os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}{_file_id_dogrula(file_id)}{_SRC_INFIX}{ext}")
 
 
 def _read_state(file_id: str) -> dict | None:
@@ -199,6 +213,8 @@ def _iter_states() -> list[tuple[str, dict]]:
             if not (fname.startswith(_CACHE_PREFIX) and fname.endswith(_STATE_SUFFIX)):
                 continue
             file_id = fname[len(_CACHE_PREFIX):-len(_STATE_SUFFIX)]
+            if not _FILE_ID_BICIMI.fullmatch(file_id):
+                continue  # motorun yazmadigi ad: okunmaz (yol yardimcisi 400 firlatirdi)
             st = _read_state(file_id)
             if st is not None:
                 out.append((file_id, st))
@@ -1219,11 +1235,15 @@ def _background_pipeline(file_id: str, src_path: str) -> None:
     prev = _read_state(file_id) or {}
     started_at = prev.get("started_at", time.time())
     file_hash = prev.get("hash")
+    # Kapsam TASINIR: yazilmazsa "ready" kayit hicbir yuklemeyle eslesmez
+    # (firma ici tekillestirme sessizce biterdi).
+    kapsam = prev.get("kapsam")
     try:
         result = _run_upload_subprocess(file_id, src_path, timeout=600)
         _write_state(file_id, {
             "status": "ready",
             "hash": file_hash,
+            "kapsam": kapsam,
             "started_at": started_at,
             "completed_at": time.time(),
             "layers": result.get("layers") or [],
@@ -1261,6 +1281,7 @@ def _background_pipeline(file_id: str, src_path: str) -> None:
             _write_state(file_id, {
                 "status": "error",
                 "hash": file_hash,
+                "kapsam": kapsam,
                 "started_at": started_at,
                 "completed_at": time.time(),
                 "error_type": err_type,
@@ -1311,13 +1332,16 @@ def _yuklemeyi_diske_al(kaynak) -> tuple[str, str, int, bytes]:
     return gecici, ozet.hexdigest()[:16], boyut, bas
 
 
-def _yuklemeyi_kaydet(gecici: str, file_hash: str, ext: str, dosya_adi: str, yer_var: bool) -> dict:
+def _yuklemeyi_kaydet(gecici: str, file_hash: str, ext: str, dosya_adi: str, yer_var: bool,
+                      kapsam: str | None = None) -> dict:
     """Dedup taramasi + yeni kaydin (kaynak dosya + durum) ATOMIK yazimi — ayni
     dosyanin es zamanli iki yuklemesi cift hat baslatmasin. Is parcacigi havuzunda
     `_KAYIT_KILIDI` altinda calisir (dizin taramasi + durum dosyalari disk G/C'sidir).
 
     `yer_var`: dongu hatta yer ayirdi mi. Dedup yer istemez (hatta is eklemez); yer
     yoksa ve dedup da yoksa {"yogun": True}. Kaydedilmeyen gecici dosya silinir.
+    `kapsam` (kiraci dedup, 26.09): tekillestirme YALNIZ ayni kapsamda; kapsamsiz
+    yukleme hic tekillestirilmez. Kayit kapsami tasir (bkz. upload_async).
     """
     kaydedildi = False
     try:
@@ -1330,8 +1354,10 @@ def _yuklemeyi_kaydet(gecici: str, file_hash: str, ext: str, dosya_adi: str, yer
             # (yanlis) birimle geri gelebilirdi — kullanici yeniden yukledigini
             # sanip bayat cevap alirdi. Bu yuzden state'e DETECTOR_VERSION
             # yazilir ve surum uyusmuyorsa dedup ATLANIR (yeniden parse edilir).
-            for fid, st in _iter_states():
-                if st.get("hash") != file_hash:
+            # KAPSAM: yalniz ayni firmanin kaydina baglanir; kapsamsiz yukleme
+            # hic taranmaz (bkz. upload_async).
+            for fid, st in (_iter_states() if kapsam is not None else ()):
+                if st.get("hash") != file_hash or st.get("kapsam") != kapsam:
                     continue
                 if st.get("detector_version") != DETECTOR_VERSION:
                     logging.info("Dedup atlandi (birim tespit surumu eski: %s != %s)",
@@ -1359,6 +1385,7 @@ def _yuklemeyi_kaydet(gecici: str, file_hash: str, ext: str, dosya_adi: str, yer
                 _write_state(file_id, {
                     "status": "processing",
                     "hash": file_hash,
+                    "kapsam": kapsam,
                     "started_at": time.time(),
                     # Frontend "ready" gelene kadar bunlari kullanir; worker tespit
                     # sonucunu okuyup state'e yazar (artik ezilmiyor).
@@ -1389,7 +1416,7 @@ def _yuklemeyi_kaydet(gecici: str, file_hash: str, ext: str, dosya_adi: str, yer
 
 
 @app.post("/upload")
-async def upload_async(file: UploadFile = File(...)):
+async def upload_async(file: UploadFile = File(...), kapsam: str | None = Form(None)):
     """Async upload — dosyayi DISKE yazar, file_id ile HEMEN doner (~1-2sn).
 
     v2.3 (PRD): DWG→DXF donusumu ARTIK bu istegin icinde DEGIL — eskiden
@@ -1397,16 +1424,27 @@ async def upload_async(file: UploadFile = File(...)):
     NestJS 30/60sn'de bagantiyi koparip 503 uretiyordu. Simdi donusum de
     parse da upload_worker.py subprocess'inde arka planda.
 
-    DEDUP (PRD 3.1): Ayni icerik (sha256) zaten processing/ready ise YENI
-    pipeline baslatilmaz, mevcut file_id doner. Boylece frontend retry'lari
-    sunucuda LibreDWG surecini katlamaz ("kendi kendine DDoS" biter).
+    DEDUP (PRD 3.1): Ayni icerik (sha256) AYNI KAPSAMDA zaten processing/ready
+    ise YENI pipeline baslatilmaz, mevcut file_id doner. Boylece frontend
+    retry'lari sunucuda LibreDWG surecini katlamaz ("kendi kendine DDoS" biter).
+
+    KAPSAM (26.09): NestJS firmaya ozgu opak anahtar (64 hex) gonderir; dedup
+    yalniz ayni kapsamdaki kayda baglanir. Eskiden TUM kiracilar arasinda
+    tekillestiriyordu: ikinci firma birincinin file_id'sini `dedup: true` ile
+    aliyor, Nest'in sahiplik kapisinda kendi yuklemesinde 403 yiyor ve ayni
+    cizimi baskasinin yukledigini ogreniyordu (ihale cizimi birden cok
+    yukleniciye gider). Kapsamsiz yukleme HIC tekillestirilmez: eski ya da
+    yanlis bir cagiran baska birinin kaydina baglanamaz. Kapsam uygulandiginda
+    yanit `kapsamli: true` tasir; Nest bu isareti gormezse (eski motor) HER
+    yuklemeyi ayni hatayla reddeder — yalniz tekillestirilen dosya reddedilseydi
+    "bu cizimi baskasi yuklemis" yine okunurdu. Kapi: tests/test_dedup_kapsam.py.
 
     BOYUTLA ORANTILI IS DONGUDE DEGIL (26.09): govde bellege alinmaz; kopyasi,
     ozeti, dedup taramasi ve kaydi is parcacigi havuzunda (`_yuklemeyi_diske_al`,
     `_yuklemeyi_kaydet`). Hat doluysa (kosan + sirada = ES_ZAMANLI + KUYRUK) yeni
     icerik 429 alir; ayni icerik (dedup) yine kabul edilir.
 
-    Response: {file_id, status: "processing"|"ready", dedup?: true}
+    Response: {file_id, status: "processing"|"ready", dedup?: true, kapsamli?: true}
     """
     if not file.filename:
         raise HTTPException(400, "Dosya adi eksik")
@@ -1414,6 +1452,13 @@ async def upload_async(file: UploadFile = File(...)):
     ext = file.filename.lower().rsplit('.', 1)[-1] if '.' in file.filename else ''
     if ext not in ("dwg", "dxf"):
         raise HTTPException(400, f"Desteklenmeyen format: .{ext}. Sadece .dwg ve .dxf kabul edilir.")
+    # Bos alan = kapsamsiz. fastapi 0.115 (canli) bos alani "" verir, yeni surumler
+    # None — ikisi de ayni yoldan gecsin.
+    kapsam = kapsam or None
+    if kapsam is not None and not _KAPSAM_BICIMI.fullmatch(kapsam):
+        raise HTTPException(400, "Gecersiz kapsam")
+    # Kapsam uygulandi isareti (Nest gormezse eski motor sayar ve reddeder).
+    kapsamli = {"kapsamli": True} if kapsam is not None else {}
 
     es = _es_zamanlilik()
     try:
@@ -1432,7 +1477,7 @@ async def upload_async(file: UploadFile = File(...)):
             es.hattaki += 1
         try:
             sonuc = await asyncio.to_thread(
-                _yuklemeyi_kaydet, gecici, file_hash, ext, file.filename, yer_var)
+                _yuklemeyi_kaydet, gecici, file_hash, ext, file.filename, yer_var, kapsam)
         except BaseException:
             if yer_var:
                 es.hattaki -= 1
@@ -1447,7 +1492,7 @@ async def upload_async(file: UploadFile = File(...)):
                 "DWG motoru su an cok sayida projeyi isliyor; birkac dakika sonra tekrar deneyin.",
             )
         if sonuc.get("dedup"):
-            return {"file_id": sonuc["file_id"], "status": sonuc["status"], "dedup": True}
+            return {"file_id": sonuc["file_id"], "status": sonuc["status"], "dedup": True, **kapsamli}
 
         # Agir is: izole subprocess (upload_worker.py) — event loop bloklanmaz,
         # OOM olsa bile yalniz cocuk process olur. Sirasini hat semaforunda bekler.
@@ -1458,6 +1503,7 @@ async def upload_async(file: UploadFile = File(...)):
         return {
             "file_id": sonuc["file_id"],
             "status": "processing",
+            **kapsamli,
         }
     except HTTPException:
         raise
