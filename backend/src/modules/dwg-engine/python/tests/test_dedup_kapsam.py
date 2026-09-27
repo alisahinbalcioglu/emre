@@ -72,10 +72,13 @@ def _yukle(c: TestClient, kapsam: str | None, icerik: bytes = ICERIK, ad: str = 
 
 
 def _hazir_isaretle(file_id: str) -> None:
-    """Arka plan isini tamamlanmis gibi isaretle: state ready + DXF onbellekte."""
+    """Arka plan isini tamamlanmis gibi isaretle: state ready + DXF + geometri onbellekte
+    (26.09 /geometry isi: "ready" ⇒ geometri dosyasi VAR; dedup onu sart kosar)."""
     st = main._read_state(file_id)
     with open(main._cache_path(file_id), "w", encoding="utf-8") as f:
         f.write("0\nEOF\n")
+    with open(main._geometry_cache_path(file_id), "w", encoding="utf-8") as f:
+        f.write('{"lines": []}')
     main._write_state(file_id, {**st, "status": "ready"})
 
 
@@ -148,8 +151,11 @@ def test_k6_kapsam_statee_yazilir(istemci):
 
 def test_k7_arka_plan_isi_kapsami_korur(istemci, monkeypatch):
     def taklit_alt_surec(file_id, src_path, timeout=600):
+        # Gercek isci gibi: DXF + geometri (26.09: basari geometri dosyasini gerektirir).
         with open(main._cache_path(file_id), "w", encoding="utf-8") as f:
             f.write("0\nEOF\n")
+        with open(main._geometry_cache_path(file_id), "w", encoding="utf-8") as f:
+            f.write('{"lines": []}')
         return {"layers": [{"name": "BORU"}], "total_layers": 1, "entity_count": 5}
 
     monkeypatch.setattr(main, "_run_upload_subprocess", taklit_alt_surec)

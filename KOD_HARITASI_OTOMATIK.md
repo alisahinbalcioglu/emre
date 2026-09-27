@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 839
-Toplam satir: 227894
+Toplam satir: 227900
 Uc nokta: 238
 test:* scripti: 138
 
@@ -105,7 +105,7 @@ test:* scripti: 138
 | `backend/src/modules/dwg-engine/python/pipe_segments.py` | 1875 |
 | `backend/src/modules/dwg-engine/python/tests/__init__.py` | 1 |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | 104 |
-| `backend/src/modules/dwg-engine/python/tests/test_dedup_kapsam.py` | 244 |
+| `backend/src/modules/dwg-engine/python/tests/test_dedup_kapsam.py` | 250 |
 | `backend/src/modules/dwg-engine/python/tests/test_detector_version_kapisi.py` | 200 |
 | `backend/src/modules/dwg-engine/python/tests/test_olay_dongusu.py` | 1030 |
 | `backend/src/modules/dwg-engine/python/tests/test_parse_iptal.py` | 258 |
