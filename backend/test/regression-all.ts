@@ -888,6 +888,8 @@ const SUITES: Suite[] = [
   // 10 dk dönüş işi + dunning kısıt günü). GERÇEK MutabakatJob + Abonelik +
   // SatinAlma + Havale + Dunning + Webhook + Erisim + MirasDonusuJob; yarışlar
   // okuma kancasıyla, TZ=UTC. DB/AĞ/iyzico GEREKTİRMEZ.
+  // 27.09: D9/D10 — saatlik süre dolumu işinin yazımı aday okumasına koşullu
+  // (miras DIŞI satırlar da: havale onayı / gecikmiş deneme tahsilatı yarışı).
   { ad: 'Miras hakkı: saf kural · kart · iptal yolları · dönüş · havale · dunning · kapı · deneme · metinler · kapatma · bağlantı (S/K/İ/D/H/N/G/T/E/C/B/Z)', script: 'test:miras-hakki', zincir: 'Z0' },
   // 23.09 (Emre kararı): paketsiz YENİ hesap duvar görmez, uygulamayı GEZER
   // ("yalnızca gezsin"); Malzeme Havuzu'nda "fiyatlar paketle açılsın".

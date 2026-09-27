@@ -714,6 +714,14 @@ async function mirastanKartaGec(d: Dunya, firmaId: string, an = T0) {
   return s;
 }
 
+/** SIRADAN (miras DIŞI) firma kartla Pro alır ve ilk tahsilat webhook'u işlenir. */
+async function kartlaGec(d: Dunya, firmaId: string, an = T0) {
+  d.firma(firmaId);
+  const s = await d.kartlaSatinAl(firmaId, an);
+  await d.webhookGonder(s.ilkCekim, an + DAKIKA);
+  return s;
+}
+
 /** Satır miras-core'a (2027-09-01) dönmüş mü — dönüş verisinin TAMAMI. */
 function mirastaDondu(ab: Satir, p: { surum?: string; bitis?: number } = {}): boolean {
   return (
@@ -1109,6 +1117,65 @@ async function dBlogu(): Promise<void> {
       don.length === 1 && don[0].aktor === 'miras-donusu', JSON.stringify(don.map((o) => o.aktor)));
     check('D8 ⭐ saatlik iş bayat adayla mirasa dönmüş satırı SONA_ERDI YAPMADI (miras-core @ 2027-09-01, AKTIF)',
       mirastaDondu(ab) && !d.olaylar(ab.id, /^durum\.degisti$/).some((o) => o.yeniDurum === 'SONA_ERDI'), ozet(ab));
+  }
+  // ── 27.09 · SAATLİK İŞİN KOŞULLU YAZIMI (miras DIŞI satırlar) ──────────
+  // D6b/D8'in miras alanı OLMAYAN ikizleri: `durumDegistir`in SONA_ERDI geçidi
+  // yalnız miras alanlı satıra bakar; burada tek koruma saatlik işin
+  // `kosul`udur (okunan durum + erişim hâlâ bitmiş). Yarışı kaybeden aday HATA
+  // değil UYARI yazar (beklenen sonuç).
+  /** Bu satır için günlük satırları (seviye + metin). */
+  const satirGunlugu = (g0: number, id: string) => gunluk.slice(g0).filter((g) => g.metin.includes(id));
+  {
+    // D9 · IPTAL kart satırı (hak YOK): saatlik iş adayı OKUDU; o arada yönetici
+    // havaleyi onayladı (IPTAL → AKTIF HAVALE, dönem ileride).
+    const d = dunyaKur();
+    await kartlaGec(d, 'F-D9');
+    await d.iptalEt('F-D9', T0 + 5 * GUN);
+    const an = DONEM_SONU + 2 * DAKIKA;
+    d.db.kanca('abonelik', 'findMany', async () => {
+      await d.havaleIleOde('F-D9', an, { surum: 'S1', ay: 1 });
+    });
+    const g0 = gunluk.length;
+    await d.saatlik(an);
+    const ab = d.oku('F-D9');
+    check('D9-FIXTURE miras alanı YOK; yarış kuruldu: havale saatlik işin okumasından SONRA işlendi (HAVALE, dönem ileride)',
+      ab.mirasPaketSurumuId == null && ab.odemeYontemi === 'HAVALE' && ms(ab.erisimSonu) === ayEkle(an, 1), ozet(ab));
+    check('D9 ⭐ saatlik iş bayat adayla havale ödeyen satırı SONA_ERDI YAPMADI (AKTIF kaldı)',
+      ab.durum === 'AKTIF' && !d.olaylar(ab.id, /^durum\.degisti$/).some((o) => o.yeniDurum === 'SONA_ERDI'), ozet(ab));
+    const gl = satirGunlugu(g0, ab.id);
+    check('D9b bayat aday UYARIYLA atlandı, HATA yazılmadı',
+      gl.some((g) => g.seviye === 'uyari' && /aday bayat/.test(g.metin)) && !gl.some((g) => g.seviye === 'hata'), JSON.stringify(gl));
+  }
+  {
+    // D10 · DENEME satırı (hak YOK): deneme bitti, köprü doldu; ilk çekimin
+    // webhook'u saatlik işin aday OKUMASINDAN SONRA geldi (DENEME → AKTIF).
+    const d = dunyaKur();
+    d.firma('F-D10');
+    const denemeSonu = T0 + 30 * GUN;
+    const kopru = denemeSonu + 2 * GUN;
+    d.iyz.kur('sub-D10', 'mus-D10', { plan: 'plan-pro', olusturuldu: T0 });
+    d.db.ekle('abonelik', {
+      firmaId: 'F-D10', paketSurumuId: 'S1', durum: 'DENEME', denemeSonu: new GercekDate(denemeSonu),
+      erisimSonu: new GercekDate(kopru), kopruErisimSonu: new GercekDate(kopru), odemeYontemi: 'KART',
+      iyzicoAbonelikKodu: 'sub-D10', iyzicoKokKodu: 'sub-D10', iyzicoMusteriKodu: 'mus-D10', iyzicoDurum: 'ACTIVE',
+    });
+    const cekim = d.iyz.donemCekimi('sub-D10', { basarili: true, baslangic: denemeSonu, bitis: ayEkle(denemeSonu, 1), an: denemeSonu })!;
+    const an = kopru + 5 * DAKIKA;
+    d.db.kanca('abonelik', 'findMany', async () => {
+      await d.webhookGonder(cekim.govde, an);
+    });
+    const g0 = gunluk.length;
+    await d.saatlik(an);
+    const ab = d.oku('F-D10');
+    const tahsilat = d.olaylar(ab.id, /^durum\.degisti$/).filter((o) => o.aktor === 'webhook');
+    check('D10-FIXTURE miras alanı YOK; yarış kuruldu: gecikmiş ilk çekim saatlik işin okumasından SONRA işlendi (dönem ileride)',
+      ab.mirasPaketSurumuId == null && tahsilat.length === 1 && tahsilat[0].yeniDurum === 'AKTIF' &&
+        ms(ab.erisimSonu) === ayEkle(denemeSonu, 1), `${ozet(ab)} tahsilat=${tahsilat.length}`);
+    check('D10 ⭐ saatlik iş bayat DENEME adayıyla ödenmiş satırı SONA_ERDI YAPMADI (AKTIF kaldı)',
+      ab.durum === 'AKTIF' && !d.olaylar(ab.id, /^durum\.degisti$/).some((o) => o.yeniDurum === 'SONA_ERDI'), ozet(ab));
+    const gl = satirGunlugu(g0, ab.id);
+    check('D10b bayat aday UYARIYLA atlandı, HATA yazılmadı',
+      gl.some((g) => g.seviye === 'uyari' && /aday bayat/.test(g.metin)) && !gl.some((g) => g.seviye === 'hata'), JSON.stringify(gl));
   }
 }
 
@@ -1586,7 +1653,6 @@ function son(): void {
   // Yutulan hata görünsün: günlükteki HATA satırları yalnız BEKLENEN kalıplar olabilir.
   const izinli = [
     /Mirasa dönüş yazılamadı/, // D7: yarışı kaybeden iş (koşullu yazım)
-    /Kapatma hatası/, // D6b bekçi (dönem sürüyor) · D7 saatlik iş kaybeden
     /KART ABONELIGI IPTAL EDILEMEDI/, // N7 · G: iyzico iptali arızalı
     /CIFT ABONELIK ENGELLENDI/, // G3
     /Tahsilat alındı ama|çift tahsilat|CIFT TAHSILAT/i, // N7d havale satırı çekimi
