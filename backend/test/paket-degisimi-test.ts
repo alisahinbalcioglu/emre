@@ -221,7 +221,14 @@ function yBlogu(): void {
   check('Y1 abonelik YOK → satin-al', yol(null, surum('pro-mek')).yol === 'satin-al');
   const miras = abonelik('basic-mek');
   miras.paketSurumu = { ...miras.paketSurumu, paket: { ...miras.paketSurumu.paket, kod: 'miras-pro' } };
-  check('Y2 miras → satin-al (goc emniyeti tahsilat degil)', yol(miras, surum('pro-mek')).yol === 'satin-al');
+  // ⚠ 26.09 (miras hakki turu): miras muafiyeti iyzico ACTIVE denetiminden
+  // SONRA gelir. Goc satirinin gercekci iyzico durumu NULL (kart hic
+  // acilmadi); fikstur varsayilani ACTIVE, mirasa DONMUS ve kart aboneligi
+  // iyzico'da kapatilamamis satirdir → cift cekim korumasi.
+  miras.iyzicoDurum = null;
+  check('Y2 miras (iyzico NULL) → satin-al (goc emniyeti tahsilat degil)', yol(miras, surum('pro-mek')).yol === 'satin-al');
+  check("Y2b ⭐ mirasa donmus satir, kart iyzico'da hala ACTIVE → KART_ABONELIGI_ACIK",
+    kodu_(yol({ ...miras, iyzicoDurum: 'ACTIVE' }, surum('pro-mek'))) === 'KART_ABONELIGI_ACIK');
   // ⚠ 24.09 — geri donen musteri YALNIZ iyzico'daki kart aboneligi kapaliysa
   // satin alir (cift cekim korumasi, `iyzicoAboneligiAcikMi`). Fikstur
   // varsayilani `iyzicoDurum: 'ACTIVE'`; sona ermis/askidaki satirin gercekci
@@ -301,7 +308,8 @@ function yBlogu(): void {
   check(
     `Y21 ⭐ ${karsilastirilan} durum×miras×iyzico: "satin-al" ⟺ satin alma kapisi acik (celiski 0, acik kapi ${acikKapi})`,
     karsilastirilan === durumlar.length * 2 * iyzicoDurumlari.length && karsilastirilan >= 42 && celiski === 0 &&
-      acikKapi === durumlar.length * iyzicoDurumlari.length + 2 * 2,
+      // 26.09: miras satiri yalniz iyzico ACIK DEGILKEN acik (ACTIVE disi 2 deger).
+      acikKapi === durumlar.length * (iyzicoDurumlari.length - 1) + 2 * 2,
     `celiski=${celiski} acikKapi=${acikKapi}`,
   );
   check(
@@ -1175,13 +1183,16 @@ async function wBlogu(): Promise<void> {
     check('W8a kopru ilk tahsilatla KAPANDI (ikinci siparis kisaltamaz)', db.satir().kopruErisimSonu === null, String(db.satir().kopruErisimSonu));
   }
 
-  // W8b · ayni guncel uc siparisi, ama `erisimSonu` KOPRU DEGIL (miras gocunun
-  // 365 gunu satin almada korundu, kopru NULL): donem sonu erisimi KISALTMAZ.
+  // W8b · ayni guncel uc siparisi, ama `erisimSonu` KOPRU DEGIL (odenmis
+  // erisim — or. 12 aylik havale donemi — satin almada korundu, kopru NULL):
+  // donem sonu erisimi KISALTMAZ. ⚠ 26.09 (miras hakki turu): miras gocunun
+  // gunleri ARTIK `erisimSonu`nda tasinmaz (`mirasErisimSonu`, `test:miras-hakki`);
+  // kural ayni, ornek degisti.
   {
     const db = sahteDb({ abonelikler: [abonelik('pro-mek', { iyzicoAbonelikKodu: 'uc-1', erisimSonu: gunSonra(340), kopruErisimSonu: null })], surumler: TUM_SURUMLER() });
     const iyz = sahteIyzico({ detaylar: { 'uc-1': { referenceCode: 'uc-1', pricingPlanReferenceCode: 'plan-pro-mek-denemesiz', subscriptionStatus: 'ACTIVE', orders: [siparis('sip-ilk', gunSonra(30))] } } });
     await kur(db, iyz).ab.tahsilatBasarili('uc-1', 'sip-ilk');
-    check('W8b ⭐ guncel uc, kopru YOK: verilmis 340 gun KISALMADI (miras erisimi)', db.satir().erisimSonu.getTime() === gunSonra(340).getTime(), db.satir().erisimSonu.toISOString());
+    check('W8b ⭐ guncel uc, kopru YOK: verilmis 340 gun KISALMADI (odenmis erisim)', db.satir().erisimSonu.getTime() === gunSonra(340).getTime(), db.satir().erisimSonu.toISOString());
     // "Degismedi" webhook hic kosmasa da gecer: siparisin ISLENDIGI ayrica olculur.
     check('W8b-KANIT webhook siparisi isledi (durum olayi, aktor webhook)', db.olaylar.some((o: Satir) => o.tip === 'durum.degisti' && o.aktor === 'webhook' && o.veri?.siparisKodu === 'sip-ilk'));
   }

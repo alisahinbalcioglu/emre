@@ -120,6 +120,7 @@
     "test:iyzico-zaman-asimi": "ts-node test/iyzico-zaman-asimi-test.ts",
     "test:dwg-istemci-koptu": "ts-node test/dwg-istemci-koptu-test.ts",
     "test:dwg-geometri-akis": "ts-node test/dwg-geometri-akis-test.ts",
+    "test:dwg-kiraci-dedup": "ts-node test/dwg-kiraci-dedup-test.ts",
     "test:olcum-sorgu": "ts-node test/abonelik-olcum-sorgu-test.ts",
     "test:satinalma": "ts-node test/satinalma-yolu-test.ts",
     "test:deneme-geri-sayim": "ts-node test/deneme-geri-sayim-test.ts",
@@ -158,6 +159,7 @@
     "test:eposta-kodu": "ts-node test/yonetici-eposta-kodu-test.ts",
     "test:paket-degisimi": "ts-node test/paket-degisimi-test.ts",
     "test:miras-erisimi": "ts-node test/miras-erisimi-test.ts",
+    "test:miras-hakki": "ts-node test/miras-hakki-test.ts",
     "test:vitrin": "ts-node test/vitrin-test.ts",
     "test:yonetici-paket": "ts-node test/yonetici-paket-test.ts"
   },

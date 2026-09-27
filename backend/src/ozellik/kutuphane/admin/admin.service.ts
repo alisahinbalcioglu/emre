@@ -628,7 +628,8 @@ export class AdminService {
     // ⚠ COMMIT'TEN SONRA, kilit ve transaction DISINDA (dis HTTP cagrisi).
     if (karar.firmaKapaniyor && user.firmaId) {
       try {
-        await this.satinAlma.iptalEt(user.firmaId, yonetici.id, 'yonetici silme');
+        // 26.09 (Emre): firma kapanınca MİRAS HAKKI da biter (yönetici silmesi ceza).
+        await this.satinAlma.iptalEt(user.firmaId, yonetici.id, 'yonetici silme', { mirasiBitir: true });
       } catch (e) {
         this.logger.error(
           `Yonetici silmesinde abonelik iptali BASARISIZ (firma ${user.firmaId}): ` +

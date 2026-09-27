@@ -393,7 +393,10 @@ export async function teklifSonrasiKartCekimleri(
           abonelikId: h.abonelikId,
           tip: 'durum.degisti',
           aktor: 'webhook',
-          yeniDurum: 'AKTIF',
+          // 26.09 — iptal edilmiş satırdaki başarılı çekim satırı IPTAL bırakır
+          // (`tahsilatBasarili`, `iptalKorundu`): o çekim de sayılır, yoksa
+          // müşteri kart + havale öder ve yönetici uyarılmaz (kod incelemesi D1).
+          yeniDurum: { in: ['AKTIF', 'IPTAL'] },
           olusturuldu: { gt: h.olusturuldu },
         },
         select: { veri: true, olusturuldu: true },

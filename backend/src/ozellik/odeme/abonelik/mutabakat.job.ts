@@ -162,8 +162,10 @@ export function denemeSuruyorMu(
  *   · Kilitli müşteri iptal ederse: yenilemesi ödenmiş ama webhook'u kaybolmuş
  *     müşteri "doğrulanıyor" ekranında iptal ederse satır IPTAL, sonra
  *     SONA_ERDI olur; iyzico CANCELED der — o dönem ne verilir ne faturalanır.
- *   · İPTAL dalındaki `endDate`in anlamı (dönem sonu mu, iptal anı mı)
- *     ÖLÇÜLMEDİ (okuma 24.09'dan beri `iyzicoTarihi`nden geçer).
+ *   · ✓ KAPANDI 26.09 (miras hakkı turu, `test:miras-hakki` İ6): İPTAL dalı
+ *     `endDate` OKUMAZ, `erisimSonu`na dokunmaz (uygulama iptaliyle aynı).
+ *     Sandbox ölçümü (26.09): iptal edilmiş abonelik `endDate`i HİÇ
+ *     döndürmedi; dönem ortası iptal ölçülmedi — kural ona dayanmaz.
  *   · iyzico kodu HİÇ döndüremezse (ör. sandbox → canlı anahtar geçişinde eski
  *     kodlar) SONA_ERDI + 'ACTIVE' satır her gece hata yazar ve yeniden alım
  *     kapısı kapalı kalır — geçiş adımı `iyzicoDurum`u temizlemeli.
@@ -174,8 +176,8 @@ export function denemeSuruyorMu(
  *     reddeder); `tahsilatBasarisiz` iyzico'dan doğrular
  *     (`tahsilatBasarisizligiKarari` — kanıtsız bildirim durumu değiştirmez,
  *     böylece kural 5'in geri almadığı sahte ret artık hiç yazılmaz); tahsilat
- *     yolundaki tarih okumaları (`endPeriod`, `startPeriod`, bu işin `endDate`i,
- *     gövdenin `iyziEventTime`ı) `iyzicoTarihi`nden geçer.
+ *     yolundaki tarih okumaları (`endPeriod`, `startPeriod`, gövdenin
+ *     `iyziEventTime`ı) `iyzicoTarihi`nden geçer.
  *   · (KAPANDI 24.09, `995736a`) "Toparlandı" e-postası hiç gitmiyordu:
  *     dunning düzeltmesi dunning'den çıkışı sıfırlamanın kendisinden bildirir
  *     (`dunningdenCikti`). İşleyici olay kaynağına göre dallanmadığı için
@@ -631,6 +633,14 @@ export class MutabakatJob {
       return false;
     }
 
+    // ⚠ 26.09 — tarama listesi yalnız KART satırıdır. Satır liste ile yukarıdaki
+    // taze okuma ARASINDA havaleye geçtiyse ya da mirasa döndüyse (havale onayı,
+    // dunning, 10 dk dönüş işi) kart durumu ona UYGULANMAZ: iyzico'nun
+    // CANCELED'ı HAVALE/miras satırını IPTAL'e çekerdi (26.09 kod incelemesi
+    // O1, `test:miras-hakki` İ8). Kayıp tahsilat oynatması yukarıda yine koştu:
+    // HAVALE satırındaki kart çekimi "çift tahsilat" dalına düşer.
+    if (ab.odemeYontemi !== 'KART') return false;
+
     const hedef = iyzicoDurumunuYorumla(detay.subscriptionStatus);
     if (!hedef || hedef === ab.durum) return false;
 
@@ -667,15 +677,23 @@ export class MutabakatJob {
       return false;
     }
 
-    // İptal edildiyse ödenmiş dönemin sonuna kadar erişim sürsün. `endDate`
-    // TEK çözücüden (24.09): rakam-dizesi `new Date` ile Invalid Date olup
-    // iptali yazdırmıyordu; çözülemeyen değer yokmuş gibi — tarih UYDURULMAZ.
-    const iptalSonu = hedef === AbonelikDurumu.IPTAL ? iyzicoTarihi(detay.endDate) : null;
+    // ⚠ 26.09 — İPTAL `erisimSonu`na DOKUNMAZ (uygulama iptaliyle AYNI kural,
+    // `SatinAlmaServisi.iptalEt`): ödenmiş dönemin sonu zaten `erisimSonu`nda
+    // (ilk tahsilat webhook'u köprüyü iyzico'nun dönem sonuna düzeltir). Eski
+    // hâl iyzico'nun `endDate`ini yazıyordu; anlamı ölçülmemişti (dönem sonu
+    // mu, iptal anı mı) ve 26.09 sandbox ölçümünde iptal edilmiş abonelik bu
+    // alanı HİÇ döndürmedi. "İptal anı" dönerse ödenmiş dönem kesilirdi, miras
+    // bitişi dönerse Pro miras dönemine taşardı (`test:miras-hakki` İ6).
+    // EXPIRED: iyzico'da dönem bitti → SONA_ERDI geçidi miras hakkını sorar
+    // (`AbonelikServisi.durumDegistir`, `iyzicoBitti`).
     await this.abonelikServisi.durumDegistir(abonelikId, hedef, {
       aciklama: `Mutabakat: iyzico durumu ${detay.subscriptionStatus}`,
       aktor: 'mutabakat',
       veri: { iyzicoDurum: detay.subscriptionStatus },
-      ...(iptalSonu ? { erisimSonu: iptalSonu } : {}),
+      // Taze okuma ile yazım arasındaki pencere de kapalı: satır hâlâ kartlı ve
+      // aynı durumdaysa yazılır, değilse P2025 (sonraki gece taze karar).
+      kosul: { odemeYontemi: 'KART', durum: ab.durum },
+      ...(hedef === AbonelikDurumu.SONA_ERDI ? { iyzicoBitti: true } : {}),
     });
 
     // ⚠ FAZ 6.12a (16.09) — İKİZİ UNUTMA: webhook yolu (tahsilatBasarisiz)

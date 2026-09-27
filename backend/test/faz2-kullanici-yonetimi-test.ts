@@ -106,7 +106,9 @@ async function main(): Promise<void> {
   );
   check(
     'A4c ⭐ tek kullanicili firmada ABONELIK de iptal ediliyor (E-1)',
-    /satinAlma\.iptalEt\(\s*user\.firmaId,\s*yonetici\.id,\s*'yonetici silme'\s*\)/.test(servis),
+    // 26.09 (miras hakki turu): dorduncu arguman `{ mirasiBitir: true }` —
+    // yonetici silmesi miras hakkini da bitirir (Emre karari).
+    /satinAlma\.iptalEt\(\s*user\.firmaId,\s*yonetici\.id,\s*'yonetici silme',\s*\{\s*mirasiBitir:\s*true\s*\}\s*\)/.test(servis),
     'atlanirsa: firma kapanir ama kart cekilmeye devam eder',
   );
   check(

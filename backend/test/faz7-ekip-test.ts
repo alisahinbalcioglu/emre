@@ -1168,8 +1168,8 @@ function hesapKur(prisma: any) {
     },
   } as any;
   const satinAlma = {
-    iptalEt: async (firmaId: string, aktor: string, neden: string) => {
-      iptaller.push({ firmaId, aktor, neden, sira: prisma._iz.cagrilar.length });
+    iptalEt: async (firmaId: string, aktor: string, neden: string, s?: { mirasiBitir?: boolean }) => {
+      iptaller.push({ firmaId, aktor, neden, mirasiBitir: s?.mirasiBitir === true, sira: prisma._iz.cagrilar.length });
     },
   } as any;
   const servis = new HesapServisi(prisma, satinAlma, eposta);
@@ -1181,8 +1181,8 @@ function adminKur(prisma: any) {
   const iptaller: any[] = [];
   const loglar: string[] = [];
   const satinAlma = {
-    iptalEt: async (firmaId: string, aktor: string, neden: string) => {
-      iptaller.push({ firmaId, aktor, neden, sira: prisma._iz.cagrilar.length });
+    iptalEt: async (firmaId: string, aktor: string, neden: string, s?: { mirasiBitir?: boolean }) => {
+      iptaller.push({ firmaId, aktor, neden, mirasiBitir: s?.mirasiBitir === true, sira: prisma._iz.cagrilar.length });
     },
   } as any;
   const servis = new AdminService(prisma, {} as any, {} as any, satinAlma, { gonder: async () => undefined } as any);
@@ -1265,6 +1265,10 @@ async function bolumH(): Promise<void> {
   check('H3 tek hesap → `iptalEt(F1, A, "hesap kapatma")` CAGRILDI',
     !r3.hata && h3.iptaller.length === 1 && h3.iptaller[0].neden === 'hesap kapatma',
     JSON.stringify([hataGovdesi(r3.hata), h3.iptaller]));
+  // 26.09 (miras hakki turu, Emre karari): hesap kapatma miras hakkini da
+  // BITIRIR — secenek iptal cagrisina TASINMALI (kaynak kapisi: test:miras-hakki B4).
+  check('H3-M hesap kapatma iptali mirasi BITIRIR (`mirasiBitir: true` iletildi)',
+    h3.iptaller[0]?.mirasiBitir === true, JSON.stringify(h3.iptaller));
   check('H3 iptal COMMIT`TEN SONRA (son yazmadan sonraki sirada)',
     h3.iptaller[0]?.sira > sonYazma, JSON.stringify({ iptalSira: h3.iptaller[0]?.sira, sonYazma }));
   check('H3b bekleyen davetler AYNI transaction`da iptal edildi',
@@ -1320,6 +1324,8 @@ async function bolumH(): Promise<void> {
     !r5.hata && a5.iptaller.length === 1 && a5.iptaller[0].neden === 'yonetici silme',
     JSON.stringify([hataGovdesi(r5.hata), a5.iptaller]));
   check('H5 iptal COMMIT`TEN SONRA', a5.iptaller[0]?.sira > yonetSonYazma);
+  check('H5-M yonetici silmesi iptali mirasi BITIRIR (`mirasiBitir: true` iletildi)',
+    a5.iptaller[0]?.mirasiBitir === true, JSON.stringify(a5.iptaller));
   check('H5 veri deseni HESAP KAPATMAYLA BIREBIR (nedeni `yonetici`, e-posta DURUR)',
     u5.deletedAt != null && u5.passwordChangedAt?.getTime() === u5.deletedAt?.getTime() &&
       u5.kapatilanEposta === 'a@firma.test' && u5.email === 'a@firma.test' &&

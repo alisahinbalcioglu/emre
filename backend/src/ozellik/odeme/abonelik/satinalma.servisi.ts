@@ -21,6 +21,7 @@ import { kartAboneligiKapaliMi, kartGuncellenebilirMi } from './kart-kapatma';
 import { ceviriKotasiCoz } from './ceviri-kotasi';
 import { DenemeKarari } from './deneme-hakki';
 import { DenemeHakkiServisi } from './deneme-hakki.servisi';
+import { mirasGecerliMi, mirasiAyir, mirastanCikisMi } from './miras-hakki';
 import {
   KART_ABONELIGI_ACIK_MESAJI,
   yeniAbonelikEngeli,
@@ -1189,6 +1190,8 @@ export class SatinAlmaServisi {
 
     const mevcut = await this.prisma.abonelik.findUnique({
       where: { firmaId: p.firmaId },
+      // Paket kodu: göç (miras) satırı `miras-` önekinden de tanınır (26.09).
+      include: { paketSurumu: { include: { paket: true } } },
     });
 
     const durum =
@@ -1260,13 +1263,32 @@ export class SatinAlmaServisi {
     // webhook'un duzelttigi donem sonunu yeni bir kopruyle ezerdi (24.09
     // inceleme bulgusu). Yeni satin alma HER ZAMAN yeni iyzico kodu tasir.
     const ayniAbonelik = mevcut.iyzicoAbonelikKodu === p.iyzicoAbonelikKodu;
+    //
+    // ⚠ 26.09 — MİRAS TARİHİ ÖDENMİŞ ERİŞİM DEĞİLDİR (Emre, 24.09: "miras
+    // hakkı AYRI taşınsın, kart erişimi bitince miras paketine düşsün"). Göç
+    // satırının 365 günü yukarıdaki `max` ile KORUNUYOR ve iptal `erisimSonu`na
+    // dokunmuyordu: miras-core firma 1 ay Pro ödeyip iptal edince Pro'yu miras
+    // bitişine kadar kullanıyordu (gelir açığı; `test:miras-hakki` K/İ). Artık
+    // mirastan çıkışta (`mirastanCikisMi`) ödenen dönem BUGÜN başlar (köprü;
+    // ilk tahsilat iyzico dönem sonuna düzeltir) ve hak AYRI yakalanır
+    // (`mirasiAyir`); ödenen dönem bitince satır miras paketine döner
+    // (`AbonelikServisi.durumDegistir` SONA_ERDI geçidi / `MirasDonusuJob`).
+    // "Verilmiş erişim kısaltılmaz" kuralı ÖDENMİŞ erişim için aynen durur.
+    // Satılan paket miras sürümü olamaz (satış dışı) → `mirasPaketi: false`.
+    const mirastanCikis =
+      !ayniAbonelik && mirastanCikisMi(mevcut, { paketSurumuId: p.paketSurumuId, mirasPaketi: false });
     const korunanErisimSonu = ayniAbonelik
       ? mevcut.erisimSonu
-      : mevcut.erisimSonu > erisimSonu ? mevcut.erisimSonu : erisimSonu;
+      : mirastanCikis
+        ? erisimSonu
+        : mevcut.erisimSonu > erisimSonu ? mevcut.erisimSonu : erisimSonu;
     const erisimSuruyordu = mevcut.erisimSonu.getTime() > simdi.getTime();
     const kopruErisimSonu = ayniAbonelik
       ? mevcut.kopruErisimSonu
-      : erisimSuruyordu ? null : erisimSonu;
+      : mirastanCikis || !erisimSuruyordu ? erisimSonu : null;
+    // Aynı aboneliğin yeniden sonuçlandırılmasında hak alanlarına DOKUNULMAZ:
+    // satır artık ücretli pakette, yakalama tekrarlanırsa hak ezilirdi.
+    const hak = ayniAbonelik ? null : mirasiAyir(mevcut);
 
     const guncel = await this.prisma.abonelik.update({
       where: { id: mevcut.id },
@@ -1275,6 +1297,7 @@ export class SatinAlmaServisi {
         durum,
         erisimSonu: korunanErisimSonu,
         kopruErisimSonu,
+        ...(hak ?? {}),
         denemeSonu,
         odemeYontemi: OdemeYontemi.KART,
         iyzicoAbonelikKodu: p.iyzicoAbonelikKodu,
@@ -1315,6 +1338,11 @@ export class SatinAlmaServisi {
           oncekiErisimSonu: mevcut.erisimSonu.toISOString(),
           erisimSonu: korunanErisimSonu.toISOString(),
           kopruErisimSonu: kopruErisimSonu?.toISOString() ?? null,
+          // 26.09: taşınan miras hakkı (yoksa null) — "ödeme mirası sildi mi"
+          // sorusu olay kaydından okunur.
+          mirastanCikis,
+          mirasPaketSurumuId: (hak ?? mevcut).mirasPaketSurumuId ?? null,
+          mirasErisimSonu: (hak ?? mevcut).mirasErisimSonu?.toISOString() ?? null,
         },
         aktor: 'sistem',
       },
@@ -1377,16 +1405,35 @@ export class SatinAlmaServisi {
     firmaId: string,
     kullaniciId: string,
     neden?: string,
-    /**
-     * 25.09 — iptal onayı e-postası YALNIZ müşterinin kendi isteğinde
-     * (`AbonelikController.iptal`). Hesap kapatmanın kendi e-postası var,
-     * yönetici silmede müşteriye yazılmaz — ikisi bayrağı VERMEZ.
-     */
-    s: { musteriyeBildir?: boolean } = {},
+    s: {
+      /**
+       * 25.09 — iptal onayı e-postası YALNIZ müşterinin kendi isteğinde
+       * (`AbonelikController.iptal`). Hesap kapatmanın kendi e-postası var,
+       * yönetici silmede müşteriye yazılmaz — ikisi bayrağı VERMEZ.
+       */
+      musteriyeBildir?: boolean;
+      /**
+       * 26.09 — MİRAS HAKKI BİTER (Emre kararı): hesap kapatma ve yönetici
+       * silme verir. Ücretli pakette taşınan hak bugüne çekilir (ödenmiş dönem
+       * KORUNUR); satır mirastaysa miras erişimi de bugün biter. Kapatılmış
+       * firmada ücretli dönem bitince AKTIF miras satırı doğmaz, 30 günde
+       * satın almayla dönen firma mirası geri almaz. Müşterinin kendi iptali
+       * VERMEZ: hak sürer, ücretli dönem bitince satır mirasa döner.
+       */
+      mirasiBitir?: boolean;
+    } = {},
   ) {
     const ab = await this.prisma.abonelik.findUnique({ where: { firmaId } });
     if (!ab) throw new NotFoundException('Abonelik bulunamadi');
     const simdi = new Date();
+    // ⚠ 26.09 — MİRAS HAKKI iptalin geri kalanından ÖNCE ve ondan BAĞIMSIZ
+    // biter (`AbonelikServisi.mirasiBitir`, koşullu + taze okuma): iyzico
+    // iptali düşse, durum geçişi geçersiz olsa (ASKIDA/SONA_ERDI → IPTAL) ya da
+    // eşzamanlı müşteri iptali aşağıdaki koşullu yazımı kazansa da hak biter —
+    // çağıranlar (hesap kapatma, yönetici silme) hatayı yalnız günlüğe yazar.
+    const bitis = s.mirasiBitir
+      ? await this.abonelik.mirasiBitir(ab.id, { aktor: kullaniciId, neden, simdi })
+      : null;
 
     let iptalEdilenUc = ab.iyzicoAbonelikKodu;
     // ⚠ 24.09 — BİLİNEN KAPALI kart aboneliğine iyzico'ya GİDİLMEZ
@@ -1502,7 +1549,7 @@ export class SatinAlmaServisi {
       );
     }
 
-    return { durum: AbonelikDurumu.IPTAL, erisimSonu: ab.erisimSonu };
+    return { durum: AbonelikDurumu.IPTAL, erisimSonu: bitis?.erisimSonu ?? ab.erisimSonu };
   }
 
   /**
@@ -1533,9 +1580,34 @@ export class SatinAlmaServisi {
     }
     const guncel = await this.prisma.abonelik.findUnique({
       where: { id: ab.id },
-      select: { paketSurumu: { select: { paket: { select: { ad: true } } } } },
+      select: {
+        paketSurumuId: true,
+        erisimSonu: true,
+        mirasPaketSurumuId: true,
+        mirasErisimSonu: true,
+        paketSurumu: { select: { paket: { select: { ad: true, kod: true } } } },
+      },
     });
     const paketAdi = guncel?.paketSurumu?.paket?.ad ?? 'MetaPriceX';
+    // 26.09 — miras hakkı ücretli dönemin BİTTİĞİ AN hâlâ geçerliyse e-posta
+    // dönüşü söyler: hesap o gün geçiş paketine döner (yoksa "erişim biter"
+    // yanıltıcıdır). Hak o andan önce bitiyorsa söz VERİLMEZ.
+    const mirasaDonus =
+      guncel &&
+      guncel.mirasPaketSurumuId &&
+      guncel.mirasErisimSonu &&
+      mirasGecerliMi(guncel, guncel.erisimSonu > simdi ? guncel.erisimSonu : simdi)
+        ? {
+            paketAdi:
+              (
+                await this.prisma.paketSurumu.findUnique({
+                  where: { id: guncel.mirasPaketSurumuId },
+                  select: { paket: { select: { ad: true } } },
+                })
+              )?.paket?.ad ?? 'geçiş paketi',
+            bitis: guncel.mirasErisimSonu,
+          }
+        : null;
     // DENEME TARIHE GORE (`yonetici-islemi.ts` H1 ile ayni okuma): gece
     // mutabakati deneme satirini AKTIF'e cekebiliyordu; etiket tek basina
     // "ilk cekim yapildi" demez.
@@ -1556,6 +1628,7 @@ export class SatinAlmaServisi {
         kartli: ab.odemeYontemi === OdemeYontemi.KART,
         erisimSuruyor: bitis.getTime() > simdi.getTime(),
         geriDonulenPaketAdi: yukseltmeGeriAlindi ? paketAdi : null,
+        mirasaDonus,
         uygulamaUrl: this.uygulamaUrl,
       }),
     });

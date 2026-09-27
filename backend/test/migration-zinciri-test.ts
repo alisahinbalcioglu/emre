@@ -435,6 +435,7 @@ async function main() {
 
   await k1DonmusOzelFiyat(db, klasorler);
   await denemeHakkiDoldurmasi(db, klasorler);
+  await mirasHakkiDoldurmasi(db, klasorler);
 
   await db.close();
 
@@ -768,6 +769,120 @@ async function denemeHakkiDoldurmasi(db: PGlite, klasorler: string[]): Promise<v
       epostaOrnekleri.some((e) => denemeEpostaAnahtari(e) !== null) &&
       telefonOrnekleri.some((t) => telefonAnahtari(t) === null));
   check(`D7 ⭐ ${epostaOrnekleri.length} e-posta + ${telefonOrnekleri.length} telefon orneginde SQL doldurmasi = JS anahtari`,
+    farklar.length === 0, farklar.join(' | '));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  MH — MİRAS HAKKI GERİYE DÖNÜK DOLDURMA (göç 20260926150000, 26.09.2026)
+//    Paketi `miras-%` olan satır kendi paketini ve erişimini
+//    `mirasPaketSurumuId`/`mirasErisimSonu`na kopyalar (kural:
+//    `abonelik/miras-hakki.ts`). Doldurma bloğu DOSYADAN okunup fikstürde
+//    yeniden koşulur: miras satırları dolar, diğerleri NULL kalır, dolu değer
+//    EZİLMEZ, "karta geçmiş göç satırı" parmak izine DOKUNULMAZ (yalnız
+//    NOTICE), ikinci koşum değiştirmez; SQL öneki ≡ `mirasPaketiMi`.
+//    ⚠ D bloğunun `miras-dh` paketi de öneke uyar → assert'ler YALNIZ `mh`
+//    kimliklerine bakar.
+// ═════════════════════════════════════════════════════════════════════════
+async function mirasHakkiDoldurmasi(db: PGlite, klasorler: string[]): Promise<void> {
+  const { mirasPaketiMi } = await import('../src/ozellik/odeme/abonelik/deneme-hakki');
+  console.log('\n── MH · MİRAS HAKKI GERİYE DÖNÜK DOLDURMA ──');
+  const klasor = klasorler.find((k) => k.includes('abonelik_miras_hakki'));
+  check('MH-OLCUT miras hakkı göçü zincirde', !!klasor, JSON.stringify(klasorler.slice(-2)));
+  if (!klasor) return;
+  const tamSql = fs.readFileSync(path.join(MIGRATIONS, klasor, 'migration.sql'), 'utf8');
+  const ayrac = '-- ═══ GERIYE DONUK DOLDURMA (miras hakki)';
+  check('MH-OLCUT doldurma bloğu dosyada bulundu', tamSql.includes(ayrac));
+  const doldurma = tamSql.slice(tamSql.indexOf(ayrac));
+
+  const sutunlar = await db.query<{ column_name: string; is_nullable: string; column_default: string | null }>(
+    `SELECT column_name, is_nullable, column_default FROM information_schema.columns
+      WHERE table_name = 'Abonelik' AND column_name IN ('mirasPaketSurumuId', 'mirasErisimSonu') ORDER BY column_name`,
+  );
+  check('MH0 iki sütun var, NULL olabilir, varsayılanı yok',
+    sutunlar.rows.length === 2 && sutunlar.rows.every((r) => r.is_nullable === 'YES' && r.column_default === null), JSON.stringify(sutunlar.rows));
+  const fk = await db.query<{ confdeltype: string }>(`SELECT confdeltype FROM pg_constraint WHERE conname = 'Abonelik_mirasPaketSurumuId_fkey'`);
+  check('MH0b yabancı anahtar silmede RESTRICT (sürüm silinirse hak sessizce kaybolmaz)', fk.rows[0]?.confdeltype === 'r', JSON.stringify(fk.rows));
+
+  // Göç paketleri zincirde VAR (ADIM2) — fikstür onlara bağlanır.
+  const surum = async (kod: string) =>
+    (await db.query<{ id: string }>(
+      `SELECT s."id" FROM "PaketSurumu" s JOIN "Paket" p ON p."id" = s."paketId" WHERE p."kod" = $1 LIMIT 1`, [kod],
+    )).rows[0]?.id;
+  const core = await surum('miras-core');
+  const pro = await surum('miras-pro');
+  check('MH-OLCUT göç paketlerinin sürümleri bulundu', !!core && !!pro, `core=${core} pro=${pro}`);
+  await db.exec(`
+    INSERT INTO "Paket" ("id","kod","ad","kapsam","seviye","sira") VALUES
+      ('mh-p', 'mh-pro', 'MH Pro', 'mechanical', 'pro', 1),
+      ('mh-pk1', 'Miras-buyuk', 'MH büyük harf', 'mep', 'core', 2),
+      ('mh-pk2', 'miras-', 'MH yalın önek', 'mep', 'core', 3),
+      ('mh-pk3', 'mirasx-core', 'MH tiresiz', 'mep', 'core', 4);
+    INSERT INTO "PaketSurumu" ("id","paketId","surumNo","iyzicoPlanKodu","iyzicoUrunKodu","tutar","denemeGunu") VALUES
+      ('mh-s', 'mh-p', 1, 'mh-plan', 'mh-urun', 1649.00, 0);
+    INSERT INTO "Firma" ("id","ad") VALUES ('mhF1','MH1'), ('mhF2','MH2'), ('mhF3','MH3'), ('mhF4','MH4'), ('mhF5','MH5');
+    INSERT INTO "Abonelik" ("id","firmaId","paketSurumuId","durum","erisimSonu","odemeYontemi","olusturuldu","guncellendi",
+                            "mirasPaketSurumuId","mirasErisimSonu") VALUES
+      ('mhA1', 'mhF1', '${core}', 'AKTIF', '2027-09-01 20:31:30.318', 'HAVALE', '2026-09-01 20:31:30.318', now(), NULL, NULL),
+      ('mhA2', 'mhF2', '${pro}', 'SONA_ERDI', '2026-09-20 00:00:00', 'HAVALE', '2026-09-01 00:00:00', now(), NULL, NULL),
+      ('mhA3', 'mhF3', 'mh-s', 'AKTIF', '2026-11-01 09:00:00', 'KART', '2026-10-01 09:00:00', now(), NULL, NULL),
+      ('mhA4', 'mhF4', 'mh-s', 'AKTIF', '2027-09-01 20:31:30.318', 'KART', '2026-09-01 20:31:30.318', now(), NULL, NULL),
+      ('mhA5', 'mhF5', '${core}', 'AKTIF', '2027-09-01 20:31:30.318', 'HAVALE', '2026-09-01 20:31:30.318', now(),
+       '${pro}', '2028-09-01 20:31:30.318');
+  `);
+
+  // Zincirin KENDİ göç satırları: B bloğu ADIM 2 backfill'ini zincirden SONRA
+  // yeniden koştu → doldurma ALMAMIŞ gerçek göç satırları (canlıdaki 3 satırın
+  // ikizi: backfill SQL'inin kendi çıktısı, elle yazılmış fikstür değil).
+  const gocSatirlari = async () =>
+    (await db.query<any>(
+      `SELECT a."id", p."kod", a."paketSurumuId", a."erisimSonu", a."mirasPaketSurumuId", a."mirasErisimSonu"
+         FROM "Abonelik" a JOIN "PaketSurumu" s ON s."id" = a."paketSurumuId" JOIN "Paket" p ON p."id" = s."paketId"
+        WHERE a."firmaId" IN ('f-core', 'f-pro', 'f-tiersiz', 'f-asimetrik') ORDER BY a."id"`,
+    )).rows;
+  const gocOnce = await gocSatirlari();
+  check('MH-OLCUT ADIM 2 backfill\'inin göç satırları VAR, hepsi miras paketinde ve hak alanı BOŞ (doldurma öncesi)',
+    gocOnce.length >= 2 && gocOnce.every((r) => mirasPaketiMi(r.kod) && r.mirasPaketSurumuId === null && r.mirasErisimSonu === null),
+    JSON.stringify(gocOnce));
+
+  await db.exec(doldurma);
+
+  const satir = async (id: string) =>
+    (await db.query<any>(`SELECT "paketSurumuId","erisimSonu","mirasPaketSurumuId","mirasErisimSonu" FROM "Abonelik" WHERE id = $1`, [id])).rows[0];
+  const ms = (d: unknown) => (d instanceof Date ? d.getTime() : NaN);
+  const a1 = await satir('mhA1');
+  const a2 = await satir('mhA2');
+  check('MH1 ⭐ göç satırı (miras-core, AKTIF) kendi paketini ve erişimini taşıdı',
+    a1.mirasPaketSurumuId === core && ms(a1.mirasErisimSonu) === ms(a1.erisimSonu), JSON.stringify(a1));
+  check('MH1b süresi geçmiş göç satırı da doldu (doldurma tarihe bakmaz; geçerliliği kural sorar)',
+    a2.mirasPaketSurumuId === pro && ms(a2.mirasErisimSonu) === ms(a2.erisimSonu), JSON.stringify(a2));
+  const gocSonra = await gocSatirlari();
+  check(`MH1c ⭐ ADIM 2 backfill'inin KENDİ ${gocSonra.length} göç satırı doldu (her biri kendi paketi ve erişimi)`,
+    gocSonra.length === gocOnce.length &&
+      gocSonra.every((r) => r.mirasPaketSurumuId === r.paketSurumuId && ms(r.mirasErisimSonu) === ms(r.erisimSonu)),
+    JSON.stringify(gocSonra));
+  const a3 = await satir('mhA3');
+  const a4 = await satir('mhA4');
+  check('MH2 miras DIŞI satır boş kaldı', a3.mirasPaketSurumuId === null && a3.mirasErisimSonu === null, JSON.stringify(a3));
+  check('MH2b ⭐ "karta geçmiş göç" parmak izli satıra DOKUNULMADI (yalnız NOTICE; paket/dönem SQL\'de bilinemez)',
+    a4.mirasPaketSurumuId === null && a4.mirasErisimSonu === null, JSON.stringify(a4));
+  const a5 = await satir('mhA5');
+  // Beklenen AYNI veritabanından okunur: zaman dilimsiz damga yerel saatle
+  // çözülür, `Date.UTC` ölçütü TZ'ye göre kayardı.
+  const beklenen = (await db.query<{ t: Date }>(`SELECT '2028-09-01 20:31:30.318'::timestamp AS t`)).rows[0].t;
+  check('MH3 dolu hak EZİLMEDİ (miras-pro @ 2028 korundu)',
+    a5.mirasPaketSurumuId === pro && ms(a5.mirasErisimSonu) === ms(beklenen), JSON.stringify(a5));
+
+  const dokum = async () =>
+    JSON.stringify((await db.query<any>(`SELECT "id","mirasPaketSurumuId","mirasErisimSonu" FROM "Abonelik" ORDER BY "id"`)).rows);
+  const once = await dokum();
+  await db.exec(doldurma);
+  check('MH4 IDEMPOTENT: ikinci koşum hiçbir satırı değiştirmedi', (await dokum()) === once);
+
+  // SQL öneki ↔ JS `mirasPaketiMi` — tek kural, iki yazım (D7 kalıbı).
+  const kodlar = (await db.query<{ kod: string; sql: boolean }>(`SELECT "kod", ("kod" LIKE 'miras-%') AS sql FROM "Paket"`)).rows;
+  const farklar = kodlar.filter((r) => r.sql !== mirasPaketiMi(r.kod)).map((r) => `${r.kod}: sql=${r.sql} js=${mirasPaketiMi(r.kod)}`);
+  check('MH5-OLCUT örnek kümede önekli DA öneksiz de var', kodlar.some((r) => r.sql) && kodlar.some((r) => !r.sql), JSON.stringify(kodlar));
+  check(`MH5 ⭐ ${kodlar.length} paket kodunda SQL öneki = mirasPaketiMi (büyük harf · yalın önek · tiresiz dahil)`,
     farklar.length === 0, farklar.join(' | '));
 }
 

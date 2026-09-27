@@ -1424,6 +1424,8 @@ model PaketSurumu {
   abonelikler Abonelik[]         @relation("AbonelikPaketi")
   /// Bu surume DONEM SONUNDA gecmek uzere planlanmis abonelikler (23.09).
   planliAbonelikler Abonelik[]   @relation("AbonelikPlanliPaketi")
+  /// Bu surumu MIRAS HAKKI olarak tasiyan abonelikler (26.09, goc paketleri).
+  mirasAbonelikler Abonelik[]    @relation("AbonelikMirasPaketi")
   baslatmalar AbonelikBaslatma[]
   /// Bu surume gecmeyi oneren yonetici onerileri (A2 Blok 2).
   oneriler    PaketDegisimOnerisi[]
@@ -1504,11 +1506,25 @@ model Abonelik {
   /// (`donemTarihleriHesapla`: deneme ya da 31 gun + 2 gun tampon); o deger
   /// burada da tutulur. Ilk basarili tahsilat webhook'u kopruyu iyzico'nun
   /// `endPeriod`una DUZELTIR, gerekirse KISALTIR — ama YALNIZ `erisimSonu` HALA
-  /// bu degere esitse. Baska her durumda (miras gocunun 365 gunu, havale,
-  /// yonetici, onceki donem) webhook `erisimSonu`nu yalniz UZATIR: kisaltma
-  /// pozitif kanit ister. NULL = duzeltilecek kopru yok (satin almada erisim
-  /// zaten suruyordu ya da kopru ilk tahsilatla kapandi).
+  /// bu degere esitse. Baska her durumda (havale, yonetici, onceki donem)
+  /// webhook `erisimSonu`nu yalniz UZATIR: kisaltma pozitif kanit ister. NULL =
+  /// duzeltilecek kopru yok (satin almada ODENMIS erisim zaten suruyordu ya da
+  /// kopru ilk tahsilatla kapandi). 26.09: miras (goc) satirindan satin almada
+  /// kopru YAZILIR — miras hakki artik asagidaki ayri alanlarda tasinir.
   kopruErisimSonu DateTime?
+
+  /// MIRAS HAKKI (26.09.2026 — Emre karari "miras hakki AYRI tasinsin, kart
+  /// erisimi bitince miras paketine dussun"). 01.09 gocunun verdigi gecis
+  /// paketi ve bitisi. Satir MIRAS PAKETINDEYKEN tek otorite `erisimSonu`dur;
+  /// satir ucretli pakete gecince hak BURADA tasinir (`miras-hakki.ts` →
+  /// `mirasiAyir`), ucretli donem bitince satir bu pakete DONER
+  /// (`AbonelikServisi.durumDegistir` SONA_ERDI gecidi). Odenen erisim miras
+  /// tarihiyle ASLA `max`lanmaz (olculen gelir acigi: 1 ay Pro → Pro miras
+  /// bitisine kadar). NULL = hak yok. `onDelete: Restrict`: surum silinirse
+  /// hak SESSIZCE kaybolmasin.
+  mirasPaketSurumuId String?
+  mirasPaketSurumu   PaketSurumu? @relation("AbonelikMirasPaketi", fields: [mirasPaketSurumuId], references: [id], onDelete: Restrict)
+  mirasErisimSonu    DateTime?
 
   /// iyzico bagi — HAVALE ile odeyen firmalarda null kalir.
   /// ⚠ BU KOD DEGISKENDIR: paket degisiminde (upgrade/downgrade) iyzico

@@ -27,14 +27,26 @@ export interface MetinBaglami {
   tutar: string; // "₺1.250,00" biçiminde hazır gelir
   kalanGun?: number;
   kisitTarihi?: string; // "3 Eylül 2026"
+  /**
+   * 26.09 — MİRAS HAKKI (göç firması): ödeme alınamazsa kısıt günü hesap
+   * salt-okunur OLMAZ, geçiş (miras) paketine döner (`miras-hakki.ts`,
+   * `DunningServisi.tekAbonelik`). Doluysa kısıt cümleleri bunu söyler.
+   */
+  mirasPaketAdi?: string;
+  mirasBitisi?: string; // "1 Eylül 2027"
 }
 
 const HAVALE_NOTU =
   'Kartla ödeme sizin için uygun değilse havale/EFT ile yıllık ödeme de ' +
   'yapabilirsiniz. Faturayı hazırlayıp gönderelim — bu e-postayı yanıtlamanız yeterli.';
 
+/** Miras firmada kısıt günü olan şey — salt-okunur mod DEĞİL, geçiş paketine dönüş. */
+const mirasaDonusCumlesi = (b: MetinBaglami) =>
+  `ödeme alınamazsa ${b.paketAdi} aboneliğiniz sona erer ve hesabınız geçiş paketinize ` +
+  `(${b.mirasPaketAdi}) döner; bu paketi ${b.mirasBitisi} tarihine kadar kullanabilirsiniz.`;
+
 export const DUNNING_METINLERI: Record<
-  'ilk' | 'ikinci' | 'ucuncu' | 'kisitlandi' | 'sonUyari' | 'askiyaAlindi' | 'toparlandi',
+  'ilk' | 'ikinci' | 'ucuncu' | 'kisitlandi' | 'sonUyari' | 'askiyaAlindi' | 'toparlandi' | 'mirasaDonuldu',
   (b: MetinBaglami) => DunningMetni
 > = {
   // ── Gün 0: tahsilat başarısız ─────────────────────────────────────────
@@ -60,9 +72,12 @@ export const DUNNING_METINLERI: Record<
     baslik: 'Ödemeniz hâlâ bekliyor',
     govde: [
       `${b.tutar} tutarındaki ödemeyi tekrar denedik, yine alınamadı.`,
-      `Hesabınız ${b.kisitTarihi} tarihine kadar normal çalışmaya devam edecek. ` +
-        'O tarihten sonra yeni teklif oluşturma ve çıktı indirme geçici olarak kapanır — ' +
-        'mevcut teklifleriniz görünmeye devam eder.',
+      b.mirasPaketAdi
+        ? `Hesabınız ${b.kisitTarihi} tarihine kadar normal çalışmaya devam edecek. O tarihe kadar ` +
+          mirasaDonusCumlesi(b)
+        : `Hesabınız ${b.kisitTarihi} tarihine kadar normal çalışmaya devam edecek. ` +
+          'O tarihten sonra yeni teklif oluşturma ve çıktı indirme geçici olarak kapanır — ' +
+          'mevcut teklifleriniz görünmeye devam eder.',
       'Kartınızı güncellemeniz yeterli: bekleyen ödeme hemen yeni kartınızdan denenir.',
     ],
     dugmeEtiketi: 'Kartımı güncelle',
@@ -70,7 +85,21 @@ export const DUNNING_METINLERI: Record<
   }),
 
   // ── Gün 7 ─────────────────────────────────────────────────────────────
-  ucuncu: (b) => ({
+  ucuncu: (b) =>
+    b.mirasPaketAdi
+      ? {
+          konu: `MetaPriceX — ${b.kalanGun} gün sonra geçiş paketinize dönüyorsunuz`,
+          baslik: `${b.kalanGun} gün sonra ${b.paketAdi} aboneliğiniz sona erecek`,
+          govde: [
+            `${b.tutar} tutarındaki ödeme birkaç denemeye rağmen alınamadı.`,
+            `${b.kisitTarihi} tarihine kadar ${mirasaDonusCumlesi(b)}`,
+            'Verilerinizin hiçbiri silinmez. Kartınızı güncellediğinizde bekleyen ödeme hemen ' +
+              'yeniden denenir; ödeme alınırsa aboneliğiniz kesintisiz sürer.',
+          ],
+          dugmeEtiketi: 'Şimdi öde',
+          altNot: HAVALE_NOTU,
+        }
+      : {
     konu: `MetaPriceX — hesabınız ${b.kalanGun} gün sonra kısıtlanacak`,
     baslik: `${b.kalanGun} gün sonra yeni teklif oluşturamayacaksınız`,
     govde: [
@@ -84,7 +113,7 @@ export const DUNNING_METINLERI: Record<
     ],
     dugmeEtiketi: 'Şimdi öde',
     altNot: HAVALE_NOTU,
-  }),
+  },
 
   // ── Gün 10: kısıtlandı ────────────────────────────────────────────────
   kisitlandi: (b) => ({
@@ -130,6 +159,24 @@ export const DUNNING_METINLERI: Record<
         'alındığında hesabınız kaldığı yerden açılır.',
     ],
     dugmeEtiketi: 'Hesabımı geri aç',
+    altNot: HAVALE_NOTU,
+  }),
+
+  // ── Kısıt günü, MİRAS firma: geçiş paketine dönüldü (26.09) ───────────
+  // Salt-okunur mod YOK: miras hakkı süren firma kısıt günü geçiş (miras)
+  // paketine döner, kart aboneliği iyzico'da kapatılır. `paketAdi`/`tutar`
+  // SONA EREN ücretli paketindir — satır artık mirasta, çağıran verir.
+  mirasaDonuldu: (b) => ({
+    konu: 'MetaPriceX — geçiş paketinize döndünüz',
+    baslik: 'Ödemeniz alınamadı: hesabınız geçiş paketinize döndü',
+    govde: [
+      `${b.paketAdi} aboneliğinizin ${b.tutar} tutarındaki ödemesi alınamadığı için bu abonelik ` +
+        'sona erdi; kartınızdan yeni ücret çekilmeyecek.',
+      `${b.firmaAdi} hesabı geçiş paketinize (${b.mirasPaketAdi}) döndü; bu paketi ${b.mirasBitisi} ` +
+        'tarihine kadar kullanabilirsiniz. Verilerinizin hiçbiri silinmedi.',
+      `${b.paketAdi} paketine yeniden geçmek için Abonelik sayfasından yeniden abone olabilirsiniz.`,
+    ],
+    dugmeEtiketi: 'Abonelik sayfasına git',
     altNot: HAVALE_NOTU,
   }),
 
