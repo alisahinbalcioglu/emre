@@ -9,6 +9,7 @@ import { tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
 import { etkinHesapKosulu } from '../../firma/uyelik-kurallari';
 import { koltukEtkisi } from '../abonelik/yonetici/yonetici-islemi';
 import { kartUyarisiOku, teklifSonrasiKartCekimleri } from './havale-kart-penceresi';
+import { mirasPaketiDegisimi, mirasPaketiDegisimMesaji } from '../abonelik/miras-hakki';
 
 /** Düşürmenin koltuk etkisi — sayım `etkinHesapKosulu`, kural `koltukEtkisi`. */
 export interface HavaleKoltukEtkisi {
@@ -175,7 +176,8 @@ export class HavaleServisi {
     // olur. Gövde satır içi tip literaliyle gelir (ValidationPipe DENETLEMEZ);
     // eskiden mevcut satırda paket hiç okunmadığı için eksik ya da yanlış
     // kimlik sessizce geçiyordu. Satış dışı sürüm (miras yenilemesi) serbest:
-    // paketi yönetici seçer.
+    // paketi yönetici seçer — ama hak taşıyan firmaya BAŞKA bir miras paketi
+    // DEĞİL (aşağıda, 27.09).
     const surum = p.paketSurumuId
       ? await this.prisma.paketSurumu.findUnique({
           where: { id: p.paketSurumuId },
@@ -203,17 +205,30 @@ export class HavaleServisi {
         iyzicoDurum: true,
         iptalTalebi: true,
         planliPaketSurumuId: true,
+        paketSurumuId: true,
+        mirasPaketSurumuId: true,
+        mirasErisimSonu: true,
         paketSurumu: {
           select: {
             tutar: true,
             paraBirimi: true,
             periyot: true,
             periyotAdedi: true,
-            paket: { select: { kullaniciHakki: true } },
+            paket: { select: { kullaniciHakki: true, kod: true } },
           },
         },
+        mirasPaketSurumu: { select: { paket: { select: { kod: true } } } },
       },
     });
+    // ⚠ 27.09 — MİRAS PAKETİ DEĞİŞMEZ (26.09 güvenlik incelemesi ORTA-1, Emre
+    // kararı b): hak taşıyan firmaya BAŞKA bir miras paketiyle teklif verilmez
+    // — miras yenilemesi ESKİ bitişten uzar ve onay paketi hemen değiştirir
+    // (1 aylık tutarla miras bitişine kadar üst katman). Kural ve metin
+    // `miras-hakki.ts`; onay da aynı kuralı uygular (`AbonelikServisi.
+    // erisimiUzat`, kural öncesi verilmiş teklif). Ret HİÇBİR şey yazmadan ve
+    // iyzico'ya gitmeden döner. Kapı: `test:miras-hakki` H7/H8.
+    const mirasDegisimi = mirasPaketiDegisimi(bugunku, surum.paket.kod, new Date());
+    if (mirasDegisimi) throw new BadRequestException(mirasPaketiDegisimMesaji(mirasDegisimi));
     // ⚠ 25.09 — KART ABONELİĞİ AÇIK MI (Emre kararı: "uyar + onayda bildir"):
     // teklif ile onay arasında kart aboneliği iyzico'da açık kalır; yenileme
     // o pencereye düşerse satır hâlâ KART olduğu için webhook onu olağan
