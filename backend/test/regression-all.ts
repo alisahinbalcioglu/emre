@@ -533,6 +533,9 @@ const SUITES: Suite[] = [
   //    görmüyordu; denetleyici gövdeyi akıtır, 256 KiB'lık kopma da motoru keser.
   //    Motor tarafı: python `tests/test_olay_dongusu.py` (CI'da yok).
   { ad: 'DWG istemci koptu: saf sinyal · kopma motoru keser · büyük gövdede de · normal istek · önceden kopmuş · zaman aşımı · eski yollar kapalı (S/K/B/N/Y/Z/E)', script: 'test:dwg-istemci-koptu', zincir: 'Z0' },
+  // 26.09: Nest geometriyi (17 MB) cozup yeniden yaziyordu — olay dongusu her proje
+  // acilisinda ~0,7 sn duruyordu (canli imaj). Artik motorun baytlari AKITILIR.
+  { ad: 'DWG geometri akışı: baytlar aynen · döngü serbest · hata eşlemesi · sahiplik önce · kopma · yarım akış · zaman aşımı (A/D/H/S/K/Y/Z)', script: 'test:dwg-geometri-akis', zincir: 'Z0' },
   { ad: 'Abonelik ölçüm betiği: SQL geçerliliği (S1-S4b)', script: 'test:olcum-sorgu', zincir: 'Z0' },
   { ad: 'Satın alma yolu: fatura kapısı + miras muafiyeti (P1-P7)', script: 'test:satinalma', zincir: 'Z0' },
   // T47 (22.09.2026): "fatura bilgisi eksik firma gercek bir fatura kesme
