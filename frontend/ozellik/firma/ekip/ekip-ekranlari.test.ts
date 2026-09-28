@@ -180,6 +180,33 @@ describe('davet kabul sayfası', () => {
     const seo = oku('ortak/seo/arama-paylasim.ts');
     expect(seo).not.toContain('davet-kabul');
   });
+
+  // ── 27-28.09.2026: "ekran tasarımı çok kötü" + "düğmeye basılmıyor" ──────
+  // Sayfa koyu tema sınıflarıyla AÇIK zeminde çiziliyordu (başlık 1,10:1,
+  // hata kutusu 1,78:1). 26.09 canlıda sunucunun reddi okunmadı ve kullanıcı
+  // bunu "düğme çalışmıyor" diye yaşadı. 23.09'daki koyu tema kapısı yalnız
+  // ekip dosyalarını tarıyordu; bu sayfa o boşluktan geçmişti.
+  it('⭐ ortak `KimlikKabugu` kullanılır ve koyu tema sınıfları YOK', () => {
+    expect(sayfa).toContain('<KimlikKabugu');
+    expect(sayfa).not.toMatch(/\b(text-slate-100|text-slate-200|text-slate-300|bg-slate-950|bg-red-950|text-red-300)\b/);
+  });
+
+  it('⭐ token etkisi İDEMPOTENT: ikinci koşu (StrictMode) ref’teki token’ı ezmez', () => {
+    // Önizlemede ölçüldü: eski etki ikinci koşuda `tokenRef`e null yazıyor,
+    // "Ekibe katıl" BOŞ token gönderiyordu.
+    expect(sayfa).toContain("const t = tokenRef.current ?? url.searchParams.get('token');");
+  });
+
+  it('⭐ davet bilgisi hatası saf kuralla sınıflanır (5xx/429/ağ → "Tekrar dene")', () => {
+    expect(sayfa).toContain('setDurum(davetBilgiHataDurumu(e));');
+    expect(sayfa).toMatch(/durum === 'ulasilamadi'[\s\S]{0,1600}bilgiGetir\(tokenRef\.current\)/);
+  });
+
+  it('⭐ iki adımlı kurulumdan çıkış FORMU geri açmaz (hesap açıldı, davet tüketildi)', () => {
+    expect(sayfa).toContain('onSuresiDoldu={(mesaj) => { setDal(null); setHesapAcildi(mesaj); }}');
+    expect(sayfa).toContain("onGeri={() => { setDal(null); setHesapAcildi(''); }}");
+    expect(sayfa).toContain('if (hesapAcildi !== null) return <HesapAcildiEkrani mesaj={hesapAcildi} />;');
+  });
 });
 
 describe('durdurma ekranı — yalnız izinli uçlar', () => {

@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 843
-Toplam satir: 230304
+Kod dosyasi: 845
+Toplam satir: 230828
 Uc nokta: 238
 test:* scripti: 139
 
@@ -169,7 +169,7 @@ test:* scripti: 139
 | `backend/src/ozellik/firma/uye-izinleri.ts` | 168 |
 | `backend/src/ozellik/firma/uyelik-kurallari.ts` | 372 |
 | `backend/src/ozellik/firma/uyelik.controller.ts` | 109 |
-| `backend/src/ozellik/firma/uyelik.servisi.ts` | 953 |
+| `backend/src/ozellik/firma/uyelik.servisi.ts` | 983 |
 | `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.controller.ts` | 15 |
 | `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.module.ts` | 11 |
 | `backend/src/ozellik/fiyat/exchange-rates/exchange-rates.service.ts` | 272 |
@@ -349,7 +349,7 @@ test:* scripti: 139
 | `backend/test/faz3-eposta-parola-test.ts` | 884 |
 | `backend/test/faz4-firma-teklif-test.ts` | 322 |
 | `backend/test/faz5-kvkk-hukuki-test.ts` | 503 |
-| `backend/test/faz7-ekip-test.ts` | 2196 |
+| `backend/test/faz7-ekip-test.ts` | 2217 |
 | `backend/test/faz7-kurumsal-test.ts` | 1960 |
 | `backend/test/faz7-mfa-test.ts` | 1567 |
 | `backend/test/faz7-oidc-test.ts` | 654 |
@@ -455,7 +455,7 @@ test:* scripti: 139
 | `frontend/app/(protected)/dashboard/page.tsx` | 241 |
 | `frontend/app/(protected)/dwg-workspace/page.tsx` | 117 |
 | `frontend/app/(protected)/firma/ekip/kurumsal-giris/page.tsx` | 576 |
-| `frontend/app/(protected)/firma/ekip/page.tsx` | 416 |
+| `frontend/app/(protected)/firma/ekip/page.tsx` | 438 |
 | `frontend/app/(protected)/koltuk-durduruldu/page.tsx` | 129 |
 | `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | 488 |
 | `frontend/app/(protected)/labor-firms/page.tsx` | 287 |
@@ -482,7 +482,7 @@ test:* scripti: 139
 | `frontend/app/admin/stats/page.tsx` | 528 |
 | `frontend/app/admin/users/page.tsx` | 647 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
-| `frontend/app/davet-kabul/page.tsx` | 261 |
+| `frontend/app/davet-kabul/page.tsx` | 483 |
 | `frontend/app/dev/grid-test/page.tsx` | 227 |
 | `frontend/app/fiyatlar/page.tsx` | 174 |
 | `frontend/app/forgot-password/page.tsx` | 92 |
@@ -605,7 +605,7 @@ test:* scripti: 139
 | `frontend/ortak/kabuk/components/layout/kirinti-etiketi.ts` | 84 |
 | `frontend/ortak/lib/api-401-kapsami.test.ts` | 676 |
 | `frontend/ortak/lib/api.ts` | 297 |
-| `frontend/ortak/lib/kimlik-hata-metinleri.ts` | 149 |
+| `frontend/ortak/lib/kimlik-hata-metinleri.ts` | 151 |
 | `frontend/ortak/lib/oturum.test.ts` | 284 |
 | `frontend/ortak/lib/oturum.ts` | 189 |
 | `frontend/ortak/lib/parola-kurali.ts` | 23 |
@@ -621,7 +621,7 @@ test:* scripti: 139
 | `frontend/ortak/ui/dialog.tsx` | 94 |
 | `frontend/ortak/ui/geri-butonu.tsx` | 75 |
 | `frontend/ortak/ui/input.tsx` | 24 |
-| `frontend/ortak/ui/kimlik-kabugu.tsx` | 74 |
+| `frontend/ortak/ui/kimlik-kabugu.tsx` | 78 |
 | `frontend/ortak/ui/label.tsx` | 19 |
 | `frontend/ortak/ui/parola-alani.tsx` | 72 |
 | `frontend/ortak/ui/select.tsx` | 143 |
@@ -640,10 +640,10 @@ test:* scripti: 139
 | `frontend/ozellik/firma/ekip/UyeListesi.tsx` | 212 |
 | `frontend/ozellik/firma/ekip/davet-kurallari.ts` | 54 |
 | `frontend/ozellik/firma/ekip/ekip-bilesenleri.test.ts` | 411 |
-| `frontend/ozellik/firma/ekip/ekip-ekranlari.test.ts` | 253 |
+| `frontend/ozellik/firma/ekip/ekip-ekranlari.test.ts` | 280 |
 | `frontend/ozellik/firma/ekip/ekip-parcalari.tsx` | 157 |
 | `frontend/ozellik/firma/ekip/ekip-tipleri.ts` | 50 |
-| `frontend/ozellik/firma/ekip/izin-metinleri.test.ts` | 354 |
+| `frontend/ozellik/firma/ekip/izin-metinleri.test.ts` | 369 |
 | `frontend/ozellik/firma/ekip/izin-metinleri.ts` | 183 |
 | `frontend/ozellik/firma/ekip/izin-simgeleri.ts` | 17 |
 | `frontend/ozellik/firma/ekip/kisi-metinleri.test.ts` | 186 |
@@ -680,6 +680,8 @@ test:* scripti: 139
 | `frontend/ozellik/kimlik/MfaKodAdimi.tsx` | 201 |
 | `frontend/ozellik/kimlik/SirketHesabiKarti.tsx` | 149 |
 | `frontend/ozellik/kimlik/ZorunluKurulumSihirbazi.tsx` | 166 |
+| `frontend/ozellik/kimlik/davet-kabul-kurallari.test.ts` | 102 |
+| `frontend/ozellik/kimlik/davet-kabul-kurallari.ts` | 79 |
 | `frontend/ozellik/kimlik/dogrulama-bekleniyor.test.ts` | 178 |
 | `frontend/ozellik/kimlik/giris-dali.test.ts` | 290 |
 | `frontend/ozellik/kimlik/hesabim/AbonelikSekmesi.tsx` | 335 |
@@ -1289,7 +1291,7 @@ test:* scripti: 139
 | `frontend/app/admin/stats/page.tsx` | `react` `@/ortak/ui/button` `@/ortak/ui/badge` `@/ortak/ui/card` `@/ozellik/kutuphane/ai-butce` |
 | `frontend/app/admin/users/page.tsx` | `react` `next/link` `@/ortak/lib/api` `@/ortak/ui/input` `@/ortak/ui/button` `@/ortak/ui/badge` `@/ortak/ui/card` `@/ortak/hooks/use-confirm` `@/ortak/hooks/use-toast` `@/ozellik/odeme/paket-bicim` `@/ozellik/odeme/yonetici/YoneticiPaketPenceresi` |
 | `frontend/app/cerez-politikasi/page.tsx` | `next` `@/ozellik/hukuki/HukukiSayfa` `@/ozellik/hukuki/metinler` |
-| `frontend/app/davet-kabul/page.tsx` | `react` `next/navigation` `@/ortak/lib/api` `@/ozellik/kimlik/kurumsal-baslat` `@/ortak/lib/oturum` `@/ozellik/kimlik/GirisDaliEkrani` `@/ortak/lib/kimlik-hata-metinleri` `@/ortak/ui/parola-alani` `@/ortak/lib/parola-kurali` |
+| `frontend/app/davet-kabul/page.tsx` | `react` `next/link` `next/navigation` `lucide-react` `@/ortak/lib/api` `@/ozellik/kimlik/kurumsal-baslat` `@/ortak/lib/oturum` `@/ozellik/kimlik/GirisDaliEkrani` `@/ortak/lib/kimlik-hata-metinleri` `@/ortak/ui/parola-alani` `@/ortak/ui/kimlik-kabugu` `@/ortak/lib/parola-kurali` |
 | `frontend/app/dev/grid-test/page.tsx` | `react` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/types` |
 | `frontend/app/fiyatlar/page.tsx` | `next` `next/link` `@/ortak/kabuk/components/layout/Altbilgi` `@/ozellik/odeme/FiyatKartlari` `@/ortak/seo/arama-paylasim` |
 | `frontend/app/forgot-password/page.tsx` | `react` `@/ortak/lib/api` `@/ortak/ui/kimlik-kabugu` |
@@ -1453,6 +1455,8 @@ test:* scripti: 139
 | `frontend/ozellik/kimlik/MfaKodAdimi.tsx` | `react` `@/ortak/lib/api` `@/ortak/lib/kimlik-hata-metinleri` |
 | `frontend/ozellik/kimlik/SirketHesabiKarti.tsx` | `react` `@/ortak/lib/api` `@/ortak/lib/utils` `@/ortak/lib/kimlik-hata-metinleri` `@/ozellik/kimlik/kurumsal-baslat` `./hesabim/hesabim-ui` |
 | `frontend/ozellik/kimlik/ZorunluKurulumSihirbazi.tsx` | `react` `@/ortak/lib/api` `@/ortak/lib/kimlik-hata-metinleri` `./KurulumAnahtari` `./KurtarmaKodlariEkrani` |
+| `frontend/ozellik/kimlik/davet-kabul-kurallari.test.ts` | `vitest` `../../ortak/lib/kimlik-hata-metinleri` |
+| `frontend/ozellik/kimlik/davet-kabul-kurallari.ts` | `../../ortak/lib/kimlik-hata-metinleri` |
 | `frontend/ozellik/kimlik/dogrulama-bekleniyor.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/kimlik/giris-dali.test.ts` | `vitest` `fs` `path` `../../ortak/lib/oturum` `./KurulumAnahtari` |
 | `frontend/ozellik/kimlik/hesabim/AbonelikSekmesi.tsx` | `react` `next/link` `lucide-react` `@/ortak/lib/api` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/odeme/abonelik-ozeti` `@/ozellik/odeme/paket-bicim` `@/ozellik/odeme/paket-degisimi` `@/ozellik/odeme/paket-onerisi` `./hesap-tipleri` `./hesabim-ui` |

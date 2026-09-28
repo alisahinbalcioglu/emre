@@ -29,6 +29,7 @@ import {
   etkinHesapKosulu,
   firmaKilitliIslem,
   disKimlikleriSil,
+  KAPATMA_SAKLAMA_GUN,
   kapatmaVerisi,
   koltukKarari,
   koltukSirasiKarari,
@@ -404,12 +405,8 @@ export class UyelikServisi {
             mesaj: 'Bu adres zaten bu firmanın ekibinde.',
           });
         }
-        throw new BadRequestException({
-          kod: 'BASKA_FIRMADA_KAYITLI',
-          mesaj:
-            'Bu e-posta adresi başka bir firmada kayıtlı. Davete katılmak için ' +
-            'önce mevcut hesabınızı kapatmanız ya da o firmadan ayrılmanız gerekir.',
-        });
+        // 27.09.2026: metin role gore — bkz. `baskaFirmadaKayitli`.
+        throw new BadRequestException(baskaFirmadaKayitli(mevcut.firmaRol));
       }
       // ── K1 (plan 5.8 §3.1) IKIZI: KAPALI AMA ADRESI DURAN HESAP ───────
       // ⚠ 21.09'dan once bu dal MUMKUN DEGILDI: kapatma e-postayi
@@ -929,6 +926,39 @@ const DAVET_GECERSIZ = {
   kod: 'DAVET_GECERSIZ',
   mesaj: 'Davet bağlantısı geçersiz ya da süresi dolmuş. Firma sahibinden yeni davet isteyin.',
 };
+
+/**
+ * BASKA_FIRMADA_KAYITLI — 27.09.2026, role gore IKI metin.
+ *
+ * ⚠ ESKI METIN CIKMAZA YOLLUYORDU: "once mevcut hesabinizi kapatin ya da o
+ * firmadan ayrilin". Kendi kapatma (`kendi`) ve yonetici silmesi adresi
+ * KAPATMA_SAKLAMA_GUN boyunca hesapta tutar → davet `KAPALI_HESAP_VAR` ile
+ * yine reddedilir (K1). 26-27.09'da canlida yasandi: davet edilen adres baska
+ * firmada SAHIPti, hesap yonetici panelinden silindi, davet yine kabul
+ * edilemedi.
+ *
+ * Adresi HEMEN serbest birakan tek yol ekipten cikarilmaktir (`kapatmaVerisi`,
+ * `ekiptenCikarildi` istisnasi). O yol UYE icin gercekcidir: o firmanin
+ * yoneticisi cikarir, ayni davet bekledigi gibi kabul edilir. Sahibe baska
+ * adres onerilir. Metin davetKabul govdesinde DEGIL: `faz7-mfa` M28 o
+ * govdenin ilk 4500 karakterinde `girisKarari(`i arar.
+ */
+function baskaFirmadaKayitli(firmaRol: string | null | undefined) {
+  const kapatmaUyarisi =
+    `Hesabınızı kendiniz kapatmak çözüm olmaz: kapatılan adres ${KAPATMA_SAKLAMA_GUN} gün ` +
+    'boyunca yeni bir ekibe katılamaz.';
+  return {
+    kod: 'BASKA_FIRMADA_KAYITLI',
+    mesaj:
+      firmaRol === 'uye'
+        ? 'Bu e-posta adresi başka bir firmanın ekibinde kayıtlı; bir hesap aynı anda yalnız ' +
+          'bir firmada olabilir. O firmanın yöneticisinden sizi ekipten çıkarmasını isteyin; ' +
+          'çıkarıldığınızda bu davetle hemen katılabilirsiniz. ' + kapatmaUyarisi
+        : 'Bu e-posta adresiyle başka bir firmada yönetici olarak kayıtlı bir hesap var; bir ' +
+          'hesap aynı anda yalnız bir firmada olabilir. Davet eden kişiden başka bir e-posta ' +
+          'adresinize davet göndermesini isteyin. ' + kapatmaUyarisi,
+  };
+}
 
 const UYE_YOK = { kod: 'UYE_YOK', mesaj: 'Üye bulunamadı.' };
 
