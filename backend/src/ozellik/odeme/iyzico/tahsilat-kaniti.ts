@@ -19,6 +19,8 @@
  *     bildirimlerdeki adaylardan iyzico'nun listesinde doğrulanan.
  *   · `tahsilEdilenTutar` · `odemeAni` — FATURANIN iki gerçeği (28.09):
  *     çekilen tutar + para birimi ve ödeme anı (aşağıdaki not).
+ *   · `sonrakiDonemIslenmisMi` — ESKİ DÖNEM (28.09): ödenmiş sipariş bugünkü
+ *     hâli (dunning, durum) değiştirebilir mi (dosya sonu).
  *
  *  ÖLÇÜLDÜ (20.08 sandbox, docs/adim0-tutanak/adim0-ek-cikti.json):
  *   · ödenmiş sipariş: `orderStatus: 'SUCCESS'` + `paymentAttempts[{paymentStatus: 'SUCCESS'}]`;
@@ -65,6 +67,20 @@ export function odenmisSiparisMi(s: unknown): boolean {
   const o = s as Record<string, unknown>;
   if (o.orderStatus !== 'SUCCESS') return false;
   return Array.isArray(o.paymentAttempts) && o.paymentAttempts.some(basariliOdemeDenemesiMi);
+}
+
+/**
+ * Çekimi REDDEDİLDİ mi (siparişin kendi kaydı): `orderStatus` 'FAILED' ya da
+ * değeri SUCCESS olmayan en az bir deneme. Başarısızlık kanıtının sipariş
+ * kuralı (aşağıda, kural 3) ve eski dönem kuralı bunu okur — ikiz yok. SAF.
+ */
+function cekimiReddedilmisMi(s: unknown): boolean {
+  if (!s || typeof s !== 'object') return false;
+  const o = s as Record<string, unknown>;
+  return (
+    o.orderStatus === 'FAILED' ||
+    (Array.isArray(o.paymentAttempts) && o.paymentAttempts.some(reddedilmisOdemeDenemesiMi))
+  );
 }
 
 /**
@@ -205,11 +221,7 @@ export function tahsilatBasarisizligiKarari(
   if (d.subscriptionStatus === 'UNPAID') {
     return { karar: 'KANITLI', gerekce: `abonelik UNPAID (sipariş ${siparisDurumu})` };
   }
-  const cekimReddedildi =
-    !!siparis &&
-    (siparis.orderStatus === 'FAILED' ||
-      (Array.isArray(siparis.paymentAttempts) && siparis.paymentAttempts.some(reddedilmisOdemeDenemesiMi)));
-  if (cekimReddedildi) {
+  if (cekimiReddedilmisMi(siparis)) {
     return { karar: 'KANITLI', gerekce: `sipariş reddedildi (${siparisDurumu}), abonelik ${abonelik}` };
   }
   return { karar: 'KANITSIZ', gerekce: `sipariş ${siparisDurumu}, reddedilmiş çekim yok; abonelik ${abonelik}` };
@@ -256,4 +268,77 @@ export function yenidenDenemeHedefi(detay: unknown, adaylar: readonly unknown[])
       : { tur: 'yok', gerekce: `sipariş ${kod}: ${k.gerekce}` };
   }
   return { tur: 'yok', gerekce: `${adaylar.length} adayın hiçbiri iyzico listesinde yok` };
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  ESKİ DÖNEM — sonraki dönemi iyzico'da İŞLENMİŞ ödenmiş sipariş (28.09.2026) · SAF
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Listede bu siparişten SONRA başlayan bir dönemin siparişi iyzico'da zaten
+ *  İŞLENMİŞSE (ödenmiş ya da çekimi reddedilmiş) bu sipariş ESKİ DÖNEMDİR:
+ *  ödeme gerçektir ama aboneliğin BUGÜNKÜ hâli hakkında bir şey söylemez.
+ *  `AbonelikServisi.tahsilatBasarili` böyle siparişle dunning'i SIFIRLAMAZ,
+ *  durumu DEĞİŞTİRMEZ (24.09 yoklaması, ölçüldü: eski ödenmiş siparişi anan
+ *  gövde KISITLI satırı AKTIF'e çekiyor, dunning'i sıfırlıyordu; ertesi gece
+ *  UNPAID yeni bir TAM erişimli tolerans açıyordu — tekrarlanabilir).
+ *
+ *   · "Sonra başlayan": `startPeriod` bu siparişinkinden BÜYÜK. Dönem sınırı
+ *     eşitliğine (`startPeriod(n+1) = endPeriod(n)`, 20.08 tutanağı) DAYANMAZ.
+ *   · ⭐ "Başlamış": sonraki siparişin `startPeriod`u `simdi`den büyük DEĞİL.
+ *     Vadesi gelmemiş dönem hiçbir şeyi eskitmez: iyzico önceden açtığı
+ *     siparişi abonelik UNPAID'e düşünce reddedilmiş işaretlerse (biçimi
+ *     ÖLÇÜLMEDİ) reddedilen dönemin gerçek ödemesi "eski" sayılır, müşteri
+ *     ödediği hâlde dunning'den hiç çıkamazdı (28.09 kod incelemesi).
+ *   · "İşlenmiş": ödenmiş (`odenmisSiparisMi`) ya da çekimi reddedilmiş
+ *     (`cekimiReddedilmisMi` — başarısızlık kanıtının sipariş kuralı).
+ *     iyzico'nun ÖNCEDEN açtığı denemesiz WAITING sipariş SAYILMAZ: dunning'den
+ *     çıkaran gerçek ödemenin listesinde de bulunur (tutanak: sonraki dönem
+ *     önceden açılır).
+ *   · ⭐ Abonelik UNPAID iken (`abonelikDurumu`) başlamış HER sonraki sipariş
+ *     işlenmiş sayılır; siparişin KENDİ dönemi bitmişse (`endPeriod` ≤
+ *     `simdi`) sonraki dönem listede OLMASA da eskidir. Dunning abonelik
+ *     UNPAID'iyle de başlar (başarısızlık kanıtı kural 2 — reddedilen sipariş
+ *     listede yok ya da denemesiz WAITING olabilir, biçim ÖLÇÜLMEDİ); o hâlde
+ *     eski ödenmiş siparişin tekrarı döngüyü sıfırlardı (28.09 güvenlik ve
+ *     kod incelemesi). UNPAID'de dönemi süren ödeme (iyzico'nun durumu
+ *     gecikmiş) eski DEĞİLDİR: döngüyü kapatır. Durumu YALNIZ başarı yolu
+ *     geçirir: ret yolunda UNPAID genişlemesi kimseyi korumaz (iyzico
+ *     "ödenmedi" derken eski ret gerçeğe aykırı değil), dunning'i geciktirirdi.
+ *   · Tarih `iyzicoTarihi` ile (sayı · rakam-dizesi · ISO); çözülemeyen
+ *     başlangıç karşılaştırılmaz — eski SAYILMAZ, tahmin yürütülmez.
+ *
+ *  İKİZİ VAR (bilinçli, birleştirme ayrı iş): gece mutabakatının kural 7e
+ *  engeli `sonrakiDonemDenendiMi` (mutabakat.job.ts) — `startPeriod ≥
+ *  endPeriod` ve ödeme DENEMESİ arar, vade denetimi yok. Birleştirmek 7e'nin
+ *  oynatma kararını değiştirir (o kapılar yeniden ölçülmeli).
+ *  BİLİNEN SINIR: yalnız AYNI aboneliğin (iyzico'ya sorulan kodun) listesine
+ *  bakar; paket değişimi zincirinin ESKİ halkasının siparişini
+ *  `tahsilatBasarili` ödeme sorunu olan satırda bu kurala sormadan eski
+ *  dönem sayar (değişim o satırda reddedilir; döngü yeni ucundur). Sorunsuz
+ *  satırda eski halkanın geç bildirimi olağan yenilemedir.
+ *  Kapı: `test:webhook-tahsilat-dogrulama` S5-S6 + R.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+export function sonrakiDonemIslenmisMi(
+  siparisler: unknown,
+  siparis: unknown,
+  simdi: Date = new Date(Date.now()),
+  abonelikDurumu?: unknown,
+): boolean {
+  if (!Array.isArray(siparisler) || !siparis || typeof siparis !== 'object') return false;
+  const bas = iyzicoTarihi((siparis as Record<string, unknown>).startPeriod);
+  if (!bas) return false;
+  const abonelikOdenmemis = abonelikDurumu === 'UNPAID';
+  const son = iyzicoTarihi((siparis as Record<string, unknown>).endPeriod);
+  if (abonelikOdenmemis && son && son.getTime() <= simdi.getTime()) return true;
+  return siparisler.some((s) => {
+    if (!s || typeof s !== 'object') return false;
+    const sonrakiBas = iyzicoTarihi((s as Record<string, unknown>).startPeriod);
+    return (
+      !!sonrakiBas &&
+      sonrakiBas > bas &&
+      sonrakiBas.getTime() <= simdi.getTime() &&
+      (abonelikOdenmemis || odenmisSiparisMi(s) || cekimiReddedilmisMi(s))
+    );
+  });
 }

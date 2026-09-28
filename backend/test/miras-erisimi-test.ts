@@ -303,7 +303,12 @@ function dunya(p: { abonelik?: Satir | null; niyetler?: Satir[]; tamamlandiHatas
         olaylar.push(data);
         return data;
       },
+      // 28.09 tahsilat izi (`tahsilatBasarili`): bu dünyada fatura ve
+      // tutar-okunamadı izi YOK — her teslim uygulanır. Tekrar kuralını
+      // `test:webhook-tahsilat-dogrulama` R ölçer.
+      findMany: async () => [],
     },
+    fatura: { findUnique: async () => null },
     denemeKullanimi: { upsert: async () => ({}) },
     firma: {
       findUnique: async () => ({ ad: 'Firma A', faturaEposta: 'fatura@firma.test', yetkiliEposta: null }),

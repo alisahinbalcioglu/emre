@@ -105,9 +105,10 @@ services:
       IYZICO_MERCHANT_ID: ${IYZICO_MERCHANT_ID:-}
       # Sandbox: https://sandbox-api.iyzipay.com · Canli: https://api.iyzipay.com
       IYZICO_TABAN_URL: ${IYZICO_TABAN_URL:-https://sandbox-api.iyzipay.com}
-      # ⚠ ILK GERCEK WEBHOOK'A KADAR "false" KALIR. true yapilirsa ve imza
-      # tutmazsa her olay sessizce dusulur. Once gunlukte
-      # `IYZICO_IMZA_SIRASI=... olarak sabitleyin` satirini gorun.
+      # ⚠ IMZALI TEST WEBHOOK'U DOGRULANANA KADAR "false" KALIR (28.09). true
+      # iken eksik/yanlis imza 401 alir, kaydedilmez — imza tutmazsa gercek
+      # bildirimler de. Once gunlukte `IYZICO_IMZA_SIRASI=... olarak
+      # sabitleyin` satirini gorun; sira docs/RUNBOOK_iyzico_canli_gecis.md
       IYZICO_IMZA_ZORUNLU: ${IYZICO_IMZA_ZORUNLU:-false}
       # Dokuman celiskisi: duz metin bir sira, dort kod ornegi baska sira
       # veriyor. Kod ikisini de hesaplar; tutani gunluge basar. Ogrenince

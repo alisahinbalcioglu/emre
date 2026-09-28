@@ -52,7 +52,10 @@
  *      W6 tutar YOK → fatura yok, makbuz yok; hata günlüğü + yöneticiye son
  *         günlü uyarı; olay işlendi, erişim uzadı; gece 1 ve 2: oynatma YOK,
  *         "elle fatura" + özet sayacı 1; W6g aynı sipariş ikinci olayla
- *         (anlık deneme) işlenince uyarı TEK, denetim izi tek kayıt
+ *         (anlık deneme) işlenince uyarı TEK, denetim izi tek kayıt — 28.09:
+ *         ikinci olay tahsilat izinde (tutar-okunamadı izi) TEKRAR sayılır;
+ *         W6h dunning'deki satırda kısa devre yok, uyarıyı sipariş başına
+ *         tek-uyarı kuralı keser ("zaten bildirildi")
  *      W7 dunning'den çıkış (GERÇEK ret yolu → yeniden deneme tuttu):
  *         "ödemeniz alındı" ÇEKİLEN tutarı yazar; tutar okunamazsa tutarsız
  *      W8 ödenen sürüm okunamazsa paket adı NULL + hata; kesim o anki pakete
@@ -91,6 +94,8 @@
  * uyarı tekilleştirme, 5 mutant): 5/5 öldü — koşulsuz 7f (W10a/b + ikiz
  * S22), işlenmiş sorgusu/geçişi bozuk (W6e/f, W10b), tekilleştirme ya da
  * denetim izi yok (W6g). TOPLAM 51 ayrı mutant: 50 öldü, 1 eşdeğer.
+ * 28.09 (webhook güvenliği, tahsilat izi): tekilleştirme mutantını artık W6h
+ * öldürür (W6g ikinci olayı iz keser); W6g iz dalını ölçer.
  *
  * Çıkış kodu sözleşmesi: 0 = PASS · diğeri = FAIL (process.exitCode).
  */
@@ -1074,12 +1079,45 @@ async function w6(): Promise<void> {
   });
   const g3 = await d.isle();
   const iz = d.db.tablo('abonelikOlayi').filter((x) => x.abonelikId === ab.id && x.tip === TUTAR_OKUNAMADI_OLAYI);
-  check('W6g ikinci olay aynı siparişi işledi: yönetici uyarısı İKİNCİ kez gitmedi ("zaten bildirildi"); denetim izi TEK kayıt, sipariş + son gün taşır',
+  // 28.09 (webhook güvenliği): ikinci olay tahsilat izinde durur — tutar
+  // okunamayan siparişin uygulandığının TEK kaydı bu denetim izidir.
+  const tekrar = d.db.tablo('abonelikOlayi').filter((x) => x.abonelikId === ab.id && x.tip === 'tahsilat.tekrar.yok.sayildi');
+  check('W6g ikinci olay aynı siparişi TEKRAR saydı (iz: tutar-okunamadı izi): yönetici uyarısı İKİNCİ kez gitmedi, yeni tahsilat olayı yok; denetim izi TEK kayıt, sipariş + son gün taşır',
     d.yoneticiUyarilari().length === 1 && d.giden.length === 1 &&
-      g3.uyarilar.some((u) => u.startsWith('Tutarı okunamayan tahsilat zaten bildirildi: sipariş ord-w6 ')) &&
+      tekrar.length === 1 && tekrar[0].veri?.iz === 'tutar-izi' && d.tahsilatOlaylari(ab.id).length === 1 &&
+      g3.hatalar.length === 0 &&
       iz.length === 1 && iz[0].veri?.siparisKodu === 'ord-w6' &&
       iz[0].veri?.sonDuzenlemeGunu === new Date(odeme + 7 * GUN).toISOString(),
-    `uyari=${d.yoneticiUyarilari().length} iz=${JSON.stringify(iz.map((x) => x.veri))} ${gunlukYaz(g3)}`);
+    `uyari=${d.yoneticiUyarilari().length} tekrar=${JSON.stringify(tekrar.map((x) => x.veri))} ` +
+      `iz=${JSON.stringify(iz.map((x) => x.veri))} ${gunlukYaz(g3)}`);
+
+  // W6h — dunning'deki satırda tekrar KISA DEVRE YAPMAZ (ödemenin döngüyü
+  // kapatıp kapatmadığını iyzico listesi söyler): eski dönem siparişinin
+  // ikinci olayı uyarı yoluna kadar gider; uyarıyı sipariş başına TEK uyarı
+  // kuralı keser. Sonraki dönem 9 gün önce başladı ve reddedildi.
+  const d2 = dunyaKur();
+  const bas2 = Date.now() - 40 * GUN;
+  const sonrakiBas = bas2 + 31 * GUN;
+  const ab2 = d2.kartSatiri('F-W6H', 'sub-w6h', 'S-PRO', new Date(bas2), {
+    durum: 'ODEME_BEKLIYOR', ilkBasarisizlik: new Date(sonrakiBas + SAAT), denemeSayisi: 1, iyzicoDurum: 'UNPAID',
+  });
+  const eski = siparis({ kod: 'ord-w6h', tutarYok: true, bas: bas2, denemeler: [['SUCCESS', bas2 + DK]] });
+  const red = {
+    ...siparis({ kod: 'ord-w6h-ret', bas: sonrakiBas, denemeler: [['FAILURE', sonrakiBas + DK]] }), orderStatus: 'FAILED',
+  };
+  d2.iyz.detaylar.set('sub-w6h', iyzicoDetayi('sub-w6h', 'UNPAID', 'plan-pro', [red, eski]));
+  d2.gelenWebhook('sub-w6h', 'ord-w6h');
+  await d2.isle();
+  d2.db.ekle('webhookOlayi', {
+    tekilAnahtar: `${ANINDA_DENEME_KAYNAGI}:subscription.order.success:ord-w6h`, kaynak: ANINDA_DENEME_KAYNAGI,
+    olayTipi: 'subscription.order.success', hamGovde: {}, abonelikKodu: 'sub-w6h', siparisKodu: 'ord-w6h',
+  });
+  const g4 = await d2.isle();
+  const tekrar2 = d2.db.tablo('abonelikOlayi').filter((x) => x.abonelikId === ab2.id && x.tip === 'tahsilat.tekrar.yok.sayildi');
+  check('W6h dunning\'deki satırda ikinci olay kısa devre YAPMADI (satır ODEME_BEKLIYOR kaldı — eski dönem); yönetici uyarısı yine TEK ("zaten bildirildi")',
+    d2.satir(ab2.id).durum === 'ODEME_BEKLIYOR' && d2.yoneticiUyarilari().length === 1 && tekrar2.length === 0 &&
+      g4.uyarilar.some((u) => u.startsWith('Tutarı okunamayan tahsilat zaten bildirildi: sipariş ord-w6h ')),
+    `durum=${d2.satir(ab2.id).durum} uyari=${d2.yoneticiUyarilari().length} tekrar=${tekrar2.length} ${gunlukYaz(g4)}`);
 }
 
 async function w10(): Promise<void> {

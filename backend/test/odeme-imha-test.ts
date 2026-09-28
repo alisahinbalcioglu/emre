@@ -784,11 +784,15 @@ async function main() {
   const w16: any = { firma: [], user: [], olay: [] };
   const wPrisma = {
     abonelik: {
+      // 28.09: satır webhook kodunu TAŞIR — `aboneligiKodlaBul` onu
+      // `iyzicoAbonelikKodu` ile bulur (güncel uç); kodsuz satır eski halka
+      // sayılır ve eski halka bugünkü hâli (hesabı geri açmak dahil) değiştirmez.
       findUnique: async () => ({
         id: 'ab-1',
         firmaId: 'f1',
         durum: 'ASKIDA',
         erisimSonu: new Date('2026-01-01'),
+        iyzicoAbonelikKodu: 'sub-1',
         paketSurumu: { periyot: 'MONTHLY', periyotAdedi: 1 },
       }),
       findUniqueOrThrow: async () => ({

@@ -85,6 +85,16 @@ AI destekli mekanik/elektrik tesisat teklif platformu. NestJS backend + Next.js 
 - GÖÇ GEREKMEZ (ölçüldü, gerçek motor + gerçek Nest): deploy öncesi kapsamsız kayıtlar hiçbir yeni yüklemeyle eşleşmez (aynı firma dosyayı bir kez yeniden işletir; etiketler ön yüzde içerik hash'iyle anahtarlı), sahibi TTL (24 sa) bitene dek okumaya devam eder, sonra `_cleanup_cache` siler.
 - Kapılar: `test:dwg-kiraci-dedup` (R/L/U/F/G/Y, regresyonda) · `test:guvenlik2` G2-e/G2-g · `python/tests/test_dedup_kapsam.py` (pytest, CI'da: `dwg-engine` işi; `httpx` ister → `requirements-test.txt`).
 
+### iyzico — Canlı Anahtar Geçişi, Webhook İmzası ve Tekrar (28.09.2026)
+- Sistem iyzico SANDBOX'ta; canlı hesap ayrı ve boş. Geçiş sırası `docs/RUNBOOK_iyzico_canli_gecis.md`, TEK BAKIM PENCERESİNDE backend DURMUŞKEN: canlı anahtar + adres → `docker compose run --rm backend npm run iyzicocanligecis` (önce PROVA; `--uygula --beklenen=<n>` yalnız CANLI adreste) → planlar `seedpaketler -- --tek-urun` (kipsiz seed mevcut paketleri ATLAR, canlı planı kurmaz) → backend açılır. Pencere şart: betik kodlu satırın sandbox mı canlı mı olduğunu AYIRT EDEMEZ, dakikalık fatura işi de sandbox faturasını "test DEĞİL" damgasıyla gönderirdi. İlk uygulamadan sonra canlı etkinlik varsa betik `--uygula`'yı REDDEDER (tekrar kilidi).
+- KARAR (Emre 28.09): sandbox KART aboneliğinin erişimi geçişte BİTER (IPTAL + erişim şimdi → saatlik iş SONA_ERDI / miras); HAVALE gerçek para — yalnız iyzico kodları temizlenir. Kural `abonelik/canli-gecis.ts`, kapı `test:iyzico-canli-gecis`.
+- `IYZICO_IMZA_ZORUNLU` varsayılanı false KALIR. Açmak runbook ön koşuludur: canlıdan imzalı bildirimin `imzaGecerli=true` olduğu ölçülür (28.09 canlı: alınan tek bildirimde başlık YOKTU). Zorunluyken eksik/yanlış imza 401 alır, satır yazılmaz, beklenen imza günlüğe yazılmaz. Eskiden reddedilen olay kaydediliyor, dakikalık tarama onu yine işliyordu: bayrak hiçbir şeyi korumuyordu. Geri alma ölçütü `401` satırı DEĞİL (imzasız istekle herkes üretir): gerçek bildirimin kaybı ya da gece mutabakatının oynatması.
+- Uç her kipte: dört iyzico kodu harf/rakam/tire değilse ya da olay tipi biçimsizse 400 + kayıt yok; yalnız bilinen altı alan saklanır; gövde tavanı 16 KB.
+- Tekil anahtar imzasız `iyziReferenceCode`dan türer: yeni ref kodlu tekrar YENİ olaydır. Koruma sipariş düzeyinde:
+  - Aynı sipariş ikinci kez UYGULANMAZ. Ölçüt tahsilat izidir (fatura satırı ya da tutar-okunamadı izi; `abonelik/tahsilat-izi.ts`). Ödeme sorunu olan satırda kısa devre YOK.
+  - Sonraki dönemi iyzico'da işlenmiş (başlamış + ödenmiş/reddedilmiş) sipariş ESKİ DÖNEMdir (`sonrakiDonemIslenmisMi`). Başarısı dunning'i sıfırlamaz, durumu değiştirmez, makbuz göndermez. Reddi dunning başlatmaz. Başarı yolunda ayrıca abonelik UNPAID iken başlamış her sonraki dönem ve KENDİ dönemi bitmiş sipariş de eskidir (reddedilen sipariş listede geç görünür); ret yolu bu genişlemeyi ALMAZ — iyzico "ödenmedi" derken eski ret gerçeğe aykırı değil.
+  - Kapı `test:webhook-tahsilat-dogrulama` R/I.
+
 ## Hata Yonetimi
 
 ### Windows DLL (EPERM) Hatasi

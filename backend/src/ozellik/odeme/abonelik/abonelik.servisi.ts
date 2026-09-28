@@ -17,9 +17,17 @@ import { KartKapatmaSonucu, kapatmaCumlesi, kartAboneligiKapaliMi } from './kart
 import {
   odenmisSiparisMi,
   siparisiBul,
+  sonrakiDonemIslenmisMi,
   tahsilEdilenTutar,
   tahsilatBasarisizligiKarari,
 } from '../iyzico/tahsilat-kaniti';
+import {
+  ESKI_DONEM_TAHSILATI_OLAYI,
+  TAHSILAT_TEKRARI_OLAYI,
+  TUTAR_OKUNAMADI_OLAYI,
+  odemeSorunuVarMi,
+  tutarIziVarMi,
+} from './tahsilat-izi';
 // Saf modüller (Prisma/Nest bilmez) — döngüsel import YOK.
 import { mirasPaketiMi } from './deneme-hakki';
 import {
@@ -527,6 +535,13 @@ export class AbonelikServisi {
    * gunluge yazip devam eder — parasi alinmis musterinin aboneligi yarim
    * birakilamaz. Yarim kalirsa musteri girise kadar gelir ve ayni odeme
    * yolunun ikinci tetiklemesi ya da yonetici mudahalesi tamamlar.
+   * 28.09: YENILEME yolunda ikinci tetikleme, odeme sorunu OLMAYAN satirda
+   * ARTIK TAMAMLAMAZ — uygulanmis siparisin tekrari hicbir sey yapmaz
+   * (tahsilat izi, `tahsilatBasarili`); tekrarla geri acmak kapatilmis hesabin
+   * imhasini sahte bildirimle iptal ettirirdi (`test:webhook-tahsilat-
+   * dogrulama` R14). Odeme sorunlu satirda tekrar yine iyzico listesine sorulur
+   * ve eski donem degilse geri acma yeniden kosar. Yarim kalan geri acmayi HATA
+   * gunlugundeki "Hesap geri acilamadi" satirindan yonetici tamamlar.
    */
   async firmayiGeriAc(
     firmaId: string,
@@ -765,6 +780,35 @@ export class AbonelikServisi {
       return null;
     }
 
+    // ⚠ 28.09 — AYNI SİPARİŞ İKİNCİ KEZ UYGULANMAZ. Tekil anahtar gövdedeki
+    // `iyziReferenceCode`dan türer ve imza onu kapsamaz: aynı sipariş yeni ref
+    // koduyla YENİ olaydır (iyzico yeniden gönderimi, mutabakat/anlık deneme
+    // oynatması ya da sahte tekrar). Eski hâl her seferinde baştan uyguluyordu
+    // (ölçüldü, `test:webhook-tahsilat-dogrulama` R): dunning'deki satır AKTIF
+    // + "ödemeniz alındı", havaleye geçmiş satırda sahte "çift tahsilat — iade"
+    // uyarısı, kapatılmış hesabın imhası iptal, her tekrarda havale ↔ kart
+    // penceresinin saydığı yeni `durum.degisti`. Ölçüt siparişin BU satırdaki
+    // tahsilat izi (fatura satırı ya da tutar-okunamadı izi — kural ve
+    // gerekçesi `tahsilat-izi.ts`). iyzico'ya SORULMAZ: kanıt kendi kaydımız,
+    // sahte tekrar iyzico kotası harcatmaz. Olay işlendi sayılır (yeniden
+    // denenmez), iz kalır. ÖDEME SORUNU OLAN satırda kısa devre YOK: ödemenin
+    // döngüyü kapatıp kapatmadığını aşağıdaki eski dönem kuralı söyler.
+    // Günlük BİLGİ seviyesinde: anlık deneme + iyzico'nun kendi bildirimi
+    // aynı siparişi iki olayla getirir — olağan, uyarı değil.
+    const iz = odemeSorunuVarMi(ab) ? null : await this.tahsilatIziBul(ab.id, siparisKodu);
+    if (iz) {
+      this.logger.log(
+        `Tahsilat tekrarı yok sayıldı: abonelik=${abonelikKodu} sipariş=${siparisKodu} — ` +
+          `bu aboneliğe zaten uygulanmış (${iz})`,
+      );
+      await this.olayYaz(ab.id, TAHSILAT_TEKRARI_OLAYI, {
+        aciklama: `Sipariş ${siparisKodu} zaten uygulanmış (${iz}) — tekrar bildirim hiçbir şeyi değiştirmedi`,
+        veri: { abonelikKodu, siparisKodu, iz },
+        aktor: 'webhook',
+      });
+      return null;
+    }
+
     const detay = await this.iyzico.abonelikGetir(abonelikKodu);
     const siparis = siparisiBul(detay.orders, siparisKodu);
 
@@ -885,14 +929,40 @@ export class AbonelikServisi {
     // Asagidaki durum gecisiyle AYNI yaris korumasi (`kosul`): arada havale
     // onaylandiysa satira dokunulmaz, gecis P2025 ile duser, olay havale
     // dalina yeniden gelir.
-    const donguKapandi = await this.prisma.abonelik.updateMany({
-      where: {
-        id: ab.id,
-        odemeYontemi: OdemeYontemi.KART,
-        OR: [{ ilkBasarisizlik: { not: null } }, { denemeSayisi: { not: 0 } }],
-      },
-      data: { ilkBasarisizlik: null, denemeSayisi: 0 },
-    });
+    //
+    // ⚠ 28.09 — ESKİ DÖNEM SİPARİŞİ BUGÜNKÜ HÂLİ DEĞİŞTİRMEZ. Sonraki dönemi
+    // iyzico'da işlenmiş (ödenmiş ya da reddedilmiş) sipariş — kural
+    // `sonrakiDonemIslenmisMi` (tahsilat-kaniti.ts). Ödeme gerçektir: erişim
+    // (yalnız ileri; köprü kuralı aynen) ve fatura uygulanır. Ama dunning
+    // SIFIRLANMAZ, durum DEĞİŞMEZ, kapatılmış hesap açılmaz, makbuz gitmez:
+    // dunning sonraki dönemin reddiyle başladıysa o dönem hâlâ ödenmedi (24.09
+    // yoklaması, ölçüldü: HİÇ uygulanmamış eski ödenmiş siparişi anan gövde —
+    // tahsilat izi olmadığı için üstteki tekrar ölçütü onu yakalamaz — KISITLI
+    // satırı AKTIF'e çekip dunning'i sıfırlıyordu). Gece mutabakatının kayıp
+    // tahsilat oynatması (kural 2) da bu yoldan geçer: sonraki dönemi
+    // reddedilmiş kayıp ödemeyi uygular, dunning'i bitirmez.
+    // Paket değişimi zincirinin ESKİ HALKASI, ödeme sorunu olan satırda da
+    // eski dönemdir: değişim ödemesi durmuş satırda REDDEDİLİR (paket-
+    // degisimi.ts, ODEME_BEKLIYOR/KISITLI), yani döngü değişimden SONRA yeni
+    // ucun reddiyle başlamıştır — eski halkanın siparişi onu kapatamaz. Kural
+    // yalnız sorulan kodun listesine baktığı için eski halkada yeni ucun
+    // reddini göremez; eskiden bu sipariş yeni ucun dunning'ini sıfırlıyordu
+    // (28.09 kod incelemesi). Sorunsuz satırda eski halkanın geç bildirimi
+    // içinde bulunulan dönemin OLAĞAN ödemesidir (yükseltme beklerken çekilmiş
+    // yenileme — `test:fatura-dogrulugu` W4): olağan yol, makbuz dahil.
+    const eskiDonem =
+      (!guncelUcMu && odemeSorunuVarMi(ab)) ||
+      sonrakiDonemIslenmisMi(detay.orders, siparis, new Date(), detay.subscriptionStatus);
+    const donguKapandi = eskiDonem
+      ? { count: 0 }
+      : await this.prisma.abonelik.updateMany({
+          where: {
+            id: ab.id,
+            odemeYontemi: OdemeYontemi.KART,
+            OR: [{ ilkBasarisizlik: { not: null } }, { denemeSayisi: { not: 0 } }],
+          },
+          data: { ilkBasarisizlik: null, denemeSayisi: 0 },
+        });
     const dunningdenCikti = donguKapandi.count > 0;
 
     // ⚠ 26.09 — İPTAL EDİLMİŞ SATIR İPTAL KALIR. Müşteri ilk tahsilat
@@ -906,32 +976,65 @@ export class AbonelikServisi {
     const iptalKorunur = ab.durum === AbonelikDurumu.IPTAL && kartAboneligiKapaliMi(ab);
 
     const cekim = tahsilEdilenTutar(siparis);
-    await this.durumDegistir(ab.id, iptalKorunur ? AbonelikDurumu.IPTAL : AbonelikDurumu.AKTIF, {
-      kosul: { odemeYontemi: OdemeYontemi.KART }, // 24.09 yarış: arada havale onaylandıysa P2025 → yeniden dene
-      aciklama: `Tahsilat başarılı (sipariş ${siparisKodu})`,
-      aktor: 'webhook',
-      erisimSonu: yeniErisimSonu,
-      sayaclariSifirla: true,
-      veri: {
-        siparisKodu,
-        iyzicoDurum: detay.subscriptionStatus,
-        guncelUcMu,
-        iptalKorundu: iptalKorunur,
-        // 24.09: erisimin bu tahsilatta nasil degistigi olaydan okunabilsin.
-        oncekiErisimSonu: ab.erisimSonu.toISOString(),
-        kopruDuzeltildi: kopruDuzeltilir,
-        // 25.09: havale onayinin kart bildirimi cekimin tutarini, donemini ve
-        // erisime ETKISINI olaydan okur (iyzico'ya gidilmez) — miras satirda
-        // cekim erisimi uzatmaz, olagan satirda uzatir; yonetici iade
-        // kararini buna gore verir (havale-kart-penceresi.ts).
-        yeniErisimSonu: yeniErisimSonu.toISOString(),
-        // 28.09: faturayla TEK kural (`tahsilEdilenTutar`, tahsilat-kaniti.ts).
-        tutar: cekim?.tutar ?? null,
-        paraBirimi: cekim?.paraBirimi ?? ab.paketSurumu.paraBirimi,
-        startPeriod: siparis.startPeriod ?? null,
-        endPeriod: siparis.endPeriod ?? null,
-      },
-    });
+    if (eskiDonem) {
+      // Yalnız erişim (ileri) + iz. KOŞULLU: okunan erişim sonu (ve KART —
+      // webhook yollarının yarış deseni) yazım anında hâlâ tutmalı. Araya
+      // giren her yazım (yeni ödeme, başka eski dönem, havale onayı, mirasa
+      // dönüş) erişimi değiştirir → P2025 → olay yeniden denenir, taze okur:
+      // bayat `yeniErisimSonu` erişimi geri çekemez. Durum koşula GİRMEZ: bu
+      // yazım durumu okumaz, dunning basamağı erişimi değiştirmez.
+      // `durum.degisti` YAZILMAZ (`ESKI_DONEM_TAHSILATI_OLAYI` notu).
+      await this.prisma.abonelik.update({
+        where: { id: ab.id, odemeYontemi: OdemeYontemi.KART, erisimSonu: ab.erisimSonu },
+        data: { erisimSonu: yeniErisimSonu },
+      });
+      await this.olayYaz(ab.id, ESKI_DONEM_TAHSILATI_OLAYI, {
+        aciklama:
+          `Eski dönem tahsilatı (sipariş ${siparisKodu}) — sonraki dönem iyzico'da işlenmiş; ` +
+          `durum (${ab.durum}) ve dunning DEĞİŞMEDİ`,
+        veri: {
+          siparisKodu,
+          iyzicoDurum: detay.subscriptionStatus,
+          guncelUcMu,
+          durum: ab.durum,
+          oncekiErisimSonu: ab.erisimSonu.toISOString(),
+          kopruDuzeltildi: kopruDuzeltilir,
+          yeniErisimSonu: yeniErisimSonu.toISOString(),
+          tutar: cekim?.tutar ?? null,
+          paraBirimi: cekim?.paraBirimi ?? ab.paketSurumu.paraBirimi,
+          startPeriod: siparis.startPeriod ?? null,
+          endPeriod: siparis.endPeriod ?? null,
+        },
+        aktor: 'webhook',
+      });
+    } else {
+      await this.durumDegistir(ab.id, iptalKorunur ? AbonelikDurumu.IPTAL : AbonelikDurumu.AKTIF, {
+        kosul: { odemeYontemi: OdemeYontemi.KART }, // 24.09 yarış: arada havale onaylandıysa P2025 → yeniden dene
+        aciklama: `Tahsilat başarılı (sipariş ${siparisKodu})`,
+        aktor: 'webhook',
+        erisimSonu: yeniErisimSonu,
+        sayaclariSifirla: true,
+        veri: {
+          siparisKodu,
+          iyzicoDurum: detay.subscriptionStatus,
+          guncelUcMu,
+          iptalKorundu: iptalKorunur,
+          // 24.09: erisimin bu tahsilatta nasil degistigi olaydan okunabilsin.
+          oncekiErisimSonu: ab.erisimSonu.toISOString(),
+          kopruDuzeltildi: kopruDuzeltilir,
+          // 25.09: havale onayinin kart bildirimi cekimin tutarini, donemini ve
+          // erisime ETKISINI olaydan okur (iyzico'ya gidilmez) — miras satirda
+          // cekim erisimi uzatmaz, olagan satirda uzatir; yonetici iade
+          // kararini buna gore verir (havale-kart-penceresi.ts).
+          yeniErisimSonu: yeniErisimSonu.toISOString(),
+          // 28.09: faturayla TEK kural (`tahsilEdilenTutar`, tahsilat-kaniti.ts).
+          tutar: cekim?.tutar ?? null,
+          paraBirimi: cekim?.paraBirimi ?? ab.paketSurumu.paraBirimi,
+          startPeriod: siparis.startPeriod ?? null,
+          endPeriod: siparis.endPeriod ?? null,
+        },
+      });
+    }
 
     await this.prisma.abonelik.update({
       where: { id: ab.id },
@@ -978,15 +1081,19 @@ export class AbonelikServisi {
     // acilir. Normalde kapatma aboneligi iptal eder, yani bu dal bostur
     // (idempotent: acik hesapta sifir satir gunceller, olay da yazmaz).
     // Hata TAHSILATI DUSURMEZ — webhook "islendi" damgasi yemeli.
-    await this.firmayiGeriAc(ab.firmaId, {
-      aktor: 'webhook',
-      aciklama: `Tahsilat basarili (siparis ${siparisKodu}) — hesap geri acildi`,
-      abonelikId: ab.id,
-    }).catch((e) =>
-      this.logger.error(
-        `Hesap geri acilamadi (abonelik=${ab.id}): ${e instanceof Error ? e.message : String(e)}`,
-      ),
-    );
+    // 28.09: ESKİ DÖNEM siparişi hesabı AÇMAZ — çekimi kapatmadan önceki bir
+    // döneme aittir; kapatmayı (ve planlanan imhayı) geç bildirim geri almaz.
+    if (!eskiDonem) {
+      await this.firmayiGeriAc(ab.firmaId, {
+        aktor: 'webhook',
+        aciklama: `Tahsilat basarili (siparis ${siparisKodu}) — hesap geri acildi`,
+        abonelikId: ab.id,
+      }).catch((e) =>
+        this.logger.error(
+          `Hesap geri acilamadi (abonelik=${ab.id}): ${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
+    }
 
     // Gecis/hizalama paketi ve kilit kaldirma "odenen" isaretcisini
     // degistirmis olabilir: fatura odenen paketi ve yedek para birimini GUNCEL
@@ -996,7 +1103,30 @@ export class AbonelikServisi {
       where: { id: ab.id },
       include: { paketSurumu: true },
     });
-    return { abonelik: guncel ?? ab, siparis, donemSonu, dunningdenCikti };
+    return { abonelik: guncel ?? ab, siparis, donemSonu, dunningdenCikti, eskiDonem };
+  }
+
+  /**
+   * Siparişin BU satırdaki tahsilat izi (28.09) — kural ve gerekçesi
+   * `tahsilat-izi.ts`. Fatura satırı BAŞKA aboneliğinse iz sayılmaz: gövde bu
+   * aboneliğin kodunu başka aboneliğin siparişiyle eşlemiştir — iyzico'nun
+   * listesi onu zaten reddeder (eski hâl aynen).
+   */
+  private async tahsilatIziBul(
+    abonelikId: string,
+    siparisKodu: string,
+  ): Promise<'fatura' | 'tutar-izi' | null> {
+    if (typeof siparisKodu !== 'string' || siparisKodu === '') return null;
+    const fatura = await this.prisma.fatura.findUnique({
+      where: { tahsilatKodu: siparisKodu },
+      select: { abonelikId: true },
+    });
+    if (fatura?.abonelikId === abonelikId) return 'fatura';
+    const tutarIzleri = await this.prisma.abonelikOlayi.findMany({
+      where: { abonelikId, tip: TUTAR_OKUNAMADI_OLAYI },
+      select: { veri: true },
+    });
+    return tutarIziVarMi(tutarIzleri, siparisKodu) ? 'tutar-izi' : null;
   }
 
   /**
@@ -1329,6 +1459,31 @@ export class AbonelikServisi {
       throw new Error(
         `iyzico başarısızlığı doğrulanamadı: ${siparisKodu} (abonelik ${abonelikKodu}; ${kanit.gerekce})`,
       );
+    }
+    // ⚠ 28.09 — ESKİ DÖNEMİN REDDİ BUGÜNKÜ HÂLİ DEĞİŞTİRMEZ (ikizi
+    // `tahsilatBasarili`, kural `sonrakiDonemIslenmisMi`). Anılan siparişten
+    // SONRA başlamış bir dönemi iyzico zaten işlemişse (ödenmiş ya da
+    // reddedilmiş) bu ret eskidir: sonraki dönemi ÖDEMİŞ müşteri, eski reddi
+    // anan (gecikmiş ya da sahte) bildirimle dunning'e düşüyordu — imza zorunlu
+    // değilken tek koruma bu kural. Sonraki dönem de reddedildiyse döngüyü o
+    // dönemin kendi bildirimi ya da gece mutabakatının UNPAID dalı başlatır.
+    // Başlamamış (vadesi gelmemiş) dönem hiçbir reddi eskitmez.
+    // Abonelik durumu (UNPAID genişlemesi) BURADA GEÇİRİLMEZ: o kural ödemeyen
+    // müşterinin ESKİ BAŞARISINI saymamak içindir (başarı yolu, R26/R27).
+    // iyzico "ödenmedi" derken eski bir ret gerçeğe aykırı değildir — yok
+    // saymak kimseyi korumaz, dunning'i yalnız geciktirirdi (R28).
+    const anilan = siparisiBul(detay.orders, siparisKodu);
+    if (anilan && sonrakiDonemIslenmisMi(detay.orders, anilan, new Date())) {
+      this.logger.warn(
+        `Başarısız tahsilat bildirimi YOK SAYILDI: abonelik=${abonelikKodu} sipariş=${siparisKodu} — ` +
+          `eski dönem (sonraki dönem iyzico'da işlenmiş); ${kanit.gerekce}`,
+      );
+      await this.olayYaz(ab.id, 'tahsilat.basarisiz.yok.sayildi', {
+        aciklama: `Sipariş ${siparisKodu} eski dönem — sonraki dönem iyzico'da işlenmiş; başarısızlık bildirimi uygulanmadı`,
+        veri: { siparisKodu, neden: 'eski-donem', kanit: kanit.gerekce, iyzicoDurum: detay.subscriptionStatus },
+        aktor: 'webhook',
+      });
+      return null;
     }
 
     // ⚠ 23.09 (inceleme bulgusu 7) — IKIZ YOL: vadesi gelen planli dusurme

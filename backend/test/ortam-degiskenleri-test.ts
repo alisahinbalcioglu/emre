@@ -170,10 +170,11 @@ function main() {
   );
 
   // ── Varsayilan davranis: imza ZORUNLU DEGIL ile baslamali ────────────
-  // Ilk gercek webhook gelip hangi alan sirasinin tuttugu ogrenilmeden
-  // true yapilirsa her olay sessizce dusulur.
+  // Imzali bir test bildirimi dogrulanmadan true yapilirsa imzasiz ya da
+  // imzasi tutmayan HER bildirim 401 alir ve kaydedilmez — gercek tahsilat
+  // bildirimleri de (28.09). Varsayilan false KALIR; acma runbook on kosulu.
   check(
-    'G2 IYZICO_IMZA_ZORUNLU varsayilani false (ilk webhook oncesi true = sessiz kayip)',
+    'G2 IYZICO_IMZA_ZORUNLU varsayilani false (dogrulanmamis imzayla true = gercek bildirim de 401)',
     /IYZICO_IMZA_ZORUNLU:\s*\$\{IYZICO_IMZA_ZORUNLU:-false\}/.test(compose),
     'compose varsayilani false degil',
   );

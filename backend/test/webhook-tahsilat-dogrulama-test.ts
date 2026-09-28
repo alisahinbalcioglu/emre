@@ -42,9 +42,14 @@
  * Çıkış kodu sözleşmesi: 0 = PASS · diğeri = FAIL (process.exitCode).
  */
 import 'reflect-metadata';
-import { randomUUID } from 'node:crypto';
-import { ConsoleLogger, Logger } from '@nestjs/common';
+import { createHmac, randomUUID } from 'node:crypto';
+import { BadRequestException, ConsoleLogger, Logger, Module, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { json, urlencoded } from 'express';
+import { PrismaService } from '../src/altyapi/db/prisma.service';
+import { govdeSinirlariniKur } from '../src/altyapi/http/govde-siniri';
 import { AbonelikServisi } from '../src/ozellik/odeme/abonelik/abonelik.servisi';
 import { ErisimServisi } from '../src/ozellik/odeme/abonelik/erisim.servisi';
 import {
@@ -55,6 +60,7 @@ import {
 import {
   odenmisSiparisMi,
   siparisiBul,
+  sonrakiDonemIslenmisMi,
   tahsilatBasarisizligiKarari,
 } from '../src/ozellik/odeme/iyzico/tahsilat-kaniti';
 import { SatinAlmaServisi, donemTarihleriHesapla } from '../src/ozellik/odeme/abonelik/satinalma.servisi';
@@ -62,7 +68,7 @@ import { IyzicoWebhookController } from '../src/ozellik/odeme/webhook/webhook.co
 import { WebhookIsleyici } from '../src/ozellik/odeme/webhook/webhook.isleyici';
 import { FaturaServisi } from '../src/ozellik/odeme/fatura/fatura.servisi';
 import { DunningServisi } from '../src/ozellik/odeme/dunning/dunning.servisi';
-import type { AbonelikWebhookGovdesi } from '../src/ozellik/odeme/iyzico/imza';
+import { abonelikImzasiniDogrula, type AbonelikWebhookGovdesi } from '../src/ozellik/odeme/iyzico/imza';
 import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0;
@@ -89,6 +95,25 @@ const GUN = 24 * SAAT;
 
 const BASARI: AbonelikWebhookGovdesi['iyziEventType'] = 'subscription.order.success';
 const BASARISIZLIK: AbonelikWebhookGovdesi['iyziEventType'] = 'subscription.order.failure';
+
+/** Denetleyicinin imza ayarı — dünyada ortam değişkeni olarak verilir. */
+const IMZA_AYARI = { merchantId: 'mid-test', secretKey: 'sk-test' } as const;
+type ImzaSirasiAdi = 'merchantId-once' | 'secretKey-once';
+
+/**
+ * GEÇERLİ X-IYZ-SIGNATURE-V3 — üretim kodundan BAĞIMSIZ hesap (dairesel ölçüt
+ * yok): HMAC-SHA256(secretKey), hex; merchantId + secretKey (ya da ters) +
+ * olay tipi + abonelik + sipariş + müşteri kodu, AYIRAÇSIZ (iyzico dokümanı).
+ */
+function imzala(g: AbonelikWebhookGovdesi, sira: ImzaSirasiAdi): string {
+  const bas =
+    sira === 'merchantId-once'
+      ? IMZA_AYARI.merchantId + IMZA_AYARI.secretKey
+      : IMZA_AYARI.secretKey + IMZA_AYARI.merchantId;
+  return createHmac('sha256', IMZA_AYARI.secretKey)
+    .update(bas + g.iyziEventType + g.subscriptionReferenceCode + g.orderReferenceCode + g.customerReferenceCode)
+    .digest('hex');
+}
 
 /**
  * Günlüğü TOPLAR: işleyici ve gece işi hatayı YAKALAYIP yalnız günlüğe yazar;
@@ -485,7 +510,12 @@ const MUHASEBE_YASAK = {
   },
 } as any;
 
-function dunyaKur() {
+/**
+ * `makbuz`: işleyiciye e-posta servisi verilir — sorunsuz yenilemenin makbuzu
+ * `giden`e düşer. `imzaZorunlu` / `imzaSirasi`: denetleyicinin imza ayarı
+ * (`IYZICO_IMZA_ZORUNLU` / `IYZICO_IMZA_SIRASI`; verilmezse üretim varsayılanı).
+ */
+function dunyaKur(secenek: { makbuz?: boolean; imzaZorunlu?: boolean; imzaSirasi?: string } = {}) {
   const db = bellekPrisma();
   const iyz = sahteIyzico();
   const giden: Array<{ kime: string; konu: string }> = [];
@@ -500,16 +530,18 @@ function dunyaKur() {
     tutar: 1649, paraBirimi: 'TRY', iyzicoPlanKodu: 'plan-30', iyzicoDenemesizPlanKodu: 'plan-30-denemesiz',
     satistaMi: true,
   });
-  // `IYZICO_IMZA_ZORUNLU` BİLEREK yok: üretimdeki varsayılan (imza zorunlu değil).
+  // `IYZICO_IMZA_ZORUNLU` yalnız istenirse: üretimdeki varsayılan (imza zorunlu değil).
   const config = new ConfigService({
     UYGULAMA_URL: 'https://ornek.test',
-    IYZICO_MERCHANT_ID: 'mid-test',
-    IYZICO_SECRET_KEY: 'sk-test',
+    IYZICO_MERCHANT_ID: IMZA_AYARI.merchantId,
+    IYZICO_SECRET_KEY: IMZA_AYARI.secretKey,
+    ...(secenek.imzaZorunlu ? { IYZICO_IMZA_ZORUNLU: 'true' } : {}),
+    ...(secenek.imzaSirasi ? { IYZICO_IMZA_SIRASI: secenek.imzaSirasi } : {}),
   });
   const abonelik = new AbonelikServisi(db.prisma, iyz.istemci);
   const fatura = new FaturaServisi(db.prisma, MUHASEBE_YASAK, posta);
   const dunning = new DunningServisi(db.prisma, iyz.istemci, abonelik, posta, config);
-  const isleyici = new WebhookIsleyici(db.prisma, abonelik, fatura, dunning);
+  const isleyici = new WebhookIsleyici(db.prisma, abonelik, fatura, dunning, secenek.makbuz ? posta : undefined);
   const mutabakat = new MutabakatJob(db.prisma, iyz.istemci, abonelik);
   const erisim = new ErisimServisi(db.prisma);
   // Denetleyicinin anlık dürtmesi (`kuyrugaAl` → setImmediate) KAYDEDİLİR;
@@ -548,8 +580,11 @@ function dunyaKur() {
   }
 
   /**
-   * iyzico'nun (ya da sahtecinin) gönderdiği gövde, GERÇEK denetleyiciden:
-   * imza başlığı YOK (üretimde özellik kapalı). Kaydedilen olay döner.
+   * iyzico'nun (ya da sahtecinin) gönderdiği gövde, GERÇEK denetleyiciden.
+   * Varsayılan: imza başlığı YOK (üretimde özellik kapalı). `baslik`:
+   * `{ sira }` = o alan sırasıyla GEÇERLİ imza (`imzala`), dize = olduğu gibi.
+   * Kaydedilen olay (yoksa undefined), günlük ve denetleyicinin fırlattığı
+   * hata (401 vb.; yoksa null) döner.
    */
   let refSayac = 0;
   async function webhookGonder(
@@ -557,6 +592,7 @@ function dunyaKur() {
     abonelikKodu: string,
     siparisKodu: string,
     ek: Record<string, unknown> = {},
+    baslik?: string | { sira: ImzaSirasiAdi },
   ) {
     const govde = {
       orderReferenceCode: siparisKodu,
@@ -567,9 +603,18 @@ function dunyaKur() {
       iyziEventTime: Date.now(),
       ...ek,
     } as AbonelikWebhookGovdesi;
-    const gunluk = await gunluguTopla(() => controller.abonelik(govde, undefined));
+    const imzaBasligi = typeof baslik === 'object' ? imzala(govde, baslik.sira) : baslik;
+    let hata: unknown = null;
+    let yanit: unknown = null;
+    const gunluk = await gunluguTopla(async () => {
+      try {
+        yanit = await controller.abonelik(govde, imzaBasligi);
+      } catch (e) {
+        hata = e;
+      }
+    });
     const olay = db.tablo('webhookOlayi').find((o) => o.iyzicoRefKodu === govde.iyziReferenceCode) as Satir;
-    return { olay, gunluk };
+    return { olay, gunluk, hata: hata as unknown, yanit, govde, imzaBasligi };
   }
 
   /** Dakikalık tarama (üretimde @Cron) — `kez` kez. */
@@ -595,7 +640,7 @@ function dunyaKur() {
     db.tablo('abonelikOlayi').filter((o) => o.abonelikId === abonelikId && String(o.tip).startsWith('dunning.eposta.'));
 
   return {
-    db, iyz, giden, abonelik, dunning, isleyici, mutabakat, erisim, satinAlma, kuyruk,
+    db, iyz, giden, abonelik, fatura, dunning, isleyici, mutabakat, erisim, satinAlma, kuyruk,
     firmaEkle: firma, kartSatiri, webhookGonder, isle, geceyiKos,
     faturalar, olaylar, durumOlaylari, dunningPostalari,
   };
@@ -654,6 +699,64 @@ function sBlogu(): void {
   const g = tahsilatBasarisizligiKarari(detay('ACTIVE', [sp('WAITING')]), 'o').gerekce;
   check('S4 gerekçe iyzico\'nun kendi değerlerini taşır (olay kaydına/günlüğe yazılır)',
     g.includes('WAITING') && g.includes('ACTIVE'), g);
+
+  // 28.09 — ESKİ DÖNEM: sonraki dönemin siparişini iyzico İŞLEMİŞ (ödenmiş ya
+  // da çekimi reddedilmiş) ödenmiş sipariş. R bloğu bağlantısını ölçer.
+  const E0 = T0 + 30 * GUN; // ödenmiş dönemin sonu = sonraki dönemin başı
+  const odenen = sp('SUCCESS', ['SUCCESS']);
+  const sonraki = (durum: string, denemeler?: string[], bas: number | string = E0) =>
+    siparis({ kod: 'n', durum, bas, son: Number(bas) + 30 * GUN, denemeler });
+  const eskiTablo: Array<[string, unknown[], boolean]> = [
+    ['⭐ sonraki dönem reddedildi (FAILED + reddedilmiş denemeler)', [sonraki('FAILED', ['FAILURE', 'FAILURE']), odenen], true],
+    ['sonraki dönem WAITING + reddedilmiş deneme', [sonraki('WAITING', ['FAILURE']), odenen], true],
+    ['sonraki dönem FAILED, deneme listelenmemiş', [sonraki('FAILED'), odenen], true],
+    ['sonraki dönem ÖDENMİŞ', [sonraki('SUCCESS', ['SUCCESS']), odenen], true],
+    ['sonraki dönem reddedildi (paymentAttemptStatus: FAILED)',
+      [{ referenceCode: 'n', orderStatus: 'WAITING', startPeriod: E0, paymentAttempts: [{ paymentAttemptStatus: 'FAILED' }] }, odenen], true],
+    ['sonraki dönemin başı rakam-DİZESİ', [sonraki('FAILED', ['FAILURE'], String(E0)), odenen], true],
+    ['⭐ önceden açılmış sonraki dönem (WAITING, deneme yok) — gerçek toparlanma onu listede taşır', [sonraki('WAITING'), odenen], false],
+    ['sonraki dönem SUBSCRIPTION_UPGRADED, deneme yok', [sonraki('SUBSCRIPTION_UPGRADED'), odenen], false],
+    ['yalnız ÖNCEKİ dönem reddedilmiş',
+      [odenen, siparis({ kod: 'e', durum: 'FAILED', bas: T0 - 30 * GUN, son: T0, denemeler: ['FAILURE'] })], false],
+    ['listede yalnız siparişin kendisi', [odenen], false],
+    ['sonraki siparişin başı çözülemiyor', [sonraki('FAILED', ['FAILURE'], 'bozuk'), odenen], false],
+  ];
+  const eskiSapan = eskiTablo
+    .map(([ad, liste, beklenen]) => ({ ad, beklenen, gercek: sonrakiDonemIslenmisMi(liste, odenen) }))
+    .filter((x) => x.gercek !== x.beklenen);
+  check(`S5 ⭐ eski dönem kuralı doğruluk tablosu (${eskiTablo.length} satır)`,
+    eskiSapan.length === 0 && eskiTablo.length === 11,
+    eskiSapan.map((x) => `${x.ad}: ${x.gercek} (beklenen ${x.beklenen})`).join(' | '));
+  const basiBozuk = { ...odenen, startPeriod: 'bozuk' };
+  check('S6 kendi başı çözülemeyen sipariş, sipariş yok ya da liste dizi değil → eski SAYILMAZ (tahmin yok)',
+    !sonrakiDonemIslenmisMi([sonraki('FAILED', ['FAILURE']), basiBozuk], basiBozuk) &&
+      !sonrakiDonemIslenmisMi([sonraki('FAILED', ['FAILURE'])], null) &&
+      !sonrakiDonemIslenmisMi({ 0: sonraki('FAILED', ['FAILURE']) }, odenen));
+  const redli = [sonraki('FAILED', ['FAILURE']), odenen];
+  check('S6b ⭐ vadesi gelmemiş sonraki dönem eskitmez: başı şimdiden 1 ms sonra → eski DEĞİL; tam şimdi → eski; bozuk saat → eski DEĞİL',
+    !sonrakiDonemIslenmisMi(redli, odenen, new Date(E0 - 1)) && sonrakiDonemIslenmisMi(redli, odenen, new Date(E0)) &&
+      !sonrakiDonemIslenmisMi(redli, odenen, new Date(NaN)));
+  // 28.09 güvenlik incelemesi: reddedilen yenilemenin biçimi ÖLÇÜLMEDİ —
+  // abonelik UNPAID iken başlamış denemesiz WAITING de dönemi işlenmiş sayar.
+  const bekleyen = [sonraki('WAITING'), odenen];
+  check('S6c ⭐ abonelik UNPAID: başlamış HER sonraki dönem eskitir; ACTIVE\'de denemesiz WAITING eskitmez; UNPAID\'de başlamamış dönem ve tek sipariş eskitmez',
+    sonrakiDonemIslenmisMi(bekleyen, odenen, new Date(E0 + GUN), 'UNPAID') &&
+      !sonrakiDonemIslenmisMi(bekleyen, odenen, new Date(E0 + GUN), 'ACTIVE') &&
+      !sonrakiDonemIslenmisMi(bekleyen, odenen, new Date(E0 + GUN)) &&
+      !sonrakiDonemIslenmisMi(bekleyen, odenen, new Date(E0 - 1), 'UNPAID') &&
+      !sonrakiDonemIslenmisMi([odenen], odenen, new Date(E0 - 1), 'UNPAID'));
+  check('S6d ⭐ abonelik UNPAID + siparişin KENDİ dönemi bitmiş: sonraki dönem listede OLMASA da eski; dönemi süren ödeme (durum gecikmesi) eski DEĞİL; ACTIVE\x27de dönemi bitmiş tek sipariş eski DEĞİL',
+    sonrakiDonemIslenmisMi([odenen], odenen, new Date(E0), 'UNPAID') &&
+      !sonrakiDonemIslenmisMi([odenen], odenen, new Date(E0 - 1), 'UNPAID') &&
+      !sonrakiDonemIslenmisMi([odenen], odenen, new Date(E0 + GUN), 'ACTIVE'));
+  // Dönemler bitişik olduğundan (sonraki başı = kendi sonu) S6c/R26'da "kendi
+  // dönemi bitmiş" kuralı da tetiklenir; "başlamış HER sonraki dönem" kuralını
+  // ondan AYIRAN durum: kendi dönem sonu çözülemeyen sipariş (mutasyon K5).
+  const sonuBozuk = { ...odenen, endPeriod: 'bozuk' };
+  const bekleyenSonuBozuk = [sonraki('WAITING'), sonuBozuk];
+  check('S6e ⭐ kendi dönem sonu çözülemeyen sipariş: UNPAID\'de başlamış denemesiz sonraki dönem yine eskitir (dönem sonu kuralından bağımsız); ACTIVE\'de eskitmez',
+    sonrakiDonemIslenmisMi(bekleyenSonuBozuk, sonuBozuk, new Date(E0 + GUN), 'UNPAID') &&
+      !sonrakiDonemIslenmisMi(bekleyenSonuBozuk, sonuBozuk, new Date(E0 + GUN), 'ACTIVE'));
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -1093,6 +1196,878 @@ async function tBlogu(): Promise<void> {
   }
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+//  R — TEKRAR (28.09): aynı ya da eski ödenmiş sipariş bugünkü hâli değiştirmez
+// ═════════════════════════════════════════════════════════════════════════
+const TEKRAR_IZI = 'tahsilat.tekrar.yok.sayildi';
+const ESKI_DONEM_IZI = 'tahsilat.eski.donem';
+
+/** Dunning'in 10. gün basamağı (KISITLI) — B6 fikstürüyle aynı alanlar. */
+function kisitliAlanlar(ilk: Date, simdi: number): Satir {
+  return {
+    durum: 'KISITLI', ilkBasarisizlik: ilk, denemeSayisi: 4, sonDeneme: new Date(simdi - 5 * GUN),
+    kisitlandi: new Date(simdi - 2 * GUN), iyzicoDurum: 'UNPAID',
+  };
+}
+
+async function rBlogu(): Promise<void> {
+  console.log('\n── R · ölçüm: imza tekil anahtarı ve zamanı KAPSAMAZ; tekil anahtar yalnız aynı ref kodunu yutar ──');
+  {
+    const ayar = { merchantId: 'mid-test', secretKey: 'sk-test' };
+    const govde = {
+      orderReferenceCode: 'ord-m1', customerReferenceCode: 'cus-m1', subscriptionReferenceCode: 'sub-m1',
+      iyziReferenceCode: 'iyz-m1-a', iyziEventType: BASARI, iyziEventTime: 1_787_215_031_301,
+    } as AbonelikWebhookGovdesi;
+    // Başlık BAĞIMSIZ hesaplanır: iyzico dokümanının kod örneklerindeki sıra.
+    const baslik = createHmac('sha256', ayar.secretKey)
+      .update(ayar.merchantId + ayar.secretKey + govde.iyziEventType + govde.subscriptionReferenceCode +
+        govde.orderReferenceCode + govde.customerReferenceCode)
+      .digest('hex');
+    const kendi = abonelikImzasiniDogrula(baslik, govde, ayar).gecerli;
+    const tekrar = abonelikImzasiniDogrula(
+      baslik, { ...govde, iyziReferenceCode: 'iyz-m1-b', iyziEventTime: 946_684_800_000 }, ayar).gecerli;
+    const baskaSiparis = abonelikImzasiniDogrula(baslik, { ...govde, orderReferenceCode: 'ord-m1-x' }, ayar).gecerli;
+    check('R-M1 ⭐ imza iyziReferenceCode ve iyziEventTime\'ı KAPSAMAZ: aynı başlık ref kodu ve zamanı değişmiş gövdede de geçerli (sipariş kodu değişince geçersiz — kontrol)',
+      kendi && tekrar && !baskaSiparis, `kendi=${kendi} tekrar=${tekrar} baskaSiparis=${baskaSiparis}`);
+
+    const d = dunyaKur();
+    await d.webhookGonder(BASARI, 'sub-m2', 'ord-m2', { iyziReferenceCode: 'iyz-m2-sabit' });
+    await d.webhookGonder(BASARI, 'sub-m2', 'ord-m2', { iyziReferenceCode: 'iyz-m2-sabit' });
+    await d.webhookGonder(BASARI, 'sub-m2', 'ord-m2', { iyziReferenceCode: 'iyz-m2-yeni' });
+    const kayitlar = d.db.tablo('webhookOlayi').filter((o) => o.siparisKodu === 'ord-m2');
+    check('R-M2 tekil anahtar (`iyzico:<tip>:<iyziReferenceCode>`) yalnız AYNI ref kodunu yutar; yeni ref kodlu aynı sipariş YENİ olay',
+      kayitlar.length === 2 && d.kuyruk.length === 2 &&
+        kayitlar.map((o) => o.tekilAnahtar).sort().join() ===
+          `iyzico:${BASARI}:iyz-m2-sabit,iyzico:${BASARI}:iyz-m2-yeni`,
+      JSON.stringify(kayitlar.map((o) => o.tekilAnahtar)));
+  }
+
+  console.log('\n── R · dunning\'deki satır: UYGULANMIŞ eski siparişin tekrarı (yeni ref kodu) ──');
+  {
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const eskiBas = simdi - 42 * GUN;
+    const eskiSon = simdi - 12 * GUN; // ödenmiş dönemin sonu = reddedilen yenilemenin başı
+    const ab = d.kartSatiri('F-R1', 'sub-r1', { durum: 'AKTIF', erisimSonu: new Date(eskiBas) });
+    const odenmis = siparis({ kod: 'ord-r1-eski', durum: 'SUCCESS', bas: eskiBas, son: eskiSon, denemeler: ['SUCCESS'] });
+    d.iyz.detaylar.set('sub-r1', iyzicoDetayi('sub-r1', 'ACTIVE', [odenmis]));
+    await d.webhookGonder(BASARI, 'sub-r1', 'ord-r1-eski');
+    await d.isle();
+    const uygulandi = ab.erisimSonu.getTime() === eskiSon && d.faturalar(ab.id).length === 1;
+    d.iyz.detaylar.set('sub-r1', iyzicoDetayi('sub-r1', 'UNPAID', [
+      siparis({ kod: 'ord-r1-ret', durum: 'FAILED', bas: eskiSon, son: eskiSon + 30 * GUN, denemeler: ['FAILURE', 'FAILURE'] }),
+      odenmis,
+    ]));
+    await d.webhookGonder(BASARISIZLIK, 'sub-r1', 'ord-r1-ret');
+    await d.isle();
+    const dunningde = ab.durum === 'ODEME_BEKLIYOR' && ab.ilkBasarisizlik instanceof Date;
+    const ilk = new Date(eskiSon + SAAT);
+    Object.assign(ab, kisitliAlanlar(ilk, simdi));
+    const kisit = ab.kisitlandi as Date;
+    check('R-FIXTURE eski sipariş GERÇEK yoldan uygulandı (erişim + tek fatura), sonraki dönemin reddi dunning\'i başlattı',
+      uygulandi && dunningde, `uygulandi=${uygulandi} dunningde=${dunningde}`);
+    const once = {
+      durumOlay: d.durumOlaylari(ab.id).length, giden: d.giden.length, posta: d.dunningPostalari(ab.id).length,
+      sorulan: d.iyz.sorulan.length,
+    };
+    const kararOnce = await d.erisim.karar('F-R1');
+    const w = await d.webhookGonder(BASARI, 'sub-r1', 'ord-r1-eski');
+    const g = await d.isle();
+    const kararSonra = await d.erisim.karar('F-R1');
+    check('R1 ⭐ KISITLI kaldı; dunning SIFIRLANMADI (ilkBasarisizlik · denemeSayisi · kisitlandi aynı), erişim sonu aynı',
+      ab.durum === 'KISITLI' && ab.ilkBasarisizlik?.getTime() === ilk.getTime() && ab.denemeSayisi === 4 &&
+        ab.kisitlandi?.getTime() === kisit.getTime() && ab.erisimSonu.getTime() === eskiSon,
+      `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} deneme=${ab.denemeSayisi} kisit=${iso(ab.kisitlandi)} erisimSonu=${iso(ab.erisimSonu)}`);
+    check('R2 ⭐ "ödemeniz alındı" GİTMEDİ, yeni durum olayı YOK (havale ↔ kart penceresi onu "tekliften sonra çekim" sayardı), fatura tek',
+      d.giden.length === once.giden && d.dunningPostalari(ab.id).length === once.posta &&
+        d.durumOlaylari(ab.id).length === once.durumOlay && d.faturalar(ab.id).length === 1,
+      `giden=${JSON.stringify(d.giden.slice(once.giden))} durumOlay=${once.durumOlay}→${d.durumOlaylari(ab.id).length}`);
+    // Dunning'deki satırda kısa devre YOK: ödemenin döngüyü kapatıp
+    // kapatmadığını iyzico'nun listesi söyler — sonraki dönem reddedilmiş.
+    const eskiIz = d.olaylar(ab.id, ESKI_DONEM_IZI);
+    check('R3 ⭐ tekrar olayı İŞLENDİ (yeniden denenmez); dunning\'de kısa devre yok — iyzico listesi "eski dönem" dedi, tekrar izi YOK',
+      w.olay.islendi === true && w.olay.denemeSayisi === 0 && eskiIz.length === 1 &&
+        eskiIz[0].veri?.siparisKodu === 'ord-r1-eski' && d.olaylar(ab.id, TEKRAR_IZI).length === 0,
+      `islendi=${w.olay.islendi} deneme=${w.olay.denemeSayisi} hata=${w.olay.hata} ` +
+        `eski=${JSON.stringify(eskiIz.map((o) => o.veri?.siparisKodu))} tekrar=${d.olaylar(ab.id, TEKRAR_IZI).length}`);
+    check('R4 dunning\'deki satırın tekrarı iyzico\'ya SORULDU (bir kez)',
+      d.iyz.sorulan.length === once.sorulan + 1, `sorulan=${once.sorulan}→${d.iyz.sorulan.length}`);
+    check('R4b erişim kararı AYNI (salt-okunur kaldı); hata yok',
+      kararOnce.saltOkunur === true && kararSonra.saltOkunur === true && kararSonra.erisimVar === kararOnce.erisimVar &&
+        g.hatalar.length === 0,
+      `once=${kararOnce.durum}/${kararOnce.saltOkunur} sonra=${kararSonra.durum}/${kararSonra.saltOkunur} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · dunning\'deki satır: HİÇ UYGULANMAMIŞ eski ödenmiş sipariş (sonraki dönem reddedilmiş) ──');
+  {
+    const d = dunyaKur({ makbuz: true });
+    const simdi = Date.now();
+    const son = simdi - 12 * GUN;
+    const ilk = new Date(son + SAAT);
+    const ab = d.kartSatiri('F-R5', 'sub-r5', { erisimSonu: new Date(son), ...kisitliAlanlar(ilk, simdi) });
+    const kisit = ab.kisitlandi as Date;
+    d.iyz.detaylar.set('sub-r5', iyzicoDetayi('sub-r5', 'UNPAID', [
+      siparis({ kod: 'ord-r5-ret', durum: 'FAILED', bas: son, son: son + 30 * GUN, denemeler: ['FAILURE', 'FAILURE'] }),
+      siparis({ kod: 'ord-r5-eski', durum: 'SUCCESS', bas: son - 30 * GUN, son, denemeler: ['SUCCESS'] }),
+    ]));
+    // KONTROL: aynı dünyada sorunsuz yenilemenin makbuzu GİDER (ölçüt kör değil).
+    const kSon = simdi - 2 * SAAT;
+    d.kartSatiri('F-R5K', 'sub-r5k', { durum: 'AKTIF', erisimSonu: new Date(kSon) });
+    d.iyz.detaylar.set('sub-r5k', iyzicoDetayi('sub-r5k', 'ACTIVE', [
+      siparis({ kod: 'ord-r5k', durum: 'SUCCESS', bas: kSon, son: kSon + 30 * GUN, denemeler: ['SUCCESS'] }),
+    ]));
+    const kararOnce = await d.erisim.karar('F-R5');
+    const w = await d.webhookGonder(BASARI, 'sub-r5', 'ord-r5-eski');
+    await d.webhookGonder(BASARI, 'sub-r5k', 'ord-r5k');
+    const g = await d.isle();
+    const kararSonra = await d.erisim.karar('F-R5');
+    check('R5 ⭐ KISITLI kaldı; dunning SIFIRLANMADI; dunning\'in "ödemeniz alındı"sı GİTMEDİ',
+      ab.durum === 'KISITLI' && ab.ilkBasarisizlik?.getTime() === ilk.getTime() && ab.denemeSayisi === 4 &&
+        ab.kisitlandi?.getTime() === kisit.getTime() && d.dunningPostalari(ab.id).length === 0,
+      `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} deneme=${ab.denemeSayisi} posta=${d.dunningPostalari(ab.id).map((o) => o.tip)}`);
+    const eski = d.olaylar(ab.id, ESKI_DONEM_IZI);
+    check('R6 ⭐ ödeme GERÇEK: faturası kuyrukta, erişim sonu geri çekilmedi; iz "eski dönem", durum olayı YOK',
+      d.faturalar(ab.id).map((f) => f.tahsilatKodu).join() === 'ord-r5-eski' && ab.erisimSonu.getTime() === son &&
+        eski.length === 1 && eski[0].veri?.siparisKodu === 'ord-r5-eski' && d.durumOlaylari(ab.id).length === 0,
+      `fatura=${d.faturalar(ab.id).map((f) => f.tahsilatKodu)} erisimSonu=${iso(ab.erisimSonu)} ` +
+        `iz=${JSON.stringify(eski.map((o) => o.veri))} durumOlay=${d.durumOlaylari(ab.id).length}`);
+    check('R7 olay işlendi; erişim kararı AYNI (salt-okunur); hata yok',
+      w.olay.islendi === true && kararOnce.saltOkunur === true && kararSonra.saltOkunur === true && g.hatalar.length === 0,
+      `islendi=${w.olay.islendi} once=${kararOnce.saltOkunur} sonra=${kararSonra.durum}/${kararSonra.saltOkunur} ${gunlukYaz(g)}`);
+    const kime = (firma: string) => d.giden.filter((m) => m.kime === `muhasebe@${firma}.test`).map((m) => m.konu);
+    check('R7b ⭐ eski döneme MAKBUZ da gitmedi (kısıt sürerken "ödemeniz alındı" yok); kontrol: sorunsuz yenilemeninki gitti',
+      kime('f-r5').length === 0 && kime('f-r5k').length === 1,
+      `f-r5=${JSON.stringify(kime('f-r5'))} kontrol=${JSON.stringify(kime('f-r5k'))}`);
+  }
+
+  console.log('\n── R · gece mutabakatı: bildirimi kaybolmuş ödeme, sonraki dönem reddedilmişken (BAĞLANTI: kayıp tahsilat kural 2) ──');
+  {
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const bas = simdi - 42 * GUN; // kayıp ödemenin başı = son UYGULANMIŞ erişim sonu
+    const oSon = simdi - 12 * GUN; // kayıp ödemenin sonu = reddedilen dönemin başı
+    const ilk = new Date(oSon + SAAT);
+    const ab = d.kartSatiri('F-R15', 'sub-r15', { erisimSonu: new Date(bas), ...kisitliAlanlar(ilk, simdi) });
+    const kisit = ab.kisitlandi as Date;
+    // Mutabakat kayıp ödemeyi yalnız ACTIVE'de arar (dosya başı sınırı): iyzico
+    // reddedilen dönemi hâlâ yeniden deniyor (WAITING + reddedilmiş deneme).
+    d.iyz.detaylar.set('sub-r15', iyzicoDetayi('sub-r15', 'ACTIVE', [
+      siparis({ kod: 'ord-r15-ret', durum: 'WAITING', bas: oSon, son: oSon + 30 * GUN, denemeler: ['FAILURE', 'FAILURE'] }),
+      siparis({ kod: 'ord-r15-kayip', durum: 'SUCCESS', bas, son: oSon, denemeler: ['SUCCESS'] }),
+    ]));
+    const gece = await d.geceyiKos();
+    const oynatilan = d.db.tablo('webhookOlayi').filter((o) => o.kaynak === MUTABAKAT_KAYNAGI);
+    check('R15-FIXTURE gece mutabakatı kayıp ödemeyi OYNATTI (kaynak mutabakat, işlendi)',
+      oynatilan.length === 1 && oynatilan[0].siparisKodu === 'ord-r15-kayip' && oynatilan[0].islendi === true,
+      `oynatilan=${JSON.stringify(oynatilan.map((o) => [o.siparisKodu, o.islendi, o.hata]))} ${gunlukYaz(gece)}`);
+    check('R15 ⭐ kayıp ödeme uygulandı (erişim o dönemin sonuna, fatura) ama KISITLI kaldı, dunning sürüyor, "ödemeniz alındı" yok',
+      ab.erisimSonu.getTime() === oSon && d.faturalar(ab.id).map((f) => f.tahsilatKodu).join() === 'ord-r15-kayip' &&
+        ab.durum === 'KISITLI' && ab.ilkBasarisizlik?.getTime() === ilk.getTime() &&
+        ab.kisitlandi?.getTime() === kisit.getTime() && d.dunningPostalari(ab.id).length === 0 &&
+        d.olaylar(ab.id, ESKI_DONEM_IZI).length === 1,
+      `erisimSonu=${iso(ab.erisimSonu)} fatura=${d.faturalar(ab.id).map((f) => f.tahsilatKodu)} durum=${ab.durum} ` +
+        `ilk=${iso(ab.ilkBasarisizlik)} posta=${d.dunningPostalari(ab.id).map((o) => o.tip)}`);
+  }
+
+  console.log('\n── R · GERÇEK toparlanma aynen: reddedilen dönemin yeniden denemesi tuttu (önceden açılmış sonraki dönem listede) ──');
+  {
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const son = simdi - 12 * GUN;
+    const lSon = son + 30 * GUN;
+    const ab = d.kartSatiri('F-R8', 'sub-r8', { erisimSonu: new Date(son), ...kisitliAlanlar(new Date(son + SAAT), simdi) });
+    d.iyz.detaylar.set('sub-r8', iyzicoDetayi('sub-r8', 'ACTIVE', [
+      siparis({ kod: 'ord-r8-sonraki', durum: 'WAITING', bas: lSon, son: lSon + 30 * GUN }),
+      siparis({ kod: 'ord-r8-ret', durum: 'SUCCESS', bas: son, son: lSon, denemeler: ['FAILURE', 'SUCCESS'] }),
+      siparis({ kod: 'ord-r8-eski', durum: 'SUCCESS', bas: son - 30 * GUN, son, denemeler: ['SUCCESS'] }),
+    ]));
+    await d.webhookGonder(BASARI, 'sub-r8', 'ord-r8-ret');
+    const g = await d.isle();
+    check('R8 ⭐ reddedilen dönemin ödemesi dunning\'den ÇIKARDI: AKTIF, sayaçlar sıfır, erişim dönem sonu',
+      ab.durum === 'AKTIF' && ab.ilkBasarisizlik === null && ab.denemeSayisi === 0 && ab.kisitlandi === null &&
+        ab.erisimSonu.getTime() === lSon,
+      `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} deneme=${ab.denemeSayisi} erisimSonu=${iso(ab.erisimSonu)}`);
+    check('R9 dunning\'in "ödemeniz alındı"sı BİR kez gitti, fatura kuyrukta, hata yok',
+      d.dunningPostalari(ab.id).map((o) => o.tip).join() === 'dunning.eposta.toparlandi' &&
+        d.faturalar(ab.id).map((f) => f.tahsilatKodu).join() === 'ord-r8-ret' && g.hatalar.length === 0,
+      `posta=${d.dunningPostalari(ab.id).map((o) => o.tip)} fatura=${d.faturalar(ab.id).map((f) => f.tahsilatKodu)} ${gunlukYaz(g)}`);
+    const once = { durumOlay: d.durumOlaylari(ab.id).length, giden: d.giden.length, sorulan: d.iyz.sorulan.length };
+    const w = await d.webhookGonder(BASARI, 'sub-r8', 'ord-r8-ret');
+    const g2 = await d.isle();
+    check('R10 ⭐ aynı siparişin ikinci bildirimi (yeni ref kodu, satır artık AKTIF): yeni durum olayı YOK, e-posta YOK, iz var, olay işlendi',
+      d.durumOlaylari(ab.id).length === once.durumOlay && d.giden.length === once.giden && w.olay.islendi === true &&
+        d.olaylar(ab.id, TEKRAR_IZI).map((o) => o.veri?.iz).join() === 'fatura',
+      `durumOlay=${once.durumOlay}→${d.durumOlaylari(ab.id).length} giden=${once.giden}→${d.giden.length} ` +
+        `iz=${JSON.stringify(d.olaylar(ab.id, TEKRAR_IZI).map((o) => o.veri))}`);
+    check('R10b tekrar iyzico\'ya SORULMADI (kanıt kendi fatura kaydımız — sahte tekrar iyzico kotası harcatmaz); günlükte uyarı/hata yok',
+      d.iyz.sorulan.length === once.sorulan && g2.uyarilar.length === 0 && g2.hatalar.length === 0,
+      `sorulan=${once.sorulan}→${d.iyz.sorulan.length} ${gunlukYaz(g2)}`);
+  }
+
+  console.log('\n── R · sonraki dönemin başı GEÇTİ ama iyzico henüz çekmedi (WAITING, deneme yok): gerçek toparlanma aynen ──');
+  {
+    // Çekim partisi gecikebilir: sonraki dönem başladı, sipariş denemesiz WAITING.
+    // O dönem "işlenmiş" DEĞİLDİR — reddedilen dönemin ödemesi döngüyü kapatır.
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const son = simdi - 31 * GUN; // reddedilen dönemin başı
+    const lSon = son + 30 * GUN; // reddedilen dönemin sonu = sonraki dönemin başı: DÜN
+    const ab = d.kartSatiri('F-R8C', 'sub-r8c', { erisimSonu: new Date(son), ...kisitliAlanlar(new Date(son + SAAT), simdi) });
+    d.iyz.detaylar.set('sub-r8c', iyzicoDetayi('sub-r8c', 'ACTIVE', [
+      siparis({ kod: 'ord-r8c-sonraki', durum: 'WAITING', bas: lSon, son: lSon + 30 * GUN }),
+      siparis({ kod: 'ord-r8c-ret', durum: 'SUCCESS', bas: son, son: lSon, denemeler: ['FAILURE', 'SUCCESS'] }),
+    ]));
+    await d.webhookGonder(BASARI, 'sub-r8c', 'ord-r8c-ret');
+    const g = await d.isle();
+    check('R8c ⭐ başlamış ama denenmemiş sonraki dönem ödemeyi eskitmedi: dunning\'den ÇIKTI, erişim dönem sonu (dün)',
+      ab.durum === 'AKTIF' && ab.ilkBasarisizlik === null && ab.erisimSonu.getTime() === lSon &&
+        d.dunningPostalari(ab.id).map((o) => o.tip).join() === 'dunning.eposta.toparlandi' &&
+        d.olaylar(ab.id, ESKI_DONEM_IZI).length === 0 && g.hatalar.length === 0,
+      `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} erisimSonu=${iso(ab.erisimSonu)} ` +
+        `posta=${d.dunningPostalari(ab.id).map((o) => o.tip)} eski=${d.olaylar(ab.id, ESKI_DONEM_IZI).length} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · havaleye geçmiş satır: KART döneminde uygulanmış siparişin tekrarı ──');
+  {
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const bas = simdi - 20 * GUN;
+    const son = simdi + 10 * GUN;
+    const ab = d.kartSatiri('F-R11', 'sub-r11', { durum: 'AKTIF', erisimSonu: new Date(bas) });
+    d.iyz.detaylar.set('sub-r11', iyzicoDetayi('sub-r11', 'ACTIVE', [
+      siparis({ kod: 'ord-r11', durum: 'SUCCESS', bas, son, denemeler: ['SUCCESS'] }),
+    ]));
+    await d.webhookGonder(BASARI, 'sub-r11', 'ord-r11');
+    await d.isle();
+    const uygulandi = d.faturalar(ab.id).length === 1 && ab.erisimSonu.getTime() === son;
+    // Yönetici havaleyi onayladı: satır HAVALE, bir yıl; kart aboneliği kapatıldı.
+    const yil = new Date(simdi + 365 * GUN);
+    Object.assign(ab, { odemeYontemi: 'HAVALE', erisimSonu: yil, iyzicoDurum: 'CANCELED' });
+    const w = await d.webhookGonder(BASARI, 'sub-r11', 'ord-r11');
+    const g = await d.isle();
+    check('R11 ⭐ ÇİFT TAHSİLAT SANILMADI: "iade gerekiyor" kaydı YOK, erişim ve fatura aynı, tekrar izi var',
+      uygulandi && d.olaylar(ab.id, 'tahsilat.cift').length === 0 && ab.erisimSonu.getTime() === yil.getTime() &&
+        d.faturalar(ab.id).length === 1 && d.olaylar(ab.id, TEKRAR_IZI).length === 1 && w.olay.islendi === true &&
+        g.hatalar.length === 0,
+      `uygulandi=${uygulandi} cift=${d.olaylar(ab.id, 'tahsilat.cift').length} erisimSonu=${iso(ab.erisimSonu)} ` +
+        `iz=${d.olaylar(ab.id, TEKRAR_IZI).length} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · kapatılmış hesap: uygulanmış siparişin tekrarı hesabı GERİ AÇMAZ ──');
+  {
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const bas = simdi - 20 * GUN;
+    const son = simdi + 10 * GUN;
+    const ab = d.kartSatiri('F-R14', 'sub-r14', { durum: 'AKTIF', erisimSonu: new Date(bas) });
+    d.iyz.detaylar.set('sub-r14', iyzicoDetayi('sub-r14', 'ACTIVE', [
+      siparis({ kod: 'ord-r14', durum: 'SUCCESS', bas, son, denemeler: ['SUCCESS'] }),
+    ]));
+    await d.webhookGonder(BASARI, 'sub-r14', 'ord-r14');
+    await d.isle();
+    // Hesap kapatıldı: imha planlandı, kart aboneliği iptal, satır IPTAL.
+    const firma = d.db.tablo('firma').find((f) => f.id === 'F-R14') as Satir;
+    const imha = new Date(simdi + 30 * GUN);
+    firma.imhaTarihi = imha;
+    Object.assign(ab, { durum: 'IPTAL', iptalTalebi: new Date(simdi - GUN), iyzicoDurum: 'CANCELED' });
+    await d.webhookGonder(BASARI, 'sub-r14', 'ord-r14');
+    const g = await d.isle();
+    check('R14 ⭐ kapatılmış hesabın imhası İPTAL EDİLMEDİ (hesap geri açılmadı), satır IPTAL kaldı',
+      firma.imhaTarihi instanceof Date && firma.imhaTarihi.getTime() === imha.getTime() && ab.durum === 'IPTAL' &&
+        g.hatalar.length === 0,
+      `imhaTarihi=${iso(firma.imhaTarihi)} durum=${ab.durum} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · tutarı okunamayan tahsilat: iz tutar-okunamadı olayıdır; tekrar yine yok sayılır ──');
+  {
+    const d = dunyaKur();
+    const eskiSon = Date.now() - 3 * SAAT;
+    const yeniSon = eskiSon + 30 * GUN;
+    const ab = d.kartSatiri('F-R16', 'sub-r16', { durum: 'AKTIF', erisimSonu: new Date(eskiSon) });
+    const tutarsiz: Satir = { ...siparis({ kod: 'ord-r16', durum: 'SUCCESS', bas: eskiSon, son: yeniSon, denemeler: ['SUCCESS'] }) };
+    delete tutarsiz.price; // iyzico siparişi tutar TAŞIMIYOR
+    d.iyz.detaylar.set('sub-r16', iyzicoDetayi('sub-r16', 'ACTIVE', [tutarsiz]));
+    await d.webhookGonder(BASARI, 'sub-r16', 'ord-r16');
+    await d.isle();
+    const uygulandi = ab.erisimSonu.getTime() === yeniSon && d.faturalar(ab.id).length === 0 &&
+      d.olaylar(ab.id, 'fatura.tutar.okunamadi').length === 1;
+    const once = { durumOlay: d.durumOlaylari(ab.id).length, sorulan: d.iyz.sorulan.length };
+    const w = await d.webhookGonder(BASARI, 'sub-r16', 'ord-r16');
+    const g = await d.isle();
+    check('R16 ⭐ faturası YAZILAMAYAN (tutar okunamadı) uygulanmış sipariş: tekrar yok sayıldı (iz "tutar-izi"), yeni durum olayı ve ikinci uyarı YOK',
+      uygulandi && d.durumOlaylari(ab.id).length === once.durumOlay && d.iyz.sorulan.length === once.sorulan &&
+        w.olay.islendi === true && d.olaylar(ab.id, TEKRAR_IZI).map((o) => o.veri?.iz).join() === 'tutar-izi' &&
+        d.olaylar(ab.id, 'fatura.tutar.okunamadi').length === 1 && g.hatalar.length === 0,
+      `uygulandi=${uygulandi} durumOlay=${once.durumOlay}→${d.durumOlaylari(ab.id).length} ` +
+        `iz=${JSON.stringify(d.olaylar(ab.id, TEKRAR_IZI).map((o) => o.veri))} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · başka aboneliğin uygulanmış siparişini anan gövde tekrar SAYILMAZ ──');
+  {
+    const d = dunyaKur();
+    const bas = Date.now() - 20 * GUN;
+    const son = Date.now() + 10 * GUN;
+    d.kartSatiri('F-R17A', 'sub-r17a', { durum: 'AKTIF', erisimSonu: new Date(bas) });
+    const b = d.kartSatiri('F-R17B', 'sub-r17b', { durum: 'AKTIF', erisimSonu: new Date(son) });
+    d.iyz.detaylar.set('sub-r17a', iyzicoDetayi('sub-r17a', 'ACTIVE', [
+      siparis({ kod: 'ord-r17a', durum: 'SUCCESS', bas, son, denemeler: ['SUCCESS'] }),
+    ]));
+    d.iyz.detaylar.set('sub-r17b', iyzicoDetayi('sub-r17b', 'ACTIVE', [
+      siparis({ kod: 'ord-r17b', durum: 'SUCCESS', bas: son - 30 * GUN, son, denemeler: ['SUCCESS'] }),
+    ]));
+    await d.webhookGonder(BASARI, 'sub-r17a', 'ord-r17a');
+    await d.isle();
+    const w = await d.webhookGonder(BASARI, 'sub-r17b', 'ord-r17a'); // B'nin kodu + A'nın siparişi
+    await d.isle();
+    check('R17 B\'ye tekrar izi YAZILMADI; olay iyzico listesinde doğrulanamadı (eski hâl: işlenmedi, hata siparişi anar)',
+      d.olaylar(b.id, TEKRAR_IZI).length === 0 && w.olay.islendi === false && String(w.olay.hata).includes('ord-r17a'),
+      `iz=${d.olaylar(b.id, TEKRAR_IZI).length} islendi=${w.olay.islendi} hata=${w.olay.hata}`);
+  }
+
+  console.log('\n── R · eski dönem yazımı KOŞULLU: okumayla yazım arasında erişim ilerlediyse geri çekmez ──');
+  {
+    // İki kayıp eski ödeme (bildirimleri kaybolmuş) + reddedilen sonraki dönem;
+    // ikisinin bildirimi aynı anda işlenir: biri erişimi ilerletirken diğerinin
+    // satır okuması bayatlar. Durum DEĞİŞMEZ (ikisi de eski dönem) — koruyan
+    // yalnız erişim koşulu.
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const o1Bas = simdi - 72 * GUN;
+    const o1Son = simdi - 42 * GUN;
+    const o2Son = simdi - 12 * GUN;
+    const ab = d.kartSatiri('F-R18', 'sub-r18', { erisimSonu: new Date(o1Bas), ...kisitliAlanlar(new Date(o2Son + SAAT), simdi) });
+    d.iyz.detaylar.set('sub-r18', iyzicoDetayi('sub-r18', 'UNPAID', [
+      siparis({ kod: 'ord-r18-ret', durum: 'FAILED', bas: o2Son, son: o2Son + 30 * GUN, denemeler: ['FAILURE'] }),
+      siparis({ kod: 'ord-r18-o2', durum: 'SUCCESS', bas: o1Son, son: o2Son, denemeler: ['SUCCESS'] }),
+      siparis({ kod: 'ord-r18-o1', durum: 'SUCCESS', bas: o1Bas, son: o1Son, denemeler: ['SUCCESS'] }),
+    ]));
+    // o1 iyzico'ya sorulurken başka süreç o2'yi uyguladı (erişim o2'nin sonuna).
+    const asil = d.iyz.istemci.abonelikGetir;
+    let araya = true;
+    d.iyz.istemci.abonelikGetir = async (kod: string) => {
+      const detay = await asil(kod);
+      if (kod === 'sub-r18' && araya) {
+        araya = false;
+        ab.erisimSonu = new Date(o2Son);
+      }
+      return detay;
+    };
+    const w = await d.webhookGonder(BASARI, 'sub-r18', 'ord-r18-o1');
+    await d.isle();
+    const ilkDeneme = { islendi: w.olay.islendi, deneme: w.olay.denemeSayisi, erisimSonu: ab.erisimSonu.getTime() };
+    const g = await d.isle();
+    check('R18 ⭐ bayat okumalı eski dönem yazımı DÜŞTÜ (erişim o2\'nin sonunda kaldı), yeniden deneme taze okuyup uyguladı',
+      ilkDeneme.islendi === false && ilkDeneme.deneme === 1 && ilkDeneme.erisimSonu === o2Son &&
+        ab.erisimSonu.getTime() === o2Son && ab.durum === 'KISITLI' && w.olay.islendi === true &&
+        d.olaylar(ab.id, ESKI_DONEM_IZI).length === 1 &&
+        d.faturalar(ab.id).map((f) => f.tahsilatKodu).join() === 'ord-r18-o1' && g.hatalar.length === 0,
+      `ilkDeneme=${JSON.stringify({ ...ilkDeneme, erisimSonu: iso(new Date(ilkDeneme.erisimSonu)) })} ` +
+        `erisimSonu=${iso(ab.erisimSonu)} durum=${ab.durum} islendi=${w.olay.islendi} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · kapatılmış hesap: HİÇ uygulanmamış eski dönem siparişi hesabı GERİ AÇMAZ ──');
+  {
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const son = simdi - 12 * GUN;
+    const sonrakiSon = son + 30 * GUN;
+    const ab = d.kartSatiri('F-R19', 'sub-r19', {
+      durum: 'IPTAL', erisimSonu: new Date(sonrakiSon), iptalTalebi: new Date(simdi - 3 * GUN), iyzicoDurum: 'CANCELED',
+    });
+    const firma = d.db.tablo('firma').find((f) => f.id === 'F-R19') as Satir;
+    const imha = new Date(simdi + 30 * GUN);
+    firma.imhaTarihi = imha;
+    d.iyz.detaylar.set('sub-r19', iyzicoDetayi('sub-r19', 'CANCELED', [
+      siparis({ kod: 'ord-r19-sonraki', durum: 'SUCCESS', bas: son, son: sonrakiSon, denemeler: ['SUCCESS'] }),
+      siparis({ kod: 'ord-r19-eski', durum: 'SUCCESS', bas: son - 30 * GUN, son, denemeler: ['SUCCESS'] }),
+    ]));
+    const w = await d.webhookGonder(BASARI, 'sub-r19', 'ord-r19-eski');
+    const g = await d.isle();
+    check('R19 ⭐ imha İPTAL EDİLMEDİ (hesap geri açılmadı), satır IPTAL, erişim aynı; ödeme gerçek: fatura + eski dönem izi',
+      firma.imhaTarihi instanceof Date && firma.imhaTarihi.getTime() === imha.getTime() && ab.durum === 'IPTAL' &&
+        ab.erisimSonu.getTime() === sonrakiSon && d.faturalar(ab.id).map((f) => f.tahsilatKodu).join() === 'ord-r19-eski' &&
+        d.olaylar(ab.id, ESKI_DONEM_IZI).length === 1 && w.olay.islendi === true && g.hatalar.length === 0,
+      `imhaTarihi=${iso(firma.imhaTarihi)} durum=${ab.durum} erisimSonu=${iso(ab.erisimSonu)} ` +
+        `fatura=${d.faturalar(ab.id).map((f) => f.tahsilatKodu)} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · vadesi gelmemiş sonraki dönem hiçbir şeyi eskitmez (iyzico onu reddedilmiş işaretlese de) ──');
+  {
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const son = simdi - 12 * GUN; // reddedilen dönemin başı
+    const lSon = son + 30 * GUN; // reddedilen dönemin sonu: 18 gün sonra
+    const ab = d.kartSatiri('F-R20', 'sub-r20', { erisimSonu: new Date(son), ...kisitliAlanlar(new Date(son + SAAT), simdi) });
+    d.iyz.detaylar.set('sub-r20', iyzicoDetayi('sub-r20', 'ACTIVE', [
+      // Biçimi ÖLÇÜLMEDİ: abonelik UNPAID'e düşünce önceden açılmış sonraki
+      // dönem reddedilmiş işaretlenmiş — dönemi 18 gün SONRA başlıyor.
+      siparis({ kod: 'ord-r20-sonraki', durum: 'FAILED', bas: lSon, son: lSon + 30 * GUN, denemeler: ['FAILURE'] }),
+      siparis({ kod: 'ord-r20-ret', durum: 'SUCCESS', bas: son, son: lSon, denemeler: ['FAILURE', 'SUCCESS'] }),
+    ]));
+    await d.webhookGonder(BASARI, 'sub-r20', 'ord-r20-ret');
+    const g = await d.isle();
+    check('R20 ⭐ reddedilen dönemin gerçek ödemesi dunning\'den ÇIKARDI: vadesi gelmemiş "reddedilmiş" sonraki dönem onu eskitmedi',
+      ab.durum === 'AKTIF' && ab.ilkBasarisizlik === null && ab.erisimSonu.getTime() === lSon &&
+        d.dunningPostalari(ab.id).map((o) => o.tip).join() === 'dunning.eposta.toparlandi' &&
+        d.olaylar(ab.id, ESKI_DONEM_IZI).length === 0 && g.hatalar.length === 0,
+      `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} erisimSonu=${iso(ab.erisimSonu)} ` +
+        `posta=${d.dunningPostalari(ab.id).map((o) => o.tip)} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · paket değişimi zincirinin ESKİ halkası: geç gelen ödemesi yeni ucun dunning\'ini bitirmez ──');
+  {
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const gecis = simdi - 12 * GUN; // yeni uç bu anda başladı (dönem sonunda geçiş)
+    const ilk = new Date(gecis + SAAT);
+    // Satır yeni uçta, yeni ucun ilk dönemi reddedildi (KISITLI); kök kod eski halka.
+    const ab = d.kartSatiri('F-R21', 'sub-r21-yeni', {
+      erisimSonu: new Date(gecis), ...kisitliAlanlar(ilk, simdi), iyzicoKokKodu: 'sub-r21-eski',
+    });
+    const kisit = ab.kisitlandi as Date;
+    d.iyz.detaylar.set('sub-r21-eski', iyzicoDetayi('sub-r21-eski', 'UPGRADED', [
+      siparis({ kod: 'ord-r21-yukseltildi', durum: 'SUBSCRIPTION_UPGRADED', bas: gecis, son: gecis + 30 * GUN }),
+      siparis({ kod: 'ord-r21-eski', durum: 'SUCCESS', bas: gecis - 30 * GUN, son: gecis, denemeler: ['SUCCESS'] }),
+    ]));
+    const w = await d.webhookGonder(BASARI, 'sub-r21-eski', 'ord-r21-eski');
+    const g = await d.isle();
+    check('R21 ⭐ eski halkanın (bildirimi kaybolmuş) ödemesi: KISITLI kaldı, dunning sürüyor; ödeme gerçek — fatura + eski dönem izi',
+      ab.durum === 'KISITLI' && ab.ilkBasarisizlik?.getTime() === ilk.getTime() && ab.kisitlandi?.getTime() === kisit.getTime() &&
+        d.dunningPostalari(ab.id).length === 0 && d.olaylar(ab.id, ESKI_DONEM_IZI).length === 1 &&
+        d.faturalar(ab.id).map((f) => f.tahsilatKodu).join() === 'ord-r21-eski' && w.olay.islendi === true &&
+        g.hatalar.length === 0,
+      `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} posta=${d.dunningPostalari(ab.id).map((o) => o.tip)} ` +
+        `eski=${d.olaylar(ab.id, ESKI_DONEM_IZI).length} fatura=${d.faturalar(ab.id).map((f) => f.tahsilatKodu)} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · aynı siparişin İKİ olayı AYNI ANDA: biri bekletilir, sonra tekrar sayılır ──');
+  {
+    const d = dunyaKur({ makbuz: true });
+    const simdi = Date.now();
+    const son = simdi - 3 * GUN;
+    const lSon = son + 30 * GUN;
+    const ab = d.kartSatiri('F-R22', 'sub-r22', {
+      durum: 'ODEME_BEKLIYOR', erisimSonu: new Date(son), ilkBasarisizlik: new Date(son + SAAT), denemeSayisi: 1,
+      iyzicoDurum: 'UNPAID',
+    });
+    d.iyz.detaylar.set('sub-r22', iyzicoDetayi('sub-r22', 'ACTIVE', [
+      siparis({ kod: 'ord-r22', durum: 'SUCCESS', bas: son, son: lSon, denemeler: ['FAILURE', 'SUCCESS'] }),
+    ]));
+    // Bariyer: iki işleme iyzico sorusunda buluşur (ikisi de satırı okumuştur);
+    // yalnız biri gelirse 100 ms sonra tek başına devam eder.
+    const asil = d.iyz.istemci.abonelikGetir;
+    const bekleyenler: Array<() => void> = [];
+    d.iyz.istemci.abonelikGetir = async (kod: string) => {
+      const detay = await asil(kod);
+      if (kod === 'sub-r22') {
+        await new Promise<void>((coz) => {
+          bekleyenler.push(coz);
+          if (bekleyenler.length === 2) bekleyenler.forEach((f) => f());
+          else setTimeout(coz, 100);
+        });
+      }
+      return detay;
+    };
+    // Anlık denemenin kuyruğa yazdığı olay + iyzico'nun kendi bildirimi (yeni ref kodu).
+    const w1 = await d.webhookGonder(BASARI, 'sub-r22', 'ord-r22');
+    const w2 = await d.webhookGonder(BASARI, 'sub-r22', 'ord-r22');
+    const g1 = await gunluguTopla(() =>
+      Promise.all([(d.isleyici as any).tekOlayIsle(w1.olay.id), (d.isleyici as any).tekOlayIsle(w2.olay.id)]));
+    const ilkTur = { islenen: [w1.olay.islendi, w2.olay.islendi].filter(Boolean).length, durumOlay: d.durumOlaylari(ab.id).length };
+    const g2 = await d.isle();
+    const kime = d.giden.filter((m) => m.kime === 'muhasebe@f-r22.test').map((m) => m.konu);
+    check('R22 ⭐ eşzamanlı ilk turda YALNIZ biri işlendi (diğeri bekletildi, deneme sayılmadı); sonraki tarama onu TEKRAR saydı',
+      ilkTur.islenen === 1 && ilkTur.durumOlay === 1 && w1.olay.islendi === true && w2.olay.islendi === true &&
+        w1.olay.denemeSayisi === 0 && w2.olay.denemeSayisi === 0 && d.olaylar(ab.id, TEKRAR_IZI).length === 1,
+      `ilkTur=${JSON.stringify(ilkTur)} islendi=${w1.olay.islendi},${w2.olay.islendi} ` +
+        `deneme=${w1.olay.denemeSayisi},${w2.olay.denemeSayisi} tekrar=${d.olaylar(ab.id, TEKRAR_IZI).length}`);
+    check('R22b ⭐ tek ödeme = TEK "ödemeniz alındı" (dunning çıkışı), TEK durum olayı, tek fatura; AKTIF; hata yok',
+      kime.length === 1 && d.durumOlaylari(ab.id).length === 1 && d.faturalar(ab.id).length === 1 && ab.durum === 'AKTIF' &&
+        g1.hatalar.length === 0 && g2.hatalar.length === 0,
+      `posta=${JSON.stringify(kime)} durumOlay=${d.durumOlaylari(ab.id).length} fatura=${d.faturalar(ab.id).length} ` +
+        `durum=${ab.durum} ${gunlukYaz(g1)} ${gunlukYaz(g2)}`);
+  }
+
+  console.log('\n── R · ödemesi uygulanmış satır gecikmiş UNPAID ile döngüye düştü: aynı siparişin olayı onu ÇIKARIR ──');
+  {
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const bas = simdi - 3 * GUN;
+    const son = bas + 30 * GUN;
+    const ab = d.kartSatiri('F-R23', 'sub-r23', { durum: 'AKTIF', erisimSonu: new Date(bas) });
+    d.iyz.detaylar.set('sub-r23', iyzicoDetayi('sub-r23', 'ACTIVE', [
+      siparis({ kod: 'ord-r23', durum: 'SUCCESS', bas, son, denemeler: ['FAILURE', 'SUCCESS'] }),
+    ]));
+    await d.webhookGonder(BASARI, 'sub-r23', 'ord-r23');
+    await d.isle();
+    const uygulandi = ab.erisimSonu.getTime() === son && d.faturalar(ab.id).length === 1;
+    // Gece mutabakatı iyzico'nun gecikmiş UNPAID'ini gördü: ODEME_BEKLIYOR + döngü.
+    Object.assign(ab, { durum: 'ODEME_BEKLIYOR', ilkBasarisizlik: new Date(simdi - SAAT), iyzicoDurum: 'UNPAID' });
+    // Anlık deneme siparişi iyzico'da ödenmiş gördü, başarı olayını kuyruğa yazdı.
+    const w = await d.webhookGonder(BASARI, 'sub-r23', 'ord-r23');
+    const g = await d.isle();
+    check('R23 ⭐ aynı siparişin olayı satırı döngüden ÇIKARDI (dunning\'de kısa devre yok): AKTIF, sayaçlar sıfır, "ödemeniz alındı"; fatura tek',
+      uygulandi && ab.durum === 'AKTIF' && ab.ilkBasarisizlik === null && w.olay.islendi === true &&
+        d.dunningPostalari(ab.id).map((o) => o.tip).join() === 'dunning.eposta.toparlandi' &&
+        d.faturalar(ab.id).length === 1 && d.olaylar(ab.id, TEKRAR_IZI).length === 0 && g.hatalar.length === 0,
+      `uygulandi=${uygulandi} durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} ` +
+        `posta=${d.dunningPostalari(ab.id).map((o) => o.tip)} tekrar=${d.olaylar(ab.id, TEKRAR_IZI).length} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · sahte/gecikmiş RET: sonraki dönemi ÖDENMİŞ müşteri eski reddi anan bildirimle dunning\'e düşmez ──');
+  {
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const fBas = simdi - 40 * GUN;
+    const fSon = simdi - 10 * GUN; // reddedilmiş (hiç ödenmemiş) eski dönemin sonu = ödenen dönemin başı
+    const nSon = fSon + 30 * GUN;
+    const ab = d.kartSatiri('F-R24', 'sub-r24', { durum: 'AKTIF', erisimSonu: new Date(nSon) });
+    d.iyz.detaylar.set('sub-r24', iyzicoDetayi('sub-r24', 'ACTIVE', [
+      siparis({ kod: 'ord-r24-odenen', durum: 'SUCCESS', bas: fSon, son: nSon, denemeler: ['SUCCESS'] }),
+      siparis({ kod: 'ord-r24-eski-ret', durum: 'FAILED', bas: fBas, son: fSon, denemeler: ['FAILURE', 'FAILURE'] }),
+    ]));
+    const w = await d.webhookGonder(BASARISIZLIK, 'sub-r24', 'ord-r24-eski-ret');
+    const g = await d.isle();
+    const yok = d.olaylar(ab.id, 'tahsilat.basarisiz.yok.sayildi');
+    check('R24 ⭐ AKTIF kaldı, dunning YOK, e-posta YOK; olay işlendi, iz "eski dönem"',
+      ab.durum === 'AKTIF' && ab.ilkBasarisizlik === null && d.dunningPostalari(ab.id).length === 0 && d.giden.length === 0 &&
+        w.olay.islendi === true && yok.length === 1 && yok[0].veri?.neden === 'eski-donem' &&
+        yok[0].veri?.siparisKodu === 'ord-r24-eski-ret',
+      `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} giden=${d.giden.length} islendi=${w.olay.islendi} ` +
+        `yok=${JSON.stringify(yok.map((o) => o.veri))} ${gunlukYaz(g)}`);
+  }
+  {
+    // KONTROL: gerçek ret yine dunning'i başlatır — vadesi gelmemiş
+    // "reddedilmiş" sonraki dönem onu eskitmez.
+    const d = dunyaKur();
+    const son = Date.now() - 2 * SAAT;
+    const lSon = son + 30 * GUN;
+    const ab = d.kartSatiri('F-R25', 'sub-r25', { durum: 'AKTIF', erisimSonu: new Date(son) });
+    d.iyz.detaylar.set('sub-r25', iyzicoDetayi('sub-r25', 'UNPAID', [
+      siparis({ kod: 'ord-r25-sonraki', durum: 'FAILED', bas: lSon, son: lSon + 30 * GUN, denemeler: ['FAILURE'] }),
+      siparis({ kod: 'ord-r25', durum: 'FAILED', bas: son, son: lSon, denemeler: ['FAILURE'] }),
+    ]));
+    await d.webhookGonder(BASARISIZLIK, 'sub-r25', 'ord-r25');
+    const g = await d.isle();
+    check('R25 KONTROL: gerçek ret dunning\'i başlattı — vadesi gelmemiş "reddedilmiş" sonraki dönem onu eskitmedi',
+      ab.durum === 'ODEME_BEKLIYOR' && ab.ilkBasarisizlik instanceof Date && d.dunningPostalari(ab.id).length === 1 &&
+        d.olaylar(ab.id, 'tahsilat.basarisiz.yok.sayildi').length === 0 && g.hatalar.length === 0,
+      `durum=${ab.durum} posta=${d.dunningPostalari(ab.id).map((o) => o.tip)} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · abonelik UNPAID, reddedilen yenileme DENEMESİZ listeleniyor (biçim ölçülmedi): eski ödemenin tekrarı döngüden kaçıramaz ──');
+  {
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const eskiBas = simdi - 42 * GUN;
+    const eskiSon = simdi - 12 * GUN;
+    const ab = d.kartSatiri('F-R26', 'sub-r26', { durum: 'AKTIF', erisimSonu: new Date(eskiBas) });
+    const odenmis = siparis({ kod: 'ord-r26-eski', durum: 'SUCCESS', bas: eskiBas, son: eskiSon, denemeler: ['SUCCESS'] });
+    d.iyz.detaylar.set('sub-r26', iyzicoDetayi('sub-r26', 'ACTIVE', [odenmis]));
+    await d.webhookGonder(BASARI, 'sub-r26', 'ord-r26-eski');
+    await d.isle();
+    // Yenileme reddedildi: iyzico UNPAID; reddedilen sipariş DENEMESİZ WAITING listelenmiş.
+    d.iyz.detaylar.set('sub-r26', iyzicoDetayi('sub-r26', 'UNPAID', [
+      siparis({ kod: 'ord-r26-ret', durum: 'WAITING', bas: eskiSon, son: eskiSon + 30 * GUN }),
+      odenmis,
+    ]));
+    await d.webhookGonder(BASARISIZLIK, 'sub-r26', 'ord-r26-ret');
+    await d.isle();
+    const dunningde = ab.durum === 'ODEME_BEKLIYOR' && ab.ilkBasarisizlik instanceof Date;
+    const ilk = new Date(eskiSon + SAAT);
+    Object.assign(ab, kisitliAlanlar(ilk, simdi));
+    const w = await d.webhookGonder(BASARI, 'sub-r26', 'ord-r26-eski');
+    await d.isle();
+    check('R26 ⭐ UNPAID + başlamış denemesiz yenileme: eski siparişin tekrarı KISITLI\'dan ÇIKARAMADI (eski dönem), "ödemeniz alındı" yok',
+      dunningde && ab.durum === 'KISITLI' && ab.ilkBasarisizlik?.getTime() === ilk.getTime() &&
+        d.dunningPostalari(ab.id).every((o) => o.tip !== 'dunning.eposta.toparlandi') && w.olay.islendi === true &&
+        d.olaylar(ab.id, ESKI_DONEM_IZI).length === 1,
+      `dunningde=${dunningde} durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} ` +
+        `posta=${d.dunningPostalari(ab.id).map((o) => o.tip)} eski=${d.olaylar(ab.id, ESKI_DONEM_IZI).length}`);
+    // KONTROL: iyzico henüz UNPAID derken reddedilen dönemin KENDİ ödemesi.
+    d.iyz.detaylar.set('sub-r26', iyzicoDetayi('sub-r26', 'UNPAID', [
+      siparis({ kod: 'ord-r26-ret', durum: 'SUCCESS', bas: eskiSon, son: eskiSon + 30 * GUN, denemeler: ['FAILURE', 'SUCCESS'] }),
+      odenmis,
+    ]));
+    await d.webhookGonder(BASARI, 'sub-r26', 'ord-r26-ret');
+    const g = await d.isle();
+    check('R26b KONTROL: iyzico henüz UNPAID derken reddedilen dönemin KENDİ ödemesi döngüyü kapattı (AKTIF, erişim dönem sonu)',
+      ab.durum === 'AKTIF' && ab.ilkBasarisizlik === null && ab.erisimSonu.getTime() === eskiSon + 30 * GUN &&
+        g.hatalar.length === 0,
+      `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} erisimSonu=${iso(ab.erisimSonu)} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · abonelik UNPAID, reddedilen yenileme listede HİÇ YOK: dönemi bitmiş eski ödemenin tekrarı döngüden kaçıramaz ──');
+  {
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const eskiBas = simdi - 42 * GUN;
+    const eskiSon = simdi - 12 * GUN;
+    const ab = d.kartSatiri('F-R27', 'sub-r27', { durum: 'AKTIF', erisimSonu: new Date(eskiBas) });
+    const odenmis = siparis({ kod: 'ord-r27-eski', durum: 'SUCCESS', bas: eskiBas, son: eskiSon, denemeler: ['SUCCESS'] });
+    d.iyz.detaylar.set('sub-r27', iyzicoDetayi('sub-r27', 'ACTIVE', [odenmis]));
+    await d.webhookGonder(BASARI, 'sub-r27', 'ord-r27-eski');
+    await d.isle();
+    // Yenileme reddedildi: iyzico UNPAID, reddedilen sipariş listede HENÜZ YOK
+    // (kanıt kural 2 — abonelik hükmü; F-P3 ile aynı biçim).
+    d.iyz.detaylar.set('sub-r27', iyzicoDetayi('sub-r27', 'UNPAID', [odenmis]));
+    await d.webhookGonder(BASARISIZLIK, 'sub-r27', 'ord-r27-ret');
+    await d.isle();
+    const dunningde = ab.durum === 'ODEME_BEKLIYOR' && ab.ilkBasarisizlik instanceof Date;
+    const ilk = new Date(eskiSon + SAAT);
+    Object.assign(ab, kisitliAlanlar(ilk, simdi));
+    const w = await d.webhookGonder(BASARI, 'sub-r27', 'ord-r27-eski');
+    const g = await d.isle();
+    check('R27 ⭐ UNPAID + sonraki dönem listede yok: dönemi BİTMİŞ ödemenin tekrarı KISITLI\'dan ÇIKARAMADI (eski dönem)',
+      dunningde && ab.durum === 'KISITLI' && ab.ilkBasarisizlik?.getTime() === ilk.getTime() && w.olay.islendi === true &&
+        d.olaylar(ab.id, ESKI_DONEM_IZI).length === 1 &&
+        d.dunningPostalari(ab.id).every((o) => o.tip !== 'dunning.eposta.toparlandi') && g.hatalar.length === 0,
+      `dunningde=${dunningde} durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} eski=${d.olaylar(ab.id, ESKI_DONEM_IZI).length} ` +
+        `${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · ret yolunda UNPAID genişlemesi YOK: iyzico "ödenmedi" derken dönemi bitmiş siparişin reddi dunning\'i başlatır ──');
+  {
+    // Yenilemenin ret bildirimi kaybolmuş, satır AKTIF; iyzico UNPAID ve
+    // listedeki son sipariş dönemi BİTMİŞ reddedilmiş sipariş. Başarı yolunun
+    // UNPAID kuralı (R27) burada uygulansaydı ret "eski dönem" diye yok
+    // sayılır, ödemeyen müşteri gece mutabakatına dek AKTIF kalırdı.
+    const d = dunyaKur();
+    const simdi = Date.now();
+    const rBas = simdi - 40 * GUN;
+    const rSon = simdi - 10 * GUN;
+    const ab = d.kartSatiri('F-R28', 'sub-r28', { durum: 'AKTIF', erisimSonu: new Date(rBas) });
+    d.iyz.detaylar.set('sub-r28', iyzicoDetayi('sub-r28', 'UNPAID', [
+      siparis({ kod: 'ord-r28-ret', durum: 'FAILED', bas: rBas, son: rSon, denemeler: ['FAILURE'] }),
+    ]));
+    const w = await d.webhookGonder(BASARISIZLIK, 'sub-r28', 'ord-r28-ret');
+    const g = await d.isle();
+    check('R28 ⭐ UNPAID + dönemi bitmiş reddedilmiş sipariş: ret yok SAYILMADI — ODEME_BEKLIYOR, ilk dunning e-postası',
+      ab.durum === 'ODEME_BEKLIYOR' && ab.ilkBasarisizlik instanceof Date && d.dunningPostalari(ab.id).length === 1 &&
+        d.olaylar(ab.id, 'tahsilat.basarisiz.yok.sayildi').length === 0 && w.olay.islendi === true && g.hatalar.length === 0,
+      `durum=${ab.durum} ilk=${iso(ab.ilkBasarisizlik)} posta=${d.dunningPostalari(ab.id).map((o) => o.tip)} ` +
+        `yok=${d.olaylar(ab.id, 'tahsilat.basarisiz.yok.sayildi').length} ${gunlukYaz(g)}`);
+  }
+
+  console.log('\n── R · tekrar SAYILMAYANLAR: aynı olayın yeniden denemesi · bağlanmadan yok sayılan bildirim ──');
+  {
+    const d = dunyaKur();
+    const eskiSon = Date.now() - 3 * SAAT;
+    const yeniSon = eskiSon + 30 * GUN;
+    const ab = d.kartSatiri('F-R12', 'sub-r12', { durum: 'AKTIF', erisimSonu: new Date(eskiSon) });
+    d.iyz.detaylar.set('sub-r12', iyzicoDetayi('sub-r12', 'ACTIVE', [
+      siparis({ kod: 'ord-r12', durum: 'SUCCESS', bas: eskiSon, son: yeniSon, denemeler: ['SUCCESS'] }),
+    ]));
+    // Fatura kuyruğu BİR kez düşer: erişim yazıldı, fatura yazılamadı.
+    const asil = d.fatura.kuyrugaAl.bind(d.fatura);
+    let dusur = true;
+    (d.fatura as any).kuyrugaAl = async (...a: Parameters<typeof asil>) => {
+      if (dusur) {
+        dusur = false;
+        throw new Error('sahte: fatura kuyruğu düştü');
+      }
+      return asil(...a);
+    };
+    const w = await d.webhookGonder(BASARI, 'sub-r12', 'ord-r12');
+    await d.isle();
+    const ilkDeneme = w.olay.islendi === false && w.olay.denemeSayisi === 1 && ab.erisimSonu.getTime() === yeniSon &&
+      d.faturalar(ab.id).length === 0;
+    const g = await d.isle();
+    check('R12 ⭐ fatura kuyruğu düştü: AYNI olayın yeniden denemesi tekrar SAYILMADI, faturayı yazdı, olay işlendi',
+      ilkDeneme && d.faturalar(ab.id).map((f) => f.tahsilatKodu).join() === 'ord-r12' && w.olay.islendi === true &&
+        d.olaylar(ab.id, TEKRAR_IZI).length === 0 && g.hatalar.length === 0,
+      `ilkDeneme=${ilkDeneme} fatura=${d.faturalar(ab.id).map((f) => f.tahsilatKodu)} islendi=${w.olay.islendi} ` +
+        `iz=${d.olaylar(ab.id, TEKRAR_IZI).length} ${gunlukYaz(g)}`);
+  }
+  {
+    const d = dunyaKur();
+    const bas = Date.now() - 2 * SAAT;
+    const son = bas + 30 * GUN;
+    d.iyz.detaylar.set('sub-r13', iyzicoDetayi('sub-r13', 'ACTIVE', [
+      siparis({ kod: 'ord-r13', durum: 'SUCCESS', bas, son, denemeler: ['SUCCESS'] }),
+    ]));
+    // Satın alma sonuçlanmadan (kod satıra yazılmadan) gelen ilk bildirim.
+    const w1 = await d.webhookGonder(BASARI, 'sub-r13', 'ord-r13');
+    await d.isle();
+    const yokSayildi = w1.olay.islendi === true && d.db.tablo('fatura').length === 0;
+    const kopru = new Date(bas + 33 * GUN);
+    const ab = d.kartSatiri('F-R13', 'sub-r13', { durum: 'AKTIF', erisimSonu: kopru, kopruErisimSonu: kopru });
+    const w2 = await d.webhookGonder(BASARI, 'sub-r13', 'ord-r13');
+    const g = await d.isle();
+    check('R13 ⭐ bağlanmadan işlenen (yok sayılan) bildirim "uygulandı" SAYILMAZ: sonraki bildirim köprüyü düzeltti, faturayı yazdı',
+      yokSayildi && ab.erisimSonu.getTime() === son && d.faturalar(ab.id).map((f) => f.tahsilatKodu).join() === 'ord-r13' &&
+        w2.olay.islendi === true && d.olaylar(ab.id, TEKRAR_IZI).length === 0 && g.hatalar.length === 0,
+      `yokSayildi=${yokSayildi} erisimSonu=${iso(ab.erisimSonu)} fatura=${d.faturalar(ab.id).map((f) => f.tahsilatKodu)} ` +
+        `iz=${d.olaylar(ab.id, TEKRAR_IZI).length} ${gunlukYaz(g)}`);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  I — İMZA ZORUNLULUĞU (28.09): zorunluyken eksik/yanlış imza 401, satır yok
+// ═════════════════════════════════════════════════════════════════════════
+const durum401 = (h: unknown) => h instanceof UnauthorizedException && h.getStatus() === 401;
+const durum400 = (h: unknown) => h instanceof BadRequestException && h.getStatus() === 400;
+
+async function iBlogu(): Promise<void> {
+  console.log('\n── I · imza zorunluyken: eksik/yanlış imza 401 + kayıt YOK; geçerli imza işlenir ──');
+  {
+    const d = dunyaKur({ imzaZorunlu: true });
+    const eskiSon = Date.now() - 6 * SAAT;
+    const yeniSon = eskiSon + 30 * GUN;
+    const ab = d.kartSatiri('F-I1', 'sub-i1', { durum: 'AKTIF', erisimSonu: new Date(eskiSon) });
+    d.iyz.detaylar.set('sub-i1', iyzicoDetayi('sub-i1', 'ACTIVE', [
+      siparis({ kod: 'ord-i1', durum: 'SUCCESS', bas: eskiSon, son: yeniSon, denemeler: ['SUCCESS'] }),
+    ]));
+    const yok = await d.webhookGonder(BASARI, 'sub-i1', 'ord-i1');
+    const yanlis = await d.webhookGonder(BASARI, 'sub-i1', 'ord-i1', {}, 'a'.repeat(64));
+    // Başka siparişin GEÇERLİ imzası: imza sipariş kodunu kapsar (R-M1).
+    const baskaGovde = { ...yanlis.govde, orderReferenceCode: 'ord-baska' } as AbonelikWebhookGovdesi;
+    const kopya = await d.webhookGonder(BASARI, 'sub-i1', 'ord-i1', {}, imzala(baskaGovde, 'merchantId-once'));
+    check('I1 ⭐ imza YOK → 401, satır YAZILMADI, kuyruğa alınmadı',
+      durum401(yok.hata) && !yok.olay && d.kuyruk.length === 0,
+      `hata=${String(yok.hata)} olay=${!!yok.olay} kuyruk=${d.kuyruk.length}`);
+    check('I2 ⭐ imza YANLIŞ (rastgele ya da başka siparişin imzası) → 401, satır YAZILMADI',
+      durum401(yanlis.hata) && !yanlis.olay && durum401(kopya.hata) && !kopya.olay &&
+        d.db.tablo('webhookOlayi').length === 0,
+      `yanlis=${String(yanlis.hata)} kopya=${String(kopya.hata)} satir=${d.db.tablo('webhookOlayi').length}`);
+    const g = await d.isle();
+    check('I2b reddedilen istekler hiçbir şeyi değiştirmedi (erişim, fatura)',
+      ab.erisimSonu.getTime() === eskiSon && d.faturalar(ab.id).length === 0 && g.hatalar.length === 0,
+      `erisimSonu=${iso(ab.erisimSonu)} fatura=${d.faturalar(ab.id).length} ${gunlukYaz(g)}`);
+    const gecerli = await d.webhookGonder(BASARI, 'sub-i1', 'ord-i1', {}, { sira: 'merchantId-once' });
+    const g2 = await d.isle();
+    check('I3 ⭐ GEÇERLİ imza → 200 {alindi}, satır imzaGecerli=true, işlendi: erişim dönem sonu',
+      gecerli.hata === null && JSON.stringify(gecerli.yanit) === '{"alindi":true}' &&
+        gecerli.olay?.imzaGecerli === true && gecerli.olay?.islendi === true && ab.erisimSonu.getTime() === yeniSon &&
+        g2.hatalar.length === 0,
+      `hata=${String(gecerli.hata)} yanit=${JSON.stringify(gecerli.yanit)} imzaGecerli=${gecerli.olay?.imzaGecerli} ` +
+        `islendi=${gecerli.olay?.islendi} erisimSonu=${iso(ab.erisimSonu)} ${gunlukYaz(g2)}`);
+    check('I3b ilk geçerli imzada eşleşen sıra günlükte (IYZICO_IMZA_SIRASI sabitlensin diye — runbook)',
+      gecerli.gunluk.uyarilar.some((u) => u.includes('Alan sırası: "merchantId-once"')),
+      JSON.stringify(gecerli.gunluk.uyarilar));
+  }
+  {
+    // Sıra sabitlenmemişken iki alan sırası da kabul; sabitlenince öbür sıra 401.
+    const serbest = dunyaKur({ imzaZorunlu: true });
+    const s = await serbest.webhookGonder(BASARI, 'sub-yok', 'ord-i4', {}, { sira: 'secretKey-once' });
+    const sabit = dunyaKur({ imzaZorunlu: true, imzaSirasi: 'merchantId-once' });
+    const t = await sabit.webhookGonder(BASARI, 'sub-yok', 'ord-i5', {}, { sira: 'secretKey-once' });
+    const u = await sabit.webhookGonder(BASARI, 'sub-yok', 'ord-i6', {}, { sira: 'merchantId-once' });
+    check('I4 sıra sabitlenmemişken secretKey-önce imza da KABUL; sabitlenince öbür sıra 401, sabit sıra kabul',
+      s.hata === null && s.olay?.imzaGecerli === true && durum401(t.hata) && !t.olay &&
+        u.hata === null && u.olay?.imzaGecerli === true,
+      `serbest=${String(s.hata)}/${s.olay?.imzaGecerli} sabit-oteki=${String(t.hata)} sabit=${String(u.hata)}/${u.olay?.imzaGecerli}`);
+  }
+
+  console.log('\n── I · zorunlu imza SAHTE "başarısız" bildirimini işlemeye bile almaz (karşılaştırma: varsayılan) ──');
+  {
+    // iyzico'da kanıt VAR (UNPAID + reddedilmiş sipariş): doğrulama kuralı bu
+    // bildirimi dunning'e sokar. Zorunlu imzada imzasız gövde kapıda kalır.
+    const kur = (secenek: { imzaZorunlu?: boolean }) => {
+      const d = dunyaKur(secenek);
+      const son = Date.now() - 2 * SAAT;
+      const ab = d.kartSatiri('F-I7', 'sub-i7', { durum: 'AKTIF', erisimSonu: new Date(son) });
+      d.iyz.detaylar.set('sub-i7', iyzicoDetayi('sub-i7', 'UNPAID', [
+        siparis({ kod: 'ord-i7', durum: 'FAILED', bas: son, son: son + 30 * GUN, denemeler: ['FAILURE'] }),
+      ]));
+      return { d, ab };
+    };
+    const z = kur({ imzaZorunlu: true });
+    const zw = await z.d.webhookGonder(BASARISIZLIK, 'sub-i7', 'ord-i7');
+    await z.d.isle();
+    check('I5 ⭐ zorunlu imza: imzasız "başarısız" → 401, satır yok, iyzico\'ya SORULMADI, AKTIF kaldı, dunning e-postası YOK',
+      durum401(zw.hata) && !zw.olay && z.d.iyz.sorulan.length === 0 && z.ab.durum === 'AKTIF' &&
+        z.d.dunningPostalari(z.ab.id).length === 0,
+      `hata=${String(zw.hata)} olay=${!!zw.olay} sorulan=${z.d.iyz.sorulan} durum=${z.ab.durum}`);
+    const v = kur({});
+    const vw = await v.d.webhookGonder(BASARISIZLIK, 'sub-i7', 'ord-i7');
+    await v.d.isle();
+    check('I5b karşılaştırma (varsayılan, zorunlu değil): aynı imzasız gövde kaydedildi, iyzico\'ya soruldu, işlendi → dunning başladı (koruma yalnız doğrulama kuralı)',
+      vw.hata === null && vw.olay?.imzaGecerli === false && vw.olay?.islendi === true && v.d.iyz.sorulan.includes('sub-i7') &&
+        v.ab.durum === 'ODEME_BEKLIYOR' && v.d.dunningPostalari(v.ab.id).length === 1,
+      `hata=${String(vw.hata)} imzaGecerli=${vw.olay?.imzaGecerli} islendi=${vw.olay?.islendi} durum=${v.ab.durum}`);
+  }
+
+  console.log('\n── I · beklenen imza günlüğe YAZILMAZ (eski hâl: iki sıranın geçerli imzasını basıyordu) ──');
+  {
+    const d = dunyaKur({ imzaZorunlu: true });
+    const w = await d.webhookGonder(BASARI, 'sub-i8', 'ord-i8', {}, 'b'.repeat(64));
+    const gecerliIkisi = [imzala(w.govde, 'merchantId-once'), imzala(w.govde, 'secretKey-once')];
+    const tum = [...w.gunluk.kayitlar, ...w.gunluk.uyarilar, ...w.gunluk.hatalar];
+    check('I6 ⭐ imza eşleşmedi: günlükte "eşleşmedi" satırı var ama iki sıranın GEÇERLİ imzası da YOK',
+      w.gunluk.hatalar.some((h) => h.includes('Webhook imzası eşleşmedi')) &&
+        gecerliIkisi.every((imza) => !tum.some((satir) => satir.includes(imza))),
+      JSON.stringify(w.gunluk.hatalar));
+    const sahte = await d.webhookGonder(BASARI, 'sub-i8\nSAHTE SATIR', 'ord-i9');
+    const tumSahte = [...sahte.gunluk.kayitlar, ...sahte.gunluk.uyarilar, ...sahte.gunluk.hatalar];
+    check('I6b ⭐ satır sonlu (biçimsiz) kod: 400, KAYDEDİLMEDİ; günlükte yalnız alan ADI — değer (sahte satır) YOK',
+      durum400(sahte.hata) && !sahte.olay &&
+        sahte.gunluk.uyarilar.some((u) => u.includes('REDDEDİLDİ (400)') && u.includes('subscriptionReferenceCode')) &&
+        !tumSahte.some((u) => u.includes('SAHTE')),
+      `hata=${String(sahte.hata)} olay=${!!sahte.olay} ${JSON.stringify(tumSahte)}`);
+  }
+
+  console.log('\n── I · gövde biçimi (28.09 güvenlik incelemesi): biçimsiz kod 400, bilinmeyen yük saklanmaz ──');
+  {
+    const d = dunyaKur();
+    const w7 = await d.webhookGonder(BASARI, 'sub-i10', 'ord-i10', { ekYuk: 'x'.repeat(5000), kanit: { sahte: true } });
+    const altiAlan = ['customerReferenceCode', 'iyziEventTime', 'iyziEventType', 'iyziReferenceCode', 'orderReferenceCode',
+      'subscriptionReferenceCode'];
+    check('I7 kaydedilen ham gövde YALNIZ bilinen altı alan (bilinmeyen yük tabloya girmedi)',
+      !!w7.olay && JSON.stringify(Object.keys(w7.olay.hamGovde ?? {}).sort()) === JSON.stringify(altiAlan),
+      JSON.stringify(Object.keys(w7.olay?.hamGovde ?? {})));
+    const eksik = await d.webhookGonder(BASARI, 'sub-i11', 'ord-i11', { orderReferenceCode: undefined });
+    const yol = await d.webhookGonder(BASARI, 'sub-i11', 'ord/../x');
+    const tip = await d.webhookGonder('SUBSCRIPTION ORDER' as AbonelikWebhookGovdesi['iyziEventType'], 'sub-i11', 'ord-i12');
+    await d.isle();
+    check('I8 eksik sipariş kodu · yol karakterli kod · biçimsiz olay tipi → 400, KAYDEDİLMEDİ; iyzico\'ya sorulmadı',
+      [eksik, yol, tip].every((x) => durum400(x.hata) && !x.olay) && !d.iyz.sorulan.includes('sub-i11'),
+      JSON.stringify([eksik, yol, tip].map((x) => [String(x.hata), !!x.olay])) + ` sorulan=${d.iyz.sorulan}`);
+  }
+
+  console.log('\n── I · gövde tavanı: webhook yolunda 16 KB (global 50 MB değil) — gerçek HTTP, gerçek denetleyici ──');
+  {
+    const db = bellekPrisma();
+    const config = new ConfigService({ IYZICO_MERCHANT_ID: IMZA_AYARI.merchantId, IYZICO_SECRET_KEY: IMZA_AYARI.secretKey });
+    @Module({
+      controllers: [IyzicoWebhookController],
+      providers: [
+        { provide: PrismaService, useValue: db.prisma },
+        { provide: WebhookIsleyici, useValue: { kuyrugaAl: () => undefined } },
+        { provide: ConfigService, useValue: config },
+      ],
+    })
+    class TavanModulu {}
+    const app = await NestFactory.create<NestExpressApplication>(TavanModulu, { logger: false });
+    // main.ts SIRASI: yol başı tavan ÖNCE, global ayrıştırıcılar SONRA.
+    govdeSinirlariniKur(app);
+    app.use(json({ limit: '50mb' }));
+    app.use(urlencoded({ extended: true, limit: '50mb' }));
+    app.setGlobalPrefix('api');
+    await app.listen(0);
+    const port = (app.getHttpServer().address() as { port: number }).port;
+    const govde = (dolgu: number) =>
+      JSON.stringify({
+        orderReferenceCode: 'ord-i13', customerReferenceCode: 'cus-i13', subscriptionReferenceCode: 'sub-i13',
+        iyziReferenceCode: `iyz-i13-${dolgu}`, iyziEventType: BASARI, iyziEventTime: Date.now(), dolgu: 'x'.repeat(dolgu),
+      });
+    const gonder = async (b: string, tur = 'application/json') =>
+      (await fetch(`http://127.0.0.1:${port}/api/webhook/iyzico/abonelik`, {
+        method: 'POST', headers: { 'content-type': tur }, body: b,
+      })).status;
+    try {
+      const kucuk = await gonder(govde(100));
+      const buyuk = await gonder(govde(20_000));
+      const form = await gonder(`a=${'x'.repeat(20_000)}`, 'application/x-www-form-urlencoded');
+      check('I9 ⭐ gövde tavanı: 1 KB bildirim 200 (kaydedildi); 20 KB JSON ve 20 KB form 413 (global 50 MB değil)',
+        kucuk === 200 && buyuk === 413 && form === 413 && db.tablo('webhookOlayi').length === 1,
+        `kucuk=${kucuk} buyuk=${buyuk} form=${form} satir=${db.tablo('webhookOlayi').length}`);
+    } finally {
+      await app.close();
+    }
+  }
+}
+
 function son(): void {
   console.log(`\n${'='.repeat(64)}\nWEBHOOK TAHSİLAT DOĞRULAMA: ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`);
   if (failed) {
@@ -1108,6 +2083,8 @@ async function main(): Promise<void> {
   await fBlogu();
   await dBlogu();
   await tBlogu();
+  await rBlogu();
+  await iBlogu();
   son();
 }
 

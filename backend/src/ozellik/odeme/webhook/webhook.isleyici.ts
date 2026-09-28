@@ -11,6 +11,7 @@ import { tarihYaz } from '../dunning/dunning.metinleri';
 import { sonDuzenlemeGunu } from '../fatura/fatura-kesim-epostasi';
 import { iyzicoTarihi } from '../iyzico/iyzico-tarihi';
 import { odemeAni, tahsilEdilenTutar } from '../iyzico/tahsilat-kaniti';
+import { TUTAR_OKUNAMADI_OLAYI, tutarIziVarMi } from '../abonelik/tahsilat-izi';
 
 /**
  * Olay basina deneme siniri. Asan olay "olu"dur: tarama onu bir daha almaz.
@@ -20,10 +21,11 @@ import { odemeAni, tahsilEdilenTutar } from '../iyzico/tahsilat-kaniti';
 export const AZAMI_DENEME = 5;
 
 /**
- * Tutarı okunamayan tahsilatın denetim izi (`AbonelikOlayi.tip`, 28.09) —
- * yönetici uyarısı sipariş başına BİR kez bu kayda bakarak gider.
+ * Tutarı okunamayan tahsilatın denetim izi — tanım `abonelik/tahsilat-izi.ts`e
+ * TAŞINDI (28.09): `AbonelikServisi` onu "sipariş uygulandı" ölçütü olarak
+ * okur ve bu dosyayı içe aktaramaz (döngü). Burada yeniden dışa verilir.
  */
-export const TUTAR_OKUNAMADI_OLAYI = 'fatura.tutar.okunamadi';
+export { TUTAR_OKUNAMADI_OLAYI };
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -105,9 +107,41 @@ export class WebhookIsleyici {
     if (this.islenenOlaylar.has(olayId)) return;
     this.islenenOlaylar.add(olayId);
     try {
-      await this.tekOlayIsleKilitli(olayId);
+      await this.siparisKilidiyleIsle(olayId);
     } finally {
       this.islenenOlaylar.delete(olayId);
+    }
+  }
+
+  /**
+   * İşlenmekte olan SİPARİŞLER (olay tipi + sipariş kodu) — 28.09. Aynı
+   * siparişin İKİ AYRI olayı (anlık denemenin kuyruğa yazdığı + iyzico'nun
+   * kendi bildirimi; mutabakat oynatması + gecikmiş gerçek bildirim) aynı anda
+   * işlenirse ikisi de tahsilat izini yazılmadan önce okur: iki `durum.degisti`,
+   * iki "ödemeniz alındı" (biri dunning çıkışı, diğeri yenileme makbuzu) —
+   * 28.09 kod incelemesi. İkinci olay BEKLER: işlenmeden bırakılır, deneme
+   * sayılmaz; sonraki tarama onu iz yazıldıktan sonra tekrar olarak işler.
+   * `islenenOlaylar` ile aynı katman ve sınır (tek süreç): iki AYRI süreçte
+   * `tekOlayIsleKilitli`nin koşullu yazımları korur (`test:dunning-toparlandi` E).
+   */
+  private readonly islenenSiparisler = new Set<string>();
+
+  /** Sipariş kilidi altında işler; aynı sipariş başka olayla işleniyorsa bekletir. */
+  private async siparisKilidiyleIsle(olayId: string): Promise<void> {
+    const kayit = await this.prisma.webhookOlayi.findUnique({
+      where: { id: olayId },
+      select: { olayTipi: true, siparisKodu: true },
+    });
+    const anahtar = kayit?.siparisKodu ? `${kayit.olayTipi}:${kayit.siparisKodu}` : null;
+    if (anahtar && this.islenenSiparisler.has(anahtar)) {
+      this.logger.log(`Webhook ${olayId} bekletildi: sipariş ${kayit?.siparisKodu} başka olayla işleniyor`);
+      return;
+    }
+    if (anahtar) this.islenenSiparisler.add(anahtar);
+    try {
+      await this.tekOlayIsleKilitli(olayId);
+    } finally {
+      if (anahtar) this.islenenSiparisler.delete(anahtar);
     }
   }
 
@@ -147,6 +181,8 @@ export class WebhookIsleyici {
   }
 
   private async basariliTahsilat(abonelikKodu: string, siparisKodu: string) {
+    // `null`: bilinmeyen abonelik · havale satırı (çift tahsilat dalı) ·
+    // ZATEN UYGULANMIŞ sipariş (28.09, tahsilat izi — fatura/makbuz/e-posta yok).
     const sonuc = await this.abonelik.tahsilatBasarili(abonelikKodu, siparisKodu);
     if (!sonuc) return;
 
@@ -230,7 +266,10 @@ export class WebhookIsleyici {
     // Kritik değil: posta hatası doğrulanmış tahsilatı düşürmez, günlüğe yazılır.
     // 28.09: makbuz faturanın AYNI tutarını ve paketini yazar; tutar
     // okunamadıysa fatura da makbuz da yok (`yeniTahsilat` false).
-    if (cekim && yeniTahsilat && !sonuc.dunningdenCikti) {
+    // 28.09: ESKİ DÖNEM siparişine makbuz GİTMEZ (`sonuc.eskiDonem`): sorunsuz
+    // yenileme değil, geç uygulanan eski dönemdir — dunning'deki müşteri kısıt
+    // sürerken "ödemeniz alındı" okurdu. Faturası yine kuyrukta.
+    if (cekim && yeniTahsilat && !sonuc.dunningdenCikti && !sonuc.eskiDonem) {
       await this.odemeAlindiBildir({
         abonelikId: sonuc.abonelik.id,
         paketSurumuId: odenenPaket,
@@ -279,7 +318,7 @@ export class WebhookIsleyici {
       where: { abonelikId: p.abonelikId, tip: TUTAR_OKUNAMADI_OLAYI },
       select: { veri: true },
     });
-    if (onceki.some((o) => (o.veri as { siparisKodu?: unknown } | null)?.siparisKodu === p.siparisKodu)) {
+    if (tutarIziVarMi(onceki, p.siparisKodu)) {
       this.logger.warn(
         `Tutarı okunamayan tahsilat zaten bildirildi: sipariş ${p.siparisKodu} (abonelik ${p.abonelikId}) — ikinci uyarı yazılmadı`,
       );

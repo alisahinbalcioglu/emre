@@ -738,7 +738,8 @@ const SUITES: Suite[] = [
   //    işi + dunning merdiveni + satın alma dönüşü; gerçek ödeme kaybolmaz
   //    (yeniden deneme + ölü olayı gece oynatır), gerçek ret yine dunning'i
   //    başlatır, eskimiş ret ödenmiş siparişi geri almaz.
-  { ad: 'Webhook tahsilat doğrulaması: saf kural · ölçüt · sahte başarı · sahte ret · dönüş yanıtı · tarih (S/Ö/B/F/D/T)', script: 'test:webhook-tahsilat-dogrulama', zincir: 'Z0' },
+  { ad: 'Webhook tahsilat doğrulaması: saf kural · ölçüt · sahte başarı · sahte ret · dönüş yanıtı · tarih · tekrar/eski dönem · imza zorunluluğu (S/Ö/B/F/D/T/R/I)', script: 'test:webhook-tahsilat-dogrulama', zincir: 'Z0' },
+  { ad: 'iyzico canlı anahtar geçişi: saf kural · PROVA yazmaz · kapı · durum başına temizlik · idempotent · saatlik iş/gece/satın alma bağlantısı (S/P/G/U/B)', script: 'test:iyzico-canli-gecis', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 7 · F2a: TOTP / KİMLİK ŞİFRELEME / MEYDAN OKUMA
   //    ÇEKİRDEĞİ. DB, SUNUCU ve AĞ GEREKTİRMEZ → `db` bayrağı YOK. Route ve
   //    şema YOK; canlı davranış değişmez. RFC 6238 Ek-B + RFC 4226 Ek-D

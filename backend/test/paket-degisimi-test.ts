@@ -430,7 +430,12 @@ function sahteDb(p: { abonelikler: Satir[]; surumler: Satir[]; firma?: Satir | n
         olaylar.push(data);
         return data;
       },
+      // 28.09 tahsilat izi (`tahsilatBasarili`): bu dünyada fatura ve
+      // tutar-okunamadı izi YOK — her teslim uygulanır. Tekrar kuralını
+      // `test:webhook-tahsilat-dogrulama` R ölçer.
+      findMany: async () => [],
     },
+    fatura: { findUnique: async () => null },
     firma: {
       findUnique: async () => p.firma ?? { ad: 'Firma A', faturaEposta: 'fatura@firma.test', yetkiliEposta: null },
       updateMany: async () => ({ count: 0 }),

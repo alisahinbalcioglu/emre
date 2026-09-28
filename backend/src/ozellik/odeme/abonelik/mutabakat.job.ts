@@ -155,7 +155,10 @@ export function denemeSuruyorMu(
  *   · Yalnız ACTIVE'de aranır: bir yenilemenin webhook'u kaybolup SONRAKİ
  *     yenileme reddedildiyse (UNPAID) eski siparişin faturası kuyruğa girmez.
  *     `tahsilatBasarili` her zaman AKTIF'e çeker; UNPAID satırı AKTIF yapmak
- *     dunning'i silerdi.
+ *     dunning'i silerdi. ⚠ 28.09: artık ÇEKMEZ — sonraki dönemi iyzico'da
+ *     işlenmiş (eski dönem) sipariş durumu ve dunning'i değiştirmez
+ *     (`sonrakiDonemIslenmisMi`, webhook güvenliği); UNPAID'de aramayı açmak
+ *     ayrı iş (kural 2/7 kararları ve kapıları yeniden ölçülmeli).
  *   · ✓ KAPANDI 26.09 (kural 7, aşağıdaki not): erişim siparişin dönem
  *     sonundan zaten İLERİDEYSE (miras satırı, denemesiz satın almanın ilk
  *     siparişi) tetik yoktu — faturası olmayan ödenmiş sipariş artık sayılır.
@@ -217,7 +220,8 @@ export function denemeSuruyorMu(
  *      dunning'deki satır toparlanır.
  *   b. Dönemi BİTMİŞ faturasız sipariş OYNATILMAZ: `tahsilatBasarili` satırı
  *      AKTIF'e çeker ve sayaçları sıfırlar — daha yeni bir reddin dunning'ini
- *      silerdi. Son `ELLE_FATURA_PENCERESI_GUN` gün içinde bittiyse UYARI
+ *      silerdi (28.09: sonraki dönemi işlenmiş siparişte artık ÇEKMEZ — eski
+ *      dönem kuralı; kural 7b yine de değiştirilmedi, ayrı iş). Son `ELLE_FATURA_PENCERESI_GUN` gün içinde bittiyse UYARI
  *      ("elle fatura") + özet sayacı; daha eskisi tarihçedir (canlıdaki sandbox
  *      dönemi her gece uyarı üretmesin). Kural 3'ün eski uzatan siparişler
  *      uyarısı da artık yalnız FATURASIZ olanları sayar: faturası kuyruktaysa

@@ -24,6 +24,10 @@ import { json, urlencoded } from 'express';
 export const GOVDE_SINIRLARI: ReadonlyArray<{ yol: string; sinir: string }> = [
   { yol: '/api/ai/translate/duzeltmeler', sinir: '32kb' },
   { yol: '/api/ai/translate/correct', sinir: '32kb' },
+  // 28.09 (webhook güvenliği): iyzico bildirimi altı kısa alandır (< 1 KB).
+  // Uç herkese açık — 50 MB'lık global tavanla tek istek MB'larca gövde
+  // ayrıştırtabiliyordu. Kapı: `test:webhook-tahsilat-dogrulama` I9.
+  { yol: '/api/webhook/iyzico', sinir: '16kb' },
 ];
 
 export function govdeSinirlariniKur(app: Pick<NestExpressApplication, 'use'>): void {
