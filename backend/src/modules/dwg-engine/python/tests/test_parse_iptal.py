@@ -152,12 +152,13 @@ def test_I1b_onceden_kurulmus_iptal_sureci_hic_baslatmaz(taklit, monkeypatch):
 
 
 def test_I2_iptalsiz_yol_sonucu_dondurur(taklit, monkeypatch):
+    # Donus iscinin stdout BAYTLARI (26.09: ana surec JSON cozmez — bkz. test_olay_dongusu D8)
     monkeypatch.setenv("IPTAL_TEST_KIP", "hizli")
-    assert main._run_parse_subprocess("yok.dxf", {"scale": 0.01}, 60, threading.Event()) == {
+    assert json.loads(main._run_parse_subprocess("yok.dxf", {"scale": 0.01}, 60, threading.Event())) == {
         "tamam": True, "scale": 0.01,
     }
     # iptal parametresi verilmeyen eski cagri bicimi de calisir
-    assert main._run_parse_subprocess("yok.dxf", {"scale": 1}, 60) == {"tamam": True, "scale": 1}
+    assert json.loads(main._run_parse_subprocess("yok.dxf", {"scale": 1}, 60)) == {"tamam": True, "scale": 1}
 
 
 def test_I3_zaman_asimi_alt_sureci_oldurur(taklit):
@@ -182,7 +183,7 @@ def test_I7_girdi_ilk_yoklamada_bitmese_de_tamami_gider(taklit, monkeypatch):
     Windows girdiyi zaman asimindan once tek seferde yazdigi icin orada ayirt etmez."""
     monkeypatch.setenv("IPTAL_TEST_KIP", "gec-okuyan")
     t0 = time.monotonic()
-    sonuc = main._run_parse_subprocess("yok.dxf", {"dolgu": "x" * 200_000}, 8, threading.Event())
+    sonuc = json.loads(main._run_parse_subprocess("yok.dxf", {"dolgu": "x" * 200_000}, 8, threading.Event()))
     assert sonuc == {"tamam": True, "dolgu": 200_000}, sonuc
     assert time.monotonic() - t0 < 5.0, f"girdi gec gitti: {time.monotonic() - t0:.1f} sn"
 

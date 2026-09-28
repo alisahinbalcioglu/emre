@@ -2,8 +2,9 @@
 #
 # CLAUDE.md kurali: kararsiz test "bazen dusuyor" diye BIRAKILMAZ; kanit kapinin
 # kendi komutuyla VE CI kosucusunda alinir. Motor testlerinin bir kismi zamana
-# bagli esik tasir (test_olay_dongusu D1-D3: is surerken /health < 1 sn;
-# test_parse_iptal I1/I3/I5/I7). Yeni zamanlama kapisi eklenince ya da esik
+# bagli esik tasir (test_olay_dongusu D1-D3: is surerken /health < 1 sn; D5: 16
+# paralel 17 MB /geometry surerken /health < 1 sn; D6: onbelleksiz /geometry 409
+# < 1 sn; test_parse_iptal I1/I3/I5/I7). Yeni zamanlama kapisi eklenince ya da esik
 # degisince bu is akisi 25 AYRI kosucuda paketi tekrar tekrar kosar ve TEST
 # BASINA sonuc + esiklenen gecikmelerin dagilimini raporlar.
 #
@@ -179,6 +180,7 @@ jobs:
           import glob
           import json
           import os
+          import re
           import statistics
           import sys
           import xml.etree.ElementTree as ET
@@ -220,6 +222,7 @@ jobs:
           ESIK = {
               ("test_D1", "GET /health"): 1.0, ("test_D1", "GET /status"): 1.0,
               ("test_D2", "GET /health"): 1.0,
+              ("test_D5", "GET /health"): 1.0, ("test_D6", "GET /geometry/{id}"): 1.0,
               ("test_D3", "POST /layers"): 1.0, ("test_D3", "POST /convert"): 1.0, ("test_D3", "POST /parse"): 1.0,
               ("test_I1", "iptalden_donus"): 2.0, ("test_I3", "parse_sure"): 3.0, ("test_I7", "parse_sure"): 5.0,
               ("test_I5", "iptalden_donus"): None,
@@ -235,6 +238,9 @@ jobs:
                           yolad = k["yol"]
                           if yolad.startswith("GET /status/"):
                               yolad = "GET /status"
+                          # 28.09: D1/D6 `/geometry/<kimlik>` cagirir — kimlik basina ayri satir
+                          # adim basina 10 notluk siniri doldurup esikli satirlari kesiyordu.
+                          yolad = re.sub(r"/[0-9a-f]{12}(?=/|$)", "/{id}", yolad)
                           olcum[(kisa, yolad)].append(k["sure"])
                       elif k["olcu"] == "parse_alt_sureci":
                           olcum[(kisa, "parse_sure")].append(k["sure"])

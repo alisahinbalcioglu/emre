@@ -5,7 +5,8 @@ Akis:
   1. POST /upload          → dosyayi diske yaz, file_id HEMEN don; DWG→DXF + parse
                              upload_worker.py alt surecinde arka planda
   2. GET  /status/{id}     → arka plan isinin durumu (layer listesi + birim onerisi)
-  3. GET  /geometry/{id}   → viewer koordinatlari (disk JSON cache)
+  3. GET  /geometry/{id}   → viewer koordinatlari: upload_worker'in yazdigi hazir
+                             yanit dosyasi OLDUGU GIBI akitilir (yoksa 409)
   4. POST /parse?file_id=  → secilen layer'larin metraji (parse_worker.py alt sureci)
 
 OLAY DONGUSU KURALI (26.09.2026): tek uvicorn iscisi (WORKERS=1) TUM kiracilara
@@ -14,6 +15,12 @@ BEKLENMEZ — agir is alt surece gider, alt surec `asyncio.to_thread` icinde
 beklenir. Eski POST /layers, POST /convert ve dosya govdeli /parse donusumu
 dongude yapiyordu: tek istek motoru 120 sn'ye kadar dondurabiliyordu. Canlida
 kullanimlari SIFIR olculdu (ayni gun) ve kaldirildi. Kapi: tests/test_olay_dongusu.py.
+
+`def` UC (IS PARCACIGI) DA KACIS DEGILDIR: surec ici ezdxf, buyuk `json.loads` /
+`json.dumps` GIL'i dongu ile paylasir. C duzeyindeki json GIL'i HIC birakmaz —
+olculdu (canli imaj, 17 MB): is parcacigindaki json.loads donguyu 0,61 sn,
+json.dumps 0,66 sn tamamen durdurdu. Bu yuzden buyuk yanitlar ALT SURECTE son
+bicimiyle (bayt) uretilir, ana surec onlari cozmeden aktarir.
 """
 
 import os
@@ -27,11 +34,9 @@ import logging
 import tempfile
 from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from converter import read_dxf
 from topology import analyze_topology
-from geometry import extract_geometry
 from models import (
     LayerInfo, LayerListResult,
     LayerMetraj, MetrajResult, EdgeSegment, SprinklerCandidate,
@@ -57,10 +62,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# GZip compression — buyuk JSON response'lar (28K entity geometry ~5-10MB JSON
-# → ~1-2MB gzipped). Network transfer suresi 3-5x kisalir.
-# minimum_size=1024 — kucuk response'lar (health, layers metadata) compress edilmez.
-app.add_middleware(GZipMiddleware, minimum_size=1024)
+# SIKISTIRMA YOK (26.09.2026): GZipMiddleware (seviye 9) kaldirildi. Motorun tek
+# istemcisi NestJS, ayni docker aginda (DWG_ENGINE_URL=http://dwg-engine:10000);
+# Nest'in fetch'i gzip ister, acar ve JSON'u yeniden yazar — tarayiciya giden
+# sikistirmayi Caddy (`encode gzip`) yapar. Motordaki sikistirma yalniz ic agi
+# kisaltiyordu ve DONGUDE kosuyordu: olculdu (canli imaj, gercek 17 MB geometri)
+# gzip-9 0,48 sn, gzip-6 0,22 sn, gzip-1 0,08 sn; her proje acilisinda. Motor
+# yeniden internet uzerinden cagrilirsa (eski Render/Cloud Run duzeni) sikistirma
+# dongu DISINDA yapilmali (dosya diskte onceden sikistirilir), buraya geri konmaz.
 
 
 # ═══════════════════════════════════════════════════════
@@ -122,10 +131,15 @@ _CACHE_TTL = int(os.environ.get("DWG_CACHE_TTL") or 86400)  # 24 saat
 _CACHE_DIR = tempfile.gettempdir()
 _CACHE_PREFIX = "dwg_cache_"
 _CACHE_SUFFIX = ".dxf"
-# Geometry JSON cache — parse sonucunu serialize edip /geometry tekrar
-# cagrildiginda ezdxf parse maliyetinden kac. OCERP pattern: entities.json
-# disk'e yazilir, GET sadece json.load(f). ~50ms cache hit vs ~2-5sn parse.
-_GEOMETRY_CACHE_SUFFIX = ".geom.json"
+# Geometri YANITI (26.09.2026) — /geometry'nin gonderecegi baytlarin TA KENDISI:
+# `_json_safe`ten gecmis, katı JSON (NaN yok, allow_nan=False), UTF-8. upload_worker
+# alt surecte uretir ve ATOMIK yazar (.tmp + os.replace); uc onu cozmeden akitir.
+# Eski `.geom.json` (arindirilmamis, uc her istekte json.load + _json_safe +
+# json.dumps yapiyordu: 17 MB'de ~1,4 sn CPU, ~0,9 sn'si GIL'i birakmayan C json)
+# ARTIK OKUNMAZ; adi bilerek farkli — iki bicim karismaz. Deploy oncesi yuklenmis
+# dosyada bu dosya yoktur → /geometry 409, yeniden yukleme onu uretir (dedup
+# bu dosyayi sart kosar).
+_GEOMETRY_CACHE_SUFFIX = ".geometri.json"
 # Upload state dosyasi — eski in-memory _UPLOAD_STATES dict'in yerini aldi.
 # Diskte olmasi: (1) worker restart'inda state kaybolmaz, (2) WORKERS>1
 # oldugunda tum worker'lar ayni state'i gorur, (3) RAM'de sinirsiz buyume
@@ -776,69 +790,31 @@ def debug_info():
 
 
 @app.get("/geometry/{file_id}")
-def get_geometry(
-    file_id: str,
-    layers: str = Query("", description="Virgulle ayrilmis layer listesi; bos ise tum layerlar"),
-):
+async def get_geometry(file_id: str):
+    """Viewer geometrisi (Canvas2D, dwg-viewer) — YALNIZ onbellekten, oldugu gibi.
+
+    upload_worker alt sureci yaniti son bicimiyle (`_json_safe`, katı JSON, UTF-8)
+    `_geometry_cache_path`e yazar; uc dosyayi COZMEDEN 64 KB'lik parcalarla akitir
+    (FileResponse: okuma is parcacigi havuzunda, bellek parca basina, dongude
+    JSON isi yok). Yanit baytlari eski ucun urettigiyle aynidir.
+
+    ONBELLEK YOKSA 409 — DXF surec icinde OKUNMAZ (26.09.2026). Eski uc onbellek
+    yoksa ya da `layers` suzgeci verilirse DXF'i surec icinde ezdxf ile okuyordu:
+    zaman asimi yok, GIL dongu ile paylasilir, OOM tum kiracilari dusurur; paralel
+    `?layers=` istekleri (anyio: 40 is parcacigi) motoru kilitleyebiliyordu.
+    `layers` KALDIRILDI: on yuz 06.05'ten (8126a68) beri gondermiyor, baska
+    istemci yok (Nest yalniz aktariyordu). Kapi: tests/test_olay_dongusu.py D1, D5, D6.
     """
-    Cache'teki DXF'ten LINE/POLYLINE koordinatlarini dondur.
-    Frontend Canvas2D viewer (dwg-viewer klasoru) icin kullanilir.
-
-    A6 — Disk JSON cache:
-      Cache hit  (geom.json varsa, layers filtresi yoksa) → ~50ms json.load
-      Cache miss (yok veya layers filtresi var) → ezdxf parse + JSON yaz
-
-    BYPASS PIPELINE: response_model kaldirildi, Response(json bytes) ile
-    direkt dondurulur. FastAPI'nin jsonable_encoder'i Pydantic model'i
-    encode ederken DXF'ten gelen lone surrogate karakterlerine (\\udcXX)
-    takilip 500 atiyordu. Bu yaklasimda _json_safe ile sanitize +
-    json.dumps ile pre-encode → garanti calisir.
-    """
-    dxf_path = _get_cached_dxf(file_id)
-    layer_set: set[str] | None = None
-    if layers.strip():
-        layer_set = {ln.strip() for ln in layers.split(",") if ln.strip()}
-
-    # Cache hit fast-path: SADECE layer filtresi yokken kullan (cache full geometry tutar)
-    geom_cache = _geometry_cache_path(file_id)
-    if layer_set is None and os.path.isfile(geom_cache):
-        try:
-            with open(geom_cache, "r", encoding="utf-8") as f:
-                cached = json.load(f)
-            safe = _json_safe(cached)
-            body = json.dumps(safe, allow_nan=False, ensure_ascii=False).encode('utf-8')
-            return Response(content=body, media_type="application/json")
-        except Exception:
-            # Bozuk cache — sessizce parse'a dus, sonra yeniden yaz
-            try:
-                os.unlink(geom_cache)
-            except OSError:
-                pass
-
+    yol = _geometry_cache_path(file_id)
     try:
-        result = extract_geometry(dxf_path, layer_set)
-    except Exception as e:
-        raise HTTPException(500, f"Geometri cikarilamadi: {str(e)}")
-
-    # Pydantic model'i dict'e cevir, sanitize et
-    try:
-        result_dict = result.model_dump() if hasattr(result, "model_dump") else result.dict()
-    except BaseException:
-        result_dict = {}
-
-    # Layer filtresi YOKSA disk'e yaz — sonraki cagrilara hizli donus
-    if layer_set is None:
-        try:
-            with open(geom_cache, "w", encoding="utf-8") as f:
-                json.dump(result_dict, f)
-        except Exception:
-            # Cache yazimi basarisiz — sorun degil, ana akis devam
-            pass
-
-    # PIPELINE BYPASS: _json_safe + json.dumps + Response
-    safe = _json_safe(result_dict)
-    body = json.dumps(safe, allow_nan=False, ensure_ascii=False).encode('utf-8')
-    return Response(content=body, media_type="application/json")
+        bilgi = os.stat(yol)
+    except FileNotFoundError:
+        if (_sahipsiz_islemeyi_kapat(file_id, _read_state(file_id)) or {}).get("status") == "processing":
+            raise HTTPException(409, "Geometri henuz hazir degil — dosya isleniyor.")
+        _get_cached_dxf(file_id)  # 404 bilinmiyor · 410 suresi doldu (anlamlar aynen)
+        raise HTTPException(409, "Geometri onbellekte yok — dosyayi yeniden yukleyin.")
+    _get_cached_dxf(file_id)  # suresi dolmus kayit servis edilmez (410)
+    return FileResponse(yol, media_type="application/json", stat_result=bilgi)
 
 
 # ═══════════════════════════════════════════════════════
@@ -859,6 +835,23 @@ import threading
 # yalniz biri yeni pipeline baslatir. (Process-ici lock; WORKERS=1'de tam
 # guvence, WORKERS>1'de pencere cok kucuk — state dosyasi yine tekilligi saglar.)
 _UPLOAD_LOCK = asyncio.Lock()
+
+# SAHIPSIZ "processing" (26.09): kaydin sonucunu ("ready"/"error") arka plan isi
+# yazar. Motor sureci is surerken olurse (her deploy konteyneri yeniden olusturur)
+# yazacak kimse kalmaz: kayit sonsuza dek "processing" kalir, dedup ayni icerigi o
+# olu kimlige baglar, on yuz 10 dk yoklayip zaman asimina duser (TTL'e, 24 sa, dek).
+# Bu surecin isleri burada: /upload kaydi "processing" yazmadan ONCE ekler,
+# `_background_pipeline` son durumu yazdiktan SONRA cikarir. Tek iscide (WORKERS=1,
+# canli) kumede olmayan "processing" kaydinin sahibi olmus bir surectir →
+# `_sahipsiz_islemeyi_kapat`. YAS SINIRI YOK (bilerek): `asyncio.to_thread` havuzu
+# (cpu+4 is parcacigi) doluyken sonraki yukleme SIRADA bekler — `started_at`'ten
+# olculen sinir canli isi oldururdu. Cok iscide (WORKERS>1) kume baska iscinin
+# isini gormez → kapatma YOK (eski davranis: TTL). Kapi: tests/test_yeniden_baslama.py.
+_ETKIN_YUKLEMELER: set[str] = set()
+# Isci sayisi TEK yerden okunur: kapatma karari ve uvicorn.run (dosya sonu) ayni degeri
+# kullanir. uvicorn `workers or 1` alir, yalniz >1'de cok surec acar → tek isci = <= 1.
+_ISCI_SAYISI = int(os.environ.get("WORKERS") or 1)
+_TEK_ISCI = _ISCI_SAYISI <= 1
 
 
 def _clean_surrogates(s: str) -> str:
@@ -940,9 +933,10 @@ def _json_safe(obj):
 # Istemci koptugunda parse alt surecinin en gec ne kadar sonra durdurulacagi:
 # communicate() bu aralikla yoklanir (iptal gecikmesinin ust siniri).
 _IPTAL_YOKLAMA_SN = 0.25
-# parse_worker.py engine dizininde, main.py ile ayni yerde (testler taklit
-# isciyle degistirir: tests/test_parse_iptal.py).
+# parse_worker.py / upload_worker.py engine dizininde, main.py ile ayni yerde
+# (testler taklit isciyle degistirir: tests/test_parse_iptal.py, test_olay_dongusu.py).
 _PARSE_WORKER_YOLU = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parse_worker.py")
+_UPLOAD_WORKER_YOLU = os.path.join(os.path.dirname(os.path.abspath(__file__)), "upload_worker.py")
 
 
 class ParseIptalEdildi(Exception):
@@ -961,7 +955,7 @@ def _alt_sureci_durdur(proc) -> None:
 
 
 def _run_parse_subprocess(dxf_path: str, params: dict, timeout: int = 180,
-                          iptal: threading.Event | None = None) -> dict:
+                          iptal: threading.Event | None = None) -> bytes:
     """analyze_dxf_metraj'i IZOLE subprocess'te calistir — OOM-safe.
 
     Render free tier 512MB single-worker'da bulk-parse OOM kill yapiyor
@@ -985,7 +979,11 @@ def _run_parse_subprocess(dxf_path: str, params: dict, timeout: int = 180,
     3. saniyede kesilen ayirma 44-48 sn daha kostu, tam CPU; yeni istek %51-63
     uzadi). Zaman asimi ve beklenmeyen hata yolunda da alt surec oldurulur.
 
-    Donus: result dict (model_dump cikti). Hata durumunda RuntimeError firlatir.
+    Donus: iscinin stdout BAYTLARI — yanitin ta kendisi (26.09.2026). Burada
+    json.loads/json.dumps YAPILMAZ: C duzeyindeki json GIL'i birakmaz; bu is
+    parcacigindaki 17 MB'lik cozum bile donguyu ~0,6 sn tamamen durdurur
+    (olculdu, canli imaj). Isci ciktisi zaten `_json_safe` + katı JSON + UTF-8.
+    Hata durumunda RuntimeError firlatir.
     """
     import subprocess as _sp
 
@@ -995,11 +993,13 @@ def _run_parse_subprocess(dxf_path: str, params: dict, timeout: int = 180,
     if iptal is not None and iptal.is_set():
         raise ParseIptalEdildi("istemci koptu, parse_worker baslatilmadi")
 
-    payload = json.dumps({"dxf_path": dxf_path, **params})
+    # ensure_ascii (varsayilan): yuk saf ASCII, bayt kipinde kodlama sorunu yok.
+    payload = json.dumps({"dxf_path": dxf_path, **params}).encode("ascii")
 
+    # Bayt kipi: cikti metne cevrilmeden (ve geri kodlanmadan) yanita gider.
     proc = _sp.Popen(
         [sys.executable, worker_path],
-        stdin=_sp.PIPE, stdout=_sp.PIPE, stderr=_sp.PIPE, text=True,
+        stdin=_sp.PIPE, stdout=_sp.PIPE, stderr=_sp.PIPE,
     )
     son_an = time.monotonic() + timeout
     try:
@@ -1031,14 +1031,17 @@ def _run_parse_subprocess(dxf_path: str, params: dict, timeout: int = 180,
         _alt_sureci_durdur(proc)
 
     if proc.returncode == 0:
-        try:
-            return json.loads(stdout)
-        except json.JSONDecodeError as je:
-            logging.error("parse_worker stdout JSON parse fail: %s\nstdout[:500]: %s", je, stdout[:500])
-            raise RuntimeError(f"Subprocess sonuc JSON degil: {str(je)[:200]}")
+        # Ucuz bicim denetimi (tam cozum yok, bkz. docstring): bos ya da nesne
+        # olmayan cikti hatadir.
+        if stdout[:1024].lstrip()[:1] != b"{":
+            logging.error("parse_worker stdout JSON nesnesi degil: %r", stdout[:500])
+            raise RuntimeError(f"Subprocess sonuc JSON degil: {stdout[:200]!r}")
+        return stdout
 
-    # Non-zero exit code — error
-    err_short = (stderr or "")[:500]
+    # Non-zero exit code — error. stderr metni iscinin yerel kodlamasindadir
+    # (eski metin kipi de bunu kullaniyordu).
+    import locale as _locale
+    err_short = (stderr or b"").decode(_locale.getpreferredencoding(False), errors="replace")[:500]
     if proc.returncode == -9 or proc.returncode == 137:
         # SIGKILL — OOM kill
         logging.error("parse_worker OOM-killed (exit %d) for %s", proc.returncode, dxf_path)
@@ -1060,11 +1063,12 @@ def _run_upload_subprocess(file_id: str, src_path: str, timeout: int = 600) -> d
     parent saglam kalir, state'e net hata yazilir.
 
     Iletisim: stdin JSON {src_path, dxf_out, geom_out} → stdout JSON sonuc.
+    geom_out: /geometry yanitinin son bicimi (bkz. _GEOMETRY_CACHE_SUFFIX).
     Exit: 0 basarili | 1 hata (stderr) | -9/137 OOM kill.
     """
     import subprocess as _sp
 
-    worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "upload_worker.py")
+    worker_path = _UPLOAD_WORKER_YOLU
     if not os.path.isfile(worker_path):
         raise RuntimeError(f"upload_worker.py bulunamadi: {worker_path}")
 
@@ -1127,13 +1131,72 @@ def _detect_unit_from_dxf(doc):
 
 
 
+def _yarim_ciktilari_sil(file_id: str) -> None:
+    """Basarisiz yuklemenin ciktilarini siler: onbellek DXF'i + geometri (+ .tmp).
+
+    Temizlik ANA SURECTEDIR: OOM'da SIGKILL alan ya da zaman asiminda oldurulen
+    isci kendi temizligini yapamaz (ornek: DXF onbellege tasindi, ezdxf okurken
+    bellek bitti). Geride kalan DXF eskiden /geometry'yi SUREC ICINDE ezdxf'e
+    dusuruyordu — isciyi olduren dosya tum kiracilarin motorunu olduruyordu.
+    """
+    geometri = _geometry_cache_path(file_id)
+    for yol in (_cache_path(file_id), geometri, geometri + ".tmp"):
+        try:
+            os.unlink(yol)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            logging.warning("Yarim yukleme ciktisi silinemedi %s: %r", yol, e)
+
+
+def _sahipsiz_islemeyi_kapat(file_id: str, durum: dict | None) -> dict | None:
+    """Sahibi olmus "processing" kaydini "error"a cevirir; yarim ciktilari ve ham kaynagi siler.
+
+    Sahipsiz = tek iscide bu surecin etkin isleri arasinda yok (bkz. _ETKIN_YUKLEMELER).
+    Guncel durumu dondurur (kapatilmadiysa verilenin aynisi). SIRA: once kume, sonra
+    disk — is son durumu yazip kumeden CIKMIS olabilir (once yazar, sonra cikar);
+    kumede yoksa diskten YENIDEN okunan durum son hali gosterir, cagiranin elindeki
+    eski okuma hala "processing" der. Olay dongusunde cagrilir: yalniz kucuk dosya islemi.
+    """
+    if (durum or {}).get("status") != "processing" or not _TEK_ISCI or file_id in _ETKIN_YUKLEMELER:
+        return durum
+    durum = _read_state(file_id)
+    if (durum or {}).get("status") != "processing":
+        return durum
+    _yarim_ciktilari_sil(file_id)
+    for uzanti in ("dwg", "dxf"):
+        try:
+            os.unlink(_src_path(file_id, uzanti))
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            logging.warning("Sahipsiz kaydin kaynagi silinemedi %s: %r", file_id, e)
+    kapali = {
+        "status": "error",
+        "hash": durum.get("hash"),
+        "kapsam": durum.get("kapsam"),
+        "started_at": durum.get("started_at"),
+        "completed_at": time.time(),
+        "error_type": "IslemYaridaKaldi",
+        "error": "Sunucu yeniden basladi, dosyanin islenmesi yarida kaldi. Lutfen dosyayi yeniden yukleyin.",
+    }
+    try:
+        _write_state(file_id, kapali)
+    except OSError as e:  # yazilamazsa bir sonraki denetim yine kapatir
+        logging.warning("Sahipsiz kayit yazilamadi %s: %r", file_id, e)
+    logging.warning("Sahipsiz 'processing' kaydi kapatildi: %s", file_id)
+    return kapali
+
+
 def _background_pipeline(file_id: str, src_path: str) -> None:
     """Background pipeline orkestratoru — sync function, asyncio.to_thread ile cagrilir.
 
     AGIR ISIN TAMAMI (DWG→DXF donusumu + ezdxf parse + geometry cache)
     upload_worker.py SUBPROCESS'inde kosar; bu fonksiyon sadece subprocess'i
     bekler ve sonucu state dosyasina yazar. OOM/timeout olursa yalniz cocuk
-    olur — motor ve diger kullanicilarin state'leri SAGLAM kalir.
+    olur — motor ve diger kullanicilarin state'leri SAGLAM kalir. Basarisiz
+    yuklemenin ciktilari silinir (`_yarim_ciktilari_sil`); "ready" durumu
+    geometri dosyasinin VARLIGINI garanti eder.
     """
     prev = _read_state(file_id) or {}
     started_at = prev.get("started_at", time.time())
@@ -1143,6 +1206,8 @@ def _background_pipeline(file_id: str, src_path: str) -> None:
     kapsam = prev.get("kapsam")
     try:
         result = _run_upload_subprocess(file_id, src_path, timeout=600)
+        if not os.path.isfile(_geometry_cache_path(file_id)):
+            raise RuntimeError("upload_worker basarili dondu ama geometri dosyasi yok")
         _write_state(file_id, {
             "status": "ready",
             "hash": file_hash,
@@ -1180,6 +1245,11 @@ def _background_pipeline(file_id: str, src_path: str) -> None:
             logging.exception("Background pipeline failed for file_id=%s", file_id)
         except BaseException:
             pass
+        # Once ciktilar, sonra durum: "error" goren hic kimse yarim dosya gormez.
+        try:
+            _yarim_ciktilari_sil(file_id)
+        except BaseException:
+            pass
         try:
             _write_state(file_id, {
                 "status": "error",
@@ -1200,6 +1270,8 @@ def _background_pipeline(file_id: str, src_path: str) -> None:
                 os.unlink(src_path)
         except OSError:
             pass
+        # EN SON: son durum yazildi — sahipsiz denetimi artik diskte onu gorur.
+        _ETKIN_YUKLEMELER.discard(file_id)
 
 
 @app.post("/upload")
@@ -1275,8 +1347,13 @@ async def upload_async(file: UploadFile = File(...), kapsam: str | None = Form(N
                     logging.info("Dedup atlandi (birim tespit surumu eski: %s != %s)",
                                  st.get("detector_version"), DETECTOR_VERSION)
                     continue
-                status = st.get("status")
-                if status == "ready" and os.path.isfile(_cache_path(fid)):
+                # Olu surecin "processing" kaydi kapatilir, ona BAGLANILMAZ.
+                status = (_sahipsiz_islemeyi_kapat(fid, st) or {}).get("status")
+                # Geometri dosyasi da SART: yoksa (deploy oncesi eski bicim ya da
+                # silinmis) /geometry 409 verir — ayni file_id'ye dedup kullaniciyi
+                # 24 saat kilitlerdi; yeniden isleme dosyayi uretir.
+                if (status == "ready" and os.path.isfile(_cache_path(fid))
+                        and os.path.isfile(_geometry_cache_path(fid))):
                     logging.info("Upload dedup (ready): %s → %s", file.filename, fid)
                     return {"file_id": fid, "status": "ready", "dedup": True, "kapsamli": True}
                 if status == "processing" and (
@@ -1288,6 +1365,9 @@ async def upload_async(file: UploadFile = File(...), kapsam: str | None = Form(N
 
             # ── Yeni pipeline: ham dosyayi diske yaz + state + spawn ──
             file_id = uuid.uuid4().hex[:12]
+            # "processing" yazilmadan ONCE bu surecin isi: denetim onu hic sahipsiz
+            # gormez (yazim patlarsa kalan kimlik zararsiz — kaydi yok).
+            _ETKIN_YUKLEMELER.add(file_id)
             src_path = _src_path(file_id, ext)
             with open(src_path, "wb") as sf:
                 sf.write(content)
@@ -1340,7 +1420,7 @@ async def get_upload_status(file_id: str):
     "error" field'inda.
     """
     try:
-        state = _read_state(file_id)
+        state = _sahipsiz_islemeyi_kapat(file_id, _read_state(file_id))
         if state is None:
             raise HTTPException(404, "file_id bilinmiyor (cache TTL gecmis olabilir)")
 
@@ -1485,13 +1565,13 @@ async def parse_dwg(
             "sprinkler_layers_manual": sprinkler_layers_manual,
             "split_mode": split_mode,
         }
-        # Subprocess'i async thread'de calistir, FastAPI event loop bloke olmasin
-        result_dict = await asyncio.to_thread(
+        # Subprocess'i async thread'de calistir, FastAPI event loop bloke olmasin.
+        # Donen baytlar yanitin ta kendisi (isci: _json_safe + katı JSON + UTF-8);
+        # burada json.dumps YOK — eskiden 14 MB'de ~1 sn dongu isiydi (26.09).
+        govde = await asyncio.to_thread(
             _run_parse_subprocess, dxf_path, params, 180, iptal
         )
-        # Subprocess zaten _json_safe ile sanitize ettiği için direkt response
-        body = json.dumps(result_dict, allow_nan=False, ensure_ascii=False).encode('utf-8')
-        return Response(content=body, media_type="application/json")
+        return Response(content=govde, media_type="application/json")
 
     except HTTPException:
         raise
@@ -1530,5 +1610,5 @@ if __name__ == "__main__":
     # Filesystem-based cache (yukaridaki _cache_path) sayesinde tek worker bile
     # restart sonrasi cache'i koruyor — multi-worker artik strictly gerekli degil.
     # Daha fazla CPU/RAM (Starter plan) ile WORKERS=2 ayarlanabilir.
-    workers = int(os.environ.get("WORKERS") or 1)
-    uvicorn.run("main:app", host="0.0.0.0", port=port, workers=workers)
+    # Tek okuma: _ISCI_SAYISI (sahipsiz "processing" karari da onu kullanir).
+    uvicorn.run("main:app", host="0.0.0.0", port=port, workers=_ISCI_SAYISI)

@@ -1058,6 +1058,27 @@ async function bolumD(): Promise<void> {
   check('D7 ayni firmada ETKIN hesap → ZATEN_EKIPTE',
     hataKodu(r7b.hata) === 'ZATEN_EKIPTE', JSON.stringify(hataGovdesi(r7b.hata)));
 
+  // D7c/D7d (27.09.2026) — BASKA_FIRMADA_KAYITLI metni CIKMAZA yollamaz.
+  // Eski metin "once hesabinizi kapatin ya da o firmadan ayrilin" diyordu;
+  // kapatilan adres KAPATMA_SAKLAMA_GUN boyunca davetle katilamaz (K1) —
+  // 26-27.09 canlida yasandi. Adresi HEMEN serbest birakan tek yol ekipten
+  // cikarilmak (`ekiptenCikarildi`): UYEYE o soylenir, SAHIBE baska adres.
+  const d7Sahip = String(hataGovdesi(r7.hata)?.mesaj ?? '');
+  check('D7c sahip: baska ADRES onerilir, hesap kapatma onerilmez, bedeli (gun) yazar',
+    d7Sahip.includes('başka bir e-posta adresinize') &&
+      !/kapatman[ıi]z/i.test(d7Sahip) && !/ayrılman[ıi]z/i.test(d7Sahip) &&
+      d7Sahip.includes(`${KAPATMA_SAKLAMA_GUN} gün`),
+    d7Sahip);
+  p7._veri.user.push(kullanici({ id: 'Y', email: 'uye@baska.test', firmaId: 'F2', firmaRol: 'uye' }));
+  const d7c = davetEkle(p7, { id: 'd7c', eposta: 'uye@baska.test' });
+  const r7c = await dene(() => s7.davetKabul({ token: d7c.token, parola: 'parola1234', sozlesmeOnayi: true } as any));
+  const d7Uye = String(hataGovdesi(r7c.hata)?.mesaj ?? '');
+  check('D7d uye: kod AYNI, metin "yoneticiniz sizi ekipten cikarsin" (adres HEMEN serbest kalir)',
+    hataKodu(r7c.hata) === 'BASKA_FIRMADA_KAYITLI' &&
+      d7Uye.includes('sizi ekipten çıkarmasını isteyin') &&
+      !d7Uye.includes('başka bir e-posta adresinize'),
+    d7Uye);
+
   // D8 — kosullu tuketim (yaris)
   const p8 = ucKisi(6);
   const { servis: s8 } = uyelikKur(p8);
