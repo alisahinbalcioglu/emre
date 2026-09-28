@@ -205,6 +205,9 @@ export function kopyadanMusteri(
   };
 }
 
+/** Kuyruğa almanın okuma yüzü — kök istemci ya da işlemin `tx`i (28.09). */
+type FaturaOkuyucu = Pick<Prisma.TransactionClient, 'abonelik' | 'paketSurumu'>;
+
 export interface FaturaTalebi {
   abonelikId: string;
   /** Tekilleştirme anahtarı — aynı tahsilat için iki fatura kesilmesin. */
@@ -289,16 +292,31 @@ export class FaturaServisi {
    * işleniyor); `false` = aynı tahsilat kodu zaten vardı (webhook tekrarı,
    * mutabakat oynatması). Sorunsuz yenilemenin "ödemeniz alındı" e-postası bu
    * cevaba bağlıdır — tahsilat başına TAM BİR KEZ (`WebhookIsleyici`).
+   *
+   * ⚠ 28.09 — İŞLEM İÇİNDE (`secenek.tx`; havale onayı): satır onayla AYNI
+   * işlemde yazılır, yazılamazsa onay da geri alınır — onaylanan tahsilatın
+   * faturası (VUK 231/5, 7 gün) kaybolmaz. Tekil ihlal Postgres işlemini
+   * BOZAR (sonraki her deyim 25P02): işlem içinde `createMany({
+   * skipDuplicates })` (ON CONFLICT DO NOTHING) yazar, sayı 0 = satır zaten
+   * var. Okumalar (müşteri kopyası, paket adı) da aynı `tx`ten.
    */
-  async kuyrugaAl(t: FaturaTalebi): Promise<boolean> {
+  async kuyrugaAl(t: FaturaTalebi, secenek: { tx?: Prisma.TransactionClient } = {}): Promise<boolean> {
+    const db = secenek.tx ?? this.prisma;
     // ── K4: MUSTERI KIMLIGI TAM BURADA DONAR ─────────────────────────────
     // Bu metot TAHSILAT anindan cagrilir (webhook.isleyici:basariliTahsilat).
     // Kesim sonra kosar; arada adres degisirse fatura ESKI adresi tasimalidir.
-    const kopya = await this.musteriKopyasiniCikar(t.abonelikId);
+    const kopya = await this.musteriKopyasiniCikar(t.abonelikId, db);
     // 28.09 — PAKET ADI da tahsilat anında donar (kesim o anki paketi okumaz).
-    const paketAdi = await this.paketAdiniCikar(t.paketSurumuId);
+    const paketAdi = await this.paketAdiniCikar(t.paketSurumuId, db);
     // Veri kuralı SAF yardımcıda (`faturaSatiriVerisi`); burada yalnız yazım.
     const data = faturaSatiriVerisi(t, { kopya, paketAdi, kdvOrani: this.kdvOrani, simdi: new Date() });
+
+    if (secenek.tx) {
+      const { count } = await secenek.tx.fatura.createMany({ data: [data], skipDuplicates: true });
+      if (count === 1) this.logger.log(`Fatura kuyruğa alındı (işlem içinde): ${t.tahsilatKodu}`);
+      else this.logger.debug(`Fatura zaten var: ${t.tahsilatKodu}`);
+      return count === 1;
+    }
 
     try {
       await this.prisma.fatura.create({ data });
@@ -323,8 +341,9 @@ export class FaturaServisi {
    */
   private async musteriKopyasiniCikar(
     abonelikId: string,
+    db: FaturaOkuyucu = this.prisma,
   ): Promise<FaturaMusteriKopyasi> {
-    const ab = await this.prisma.abonelik.findUnique({
+    const ab = await db.abonelik.findUnique({
       where: { id: abonelikId },
       select: {
         firma: {
@@ -355,11 +374,11 @@ export class FaturaServisi {
    * BULUNAMAZSA fırlatmaz (K4 ile aynı kural): NULL yazılır, kesim eski
    * davranışa (aboneliğin o anki paketi) düşer — günlüğe yazılır. Veritabanı
    * HATASI fırlar (kopya çıkarmadaki gibi); kararı `kuyrugaAl`ı çağıran
-   * verir: webhook olayı yeniden denenir, havale onayı yalnız günlüğe yazar
-   * (o fatura kaybolur — bu işten önce de böyleydi, ayrı iş).
+   * verir: webhook olayı yeniden denenir; havale onayı 28.09'dan beri işlem
+   * İÇİNDE çağırır — hata onayı geri alır, yönetici yeniden onaylar.
    */
-  private async paketAdiniCikar(paketSurumuId: string): Promise<string | null> {
-    const surum = await this.prisma.paketSurumu.findUnique({
+  private async paketAdiniCikar(paketSurumuId: string, db: FaturaOkuyucu = this.prisma): Promise<string | null> {
+    const surum = await db.paketSurumu.findUnique({
       where: { id: paketSurumuId },
       select: { paket: { select: { ad: true } } },
     });

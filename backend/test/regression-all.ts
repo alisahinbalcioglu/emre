@@ -658,7 +658,7 @@ const SUITES: Suite[] = [
   //    bloğunda ölçülür) iç içe geçme sıralarını, gerçek fatura taramasıyla
   //    NES kesim talebini ve denetleyicinin yol kimliğini ölçer. DB/AĞ/iyzico
   //    GEREKTİRMEZ.
-  { ad: 'Havale durum geçişleri: READ COMMITTED taklidi · çift onay (4 sıra) · iptal ↔ onay · fatura kesildi · kusurdan kalma satır · denetleyici · farklı havale kilidi · yeni firma vitrini + kart kapısı · Prisma önkoşulu (T/Y1-Y4/S/İ/F/FK/G/D/FH/V/K)', script: 'test:havale-onay-yarisi', zincir: 'Z0' },
+  { ad: 'Havale durum geçişleri: READ COMMITTED taklidi · çift onay (4 sıra) · iptal ↔ onay · fatura kesildi · kusurdan kalma satır · denetleyici · farklı havale kilidi · yeni firma vitrini + kart kapısı · fatura onayla aynı işlemde · Prisma önkoşulu (T/Y1-Y4/S/İ/F/FK/G/D/FH/V/FT/K)', script: 'test:havale-onay-yarisi', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 6.12a DENEME BİR KEZ. DB ve AĞ GEREKTİRMEZ (bellek-Prisma,
   //    kısıt + ILIKE joker + iç içe geçen çağrılar). Ölçülen: deneme hakkı hiçbir
   //    kimliğe bağlı değildi; aynı firma (iptal/deneme sonu ödeme alınamadı), hesap

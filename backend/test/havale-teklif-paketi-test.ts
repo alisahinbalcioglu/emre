@@ -363,6 +363,21 @@ function bellekPrisma() {
       await Promise.resolve();
       return yansit(model, olustur(model, arg.data), arg);
     },
+    // 28.09: havale onayı faturayı İŞLEM İÇİNDE `createMany({ skipDuplicates })`
+    // (ON CONFLICT DO NOTHING) ile yazar — tekil çakışmada satır atlanır.
+    createMany: async (arg: any) => {
+      await Promise.resolve();
+      let count = 0;
+      for (const veri of arg.data as Satir[]) {
+        try {
+          olustur(model, veri);
+          count++;
+        } catch (e: any) {
+          if (!(arg.skipDuplicates && e?.code === 'P2002')) throw e;
+        }
+      }
+      return { count };
+    },
     update: async (arg: any) => {
       await Promise.resolve();
       const s = tablo(model).find((r) => whereUygula(r, arg.where));

@@ -101,6 +101,9 @@ export const KAPALI_HESAPTA_ACIK: ReadonlySet<Yetenek> = new Set([
   Yetenek.ABONELIK_YONET,
 ]);
 
+/** 28.09 — vitrin neden: paketi yok · havale teklifi ödenmeyi bekliyor. */
+export type VitrinNedeni = 'paket-yok' | 'havale-bekleniyor';
+
 export interface ErisimKarari {
   erisimVar: boolean;
   saltOkunur: boolean;
@@ -126,6 +129,13 @@ export interface ErisimKarari {
    *   ödemesi beklenen firma eski abone değildir) yazılır.
    */
   vitrin?: boolean;
+  /**
+   * 28.09 — VİTRİNİN NEDENİ (yalnız `vitrin: true` iken yazılır). Emre
+   * kararı: havale teklifi ödenmeyi bekleyen firmanın penceresi ve kilitli
+   * kartı müşteriyi İKİNCİ KEZ paket seçmeye yollamaz, "dekontunuz
+   * onaylanınca açılır" der. Metni ön yüz seçer; NEDENİ sunucu söyler.
+   */
+  vitrinNedeni?: VitrinNedeni;
   durum: AbonelikDurumu;
   /** Kullanıcıya gösterilecek uyarı — null ise uyarı yok. */
   uyari: {
@@ -221,11 +231,12 @@ const HAVALE_BEKLENIYOR_UYARISI: ErisimUyarisi = {
  * Paket bilgisi boş — firmanın ödenmiş paketi yok. Şerit her çağrıda
  * KOPYALANIR (sabit nesne çağırana paylaşılmaz).
  */
-function vitrinKarari(durum: AbonelikDurumu, uyari: ErisimUyarisi): ErisimKarari {
+function vitrinKarari(durum: AbonelikDurumu, uyari: ErisimUyarisi, vitrinNedeni: VitrinNedeni): ErisimKarari {
   return {
     erisimVar: false,
     saltOkunur: false,
     vitrin: true,
+    vitrinNedeni,
     durum,
     uyari: { ...uyari, ...(uyari.eylem ? { eylem: { ...uyari.eylem } } : {}) },
     kalanGun: null,
@@ -301,7 +312,7 @@ export class ErisimServisi {
       // ("30 gün ücretsiz…") burada YAZILMAZ: deneme hakkı kişiye bağlıdır
       // (firma + e-posta + doğrulama), bu karar firma ekseninde verilir —
       // ön yüz satırı `/abonelik/paketler`in firma+kişi kararından kurar.
-      return vitrinKarari(AbonelikDurumu.SONA_ERDI, PAKET_SECIN_UYARISI);
+      return vitrinKarari(AbonelikDurumu.SONA_ERDI, PAKET_SECIN_UYARISI, 'paket-yok');
     }
 
     // ── HAVALE TEKLİFİ BEKLEYEN YENİ FİRMA (28.09.2026 — Emre kararı C) ────
@@ -320,7 +331,11 @@ export class ErisimServisi {
         onaylanmisHavaleVarMi(this.prisma, ab.id),
         bekleyenHavaleVarMi(this.prisma, ab.id),
       ]);
-      if (!odenmis) return vitrinKarari(ab.durum, bekleyen ? HAVALE_BEKLENIYOR_UYARISI : PAKET_SECIN_UYARISI);
+      if (!odenmis) {
+        return bekleyen
+          ? vitrinKarari(ab.durum, HAVALE_BEKLENIYOR_UYARISI, 'havale-bekleniyor')
+          : vitrinKarari(ab.durum, PAKET_SECIN_UYARISI, 'paket-yok');
+      }
     }
 
     const paket = ab.paketSurumu.paket;

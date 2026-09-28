@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 849
-Toplam satir: 233684
+Toplam satir: 234016
 Uc nokta: 238
 test:* scripti: 140
 
@@ -244,7 +244,7 @@ test:* scripti: 140
 | `backend/src/ozellik/odeme/abonelik/dto/abonelik-degistir.dto.ts` | 35 |
 | `backend/src/ozellik/odeme/abonelik/dto/kart-guncelle.dto.ts` | 21 |
 | `backend/src/ozellik/odeme/abonelik/erisim.guard.ts` | 152 |
-| `backend/src/ozellik/odeme/abonelik/erisim.servisi.ts` | 628 |
+| `backend/src/ozellik/odeme/abonelik/erisim.servisi.ts` | 643 |
 | `backend/src/ozellik/odeme/abonelik/fiyat.controller.ts` | 53 |
 | `backend/src/ozellik/odeme/abonelik/iyzico-donus.controller.ts` | 103 |
 | `backend/src/ozellik/odeme/abonelik/kart-kapatma.ts` | 91 |
@@ -271,12 +271,12 @@ test:* scripti: 140
 | `backend/src/ozellik/odeme/eposta/musteri-epostalari.ts` | 227 |
 | `backend/src/ozellik/odeme/eposta/yonetim-bildirimi.ts` | 186 |
 | `backend/src/ozellik/odeme/fatura/fatura-kesim-epostasi.ts` | 206 |
-| `backend/src/ozellik/odeme/fatura/fatura.servisi.ts` | 597 |
+| `backend/src/ozellik/odeme/fatura/fatura.servisi.ts` | 616 |
 | `backend/src/ozellik/odeme/fatura/muhasebe.adaptor.ts` | 425 |
 | `backend/src/ozellik/odeme/havale/havale-durumlari.ts` | 64 |
 | `backend/src/ozellik/odeme/havale/havale-kart-penceresi.ts` | 472 |
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | 99 |
-| `backend/src/ozellik/odeme/havale/havale.servisi.ts` | 844 |
+| `backend/src/ozellik/odeme/havale/havale.servisi.ts` | 850 |
 | `backend/src/ozellik/odeme/iyzico/imza.ts` | 206 |
 | `backend/src/ozellik/odeme/iyzico/iyzico-hata.filter.ts` | 108 |
 | `backend/src/ozellik/odeme/iyzico/iyzico-tarihi.ts` | 46 |
@@ -369,9 +369,9 @@ test:* scripti: 140
 | `backend/test/guvenlik-paket1-test.ts` | 509 |
 | `backend/test/guvenlik-turu-2-test.ts` | 431 |
 | `backend/test/guvenlik-uclari-test.ts` | 462 |
-| `backend/test/havale-iyzico-cakismasi-test.ts` | 1681 |
-| `backend/test/havale-onay-yarisi-test.ts` | 2164 |
-| `backend/test/havale-teklif-paketi-test.ts` | 2156 |
+| `backend/test/havale-iyzico-cakismasi-test.ts` | 1696 |
+| `backend/test/havale-onay-yarisi-test.ts` | 2271 |
+| `backend/test/havale-teklif-paketi-test.ts` | 2171 |
 | `backend/test/hesap-dogrulugu-test.ts` | 914 |
 | `backend/test/iliskisel-alan-suzgeci-test.ts` | 172 |
 | `backend/test/imha-test.ts` | 1166 |
@@ -402,7 +402,7 @@ test:* scripti: 140
 | `backend/test/matching-unit-test.ts` | 714 |
 | `backend/test/migration-zinciri-test.ts` | 907 |
 | `backend/test/miras-erisimi-test.ts` | 701 |
-| `backend/test/miras-hakki-test.ts` | 1789 |
+| `backend/test/miras-hakki-test.ts` | 1804 |
 | `backend/test/musteri-epostalari-test.ts` | 1118 |
 | `backend/test/mutabakat-deneme-test.ts` | 665 |
 | `backend/test/mutabakat-faturasiz-tahsilat-test.ts` | 1489 |
@@ -725,19 +725,19 @@ test:* scripti: 140
 | `frontend/ozellik/kutuphane/oksuz-kutuphane-uyarisi.ts` | 60 |
 | `frontend/ozellik/odeme/AbonelikSeridi.tsx` | 78 |
 | `frontend/ozellik/odeme/DenemeSatiri.tsx` | 27 |
-| `frontend/ozellik/odeme/ErisimKapisi.tsx` | 109 |
+| `frontend/ozellik/odeme/ErisimKapisi.tsx` | 110 |
 | `frontend/ozellik/odeme/FiyatKartlari.tsx` | 142 |
 | `frontend/ozellik/odeme/IyzicoFormu.tsx` | 36 |
 | `frontend/ozellik/odeme/OneriSeridi.tsx` | 168 |
-| `frontend/ozellik/odeme/VitrinBolumKarti.tsx` | 45 |
-| `frontend/ozellik/odeme/VitrinSaglayici.tsx` | 176 |
+| `frontend/ozellik/odeme/VitrinBolumKarti.tsx` | 49 |
+| `frontend/ozellik/odeme/VitrinSaglayici.tsx` | 193 |
 | `frontend/ozellik/odeme/abonelik-ozeti.test.ts` | 658 |
 | `frontend/ozellik/odeme/abonelik-ozeti.ts` | 268 |
 | `frontend/ozellik/odeme/deneme-satiri.test.ts` | 121 |
 | `frontend/ozellik/odeme/dwg-kapisi.test.ts` | 135 |
 | `frontend/ozellik/odeme/dwg-kapisi.ts` | 44 |
 | `frontend/ozellik/odeme/erisim-durumu.test.ts` | 247 |
-| `frontend/ozellik/odeme/erisim-durumu.ts` | 283 |
+| `frontend/ozellik/odeme/erisim-durumu.ts` | 299 |
 | `frontend/ozellik/odeme/fatura-kimligi.test.ts` | 247 |
 | `frontend/ozellik/odeme/fatura-kimligi.ts` | 196 |
 | `frontend/ozellik/odeme/fiyat-sayfasi.test.ts` | 429 |
@@ -760,8 +760,8 @@ test:* scripti: 140
 | `frontend/ozellik/odeme/telefon-bicim.test.ts` | 150 |
 | `frontend/ozellik/odeme/telefon-bicim.ts` | 105 |
 | `frontend/ozellik/odeme/turkce-metin.test.ts` | 601 |
-| `frontend/ozellik/odeme/vitrin-metinleri.ts` | 185 |
-| `frontend/ozellik/odeme/vitrin.test.ts` | 365 |
+| `frontend/ozellik/odeme/vitrin-metinleri.ts` | 213 |
+| `frontend/ozellik/odeme/vitrin.test.ts` | 439 |
 | `frontend/ozellik/odeme/yonetici/YoneticiPaketPenceresi.tsx` | 427 |
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.test.ts` | 298 |
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |

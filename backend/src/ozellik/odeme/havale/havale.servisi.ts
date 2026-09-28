@@ -459,30 +459,36 @@ export class HavaleServisi {
         data: { uzatilanTarih: abonelik.erisimSonu },
       });
 
+      // ⚠ 28.09 — FATURA SATIRI ONAYLA AYNI İŞLEMDE (VUK 231/5: faturanın son
+      // günü ödemeden 7 gün). Eskiden işlem DIŞINDA `.catch(log)` ile
+      // çağrılıyordu: DB hatasında onay geçiyor, erişim uzuyor ama Fatura
+      // satırı — dolayısıyla NES kesim talebi — HİÇ oluşmuyordu; yeniden onay
+      // 400 ("zaten onaylanmış") verdiği için yeniden deneyen yol da yoktu
+      // (ölçüldü, `test:havale-onay-yarisi` FT). Artık yazılamazsa onay GERİ
+      // ALINIR, yönetici yeniden onaylar. `kuyrugaAl` yalnız satır yazar —
+      // muhasebe/NES dakikalık taramada (`kuyrugaBak`), işlemi uzatmaz.
+      // Ödeme anı = ONAY anı (havalenin banka tarihi kayıtlı değil); paket =
+      // onayın yazdığı etkin paket (teklifin paketi), kesim anındaki değil.
+      if (p.faturaKesme !== false) {
+        const donemBasi = new Date();
+        await this.fatura.kuyrugaAl(
+          {
+            abonelikId: mevcut.abonelikId,
+            tahsilatKodu: `havale:${p.havaleId}`,
+            tutar: Number(mevcut.tutar),
+            paraBirimi: mevcut.paraBirimi,
+            donemBasi,
+            donemSonu: guncel.erisimSonu,
+            tahsilatTarihi: havale.onaylandi ?? donemBasi,
+            paketSurumuId: guncel.paketSurumuId,
+          },
+          { tx },
+        );
+      }
+
       // Yanıt yazılan paketi taşısın (uzatmanın dönüşü eski paketi taşır).
       return { abonelik: guncel, havale };
     });
-
-    // Fatura kuyruğa — işlem dışında, çünkü muhasebe servisi yavaşsa
-    // aboneliğin uzaması gecikmemeli.
-    if (p.faturaKesme !== false) {
-      const donemBasi = new Date();
-      await this.fatura
-        .kuyrugaAl({
-          abonelikId: mevcut.abonelikId,
-          tahsilatKodu: `havale:${p.havaleId}`,
-          tutar: Number(mevcut.tutar),
-          paraBirimi: mevcut.paraBirimi,
-          donemBasi,
-          donemSonu: sonuc.abonelik.erisimSonu,
-          // 28.09 — ödeme anı = ONAY anı (havalenin banka tarihi kayıtlı
-          // değil); paket = onayın yazdığı etkin paket (teklifin paketi) —
-          // fatura kesim anındaki paketi DEĞİL bunu yazar.
-          tahsilatTarihi: sonuc.havale.onaylandi ?? donemBasi,
-          paketSurumuId: sonuc.abonelik.paketSurumuId,
-        })
-        .catch((e) => this.logger.error(`Havale faturası kuyruğa alınamadı: ${e}`));
-    }
 
     // ⚠ 25.09 — KOLTUK (Emre kararı): onay paketi HEMEN değiştirdi; düşürme
     // ekibin en son katılanlarını durdurduysa e-posta bunu AÇIKÇA söyler.
