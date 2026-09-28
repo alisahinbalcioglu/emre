@@ -436,6 +436,9 @@ function sahteDb(p: { abonelikler: Satir[]; surumler: Satir[]; firma?: Satir | n
       updateMany: async () => ({ count: 0 }),
     },
     user: { updateMany: async () => ({ count: 0 }), count: async () => 0 },
+    // 28.09: satın alma kapısı bekleyen havale teklifini sorar
+    // (`bekleyenHavaleVarMi`); bu dünyada havale yok.
+    havaleOdemesi: { count: async () => 0 },
     $transaction: async (arg: any) => (typeof arg === 'function' ? arg(db) : Promise.all(arg)),
   };
   return db;

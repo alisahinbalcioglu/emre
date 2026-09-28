@@ -1,5 +1,5 @@
 import type { FaturaKesTalebi } from './muhasebe.adaptor';
-import { tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
+import { istanbulGunSonu, tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ELLE (NES) FATURA KESİM TALEBİ — yöneticiye giden e-postanın METNİ (SAF)
@@ -18,7 +18,13 @@ import { tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
 
    ⚠ SÜRE — VUK md. 231/5: fatura hizmetin yapıldığı (burada: tahsilat)
    tarihten itibaren EN GEÇ 7 GÜN içinde düzenlenir; düzenlenmeyen fatura hiç
-   düzenlenmemiş sayılır. E-posta son günü yazar.
+   düzenlenmemiş sayılır. E-posta son günü yazar. 28.09: ödeme anı satırın
+   `tahsilatTarihi`dir (iyzico'nun başarılı denemesi / havale onayı); son gün
+   talebin kurulduğu GÜNDEN (`duzenlemeTarihi`) ÖNCEYSE e-posta bunu İLK
+   paragrafta ve konuda AÇIKÇA söyler — geç işlenen tahsilat (yeniden deneme,
+   mutabakat oynatması, düşen posta) "hâlâ vakit var" gibi okunmasın. Süre
+   GÜN sayar: son günün TAMAMI (İstanbul takvim günü, `istanbulGunSonu`)
+   süre içindedir — son gün ödemenin saati geçti diye "geçti" denmez.
 
    ⚠ TEST ÖDEMESİ: canlı iyzico bugün SANDBOX. Sandbox kart "tahsilatı"
    gerçek para değildir; faturasını kesmek olmayan bir satışı beyan etmektir.
@@ -51,6 +57,16 @@ export interface FaturaKesimEpostasi {
   konu: string;
   baslik: string;
   paragraflar: string[];
+}
+
+/**
+ * Yasal son düzenleme günü (VUK md. 231/5): ödemeden itibaren
+ * `FATURA_DUZENLEME_SURESI_GUN` gün — gün `tarihYaz` ile İstanbul'a göre
+ * yazılır, süre o günün SONUNDA biter (`istanbulGunSonu`). TEK kural: NES
+ * talebi ve tutarı okunamayan tahsilatın yönetici uyarısı (webhook) okur.
+ */
+export function sonDuzenlemeGunu(odeme: Date): Date {
+  return new Date(odeme.getTime() + FATURA_DUZENLEME_SURESI_GUN * GUN_MS);
 }
 
 /** `havale:<id>` → `<id>`; kart tahsilatında (iyzico sipariş kodu) null. */
@@ -92,7 +108,21 @@ export function faturaKesimTalebiEpostasi(t: FaturaKesTalebi, b: FaturaKesimBagl
   // iki e-posta aynı görünür, çifti ayırt etmek imkânsızlaşırdı (inceleme H1).
   const referans = havaleId ? tek(b.havale?.teklifNo) || t.harciAnahtar : t.harciAnahtar;
   const p: string[] = [];
+  const sonGun = sonDuzenlemeGunu(tutar.tarih);
+  const sureGecti = !testOdemesi && t.duzenlemeTarihi.getTime() > istanbulGunSonu(sonGun).getTime();
+  const gecikmeOnEki = sureGecti ? 'SÜRESİ GEÇTİ — ' : '';
 
+  if (sureGecti) {
+    // Kayıtlı numara varsa talimat koşullu (inceleme M3 — "kesin" ile
+    // "İKİNCİ KEZ KESMEYİN" aynı postada çelişmesin; 28.09 kod incelemesi).
+    p.push(
+      `⚠ SÜRE GEÇTİ: yasal son düzenleme günü ${tarihYaz(sonGun)} idi (VUK md. 231/5, ödemeden itibaren ` +
+        `${FATURA_DUZENLEME_SURESI_GUN} gün). ` +
+        (kayitliNo
+          ? 'Kayıtlı numara proformaysa faturayı HEMEN kesin ve gecikmeyi muhasebecinize bildirin.'
+          : 'Faturayı yine de HEMEN kesin ve gecikmeyi muhasebecinize bildirin.'),
+    );
+  }
   if (testOdemesi) {
     p.push(
       '⚠ TEST ÖDEMESİ: bu kart tahsilatı iyzico test ortamında (sandbox) yapıldı, gerçek para alınmadı. ' +
@@ -106,7 +136,6 @@ export function faturaKesimTalebiEpostasi(t: FaturaKesTalebi, b: FaturaKesimBagl
   );
   p.push(`Ödeme tarihi: ${tarihYaz(tutar.tarih)}`);
   if (!testOdemesi) {
-    const sonGun = new Date(tutar.tarih.getTime() + FATURA_DUZENLEME_SURESI_GUN * GUN_MS);
     p.push(
       `Son düzenleme günü: ${tarihYaz(sonGun)} (VUK md. 231/5: ödemeden itibaren en geç ` +
         `${FATURA_DUZENLEME_SURESI_GUN} gün; geç kalan fatura düzenlenmemiş sayılır)`,
@@ -163,14 +192,14 @@ export function faturaKesimTalebiEpostasi(t: FaturaKesTalebi, b: FaturaKesimBagl
   }
   if (kayitliNo) {
     return {
-      konu: `[MetaPriceX] Havale faturası kayıtlı — kontrol edin — ${unvan} — ${kayitliNo}`,
+      konu: `[MetaPriceX] ${gecikmeOnEki}Havale faturası kayıtlı — kontrol edin — ${unvan} — ${kayitliNo}`,
       baslik: 'Fatura numarası kayıtlı — kontrol edin',
       paragraflar: p,
     };
   }
   return {
-    konu: `[MetaPriceX] Fatura kesilecek — ${unvan} — ${tutarYaz(tutar.toplam, pb)} — ${referans}`,
-    baslik: "NES'te kesilecek fatura",
+    konu: `[MetaPriceX] ${gecikmeOnEki}Fatura kesilecek — ${unvan} — ${tutarYaz(tutar.toplam, pb)} — ${referans}`,
+    baslik: sureGecti ? "NES'te kesilecek fatura — SÜRESİ GEÇTİ" : "NES'te kesilecek fatura",
     paragraflar: p,
   };
 }

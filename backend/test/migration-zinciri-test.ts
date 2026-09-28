@@ -279,6 +279,20 @@ async function main() {
     JSON.stringify(kk),
   );
 
+  // ── Z3f (28.09): fatura odeme ani + paket adi — BOS baslar (eski satir eski davranis) ──
+  const faturaKopyasi = await db.query<{ column_name: string; is_nullable: string; column_default: string | null; data_type: string }>(
+    `SELECT column_name, is_nullable, column_default, data_type FROM information_schema.columns
+     WHERE table_name='Fatura' AND column_name IN ('tahsilatTarihi','paketAdi') ORDER BY column_name`,
+  );
+  check(
+    'Z3f Fatura.paketAdi (text) + tahsilatTarihi (timestamp) NULL olabilir, varsayilani YOK (deploy oncesi satir eski davranisa duser, doldurma yok)',
+    faturaKopyasi.rows.length === 2 &&
+      faturaKopyasi.rows.every((r) => r.is_nullable === 'YES' && r.column_default === null) &&
+      faturaKopyasi.rows[0]?.data_type === 'text' &&
+      faturaKopyasi.rows[1]?.data_type === 'timestamp without time zone',
+    JSON.stringify(faturaKopyasi.rows),
+  );
+
   // ═══════════════════════════════════════════════════════════════════════
   //  B* — BACKFILL SOZU: "hicbir mevcut kullanicinin erisimi kesilmez"
   // ═══════════════════════════════════════════════════════════════════════

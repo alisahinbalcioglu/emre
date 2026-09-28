@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
-import { icerikDurdurulsunMu, vitrinKartiGosterilsinMi, type ErisimUyarisi } from './erisim-durumu';
+import { havaleBekleniyorMu, icerikDurdurulsunMu, vitrinKartiGosterilsinMi, type ErisimUyarisi } from './erisim-durumu';
 import { VitrinBolumKarti } from './VitrinBolumKarti';
 
 /**
@@ -56,7 +56,8 @@ export function ErisimKapisi({ children }: { children: ReactNode }) {
   // YERİNE çizilir → sayfa mount olmaz, yetenekli uca istek yola çıkmaz.
   // ⚠ SIRA: bu dal `icerikDurdurulsunMu`dan ÖNCE — yoksa gezilemeyen yol
   //   da "durdurma yok" deyip sayfayı açar ve 403'ler geri gelirdi.
-  if (vitrinKartiGosterilsinMi(erisim, yol)) return <VitrinBolumKarti yol={yol} />;
+  // 28.09: havale teklifi ödenmeyi bekleyen firmada kart paket seçtirmez.
+  if (vitrinKartiGosterilsinMi(erisim, yol)) return <VitrinBolumKarti yol={yol} havale={havaleBekleniyorMu(erisim)} />;
 
   // ⚠ UCUNCU ARGUMAN SART: kapatilmis hesabin `erisimVar`i FALSE'tur
   //   (kapatma aboneligi iptal eder). Gecilmezse `/quotes` ve `/library`

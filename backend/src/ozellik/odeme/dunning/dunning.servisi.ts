@@ -393,11 +393,24 @@ export class DunningServisi {
    * görüyordu: e-posta HİÇBİR müşteriye gitmiyordu. `dunningdenCikti`
    * sıfırlamanın KENDİSİNDEN gelir (koşullu yazma) — kural orada, tek yerde.
    * Posta hatası FIRLATIR; çağıran yutar ve günlüğe yazar.
+   *
+   * ⚠ 28.09 — TUTAR iyzico'nun ÇEKTİĞİDİR (`cekim`: `tahsilEdilenTutar`,
+   * fatura ve makbuzla AYNI kural), paketin veritabanı fiyatı DEĞİL: plan
+   * fiyatı farklıysa ya da paket arada değiştiyse e-posta faturayla çelişirdi
+   * (kod incelemesi, ölçüldü). `null` = tutar okunamadı → cümle tutarsız
+   * kurulur, paket fiyatı UYDURULMAZ (Emre 28.09). Parametre ZORUNLU: her
+   * çağıran bu kararı kendisi verir.
    */
-  async tahsilatToparlandi(abonelikId: string, dunningdenCikti: boolean): Promise<void> {
+  async tahsilatToparlandi(
+    abonelikId: string,
+    dunningdenCikti: boolean,
+    cekim: { tutar: number; paraBirimi: string } | null,
+  ): Promise<void> {
     // Zaten sorunsuzsa "geri hoş geldiniz" göndermeyelim
     if (!dunningdenCikti) return;
-    await this.gonder(abonelikId, 'toparlandi');
+    await this.gonder(abonelikId, 'toparlandi', undefined, {
+      tutar: cekim ? tutarYaz(cekim.tutar, cekim.paraBirimi) : '',
+    });
   }
 
   // ── Kart güncellemesinden sonra ANLIK deneme (26.09.2026) ──────────────

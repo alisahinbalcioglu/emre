@@ -137,6 +137,10 @@ function sahteFaturaPrisma(firmaKutusu: { deger: any }) {
       firma: {
         findUnique: async (_a: any) => firmaKutusu.deger,
       },
+      // 28.09: `kuyrugaAl` ödenen paketin ADINI faturaya kopyalar (`paketAdi`).
+      paketSurumu: {
+        findUnique: async (_a: any) => ({ paket: { ad: 'Pro Mekanik' } }),
+      },
       fatura: {
         create: async (a: any) => {
           yazilanFaturalar.push(a.data);
@@ -322,6 +326,8 @@ async function main() {
     paraBirimi: 'TRY',
     donemBasi: new Date('2026-09-01'),
     donemSonu: new Date('2026-10-01'),
+    tahsilatTarihi: new Date('2026-09-01'),
+    paketSurumuId: 's1',
   });
   const yazilan = p4.yazilanFaturalar[0] ?? {};
   check(
@@ -460,6 +466,8 @@ async function main() {
     paraBirimi: 'TRY',
     donemBasi: new Date(),
     donemSonu: new Date(),
+    tahsilatTarihi: new Date(),
+    paketSurumuId: 's1',
   });
   kutu8.deger = null; // firma satiri artik okunamiyor
   let d8Patladi = false;

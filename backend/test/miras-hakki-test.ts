@@ -53,7 +53,7 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { ConsoleLogger, Logger } from '@nestjs/common';
+import { BadRequestException, ConsoleLogger, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { AbonelikServisi } from '../src/ozellik/odeme/abonelik/abonelik.servisi';
@@ -62,6 +62,9 @@ import { ErisimServisi } from '../src/ozellik/odeme/abonelik/erisim.servisi';
 import { MirasDonusuJob } from '../src/ozellik/odeme/abonelik/miras-donusu.job';
 import {
   donemSonuKarari,
+  mirasPaketiDegisimi,
+  mirasPaketiDegisimMesaji,
+  surenMirasKodu,
   mirasGecerliMi,
   mirasaDonusVerisi,
   mirasiAyir,
@@ -377,6 +380,21 @@ function bellekPrisma() {
     create: async (arg: any) => {
       await Promise.resolve();
       return yansit(model, olustur(model, arg.data), arg);
+    },
+    // 28.09: havale onayı faturayı İŞLEM İÇİNDE `createMany({ skipDuplicates })`
+    // (ON CONFLICT DO NOTHING) ile yazar — tekil çakışmada satır atlanır.
+    createMany: async (arg: any) => {
+      await Promise.resolve();
+      let count = 0;
+      for (const veri of arg.data as Satir[]) {
+        try {
+          olustur(model, veri);
+          count++;
+        } catch (e: any) {
+          if (!(arg.skipDuplicates && e?.code === 'P2002')) throw e;
+        }
+      }
+      return { count };
     },
     upsert: async (arg: any) => {
       await Promise.resolve();
@@ -714,6 +732,14 @@ async function mirastanKartaGec(d: Dunya, firmaId: string, an = T0) {
   return s;
 }
 
+/** SIRADAN (miras DIŞI) firma kartla Pro alır ve ilk tahsilat webhook'u işlenir. */
+async function kartlaGec(d: Dunya, firmaId: string, an = T0) {
+  d.firma(firmaId);
+  const s = await d.kartlaSatinAl(firmaId, an);
+  await d.webhookGonder(s.ilkCekim, an + DAKIKA);
+  return s;
+}
+
 /** Satır miras-core'a (2027-09-01) dönmüş mü — dönüş verisinin TAMAMI. */
 function mirastaDondu(ab: Satir, p: { surum?: string; bitis?: number } = {}): boolean {
   return (
@@ -791,6 +817,21 @@ async function sBlogu(): Promise<void> {
     k({ ...kartta, durum: 'AKTIF' }) === 'BEKLE' && k({ ...kartta, durum: 'IPTAL' }) === 'BEKLE');
   check('S7d donemSonuKarari (inceleme Y1): dönem SÜRÜYORSA hak olmasa da BEKLE — mirasa dönmüş satır (mirasta, AKTIF) · hak dolmuş ücretli satır',
     k({ ...gocSatiri, durum: 'AKTIF' }) === 'BEKLE' && k({ ...kartta, durum: 'IPTAL', mirasErisimSonu: gecmis }) === 'BEKLE');
+  // 27.09 (güvenlik ORTA-1, Emre kararı b): süren miras paketi ve değişim kuralı.
+  const hakli = { ...kartta, mirasPaketSurumu: kod('miras-core') };
+  check('S11 surenMirasKodu: mirasta + süren → kendi paketi · mirasta + bitmiş → yok · ücretli + geçerli hak → hakkın paketi · ücretli + dolmuş hak → yok',
+    surenMirasKodu(gocSatiri, simdi) === 'miras-core' && surenMirasKodu({ ...gocSatiri, erisimSonu: gecmis }, simdi) === null &&
+      surenMirasKodu(hakli, simdi) === 'miras-core' && surenMirasKodu({ ...hakli, mirasErisimSonu: gecmis }, simdi) === null &&
+      surenMirasKodu(mirassiz, simdi) === null);
+  const degisim = mirasPaketiDegisimi(gocSatiri, 'miras-pro', simdi);
+  check('S11b mirasPaketiDegisimi: başka miras paketi → {süren, hedef}; aynı paket · satıştaki paket · hakkı yok · satır yok → yok',
+    degisim?.suren === 'miras-core' && degisim?.hedef === 'miras-pro' && mirasPaketiDegisimi(hakli, 'miras-pro', simdi)?.suren === 'miras-core' &&
+      mirasPaketiDegisimi(gocSatiri, 'miras-core', simdi) === null && mirasPaketiDegisimi(gocSatiri, 'pro-mek', simdi) === null &&
+      mirasPaketiDegisimi(mirassiz, 'miras-pro', simdi) === null && mirasPaketiDegisimi(null, 'miras-pro', simdi) === null,
+    JSON.stringify(degisim));
+  const mesaj = degisim ? mirasPaketiDegisimMesaji(degisim) : '';
+  check('S11c ret metni iki paketi ve doğru yolu (aynı paketle yenileme · satıştaki paket) söylüyor',
+    mesaj.includes('miras-core') && mesaj.includes('miras-pro') && /Aynı geçiş paketiyle/.test(mesaj) && /satıştaki bir paketle/.test(mesaj), mesaj);
   const veri = mirasaDonusVerisi(kartta);
   check('S8 mirasaDonusVerisi: paket miras · AKTIF · HAVALE · erişim miras bitişi',
     veri.paketSurumuId === 'S-MC' && veri.durum === 'AKTIF' && veri.odemeYontemi === 'HAVALE' && ms(veri.erisimSonu) === MIRAS_BITIS);
@@ -1110,6 +1151,65 @@ async function dBlogu(): Promise<void> {
     check('D8 ⭐ saatlik iş bayat adayla mirasa dönmüş satırı SONA_ERDI YAPMADI (miras-core @ 2027-09-01, AKTIF)',
       mirastaDondu(ab) && !d.olaylar(ab.id, /^durum\.degisti$/).some((o) => o.yeniDurum === 'SONA_ERDI'), ozet(ab));
   }
+  // ── 27.09 · SAATLİK İŞİN KOŞULLU YAZIMI (miras DIŞI satırlar) ──────────
+  // D6b/D8'in miras alanı OLMAYAN ikizleri: `durumDegistir`in SONA_ERDI geçidi
+  // yalnız miras alanlı satıra bakar; burada tek koruma saatlik işin
+  // `kosul`udur (okunan durum + erişim hâlâ bitmiş). Yarışı kaybeden aday HATA
+  // değil UYARI yazar (beklenen sonuç).
+  /** Bu satır için günlük satırları (seviye + metin). */
+  const satirGunlugu = (g0: number, id: string) => gunluk.slice(g0).filter((g) => g.metin.includes(id));
+  {
+    // D9 · IPTAL kart satırı (hak YOK): saatlik iş adayı OKUDU; o arada yönetici
+    // havaleyi onayladı (IPTAL → AKTIF HAVALE, dönem ileride).
+    const d = dunyaKur();
+    await kartlaGec(d, 'F-D9');
+    await d.iptalEt('F-D9', T0 + 5 * GUN);
+    const an = DONEM_SONU + 2 * DAKIKA;
+    d.db.kanca('abonelik', 'findMany', async () => {
+      await d.havaleIleOde('F-D9', an, { surum: 'S1', ay: 1 });
+    });
+    const g0 = gunluk.length;
+    await d.saatlik(an);
+    const ab = d.oku('F-D9');
+    check('D9-FIXTURE miras alanı YOK; yarış kuruldu: havale saatlik işin okumasından SONRA işlendi (HAVALE, dönem ileride)',
+      ab.mirasPaketSurumuId == null && ab.odemeYontemi === 'HAVALE' && ms(ab.erisimSonu) === ayEkle(an, 1), ozet(ab));
+    check('D9 ⭐ saatlik iş bayat adayla havale ödeyen satırı SONA_ERDI YAPMADI (AKTIF kaldı)',
+      ab.durum === 'AKTIF' && !d.olaylar(ab.id, /^durum\.degisti$/).some((o) => o.yeniDurum === 'SONA_ERDI'), ozet(ab));
+    const gl = satirGunlugu(g0, ab.id);
+    check('D9b bayat aday UYARIYLA atlandı, HATA yazılmadı',
+      gl.some((g) => g.seviye === 'uyari' && /aday bayat/.test(g.metin)) && !gl.some((g) => g.seviye === 'hata'), JSON.stringify(gl));
+  }
+  {
+    // D10 · DENEME satırı (hak YOK): deneme bitti, köprü doldu; ilk çekimin
+    // webhook'u saatlik işin aday OKUMASINDAN SONRA geldi (DENEME → AKTIF).
+    const d = dunyaKur();
+    d.firma('F-D10');
+    const denemeSonu = T0 + 30 * GUN;
+    const kopru = denemeSonu + 2 * GUN;
+    d.iyz.kur('sub-D10', 'mus-D10', { plan: 'plan-pro', olusturuldu: T0 });
+    d.db.ekle('abonelik', {
+      firmaId: 'F-D10', paketSurumuId: 'S1', durum: 'DENEME', denemeSonu: new GercekDate(denemeSonu),
+      erisimSonu: new GercekDate(kopru), kopruErisimSonu: new GercekDate(kopru), odemeYontemi: 'KART',
+      iyzicoAbonelikKodu: 'sub-D10', iyzicoKokKodu: 'sub-D10', iyzicoMusteriKodu: 'mus-D10', iyzicoDurum: 'ACTIVE',
+    });
+    const cekim = d.iyz.donemCekimi('sub-D10', { basarili: true, baslangic: denemeSonu, bitis: ayEkle(denemeSonu, 1), an: denemeSonu })!;
+    const an = kopru + 5 * DAKIKA;
+    d.db.kanca('abonelik', 'findMany', async () => {
+      await d.webhookGonder(cekim.govde, an);
+    });
+    const g0 = gunluk.length;
+    await d.saatlik(an);
+    const ab = d.oku('F-D10');
+    const tahsilat = d.olaylar(ab.id, /^durum\.degisti$/).filter((o) => o.aktor === 'webhook');
+    check('D10-FIXTURE miras alanı YOK; yarış kuruldu: gecikmiş ilk çekim saatlik işin okumasından SONRA işlendi (dönem ileride)',
+      ab.mirasPaketSurumuId == null && tahsilat.length === 1 && tahsilat[0].yeniDurum === 'AKTIF' &&
+        ms(ab.erisimSonu) === ayEkle(denemeSonu, 1), `${ozet(ab)} tahsilat=${tahsilat.length}`);
+    check('D10 ⭐ saatlik iş bayat DENEME adayıyla ödenmiş satırı SONA_ERDI YAPMADI (AKTIF kaldı)',
+      ab.durum === 'AKTIF' && !d.olaylar(ab.id, /^durum\.degisti$/).some((o) => o.yeniDurum === 'SONA_ERDI'), ozet(ab));
+    const gl = satirGunlugu(g0, ab.id);
+    check('D10b bayat aday UYARIYLA atlandı, HATA yazılmadı',
+      gl.some((g) => g.seviye === 'uyari' && /aday bayat/.test(g.metin)) && !gl.some((g) => g.seviye === 'hata'), JSON.stringify(gl));
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -1134,21 +1234,24 @@ async function hBlogu(): Promise<void> {
       mirastaDondu(d.oku('F-H1')), ozet(d.oku('F-H1')));
   }
   {
-    // Miras yenilemesi (yönetici satış dışı miras sürümüyle teklif verir) → kart → iptal → dönüş.
+    // Miras yenilemesi AYNI miras paketiyle (yönetici satış dışı miras sürümüyle
+    // teklif verir) → kart → iptal → dönüş. ⚠ 27.09: BAŞKA miras paketiyle
+    // yenileme REDDEDİLİR (H7, Emre kararı b) — bu blok eskiden miras-pro'yla
+    // kuruluydu ve tam o açığı "yenileme" diye kilitliyordu.
     const d = dunyaKur();
     d.mirasSatiri('F-H3');
-    await d.havaleIleOde('F-H3', T0, { surum: 'S-MP', ay: 12, tutar: 5000 });
+    await d.havaleIleOde('F-H3', T0, { surum: 'S-MC', ay: 12, tutar: 3000 });
     const YENI = ayEkle(MIRAS_BITIS, 12);
     const ab = d.oku('F-H3');
-    check('H3 miras yenilemesi (miras-pro, 12 ay): ESKİ bitişten uzar, satır mirasta kalır', ab.paketSurumuId === 'S-MP' && ms(ab.erisimSonu) === YENI, ozet(ab));
+    check('H3 miras yenilemesi (aynı paket miras-core, 12 ay): ESKİ bitişten uzar, satır mirasta kalır', ab.paketSurumuId === 'S-MC' && ms(ab.erisimSonu) === YENI, ozet(ab));
     const s = await d.kartlaSatinAl('F-H3', T0 + GUN);
     await d.webhookGonder(s.ilkCekim, T0 + GUN + DAKIKA);
     const ab2 = d.oku('F-H3');
-    check('H3b kartla Pro: hak YENİLENMİŞ hâliyle yakalandı (miras-pro @ +12 ay), Pro bugünden',
-      ab2.mirasPaketSurumuId === 'S-MP' && ms(ab2.mirasErisimSonu) === YENI && ms(ab2.erisimSonu) === ayEkle(T0 + GUN, 1), ozet(ab2));
+    check('H3b kartla Pro: hak YENİLENMİŞ hâliyle yakalandı (miras-core @ +12 ay), Pro bugünden',
+      ab2.mirasPaketSurumuId === 'S-MC' && ms(ab2.mirasErisimSonu) === YENI && ms(ab2.erisimSonu) === ayEkle(T0 + GUN, 1), ozet(ab2));
     await d.iptalEt('F-H3', T0 + 5 * GUN);
     await d.onDakika(ayEkle(T0 + GUN, 1) + 5 * DAKIKA);
-    check('H3c dönüş YENİLENMİŞ bitişe (miras-pro)', mirastaDondu(d.oku('F-H3'), { surum: 'S-MP', bitis: YENI }), ozet(d.oku('F-H3')));
+    check('H3c dönüş YENİLENMİŞ bitişe (miras-core)', mirastaDondu(d.oku('F-H3'), { surum: 'S-MC', bitis: YENI }), ozet(d.oku('F-H3')));
   }
   {
     // REGRESYON: miras dışı havale yenilemesi eski bitişten (havale-teklif-paketi H1/H3).
@@ -1186,6 +1289,68 @@ async function hBlogu(): Promise<void> {
     const ab = d.oku('F-H6');
     check('H6 ⭐ ücretli satırda miras yenilemesi: miras-core, erişim HAK bitişinden +12 ay (hak kaybolmadı)',
       ab.paketSurumuId === 'S-MC' && ab.odemeYontemi === 'HAVALE' && ms(ab.erisimSonu) === ayEkle(MIRAS_BITIS, 12), ozet(ab));
+  }
+  // ── 27.09 · FARKLI MİRAS PAKETİ (güvenlik ORTA-1, Emre kararı b) ─────────
+  // Miras yenilemesi ESKİ bitişten uzar ve onay paketi HEMEN değiştirir:
+  // miras-core firmaya miras-pro teklifi 1 aylık tutarla miras bitişine kadar
+  // Pro verirdi. Hak taşıyan firmaya BAŞKA miras paketi teklif edilmez;
+  // katman yükseltmesi satıştaki paketten (bugünden başlar, hak korunur — H1).
+  const teklifVer = (d: Dunya, firmaId: string, surum: string, an: number) =>
+    saatte(an, () => d.havale.teklifOlustur({ firmaId, paketSurumuId: surum, ayAdedi: 1, tutar: 1649, olusturanId: 'yonetici-1' }))
+      .then((t) => ({ t, hata: null as unknown }), (hata: unknown) => ({ t: null, hata }));
+  const redMetni = (h: unknown) => (h instanceof Error ? h.message : String(h));
+  {
+    const d = dunyaKur();
+    const ab = d.mirasSatiri('F-H7');
+    const once = JSON.stringify(d.oku('F-H7'));
+    const { hata } = await teklifVer(d, 'F-H7', 'S-MP', T0);
+    check('H7 ⭐ mirastaki firmaya BAŞKA miras paketi (miras-core → miras-pro) teklifi 400 ile REDDEDİLDİ; metin iki paketi ve doğru yolu söylüyor',
+      hata instanceof BadRequestException && /miras-core/.test(redMetni(hata)) && /miras-pro/.test(redMetni(hata)) &&
+        /satıştaki/.test(redMetni(hata)), redMetni(hata));
+    check('H7b red YAN ETKİSİZ: havale kaydı yok, olay yok, satır AYNEN',
+      d.db.tablo('havaleOdemesi').length === 0 && d.olaylar(ab.id).length === 0 && JSON.stringify(d.oku('F-H7')) === once, ozet(d.oku('F-H7')));
+  }
+  {
+    // Ücretli satır, hak AYRI taşınıyor (miras-core @ 2027-09-01): havale
+    // miras-pro'ya geçirseydi `odenenDonemTabani` tabanı hak bitişi olurdu (O2) —
+    // aynı açık, başka kapıdan.
+    const d = dunyaKur();
+    await mirastanKartaGec(d, 'F-H7K');
+    const { hata } = await teklifVer(d, 'F-H7K', 'S-MP', T0 + 5 * GUN);
+    check('H7c ⭐ ücretli satırda (yakalanmış hak miras-core) miras-pro teklifi de REDDEDİLDİ',
+      hata instanceof BadRequestException && /miras-core/.test(redMetni(hata)) && /miras-pro/.test(redMetni(hata)), redMetni(hata));
+  }
+  {
+    // Kural ÖNCESİ verilmiş teklif (27.09'dan önce serbestti; canlıda açık teklif
+    // olabilir): ONAY da reddeder. ⚠ Test Prisma'sının `$transaction`ı atomik
+    // DEĞİL (atomiklik `test:havale-onay-yarisi` Y4'ün konusu) — ölçüt ABONELİK
+    // satırıdır: ret ilk yazımdan ÖNCE, uzatma / paket / fatura hiç olmaz.
+    const d = dunyaKur();
+    const ab = d.mirasSatiri('F-H7O');
+    const eski = d.db.ekle('havaleOdemesi', {
+      abonelikId: ab.id, paketSurumuId: 'S-MP', durum: 'ODEME_BEKLENIYOR', tutar: new Prisma.Decimal(1649), paraBirimi: 'TRY',
+      ayAdedi: 1, teklifNo: 'T-ESKI-1', faturaNo: 'FTR-ESKI-1',
+    });
+    // 28.09: onay uzatmadan ÖNCE abonelik satırını kilitler (`guncellendi`
+    // yazımı, `test:havale-onay-yarisi` FH); Postgres'te ret onu geri alır, bu
+    // taklit atomik değil — ölçüt satırın İÇERİĞİ.
+    const icerik = (s: Record<string, unknown>) => JSON.stringify({ ...s, guncellendi: undefined });
+    const once = icerik(d.oku('F-H7O'));
+    const hata = await saatte(T0, () => d.havale.odemeyiOnayla({ havaleId: eski.id, onaylayanId: 'yonetici-1' })).then(() => null, (e: unknown) => e);
+    check('H7d ⭐ kural öncesi verilmiş farklı miras paketi teklifi ONAYDA da reddedildi (400); abonelik satırı AYNEN (uzatma yok, paket miras-core), fatura yok',
+      hata instanceof BadRequestException && icerik(d.oku('F-H7O')) === once && d.db.tablo('fatura').length === 0,
+      `${redMetni(hata)} · ${ozet(d.oku('F-H7O'))}`);
+  }
+  {
+    // AŞIRI ENGEL YOK: miras dönemi BİTMİŞ firma (satır hâlâ miras paketinde)
+    // ve hakkı hiç olmayan firma — ikisinde de açık yok (dönem bugün başlar).
+    const d = dunyaKur();
+    d.mirasSatiri('F-H8', { bitis: T0 - GUN });
+    const r1 = await teklifVer(d, 'F-H8', 'S-MP', T0);
+    check('H8 miras dönemi bitmiş firmaya başka miras paketi teklifi SERBEST', r1.hata === null && !!r1.t?.id, redMetni(r1.hata));
+    await kartlaGec(d, 'F-H8S');
+    const r2 = await teklifVer(d, 'F-H8S', 'S-MP', T0 + GUN);
+    check('H8b hakkı olmayan (sıradan kartlı) firmaya miras paketi teklifi bu kuralın DIŞINDA (serbest)', r2.hata === null && !!r2.t?.id, redMetni(r2.hata));
   }
 }
 
@@ -1586,7 +1751,6 @@ function son(): void {
   // Yutulan hata görünsün: günlükteki HATA satırları yalnız BEKLENEN kalıplar olabilir.
   const izinli = [
     /Mirasa dönüş yazılamadı/, // D7: yarışı kaybeden iş (koşullu yazım)
-    /Kapatma hatası/, // D6b bekçi (dönem sürüyor) · D7 saatlik iş kaybeden
     /KART ABONELIGI IPTAL EDILEMEDI/, // N7 · G: iyzico iptali arızalı
     /CIFT ABONELIK ENGELLENDI/, // G3
     /Tahsilat alındı ama|çift tahsilat|CIFT TAHSILAT/i, // N7d havale satırı çekimi

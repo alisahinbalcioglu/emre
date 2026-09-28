@@ -17,6 +17,8 @@
  *   · `tahsilatBasarisizligiKarari` — REDDEDİLDİ Mİ (`tahsilatBasarisiz`).
  *   · `yenidenDenemeHedefi` — ANLIK yeniden denemenin (26.09) hedef siparişi:
  *     bildirimlerdeki adaylardan iyzico'nun listesinde doğrulanan.
+ *   · `tahsilEdilenTutar` · `odemeAni` — FATURANIN iki gerçeği (28.09):
+ *     çekilen tutar + para birimi ve ödeme anı (aşağıdaki not).
  *
  *  ÖLÇÜLDÜ (20.08 sandbox, docs/adim0-tutanak/adim0-ek-cikti.json):
  *   · ödenmiş sipariş: `orderStatus: 'SUCCESS'` + `paymentAttempts[{paymentStatus: 'SUCCESS'}]`;
@@ -28,9 +30,10 @@
  *  siparişin biçimi, bildirimin iyzico listesinden ÖNCE gelip gelmediği.
  *
  *  Kapılar: `test:webhook-tahsilat-dogrulama` (S + webhook/mutabakat bağlantısı),
- *  `test:mutabakat-kayip-tahsilat` S.
+ *  `test:mutabakat-kayip-tahsilat` S, `test:fatura-dogrulugu` S.
  * ═══════════════════════════════════════════════════════════════════════════
  */
+import { iyzicoTarihi } from './iyzico-tarihi';
 
 /**
  * ⚠ Deneme alanının ADI: 20.08 tutanağı `paymentStatus` gösteriyor, istemci
@@ -62,6 +65,78 @@ export function odenmisSiparisMi(s: unknown): boolean {
   const o = s as Record<string, unknown>;
   if (o.orderStatus !== 'SUCCESS') return false;
   return Array.isArray(o.paymentAttempts) && o.paymentAttempts.some(basariliOdemeDenemesiMi);
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  FATURANIN İKİ GERÇEĞİ: ÇEKİLEN TUTAR + ÖDEME ANI (28.09.2026) · SAF
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  ÖLÇÜLDÜ (20.08 sandbox, docs/adim0-tutanak/*.json, 5 sipariş): tutar
+ *  `price` (SAYI: 199 · 89.9 · 49.9) + `currencyCode` ('TRY'); `paidPrice`
+ *  HİÇ görülmedi (istemci tipinde var). Ödeme denemesi tutar TAŞIMAZ:
+ *  `{conversationId, createdDate (epoch ms), paymentId, paymentStatus}`.
+ *
+ *  ESKİ HÂL — ÜÇ AYRI KURAL: fatura `paidPrice ?? paket fiyatı` okuyordu —
+ *  ölçülen `price`ı ATLAYIP aboneliğin O ANKİ paketinin fiyatını yazıyordu;
+ *  tahsilat olayı ve havale ↔ kart bildirimi `paidPrice ?? price`. Kural
+ *  artık TEK: `paidPrice` (ödeme API'sinde müşteriden çekilen) GELDİYSE o —
+ *  okunamıyorsa `price`a düşülmez —, gelmediyse `price`. Emre kararı
+ *  (28.09): tutar okunamazsa fatura kuyruğa ALINMAZ —
+ *  paket fiyatı UYDURULMAZ (`WebhookIsleyici` yöneticiye son günlü uyarı
+ *  yazar; gece mutabakatı böyle siparişi OYNATMAZ, "elle fatura" sayar —
+ *  kural 7).
+ *
+ *  Ödeme anı VUK md. 231/5 son düzenleme gününün (7 gün) başlangıcıdır.
+ *  Satır eskiden onu TAŞIMIYORDU; e-posta min(kuyruk, dönem başı) yazıyordu —
+ *  yeniden denemeyle toparlanan tahsilatta gerçek ödemeden günler önce.
+ *  Kapı: `test:fatura-dogrulugu`.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/** Sonlu, sıfırdan büyük sayı ya da rakam-dizesi ("1649.00"); aksi hâlde null — uydurma yok. */
+function tutarSayisi(v: unknown): number | null {
+  const n =
+    typeof v === 'number' ? v : typeof v === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(v) ? Number(v) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Tahsil edilen tutar (KDV DAHİL) ve para birimi — iyzico siparişinin KENDİ
+ * kaydından. Tutar yoksa null; para birimi yoksa `paraBirimi: null` (çağıran
+ * paketin para birimine düşer — iki alan da ölçümde her siparişte vardı). SAF.
+ */
+export function tahsilEdilenTutar(s: unknown): { tutar: number; paraBirimi: string | null } | null {
+  if (!s || typeof s !== 'object') return null;
+  const o = s as Record<string, unknown>;
+  // `paidPrice` GELDİYSE söz onundur: okunamıyorsa (0, bozuk) `price`a
+  // DÜŞÜLMEZ — liste fiyatı çekilen tutar olmayabilir (indirim); o hâlde
+  // çekilen tutar bilinmiyor demektir.
+  const tutar =
+    o.paidPrice !== undefined && o.paidPrice !== null ? tutarSayisi(o.paidPrice) : tutarSayisi(o.price);
+  if (tutar === null) return null;
+  const pb = typeof o.currencyCode === 'string' && o.currencyCode.trim() !== '' ? o.currencyCode.trim() : null;
+  return { tutar, paraBirimi: pb };
+}
+
+/**
+ * Ödeme anı — siparişin ÖDENDİĞİ an: BAŞARILI ödeme denemesinin
+ * `createdDate`i (tarih `iyzicoTarihi` ile çözülür). Birden çoksa İLKİ:
+ * sipariş o an ödendi, ikinci başarılı deneme çift çekimdir (ölçülmedi) ve
+ * VUK son günü İLK ödemeden sayılır — sonrakini seçmek süreyi uzatırdı
+ * (28.09 kod incelemesi). Çözülemezse null: çağıran dönem başına düşer
+ * (iyzico dönem başında çeker). SAF.
+ */
+export function odemeAni(s: unknown): Date | null {
+  if (!s || typeof s !== 'object') return null;
+  const denemeler = (s as Record<string, unknown>).paymentAttempts;
+  if (!Array.isArray(denemeler)) return null;
+  let ilk: Date | null = null;
+  for (const d of denemeler) {
+    if (!basariliOdemeDenemesiMi(d)) continue;
+    const an = iyzicoTarihi((d as Record<string, unknown>).createdDate);
+    if (an && (!ilk || an < ilk)) ilk = an;
+  }
+  return ilk;
 }
 
 /**

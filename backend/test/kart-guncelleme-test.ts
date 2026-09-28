@@ -127,8 +127,22 @@ function uygulamaYolu(url: string): string | null {
 // ═════════════════════════════════════════════════════════════════════════
 type Satir = Record<string, any>;
 
-function bellekPrisma(abonelikler: Satir[], firmalar: Satir[], paketler: Satir[]) {
+function bellekPrisma(abonelikler: Satir[], firmalar: Satir[], paketler: Satir[], havaleler: Satir[] = []) {
   const esles = (satir: Satir, where: Satir) => Object.entries(where).every(([k, v]) => satir[k] === v);
+  // 28.09: erişim kararı ASKIDA + HAVALE satırında havaleleri sayar
+  // (`havale-durumlari.ts`: ONAYLANABILIR `durum.in` + `onaylandi: null`,
+  // ONAYLANMIS `OR` + `not: null`). Yalnız bu operatörler; bilinmeyende PATLAR.
+  const kosul = (deger: any, k: any): boolean => {
+    if (k === null) return deger === null || deger === undefined;
+    if (typeof k !== 'object' || k instanceof Date) return deger === k;
+    return Object.entries(k).every(([op, v]: [string, any]) => {
+      if (op === 'in') return (v as any[]).includes(deger);
+      if (op === 'not' && v === null) return deger !== null && deger !== undefined;
+      throw new Error(`bellek-Prisma: desteklenmeyen operatör "${op}"`);
+    });
+  };
+  const uyar = (s: Satir, w: Satir): boolean =>
+    Object.entries(w).every(([k, v]) => (k === 'OR' ? (v as Satir[]).some((x) => uyar(s, x)) : kosul(s[k], v)));
   const abonelikYansit = (a: Satir, arg: Satir) => {
     if (!arg.include) return { ...a };
     const surum = paketler.find((p) => p.id === a.paketSurumuId);
@@ -157,6 +171,9 @@ function bellekPrisma(abonelikler: Satir[], firmalar: Satir[], paketler: Satir[]
     },
     abonelikOlayi: {
       create: async (arg: Satir) => arg.data,
+    },
+    havaleOdemesi: {
+      count: async (arg: Satir) => havaleler.filter((h) => uyar(h, arg.where)).length,
     },
   };
   return new Proxy(prisma, {
@@ -341,7 +358,8 @@ async function rBlogu(): Promise<void> {
   check('R2 ⭐ "ödemeniz alınamadı" düğmesi (Kartımı güncelle) sayfaya gider ve ?a= aboneliğin kimliğini taşır',
     ilkYol === '/abonelik/kart' && sayfaVarMi(ilkYol) && new URL(ilk.dugme!.url).searchParams.get('a') === 'ab-d',
     `giden=${JSON.stringify(giden)}`);
-  await dunning.tahsilatToparlandi('ab-d', true);
+  // 28.09: çekilen tutar çağırandan gelir (webhook, `tahsilEdilenTutar`).
+  await dunning.tahsilatToparlandi('ab-d', true, { tutar: 1649, paraBirimi: 'TRY' });
   const alindi = giden[1];
   const alindiYol = alindi?.dugme ? uygulamaYolu(alindi.dugme.url) : null;
   // E-postayı metin kaynağından tanı: metin değişirse kapı sahte kırmızı vermesin.
@@ -381,24 +399,30 @@ async function rBlogu(): Promise<void> {
   // açılacaksa yollar. Havale teklifi `ASKIDA` + `HAVALE` satırı açar
   // (havale.servisi `abonelikBulYaDaOlustur`); o satırda kart sayfası
   // "kart aboneliği yok" retiyle çıkmazdı.
-  const VARYANTLAR: Array<[string, Partial<SatirGirdisi>]> = [
+  // 28.09: havale varyantları GERÇEK havale satırlarını taşır — teklifin
+  // açtığı satırda bekleyen teklif, havaleye geçmiş satırda onaylı havale.
+  // Erişim kararı ASKIDA + HAVALE'de bunları sorar (hiç ödenmemişse vitrin,
+  // `test:havale-onay-yarisi` V); şerit kuralı ikisinde de aynı.
+  const onayli = { abonelikId: 'ab-m', durum: 'ONAYLANDI', onaylandi: new Date(simdi.getTime() - 60 * gun) };
+  const bekleyen = { abonelikId: 'ab-m', durum: 'TEKLIF', onaylandi: null };
+  const VARYANTLAR: Array<[string, Partial<SatirGirdisi>, Satir[]?]> = [
     ['kart, iyzico durumu bilinmiyor', {}],
     ['kart, iyzico UNPAID', { iyzicoDurum: 'UNPAID' }],
     ['kart, iyzico CANCELED', { iyzicoDurum: 'CANCELED' }],
     ['kart, iyzico EXPIRED', { iyzicoDurum: 'EXPIRED' }],
     ['kart, iptal talepli', { iptalTalebi: new Date(simdi.getTime() - gun) }],
     ['kart kodu yok', { iyzicoAbonelikKodu: null }],
-    ['havale teklifi satırı (kodsuz)', { odemeYontemi: 'HAVALE', iyzicoAbonelikKodu: null }],
-    ['havaleye geçmiş (eski kart kodu duruyor)', { odemeYontemi: 'HAVALE' }],
+    ['havale teklifi satırı (kodsuz)', { odemeYontemi: 'HAVALE', iyzicoAbonelikKodu: null }, [bekleyen]],
+    ['havaleye geçmiş (eski kart kodu duruyor)', { odemeYontemi: 'HAVALE' }, [onayli]],
   ];
   const uyusmayan: string[] = [];
   const sayac = { kart: 0, abonelik: 0 };
   for (const durum of ['ODEME_BEKLIYOR', 'KISITLI', 'ASKIDA']) {
-    for (const [ad, ek] of VARYANTLAR) {
+    for (const [ad, ek, havaleler] of VARYANTLAR) {
       const satir = abonelikSatiri({
         id: 'ab-m', firmaId: 'F-M', durum, ilkBasarisizlik: new Date(simdi.getTime() - 12 * gun), denemeSayisi: 4, ...ek,
       });
-      const dbM = bellekPrisma([satir], [firmaSatiri('F-M')], [PAKET]);
+      const dbM = bellekPrisma([satir], [firmaSatiri('F-M')], [PAKET], havaleler ?? []);
       const eylem = (await new ErisimServisi(dbM).karar('F-M', simdi)).uyari?.eylem;
       const iyzM = sahteIyzico();
       const form = new SatinAlmaServisi(dbM, iyzM.istemci, new AbonelikServisi(dbM, {} as any), config, {} as any, {} as any);

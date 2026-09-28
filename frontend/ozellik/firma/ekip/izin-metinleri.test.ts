@@ -312,6 +312,21 @@ describe('⭐ BAĞLANTI — ekranlar izni gerçekten okuyor (kaynak)', () => {
     for (const d of EKIP_DOSYALARI) expect(kodu(oku(d)), d).not.toMatch(/\balert\(|window\.confirm\(/);
   });
 
+  it('⭐ davet giden ÜÇ yolun bildirimi spam ipucunu taşır (27.09)', () => {
+    // 26.09: davet postası Google Workspace'te Spam'e düştü; Gmail spam'deki
+    // iletide bağlantıyı kapatır. Sahip bunu davet anında öğrenmeli. Bayrak
+    // bir çağrıdan düşerse ipucu o yolda SESSİZCE kaybolur.
+    const k = kodu(oku('app/(protected)/firma/ekip/page.tsx'));
+    // Ipucu cagrisi bayraga BAGLI olmali (`if (false)` mutanti yakalanir).
+    expect(k).toMatch(
+      /if \(davetGitti\) \{\s*toast\(\{ title: basariMetni, description: DAVET_SPAM_IPUCU, duration: DAVET_BILDIRIM_SURESI_MS \}\);/,
+    );
+    expect(k).toMatch(/adresine davet gönderildi\.`,\s*true,\s*\)/);
+    expect(k).toMatch(/yeni izinlerle yeniden gönderildi\.`,\s*true,\s*\)/);
+    expect(k).toMatch(/adresine yeniden gönderildi\.`,\s*true,\s*\)/);
+    expect(k).toContain('Spam / Gereksiz klasörüne');
+  });
+
   it('eski koyu tema sınıfları sayfadan KALKTI (açık zeminde başlık okunmuyordu)', () => {
     for (const d of EKIP_DOSYALARI) {
       const k = kodu(oku(d));

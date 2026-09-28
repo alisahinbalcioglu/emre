@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import {
+  havaleBekleniyorMu,
   icerikDurdurulsunMu,
   vitrinKartiGosterilsinMi,
   vitrindeGezilebilirMi,
@@ -13,10 +14,14 @@ import {
 } from './erisim-durumu';
 import { DENEME_EPOSTA_DOGRULA_METNI, DENEME_KULLANILDI_METNI } from './paket-bicim';
 import {
+  HAVALE_ACILIS_METNI,
+  HAVALE_BEKLENIYOR_BASLIGI,
+  VITRIN_BASLIGI,
   vitrinBolumBasligi,
   vitrinBolumu,
   vitrinDenemeSatiri,
   vitrinIslemMetni,
+  vitrinPencereIcerigi,
 } from './vitrin-metinleri';
 import { VitrinBolumKarti } from './VitrinBolumKarti';
 
@@ -181,6 +186,27 @@ describe('B · deneme satırı ve metinler', () => {
     expect(vitrinDenemeSatiri([paket(null)])).toBeNull();
   });
 
+  // 28.09 — havale teklifi bekleyen yeni firma: sunucu kart yolunu kapatır
+  // (`HAVALE_TEKLIFI_BEKLIYOR`); deneme vaadi "Havale ödemeniz bekleniyor"
+  // şeridinin metnini EZMEMELİ (görsel kontrolde yakalandı).
+  it('hiçbir paket satın alınamıyorsa (kart yolu kapalı) satır YOK — şerit sunucu metniyle kalır', () => {
+    const kapali = { yol: 'yok', kod: 'HAVALE_TEKLIFI_BEKLIYOR', mesaj: 'teklif açık' };
+    const hakli = { denemeGunu: 30, denemeHakki: true, denemeGerekcesi: 'var' };
+    expect(vitrinDenemeSatiri([{ ...paket(hakli), degisim: kapali }, { ...paket(hakli), degisim: kapali }])).toBeNull();
+  });
+
+  it('yalnız satın alınabilir paketler sayılır; `degisim` yoksa (eski sunucu) eskisi gibi', () => {
+    const hakli = { denemeGunu: 30, denemeHakki: true, denemeGerekcesi: 'var' };
+    expect(vitrinDenemeSatiri([{ ...paket(hakli), degisim: { yol: 'satin-al' } }])?.metin)
+      .toBe('30 gün ücretsiz, ilk ödeme 30. günün sonunda');
+    // Kapalı paketin FARKLI gün sayısı tek rakamı bozmaz (sayılmaz).
+    expect(vitrinDenemeSatiri([
+      { ...paket(hakli), degisim: { yol: 'satin-al' } },
+      { ...paket({ ...hakli, denemeGunu: 14 }), degisim: { yol: 'yok' } },
+    ])?.metin).toBe('30 gün ücretsiz, ilk ödeme 30. günün sonunda');
+    expect(vitrinDenemeSatiri([paket(hakli)])?.metin).toBe('30 gün ücretsiz, ilk ödeme 30. günün sonunda');
+  });
+
   it('işlem metinleri: DWG "Pro paket" der (Basic DWG vermez)', () => {
     expect(vitrinIslemMetni('dwg')).toMatch(/Pro paket/);
     expect(vitrinIslemMetni('excel')).toMatch(/paket seçin/);
@@ -236,7 +262,9 @@ describe('D · BAĞLANTI — karar ekrana gerçekten bağlı mı', () => {
     const cocuk = k.indexOf('{children}');
     expect(kart, 'kapı vitrin kararını okumuyor').toBeGreaterThan(-1);
     expect(bekleme < kart && kart < duvar && kart < cocuk, JSON.stringify({ bekleme, kart, duvar, cocuk })).toBe(true);
-    expect(k).toMatch(/if \(vitrinKartiGosterilsinMi\(erisim, yol\)\)\s*return <VitrinBolumKarti yol=\{yol\}\s*\/>;/);
+    expect(k).toMatch(
+      /if \(vitrinKartiGosterilsinMi\(erisim, yol\)\)\s*return <VitrinBolumKarti yol=\{yol\} havale=\{havaleBekleniyorMu\(erisim\)\}\s*\/>;/,
+    );
   });
 
   it('⭐ şerit: vitrinde METİN yerine deneme satırı', () => {
@@ -339,5 +367,72 @@ describe('D · BAĞLANTI — karar ekrana gerçekten bağlı mı', () => {
     expect(k).toMatch(/\{!vitrin && !veri\.davet\.acik && davetKapaliMetni && \(/);
     // Gerçek düğme vitrin DIŞINDA aynen (sunucu kararıyla pasif).
     expect(k).toMatch(/\{sahipMi && !vitrin && \(/);
+  });
+});
+
+// ── E · HAVALE BEKLEYEN FİRMA (28.09, Emre kararı "pencere + kilitli kart") ──
+// Havale teklifi ödenmeyi bekleyen yeni firma vitrinde gezer; kapalı işlem
+// penceresi ve kilitli bölüm kartı onu İKİNCİ KEZ paket seçmeye yollamaz,
+// şeritle aynı dili konuşur ("dekontunuz onaylanınca açılır").
+describe('E · havale bekleyen firma: pencere + kilitli kart paket seçtirmez', () => {
+  const havaleVitrini: ErisimKarari = { ...vitrin, durum: 'ASKIDA', vitrinNedeni: 'havale-bekleniyor' };
+
+  it('⭐ neden sunucudan: yalnız vitrin + `havale-bekleniyor`', () => {
+    expect(havaleBekleniyorMu(havaleVitrini)).toBe(true);
+    expect(havaleBekleniyorMu({ ...vitrin, vitrinNedeni: 'paket-yok' })).toBe(false);
+    expect(havaleBekleniyorMu(vitrin)).toBe(false); // eski sunucu: alan yok → eski metin
+    expect(havaleBekleniyorMu({ ...havaleVitrini, erisimVar: true })).toBe(false); // açık erişim vitrin sayılmaz
+    expect(havaleBekleniyorMu({ ...havaleVitrini, vitrin: false })).toBe(false);
+    expect(havaleBekleniyorMu(null)).toBe(false);
+  });
+
+  it('⭐ pencere: havale başlığı + açılış metni, deneme YOK, "Paketleri gör" YOK', () => {
+    expect(vitrinPencereIcerigi('excel', true)).toEqual({
+      baslik: HAVALE_BEKLENIYOR_BASLIGI,
+      metin: HAVALE_ACILIS_METNI,
+      denemeGoster: false,
+      paketlereYonlendir: false,
+    });
+    expect(HAVALE_BEKLENIYOR_BASLIGI).toBe('Havale ödemeniz bekleniyor');
+    expect(HAVALE_ACILIS_METNI).toBe('Dekontunuz onaylanınca bu özellik açılacak.');
+    expect(`${HAVALE_BEKLENIYOR_BASLIGI} ${HAVALE_ACILIS_METNI}`).not.toMatch(/paket/i);
+  });
+
+  it('pencere: havale yoksa eski vitrin (başlık, işlem metni, deneme, paketler) aynen', () => {
+    expect(vitrinPencereIcerigi('excel', false)).toEqual({
+      baslik: VITRIN_BASLIGI,
+      metin: vitrinIslemMetni('excel'),
+      denemeGoster: true,
+      paketlereYonlendir: true,
+    });
+  });
+
+  it('⭐ kilitli kart: "dekontunuz onaylanınca açılır", /abonelik bağlantısı YOK, Ana Sayfa VAR', () => {
+    const html = renderToStaticMarkup(createElement(VitrinBolumKarti, { yol: '/library/mechanical-brands', havale: true }));
+    expect(html).toContain('Kütüphanem dekontunuz onaylanınca açılır');
+    expect(html).toContain(vitrinBolumu('/library/mechanical-brands').aciklama);
+    expect(html).not.toContain('href="/abonelik"');
+    expect(html).not.toContain('Paketleri gör');
+    expect(html).not.toContain('paket seçince');
+    expect(html).toContain('href="/dashboard"');
+  });
+
+  it('⭐ BAĞLANTI: sağlayıcı nedeni sunucu kararından okur, pencere içeriği saf fonksiyondan', () => {
+    const k = yorumsuz('ozellik/odeme/VitrinSaglayici.tsx');
+    expect(k).toContain('const havale = havaleBekleniyorMu(erisim);');
+    expect(k).toMatch(/<VitrinPenceresi islem=\{islem\} deneme=\{deneme\} havale=\{havale\} onKapat=\{kapat\}\s*\/>/);
+    expect(k).toContain('const icerik = vitrinPencereIcerigi(islem, havale);');
+    expect(k).toContain('{icerik.baslik}');
+    expect(k).toContain('{icerik.metin}');
+    expect(k).toMatch(/\{icerik\.denemeGoster && deneme && \(/);
+    expect(k).toMatch(/\{icerik\.paketlereYonlendir \? \(/);
+  });
+
+  it('⭐ iki taraf AYNI neden kodlarını konuşuyor (sunucu ↔ ön yüz)', () => {
+    const sunucu = readFileSync(join(kok, '..', 'backend', 'src', 'ozellik', 'odeme', 'abonelik', 'erisim.servisi.ts'), 'utf-8');
+    expect(sunucu).toContain("export type VitrinNedeni = 'paket-yok' | 'havale-bekleniyor';");
+    expect(sunucu).toContain('vitrinNedeni?: VitrinNedeni;');
+    const onYuz = readFileSync(join(kok, 'ozellik', 'odeme', 'erisim-durumu.ts'), 'utf-8');
+    expect(onYuz).toContain("vitrinNedeni?: 'paket-yok' | 'havale-bekleniyor';");
   });
 });

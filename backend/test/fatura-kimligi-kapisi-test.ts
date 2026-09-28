@@ -235,6 +235,8 @@ function sahteFaturaPrisma(firmaKutusu: { deger: any }) {
     db: {
       abonelik: { findUnique: async () => ({ firma: firmaKutusu.deger }) },
       firma: { findUnique: async () => firmaKutusu.deger },
+      // 28.09: `kuyrugaAl` ödenen paketin ADINI faturaya kopyalar (`paketAdi`).
+      paketSurumu: { findUnique: async () => ({ paket: { ad: 'Pro Mekanik' } }) },
       fatura: {
         create: async (a: any) => {
           yazilanFaturalar.push(a.data);
@@ -290,6 +292,8 @@ async function faturaKesimi(firma: any) {
     paraBirimi: 'TRY',
     donemBasi: new Date('2026-09-01'),
     donemSonu: new Date('2026-10-01'),
+    tahsilatTarihi: new Date('2026-09-01'),
+    paketSurumuId: 's1',
   });
   let cokti = false;
   try {

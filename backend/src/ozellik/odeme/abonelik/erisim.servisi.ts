@@ -10,6 +10,7 @@ import { dunningKisitGunu, kisitlamayaKalanGun } from '../dunning/kisit-gunu';
 import { tarihYaz } from '../dunning/dunning.metinleri';
 import { kartGuncellenebilirMi } from './kart-kapatma';
 import { mirasGecerliMi } from './miras-hakki';
+import { bekleyenHavaleVarMi, onaylanmisHavaleVarMi } from '../havale/havale-durumlari';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -100,6 +101,9 @@ export const KAPALI_HESAPTA_ACIK: ReadonlySet<Yetenek> = new Set([
   Yetenek.ABONELIK_YONET,
 ]);
 
+/** 28.09 — vitrin neden: paketi yok · havale teklifi ödenmeyi bekliyor. */
+export type VitrinNedeni = 'paket-yok' | 'havale-bekleniyor';
+
 export interface ErisimKarari {
   erisimVar: boolean;
   saltOkunur: boolean;
@@ -120,9 +124,18 @@ export interface ErisimKarari {
    *
    * ⚠ Süresi biten / askıya alınan / kapatılan hesap vitrin DEĞİLDİR
    *   (Emre: "süresi biten eski aboneler bu işin dışında"). Bayrak yalnız
-   *   `karar()`ın ABONELİK SATIRI YOK dalında yazılır.
+   *   `karar()`ın ABONELİK SATIRI YOK dalında ve HİÇ ÖDENMEMİŞ HAVALE
+   *   SATIRI dalında (28.09 — havale teklifi yeni firmaya satır açar;
+   *   ödemesi beklenen firma eski abone değildir) yazılır.
    */
   vitrin?: boolean;
+  /**
+   * 28.09 — VİTRİNİN NEDENİ (yalnız `vitrin: true` iken yazılır). Emre
+   * kararı: havale teklifi ödenmeyi bekleyen firmanın penceresi ve kilitli
+   * kartı müşteriyi İKİNCİ KEZ paket seçmeye yollamaz, "dekontunuz
+   * onaylanınca açılır" der. Metni ön yüz seçer; NEDENİ sunucu söyler.
+   */
+  vitrinNedeni?: VitrinNedeni;
   durum: AbonelikDurumu;
   /** Kullanıcıya gösterilecek uyarı — null ise uyarı yok. */
   uyari: {
@@ -186,6 +199,52 @@ export function havuzFiyatiGorunurMu(
 ): boolean {
   if (rol === 'admin') return true;
   return karar?.erisimVar === true;
+}
+
+type ErisimUyarisi = NonNullable<ErisimKarari['uyari']>;
+
+/** Vitrin şeridi — paketi olmayan firma (23.09). */
+const PAKET_SECIN_UYARISI: ErisimUyarisi = {
+  seviye: 'bilgi',
+  baslik: 'Paketinizi seçin',
+  metin: 'Uygulamayı gezebilirsiniz; teklif hazırlamak için bir paket seçin.',
+  eylem: { etiket: 'Paket seç', yol: '/abonelik' },
+};
+
+/**
+ * Vitrin şeridi — havale teklifi ödenmeyi bekleyen YENİ firma (28.09.2026,
+ * Emre kararı C). Ödeme bankadan yapılır; eylem abonelik sayfasıdır — kart
+ * sayfası DEĞİL (kart aboneliği yok) ve orada paket kartları kartla satın
+ * almanın neden kapalı olduğunu söyler (`yeniAbonelikEngeli` →
+ * `HAVALE_TEKLIFI_BEKLIYOR`). Her şeridin bir sayfaya çıkması kuralı:
+ * `test:kart-guncelleme` R8.
+ */
+const HAVALE_BEKLENIYOR_UYARISI: ErisimUyarisi = {
+  seviye: 'bilgi',
+  baslik: 'Havale ödemeniz bekleniyor',
+  metin: 'Dekontunuz onaylanınca hesabınız açılır; bu sırada uygulamayı gezebilirsiniz.',
+  eylem: { etiket: 'Ayrıntılar', yol: '/abonelik' },
+};
+
+/**
+ * VİTRİN KARARI: erişim KAPALI (yetenek açılmaz), ön yüz duvar çizmez.
+ * Paket bilgisi boş — firmanın ödenmiş paketi yok. Şerit her çağrıda
+ * KOPYALANIR (sabit nesne çağırana paylaşılmaz).
+ */
+function vitrinKarari(durum: AbonelikDurumu, uyari: ErisimUyarisi, vitrinNedeni: VitrinNedeni): ErisimKarari {
+  return {
+    erisimVar: false,
+    saltOkunur: false,
+    vitrin: true,
+    vitrinNedeni,
+    durum,
+    uyari: { ...uyari, ...(uyari.eylem ? { eylem: { ...uyari.eylem } } : {}) },
+    kalanGun: null,
+    paketKodu: '',
+    kullaniciHakki: 0,
+    dwgAktif: false,
+    paketGecisi: null,
+  };
 }
 
 @Injectable()
@@ -253,23 +312,30 @@ export class ErisimServisi {
       // ("30 gün ücretsiz…") burada YAZILMAZ: deneme hakkı kişiye bağlıdır
       // (firma + e-posta + doğrulama), bu karar firma ekseninde verilir —
       // ön yüz satırı `/abonelik/paketler`in firma+kişi kararından kurar.
-      return {
-        erisimVar: false,
-        saltOkunur: false,
-        vitrin: true,
-        durum: AbonelikDurumu.SONA_ERDI,
-        uyari: {
-          seviye: 'bilgi',
-          baslik: 'Paketinizi seçin',
-          metin: 'Uygulamayı gezebilirsiniz; teklif hazırlamak için bir paket seçin.',
-          eylem: { etiket: 'Paket seç', yol: '/abonelik' },
-        },
-        kalanGun: null,
-        paketKodu: '',
-        kullaniciHakki: 0,
-        dwgAktif: false,
-        paketGecisi: null,
-      };
+      return vitrinKarari(AbonelikDurumu.SONA_ERDI, PAKET_SECIN_UYARISI, 'paket-yok');
+    }
+
+    // ── HAVALE TEKLİFİ BEKLEYEN YENİ FİRMA (28.09.2026 — Emre kararı C) ────
+    // Havale teklifi aboneliği OLMAYAN firmaya satırı ASKIDA açar (onay AKTIF
+    // yapar; `HavaleServisi.abonelikBulYaDaOlustur`). Eskiden bu satır kritik
+    // "Aboneliğiniz askıya alındı" şeridini ve duvarı getiriyordu: ödemesi
+    // beklenen yeni müşteri, hiç sahip olmadığı bir aboneliğin askıya
+    // alındığını okuyor, vitrini kaybediyordu; teklif iptal edilince de öyle
+    // kalıyordu (ölçüldü, `test:havale-onay-yarisi` V). ASKIDA + HAVALE'yi
+    // bugün YALNIZ bu teklif yolu üretir (dunning ve gece mutabakatı yalnız
+    // KART satırı okur); yine de "hiç ödenmedi" DOĞRUDAN sorulur — başka
+    // yoldan bu hâle gelen ödenmiş satır vitrine düşmesin. Yalnız SUNUM
+    // değişir: `erisimVar` FALSE kalır. Satır silinmez, göç yok (Emre).
+    if (ab.durum === AbonelikDurumu.ASKIDA && ab.odemeYontemi === OdemeYontemi.HAVALE) {
+      const [odenmis, bekleyen] = await Promise.all([
+        onaylanmisHavaleVarMi(this.prisma, ab.id),
+        bekleyenHavaleVarMi(this.prisma, ab.id),
+      ]);
+      if (!odenmis) {
+        return bekleyen
+          ? vitrinKarari(ab.durum, HAVALE_BEKLENIYOR_UYARISI, 'havale-bekleniyor')
+          : vitrinKarari(ab.durum, PAKET_SECIN_UYARISI, 'paket-yok');
+      }
     }
 
     const paket = ab.paketSurumu.paket;

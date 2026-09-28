@@ -41,3 +41,33 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: npx tsc --noEmit
       - run: npx vitest run
+
+  # 27.09.2026: DWG motoru (Python) testleri — zamanlama kapilari dahil HEPSI
+  # (olay dongusu D1-D4, /parse iptali, kiraci dedup, birim tespiti...).
+  # Eskiden elle kosuluyordu: DETECTOR kapisi canli Python 3.11'de kod degismeden
+  # kirmiziydi (edf1930) ve kimse gormedi. Ortam uretim motor imajinin TABANI
+  # (canli Python 3.11; httptools YOK → h11); ubuntu-24.04: ubuntu-latest
+  # 19.10.2026'da Ubuntu 26'ya geciyor. Test bagimliliklari requirements-test.txt
+  # (pytest + httpx; uretim imaji kurmaz).
+  # KARARLILIK CI KOSUCUSUNDA OLCULDU (dwg-motor-kararlilik, 27.09, 2 kosu x 25
+  # kosucu): zamanlama dosyalarinin 14 testi 225/225, tam paket 25/25 (197 test,
+  # 6325 ornek, dusen 0). Esiklenen en kotu degerler: is surerken /health 5 ms
+  # (esik 1 sn), I1 iptalden donus 251 ms (2 sn), I3 1002 ms (3 sn, en dar pay x3).
+  # Ilk olcumde tam paket 25/25 HIC kosmadi: test_dedup_kapsam httpx istiyordu.
+  # KARARSIZ TEST (CLAUDE.md 14.09 kurali): duzeltilir ya da asagidaki komuta
+  # `--deselect <dugum>` ile ADIYLA, bir ust satira gerekce + tarih yorumuyla
+  # eklenir — Node ikizi: manifest-kapisi.ts. Yeni zamanlama kapisi ya da esik
+  # degisikligi once `olcum/<ad>` dalinda dwg-motor-kararlilik ile olculur.
+  dwg-engine:
+    runs-on: ubuntu-24.04
+    container: python:3.11-slim-bookworm
+    # Is ~1,5 dk; testler is parcacigi + alt surec baslatir — takilan test 6 sa'lik
+    # varsayilani beklemesin (CI ve deploy kuyrugu kilitlenmesin).
+    timeout-minutes: 15
+    defaults:
+      run: { working-directory: backend/src/modules/dwg-engine/python }
+    steps:
+      - uses: actions/checkout@v4
+      - run: python --version && pip install --no-cache-dir -r requirements-test.txt
+      - name: Motor testleri (pytest, tests/ dizininin tamami)
+        run: python -m pytest tests -q -p no:cacheprovider --durations=10

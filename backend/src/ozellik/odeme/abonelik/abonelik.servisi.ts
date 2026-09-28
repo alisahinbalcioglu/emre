@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { AbonelikDurumu, KapatmaNedeni, OdemeYontemi, Prisma } from '@prisma/client';
 import type { Abonelik } from '@prisma/client';
@@ -17,6 +17,7 @@ import { KartKapatmaSonucu, kapatmaCumlesi, kartAboneligiKapaliMi } from './kart
 import {
   odenmisSiparisMi,
   siparisiBul,
+  tahsilEdilenTutar,
   tahsilatBasarisizligiKarari,
 } from '../iyzico/tahsilat-kaniti';
 // Saf modüller (Prisma/Nest bilmez) — döngüsel import YOK.
@@ -27,6 +28,8 @@ import {
   mirasaDonusVerisi,
   mirasiAyir,
   mirasiBitirVerisi,
+  mirasPaketiDegisimi,
+  mirasPaketiDegisimMesaji,
   mirastanCikisMi,
   odenenDonemTabani,
 } from './miras-hakki';
@@ -902,6 +905,7 @@ export class AbonelikServisi {
     // kesilir. Kapı: `test:miras-hakki` İ7.
     const iptalKorunur = ab.durum === AbonelikDurumu.IPTAL && kartAboneligiKapaliMi(ab);
 
+    const cekim = tahsilEdilenTutar(siparis);
     await this.durumDegistir(ab.id, iptalKorunur ? AbonelikDurumu.IPTAL : AbonelikDurumu.AKTIF, {
       kosul: { odemeYontemi: OdemeYontemi.KART }, // 24.09 yarış: arada havale onaylandıysa P2025 → yeniden dene
       aciklama: `Tahsilat başarılı (sipariş ${siparisKodu})`,
@@ -921,8 +925,9 @@ export class AbonelikServisi {
         // cekim erisimi uzatmaz, olagan satirda uzatir; yonetici iade
         // kararini buna gore verir (havale-kart-penceresi.ts).
         yeniErisimSonu: yeniErisimSonu.toISOString(),
-        tutar: siparis.paidPrice ?? siparis.price ?? null,
-        paraBirimi: ab.paketSurumu.paraBirimi,
+        // 28.09: faturayla TEK kural (`tahsilEdilenTutar`, tahsilat-kaniti.ts).
+        tutar: cekim?.tutar ?? null,
+        paraBirimi: cekim?.paraBirimi ?? ab.paketSurumu.paraBirimi,
         startPeriod: siparis.startPeriod ?? null,
         endPeriod: siparis.endPeriod ?? null,
       },
@@ -946,8 +951,9 @@ export class AbonelikServisi {
     //    degisim kilidi kalkar. Kilit BIZIM SAATIMIZLE degil iyzico'nun
     //    cekimiyle acilir (inceleme bulgusu 4): cekim partisi gec kosarsa
     //    saatle acilan kilit baslamamis uca ikinci degisimi gecirirdi.
-    // Sira: faturadan ONCE — `webhook.isleyici` faturanin yedek tutarini
-    // donen `abonelik.paketSurumu`ndan okur.
+    // Sira: faturadan ONCE — `webhook.isleyici` faturanin ODENEN paketini
+    // (`odenenPaketSurumuId ?? paketSurumuId`) ve yedek para birimini donen
+    // satirdan okur (28.09: tutar artik siparisin kendisinden).
     // ⚠ HATA TAHSILATI DUSURMEZ: gecis yazilamazsa 10 dakikalik tarama
     // ayni isi tekrar dener; webhook "islendi" damgasi yemeli.
     await this.planliGecisiUygula(ab.id, { aktor: 'webhook' }).catch((e) =>
@@ -982,8 +988,10 @@ export class AbonelikServisi {
       ),
     );
 
-    // Gecis/hizalama paketi degistirmis olabilir: fatura yedek tutarini ve
-    // para birimini GUNCEL surumden okusun (bayat `ab` eski paketi tasir).
+    // Gecis/hizalama paketi ve kilit kaldirma "odenen" isaretcisini
+    // degistirmis olabilir: fatura odenen paketi ve yedek para birimini GUNCEL
+    // satirdan okusun (bayat `ab` eski paketi tasir). 28.09: tutar
+    // siparisin kendisinden (`tahsilEdilenTutar`), paketten DEGIL.
     const guncel = await this.prisma.abonelik.findUnique({
       where: { id: ab.id },
       include: { paketSurumu: true },
@@ -1425,6 +1433,22 @@ export class AbonelikServisi {
     // "miras yenilemesi" (teklif = satış dışı miras sürümü) de öyle.
     const hedef = p.hedefPaketSurumuId && p.hedefPaketSurumuId !== ab.paketSurumuId ? p.hedefPaketSurumuId : null;
     const kodlar = hedef ? await Promise.all([this.paketKodu(db, ab.paketSurumuId), this.paketKodu(db, hedef)]) : null;
+    // ⚠ 27.09 — ONAYDA DA miras paketi değişmez (güvenlik incelemesi ORTA-1,
+    // Emre kararı b): teklif kuralı (`HavaleServisi.teklifOlustur`) 27.09'dan
+    // ÖNCE verilmiş teklifi durduramaz. İlk yazımdan ÖNCE fırlar: havale işlemi
+    // geri alınır, satıra hiçbir şey yazılmaz (`test:miras-hakki` H7d).
+    if (hedef && mirasPaketiMi(kodlar?.[1])) {
+      const hakKodu =
+        ab.mirasPaketSurumuId && ab.mirasPaketSurumuId !== ab.paketSurumuId
+          ? await this.paketKodu(db, ab.mirasPaketSurumuId)
+          : null;
+      const degisim = mirasPaketiDegisimi(
+        { ...ab, paketSurumu: { paket: { kod: kodlar?.[0] ?? null } }, mirasPaketSurumu: { paket: { kod: hakKodu } } },
+        kodlar?.[1],
+        simdi,
+      );
+      if (degisim) throw new BadRequestException(mirasPaketiDegisimMesaji(degisim));
+    }
     const satir = { ...ab, paketSurumu: { paket: { kod: kodlar?.[0] ?? null } } };
     const hedefPaket = hedef ? { paketSurumuId: hedef, mirasPaketi: mirasPaketiMi(kodlar?.[1]) } : null;
     const mirastanCikis = !!hedefPaket && mirastanCikisMi(satir, hedefPaket);
@@ -1660,9 +1684,11 @@ export class AbonelikServisi {
       );
       return;
     }
-    const tutar = p.siparis.paidPrice ?? p.siparis.price;
-    const tutarMetni =
-      typeof tutar === 'number' ? tutarYaz(tutar, ab.paketSurumu.paraBirimi) : 'bilinmiyor';
+    // 28.09: faturayla TEK kural (`tahsilEdilenTutar`, tahsilat-kaniti.ts).
+    const cekim = tahsilEdilenTutar(p.siparis);
+    const tutarMetni = cekim
+      ? tutarYaz(cekim.tutar, cekim.paraBirimi ?? ab.paketSurumu.paraBirimi)
+      : 'bilinmiyor';
     // Tarih TEK çözücüden: iyzico dönem sınırını ms SAYISI (ya da rakam
     // dizesi) yollayabilir; `new Date('1789…')` Invalid Date yazardı.
     const baslangic = iyzicoTarihi(p.siparis.startPeriod);
@@ -1670,7 +1696,7 @@ export class AbonelikServisi {
     const donem = baslangic && bitis ? `${tarihYaz(baslangic)} – ${tarihYaz(bitis)}` : 'bilinmiyor';
     this.logger.error(
       `CIFT TAHSILAT: havaleyle odenen abonelik=${ab.id} kart aboneligi=${p.abonelikKodu} ` +
-        `siparis=${p.siparisKodu} tutar=${tutar} — erisim/fatura DEGISMEDI, iade gerekiyor`,
+        `siparis=${p.siparisKodu} tutar=${cekim?.tutar ?? 'bilinmiyor'} — erisim/fatura DEGISMEDI, iade gerekiyor`,
     );
     await this.olayYaz(ab.id, 'tahsilat.cift', {
       aciklama:
@@ -1679,7 +1705,7 @@ export class AbonelikServisi {
       veri: {
         abonelikKodu: p.abonelikKodu,
         siparisKodu: p.siparisKodu,
-        tutar: tutar ?? null,
+        tutar: cekim?.tutar ?? null,
         startPeriod: p.siparis.startPeriod ?? null,
         endPeriod: p.siparis.endPeriod ?? null,
       },

@@ -48,6 +48,29 @@ export function vitrinIslemMetni(islem: VitrinIslemi | null | undefined): string
   return ISLEM_METNI[islem ?? 'genel'] ?? ISLEM_METNI.genel;
 }
 
+/**
+ * 28.09 — HAVALE BEKLEYEN FİRMA (Emre kararı "pencere + kilitli kart"):
+ * şeritle aynı dil; müşteri İKİNCİ KEZ paket seçmeye yönlendirilmez.
+ */
+export const HAVALE_BEKLENIYOR_BASLIGI = 'Havale ödemeniz bekleniyor';
+export const HAVALE_ACILIS_METNI = 'Dekontunuz onaylanınca bu özellik açılacak.';
+
+export interface VitrinPencereIcerigi {
+  baslik: string;
+  metin: string;
+  /** Deneme satırı (kart satın alma vaadi) çizilsin mi? */
+  denemeGoster: boolean;
+  /** "Paketleri gör" düğmesi mi, yoksa yalnız "Tamam" mı? */
+  paketlereYonlendir: boolean;
+}
+
+/** Vitrin penceresinin içeriği — işlem ve vitrin nedeninden. SAF. */
+export function vitrinPencereIcerigi(islem: VitrinIslemi | null | undefined, havaleBekleniyor: boolean): VitrinPencereIcerigi {
+  return havaleBekleniyor
+    ? { baslik: HAVALE_BEKLENIYOR_BASLIGI, metin: HAVALE_ACILIS_METNI, denemeGoster: false, paketlereYonlendir: false }
+    : { baslik: VITRIN_BASLIGI, metin: vitrinIslemMetni(islem), denemeGoster: true, paketlereYonlendir: true };
+}
+
 export interface VitrinDenemeBilgisi {
   /** olumlu = deneme var · bilgi = hak kullanılmış · uyari = doğrulama gerekli */
   ton: 'olumlu' | 'bilgi' | 'uyari';
@@ -67,12 +90,21 @@ export interface VitrinDenemeBilgisi {
  *   yanlış yön "var" demek olurdu.
  * ⚠ Gün sayıları paketten pakete FARKLIYSA rakam yazılmaz — hangi paketi
  *   seçeceği belli olmayan kişiye tek bir rakam söylemek yalan olabilirdi.
+ * ⚠ 28.09 — deneme bir KART SATIN ALMA vaadidir: sunucu paketin kart yolunu
+ *   kapattıysa (`degisim.yol` `satin-al` değil — ör. bekleyen havale teklifi
+ *   `HAVALE_TEKLIFI_BEKLIYOR`) o paket sayılmaz; hiçbiri satın alınamıyorsa
+ *   satır YOK, şerit sunucunun metnini ("Dekontunuz onaylanınca…") gösterir.
+ *   `degisim` gelmezse (eski sunucu) paket eskisi gibi sayılır.
  */
 export function vitrinDenemeSatiri(
-  paketler: ReadonlyArray<{ surum?: Pick<PaketSurumu, 'denemeGunu' | 'denemeHakki' | 'denemeGerekcesi'> | null }> | null | undefined,
+  paketler: ReadonlyArray<{
+    surum?: Pick<PaketSurumu, 'denemeGunu' | 'denemeHakki' | 'denemeGerekcesi'> | null;
+    degisim?: { yol: string } | null;
+  }> | null | undefined,
 ): VitrinDenemeBilgisi | null {
   if (!Array.isArray(paketler)) return null;
   const denemeli = paketler
+    .filter((p) => !p?.degisim || p.degisim.yol === 'satin-al')
     .map((p) => p?.surum)
     .filter((s): s is Pick<PaketSurumu, 'denemeGunu' | 'denemeHakki' | 'denemeGerekcesi'> =>
       !!s && typeof s.denemeGunu === 'number' && s.denemeGunu > 0);
@@ -168,6 +200,11 @@ export function vitrinBolumu(yol: string): VitrinBolumu {
 /** Kart başlığı: "<Bölüm> paket seçince açılır". */
 export function vitrinBolumBasligi(yol: string): string {
   return `${vitrinBolumu(yol).ad} paket seçince açılır`;
+}
+
+/** 28.09 — havale bekleyen firmanın kilitli kart başlığı (paket seçtirmez). */
+export function vitrinBolumHavaleBasligi(yol: string): string {
+  return `${vitrinBolumu(yol).ad} dekontunuz onaylanınca açılır`;
 }
 
 /** Malzeme Havuzu'nda fiyatı gizlenen hücre ve tablo üstü not. */

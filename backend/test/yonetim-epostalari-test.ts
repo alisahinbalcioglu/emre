@@ -62,6 +62,7 @@ import {
   yonetimeYazKritik,
 } from '../src/ozellik/odeme/eposta/yonetim-bildirimi';
 import { FaturaServisi } from '../src/ozellik/odeme/fatura/fatura.servisi';
+import { tarihYaz } from '../src/ozellik/odeme/dunning/dunning.metinleri';
 import {
   ElleMuhasebeAdaptoru,
   MUHASEBE_ADAPTORU,
@@ -386,6 +387,13 @@ const TEST_IYZICO = 'https://sandbox-api.iyzipay.com';
 // sonradır → ödeme tarihi deterministik; öğlen saati TZ kaymasını önler.
 const DONEM_BASI = new Date('2026-09-20T12:00:00Z');
 const DONEM_SONU = new Date('2026-10-20T12:00:00Z');
+/**
+ * 28.09 — ödeme anı artık satırda (`tahsilatTarihi`) ve son gün geçmişse
+ * e-posta konusu "SÜRESİ GEÇTİ" öneki taşır. Varsayılan ödeme TAZE (2 saat
+ * önce): konu assert'leri takvimden bağımsız kalsın (sabit bir tarih 7 gün
+ * sonra "geç" olurdu). Süresi geçmiş hâli E3 bilerek DONEM_BASI ile ölçer.
+ */
+const tazeOdeme = () => new Date(Date.now() - 2 * 60 * 60 * 1000);
 
 /** Tüzel kişi (VKN + vergi dairesi). */
 const TUZEL = {
@@ -426,14 +434,19 @@ function faturaDunyasi(
   const elle = new ElleMuhasebeAdaptoru(config, db.prisma, posta.servis);
   const fatura = new FaturaServisi(db.prisma, o.adaptor ?? elle, posta.servis);
 
-  async function kuyruk(tahsilatKodu = 'ord-777', tutar = 1200, donemBasi = DONEM_BASI): Promise<Satir> {
+  async function kuyruk(
+    tahsilatKodu = 'ord-777', tutar = 1200, donemBasi = DONEM_BASI, tahsilatTarihi = tazeOdeme(),
+  ): Promise<Satir> {
     await fatura.kuyrugaAl({
       abonelikId: 'AB1', tahsilatKodu, tutar, paraBirimi: 'TRY', donemBasi, donemSonu: DONEM_SONU,
+      tahsilatTarihi, paketSurumuId: 'S1',
     });
     return db.tablo('fatura').find((f) => f.tahsilatKodu === tahsilatKodu)!;
   }
-  async function kes(tahsilatKodu = 'ord-777', tutar = 1200, donemBasi = DONEM_BASI): Promise<Satir> {
-    const satir = await kuyruk(tahsilatKodu, tutar, donemBasi);
+  async function kes(
+    tahsilatKodu = 'ord-777', tutar = 1200, donemBasi = DONEM_BASI, tahsilatTarihi = tazeOdeme(),
+  ): Promise<Satir> {
+    const satir = await kuyruk(tahsilatKodu, tutar, donemBasi, tahsilatTarihi);
     await (fatura as any).tekFatura(satir.id);
     return satir;
   }
@@ -758,10 +771,13 @@ async function eBlogu(): Promise<void> {
     check('E2d tutarlar: matrah + KDV + tahsil edilen toplam',
       satiri(p, /^Matrah:/) === 'Matrah: ₺1.000,00 · KDV: ₺200,00 · Toplam (tahsil edilen, KDV dahil): ₺1.200,00',
       satiri(p, /^Matrah:/));
-    check('E3 ⭐ VUK 231/5: ödeme tarihi ve SON DÜZENLEME GÜNÜ (ödeme + 7 gün)',
-      satiri(p, /^Ödeme tarihi:/) === 'Ödeme tarihi: 20 Eylül 2026' &&
-        /^Son düzenleme günü: 27 Eylül 2026/.test(satiri(p, /^Son düzenleme günü:/)),
-      `${satiri(p, /^Ödeme tarihi:/)} | ${satiri(p, /^Son düzenleme/)}`);
+    // 28.09: ödeme anı SATIRIN `tahsilatTarihi`dir (dönem başı değil); biçim
+    // ortak `tarihYaz` — ölçülen, hangi tarihin yazıldığı (bkz. E3).
+    check('E3a taze ödeme: "Ödeme tarihi" satırın ödeme anı (dönem başı DEĞİL), "SÜRE GEÇTİ" notu ve konu öneki YOK',
+      !!satir.tahsilatTarihi && satir.tahsilatTarihi.getTime() !== DONEM_BASI.getTime() &&
+        satiri(p, /^Ödeme tarihi:/) === `Ödeme tarihi: ${tarihYaz(satir.tahsilatTarihi)}` &&
+        !iceren(p, /SÜRE GEÇTİ/) && !/SÜRESİ GEÇTİ/.test(p?.konu ?? '') && p?.paragraflar[0]?.startsWith('Ödeme:') === true,
+      `${satiri(p, /^Ödeme tarihi:/)} | ${p?.paragraflar[0]}`);
     check('E3b NES talimatı (alıcı e-postası, e-Fatura mükellefine elle kopya) + "BİR kez kesilir" + "müşteriye iletmeyin"',
       iceren(p, /NES'te e-Arşiv faturayı/) && iceren(p, /e-Fatura mükellefi/) &&
         iceren(p, /Aynı tahsilat kodu \(ord-777\) ikinci kez gelirse fatura BİR kez kesilir/) &&
@@ -783,6 +799,21 @@ async function eBlogu(): Promise<void> {
       !!p && !!kopyasi && !p.paragraflar.some((x) => /<\/?[a-z][^>]*>/i.test(x)) &&
         kopyasi.metin.includes('Yazılım Kullanım Bedeli') && kopyasi.metin.includes('₺1.200,00'),
       kopyasi?.metin.slice(0, 200) ?? '(e-posta yok)');
+  }
+  {
+    // E3 — ödeme anı GEÇMİŞTE (20.09 öğlen): son gün 27.09 çoktan geçti.
+    const d = faturaDunyasi();
+    await ortamla(undefined, () => d.kes('ord-777', 1200, DONEM_BASI, DONEM_BASI));
+    const p = d.posta.giden[0];
+    check('E3 ⭐ VUK 231/5: ödeme tarihi = satırın ödeme anı, SON DÜZENLEME GÜNÜ = ödeme + 7 gün',
+      satiri(p, /^Ödeme tarihi:/) === 'Ödeme tarihi: 20 Eylül 2026' &&
+        /^Son düzenleme günü: 27 Eylül 2026/.test(satiri(p, /^Son düzenleme günü:/)),
+      `${satiri(p, /^Ödeme tarihi:/)} | ${satiri(p, /^Son düzenleme/)}`);
+    check('E3c ⭐ son gün GEÇMİŞ: İLK paragraf "⚠ SÜRE GEÇTİ … 27 Eylül 2026 idi", konu "SÜRESİ GEÇTİ — Fatura kesilecek …", başlık da söyler',
+      /^⚠ SÜRE GEÇTİ: yasal son düzenleme günü 27 Eylül 2026 idi/.test(p?.paragraflar[0] ?? '') &&
+        p?.konu === '[MetaPriceX] SÜRESİ GEÇTİ — Fatura kesilecek — Yılmaz Mühendislik Ltd. Şti. — ₺1.200,00 — ord-777' &&
+        /SÜRESİ GEÇTİ/.test(p?.baslik ?? ''),
+      `${p?.konu} | ${p?.baslik} | ${p?.paragraflar[0]}`);
   }
   for (const [ad, taban] of [['sandbox', TEST_IYZICO], ['tanımsız (istemcinin varsayılanı sandbox)', null]] as const) {
     const d = faturaDunyasi({ iyzicoTaban: taban });
@@ -838,14 +869,23 @@ async function eBlogu(): Promise<void> {
       satiri(p, /^Matrah:/));
   }
   {
+    // E11 — ESKİ SATIR: 28.09 alanlarından ÖNCE kuyruğa alınmış (`tahsilatTarihi`
+    // ve `paketAdi` NULL). Eski kural sürer: ödeme tarihi dönem başı ile
+    // kuyruğa alınmanın ERKENİ, kalem aboneliğin o anki paketi.
     const d = faturaDunyasi();
-    await ortamla(undefined, () => d.kes('ord-gelecek', 1200, new Date('2099-01-15T12:00:00Z')));
+    const satir = await d.kuyruk('ord-gelecek', 1200, new Date('2099-01-15T12:00:00Z'));
+    satir.tahsilatTarihi = null;
+    satir.paketAdi = null;
+    await ortamla(undefined, () => (d.fatura as any).tekFatura(satir.id));
     const p = d.posta.giden[0];
-    const bugun = new Date().getFullYear();
-    check('E11 ödeme tarihi = dönem başı ile kuyruğa alınma anının ERKENİ (gelecek dönem başı son günü ertelemez)',
-      satiri(p, /^Ödeme tarihi:/).includes(String(bugun)) && !satiri(p, /^Ödeme tarihi:/).includes('2099') &&
-        !satiri(p, /^Son düzenleme günü:/).includes('2099'),
-      `${satiri(p, /^Ödeme tarihi:/)} | ${satiri(p, /^Son düzenleme/)}`);
+    // Beklenen gün satırın KENDİ kuyruk anından, İstanbul'a göre (`tarihYaz`):
+    // UTC yılı (`getFullYear`) her 31 Aralık 21:00-24:00 UTC kırmızı verirdi
+    // (28.09 kod incelemesi — saat bombası).
+    check('E11 ESKİ SATIR (alanlar NULL): ödeme tarihi = dönem başı ile kuyruğa alınma anının ERKENİ (gelecek dönem başı son günü ertelemez); kalem aboneliğin paketi',
+      satiri(p, /^Ödeme tarihi:/) === `Ödeme tarihi: ${tarihYaz(satir.olusturuldu)}` &&
+        !satiri(p, /^Ödeme tarihi:/).includes('2099') &&
+        !satiri(p, /^Son düzenleme günü:/).includes('2099') && /^Kalem: Pro — Mekanik — Yazılım/.test(satiri(p, /^Kalem:/)),
+      `${satiri(p, /^Ödeme tarihi:/)} | ${satiri(p, /^Son düzenleme/)} | ${satiri(p, /^Kalem:/)}`);
   }
   {
     const d = faturaDunyasi({ yonetici: false });

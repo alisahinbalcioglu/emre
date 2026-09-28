@@ -120,6 +120,9 @@ function sahtePrisma(mevcutPaketKodu: string | null, mevcutDurum = 'AKTIF') {
               paketSurumu: { paket: { kod: mevcutPaketKodu } },
             },
     },
+    // 28.09: satın alma kapısı bekleyen havale teklifini sorar
+    // (`bekleyenHavaleVarMi`); bu dünyada havale yok (kapı: havale-onay-yarisi V).
+    havaleOdemesi: { count: async () => 0 },
     firma: {
       findUnique: async () => ({
         unvan: null,

@@ -40,6 +40,7 @@ ENV/
 # Python debug / test output (DWG engine)
 backend/src/modules/dwg-engine/python/*.txt
 !backend/src/modules/dwg-engine/python/requirements.txt
+!backend/src/modules/dwg-engine/python/requirements-test.txt
 backend/src/modules/dwg-engine/python/*.dxf
 backend/src/modules/dwg-engine/python/*.dwg
 backend/src/modules/dwg-engine/python/_diag.py

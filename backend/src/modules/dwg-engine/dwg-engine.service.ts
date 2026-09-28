@@ -1,4 +1,50 @@
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import type { Response as ExpressResponse } from 'express';
+import { DWG_MOTOR_YOGUN_TEKRAR_SN } from './dwg-yukleme-kapisi';
+
+export const DWG_MOTOR_YOGUN_MESAJI =
+  'DWG motoru su an cok sayida projeyi isliyor; birkac dakika sonra tekrar deneyin.';
+
+/**
+ * Motorun donusum hatti DOLU (motor 429) — Nest de 429 doner, denetleyici
+ * `Retry-After` yazar (28.09). Eskiden 503'e cevriliyordu: on yuz 503'u gecici
+ * sayip dosyanin TAMAMINI 4 kez daha gonderiyordu (250 MB'ta ~1 GB aktarim +
+ * Nest'te ve motorda disk yazimi) — tam da sistem bogulmusken.
+ */
+export class DwgMotorYogunHatasi extends HttpException {
+  constructor(mesaj: string, readonly tekrarSn: number = DWG_MOTOR_YOGUN_TEKRAR_SN) {
+    super(mesaj || DWG_MOTOR_YOGUN_MESAJI, HttpStatus.TOO_MANY_REQUESTS);
+  }
+}
+
+/**
+ * Geometri GOVDESININ tavani (baslik zaman asimindan AYRI). Govde istemcinin
+ * hizinda akar (Caddy arkasinda 17 MB ~1,3 MB gzip); tavan yalniz asili motor
+ * baglantisinin sonsuza dek tutulmasini onler. On yuzun agir istek tavaniyla
+ * (`frontend/ortak/lib/api.ts` AGIR_ZAMAN_ASIMI_MS) ayni.
+ */
+const GEOMETRI_GOVDE_TAVANI_MS = 300_000;
+
+/** Content-Disposition'da dosya adi: tirnak, ters bolu ve satir sonu basligi bozar/enjekte eder. */
+function baslikGuvenliAd(ad: string): string {
+  return ad.replace(/["\\\r\n]/g, '_');
+}
+
+/** Motor (FastAPI) hatasi `{"detail": "..."}` doner; kullaniciya yalniz metni gosterilir. */
+function motorHataMetni(govde: string): string {
+  try {
+    const detay = (JSON.parse(govde) as { detail?: unknown })?.detail;
+    if (typeof detay === 'string' && detay.trim()) return detay;
+  } catch {
+    // JSON degil (bos govde, vekil sayfasi): ham metin aynen gosterilir.
+  }
+  return govde;
+}
 
 @Injectable()
 export class DwgEngineService {
@@ -234,27 +280,53 @@ export class DwgEngineService {
   }
 
   /**
-   * DXF geometrisini (LINE/POLYLINE koordinatlari) getir.
-   * Frontend Canvas2D viewer (dwg-viewer klasoru) kullanir.
+   * DXF geometrisini (Canvas2D viewer, dwg-viewer) motordan istemciye COZMEDEN akitir.
    *
-   * Cold-start hassasiyeti yuksek — kullanici dogrudan bekliyor. Initial 60s,
-   * retry 90s. Toplam max ~150s + 2s backoff. Kullanici gozunde "uyandiriliyor"
-   * olarak gosterilir (frontend B2 retry mantik).
+   * Motorun yaniti zaten son bicimdedir (upload_worker: `_json_safe` + katı JSON +
+   * UTF-8; `/geometry` onu FileResponse ile akitir). Eskiden burada `response.json()`
+   * + Express `res.json` vardi: canli backend imajinda (Node 20.20.2, 1 CPU) 18 MB'de
+   * JSON.parse 443 ms + JSON.stringify 253 ms (+ 17 MB'lik ETag sha1) — Nest'in TEK
+   * olay dongusu her proje acilisinda ~0,7 sn duruyordu (26.09).
+   *
+   * HATA ESLEMESI aynen ve govde akmaya baslamadan: motor 5xx/429 → 503 (on yuz
+   * yeniden dener), diger 4xx (409 "onbellekte yok", 404, 410) → 422 (on yuz
+   * "Oturum sona erdi… yeniden yukleyin"). Cold start / yeniden deneme: fetchWithRetry.
+   *
+   * ZAMAN ASIMI yalniz BASLIKLARA kadar (60 + 90 sn, eskisi gibi): govde istemcinin
+   * hizinda akar. Eski `AbortSignal.timeout` istegin tamamini kapsiyordu — tamponlayan
+   * eski yolda zararsizdi (ic ag, 17 MB milisaniyeler), akitan yolda yavas istemcinin
+   * indirmesini keserdi. Govdeye ayri, comert tavan: GEOMETRI_GOVDE_TAVANI_MS.
+   *
+   * KOPMA: istemci giderse (istemciKoptu) motor istegi kesilir; akis ortasinda
+   * `pipeline` iki ucu da yikar — motor baglantisi sizmaz. Basliklar gittikten sonra
+   * motor olurse yanit YIKILIR (temiz bitmez): istemci ag hatasi gorur ve yeniden
+   * dener; "tamam" gorunen yarim JSON almaz. Kapi: `npm run test:dwg-geometri-akis`.
    */
-  async getGeometry(fileId: string, layers: string = '') {
-    const params = new URLSearchParams();
-    if (layers) params.set('layers', layers);
-    const qs = params.toString();
-    const url = `${this.pythonServiceUrl}/geometry/${encodeURIComponent(fileId)}${qs ? '?' + qs : ''}`;
+  async geometriyiAkit(fileId: string, res: ExpressResponse, istemciKoptu?: AbortSignal): Promise<void> {
+    const baslangic = Date.now();
+    const url = `${this.pythonServiceUrl}/geometry/${encodeURIComponent(fileId)}`;
 
-    const factory = (timeoutMs: number): RequestInit => ({
-      method: 'GET',
-      headers: this.headers(),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    // Her deneme kendi denetimini tasir. Zaman asimi sinyali istegi DOGRUDAN kesmez:
+    // yalniz basliklar gelmeden dolarsa denetimi keser. Dinleyici sinyali GC'den de
+    // korur (Node 20'de AbortSignal.any kaynagi zayif tutar — bkz. fetchWithRetry).
+    type Deneme = { denetim: AbortController; basliklarGeldi: boolean; sureyiBirak: () => void };
+    let deneme: Deneme | undefined;
+    const factory = (timeoutMs: number): RequestInit => {
+      const bu: Deneme = { denetim: new AbortController(), basliklarGeldi: false, sureyiBirak: () => undefined };
+      deneme = bu;
+      const sure = AbortSignal.timeout(timeoutMs);
+      const sureDoldu = () => {
+        if (!bu.basliklarGeldi) bu.denetim.abort(sure.reason);
+      };
+      sure.addEventListener('abort', sureDoldu, { once: true });
+      // Basliklar gelince dinleyici kalkar: sure dolana dek (60/90 sn) bu denemeyi tutmasin.
+      bu.sureyiBirak = () => sure.removeEventListener('abort', sureDoldu);
+      return { method: 'GET', headers: this.headers(), signal: bu.denetim.signal };
+    };
 
+    let response: Response;
     try {
-      const response = await this.fetchWithRetry(url, factory, 60_000, 90_000, 'getGeometry');
+      response = await this.fetchWithRetry(url, factory, 60_000, 90_000, 'getGeometry', istemciKoptu);
       if (!response.ok) {
         const error = await response.text();
         throw new HttpException(
@@ -266,9 +338,56 @@ export class DwgEngineService {
             : HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
-      return await response.json();
+      // Govde artik COZULMEDIGI icin bos/eksik yanit burada, basliklardan ONCE elenir
+      // (eski yolda response.json() onu 503'e ceviriyordu; on yuz yeniden dener).
+      if (!response.body) throw new Error('motor geometri yaniti govdesiz');
+      if (response.headers.get('content-length') === '0') throw new Error('motor geometri yaniti bos');
     } catch (error) {
+      if (istemciKoptu?.aborted) this.istemciGitti('getGeometry', baslangic);
       this.translateError(error);
+    }
+
+    // Basliklar geldi: bundan sonrasi istemcinin hizinda. Baslik suresi kapanir,
+    // govde tavani kurulur (asili motor baglantisi sonsuza dek tutulmasin).
+    const akan = deneme!;
+    akan.basliklarGeldi = true;
+    akan.sureyiBirak();
+    const tavan = AbortSignal.timeout(GEOMETRI_GOVDE_TAVANI_MS);
+    const tavanDoldu = () => akan.denetim.abort(tavan.reason);
+    tavan.addEventListener('abort', tavanDoldu, { once: true });
+
+    res.status(HttpStatus.OK);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    // Uzunluk aktarilir: yarim kalan govde HTTP cercevesinde de yakalanir (istemci
+    // uzunluk uyusmazligi gorur, hicbir yol yarim JSON'u "tamam" bitiremez). Kodlanmis
+    // (gzip) yanitta undici govdeyi actigi icin uzunluk tutmaz — o zaman aktarilmaz.
+    const uzunluk = response.headers.get('content-length');
+    if (uzunluk && !response.headers.get('content-encoding')) res.setHeader('Content-Length', uzunluk);
+    const kaynak = Readable.fromWeb(response.body as unknown as WebReadableStream<Uint8Array>);
+    // Hangi uc ONCE dustu? Sonradan `istemciKoptu.aborted`a bakmak yetmez: kaynak
+    // hata verince pipeline yaniti yikar, 'close' kopma sinyalini de kurar (olculdu).
+    let ilkDusen: 'istemci' | 'motor' | undefined;
+    const istemciDustu = () => { ilkDusen ??= 'istemci'; };
+    istemciKoptu?.addEventListener('abort', istemciDustu, { once: true });
+    kaynak.once('error', () => { ilkDusen ??= 'motor'; });
+    try {
+      await pipeline(kaynak, res);
+    } catch (e: any) {
+      // Burada THROW YOK: basliklar gitti; Nest'in istisna suzgeci yaniti TEMIZ bitirirdi
+      // (yarim JSON "tamam" gorunurdu). Yanit YIKILIR — pipeline zaten yikar, garanti icin.
+      if (!res.destroyed) res.destroy();
+      if (ilkDusen === 'istemci') {
+        this.logger.log(`[getGeometry] istemci koptu — motor akisi ${Date.now() - baslangic} ms sonra kesildi`);
+        return;
+      }
+      // Basliklar gitti; pipeline yaniti YIKTI (temiz bitmedi) → istemci ag hatasi
+      // gorur ve yeniden dener. Motor oldu, govde tavani doldu ya da yazim bozuldu.
+      this.logger.error(
+        `[getGeometry] geometri akarken kesildi (${Date.now() - baslangic} ms): ${e?.name ?? 'hata'}: ${e?.message ?? e}`,
+      );
+    } finally {
+      tavan.removeEventListener('abort', tavanDoldu);
+      istemciKoptu?.removeEventListener('abort', istemciDustu);
     }
   }
 
@@ -277,48 +396,89 @@ export class DwgEngineService {
    * (~1-2sn); DWG→DXF donusumu + parse izole subprocess'te arka planda.
    * Frontend /status ile poll eder.
    *
+   * DISKTEN AKARAK (26.09): dosya Nest'in gecici diskinden (`DwgGeciciDepo`)
+   * motora cok parcali govde olarak akar; bellekte yalniz 1 MB'lik okuma
+   * parcalari durur. Eskiden `Buffer` + `Blob` kopyasi (istek basina govdenin iki
+   * kati). Govde elle kurulur (FormData dosya yoluyla akitamaz), uzunluk bilinir:
+   * motor Content-Length'li istek alir. Yeniden denemede akis bastan kurulur.
+   *
    * kapsam (26.09): firmaya ozgu opak tekillestirme anahtari (`dedupKapsami`).
    * Motor ayni icerigi yalniz ayni kapsamda tekillestirir; kapsamsiz yukleme hic
-   * tekillestirilmez.
+   * tekillestirilmez. Govdede `file`dan once ayri `kapsam` parcasi (64 hex).
+   *
+   * istemciKoptu: tarayici iletim surerken giderse motor istegi kesilir, yeniden
+   * denenmez (bkz. fetchWithRetry); sessiz 499 + tek iz satiri — /parse ile ayni.
    */
-  async uploadAsync(fileBuffer: Buffer, fileName: string, kapsam: string) {
+  async uploadAsync(
+    dosyaYolu: string, boyut: number, dosyaAdi: string, kapsam: string, istemciKoptu?: AbortSignal,
+  ) {
+    const baslangic = Date.now();
     const factory = (timeoutMs: number): RequestInit => {
-      const formData = new FormData();
-      const blob = new Blob([fileBuffer as any]);
-      formData.append('file', blob, fileName);
-      formData.append('kapsam', kapsam);
+      const sinir = `----metaprice-dwg-${randomBytes(12).toString('hex')}`;
+      const bas = Buffer.from(
+        `--${sinir}\r\nContent-Disposition: form-data; name="kapsam"\r\n\r\n${kapsam}\r\n`
+          + `--${sinir}\r\nContent-Disposition: form-data; name="file"; filename="${baslikGuvenliAd(dosyaAdi)}"\r\n`
+          + 'Content-Type: application/octet-stream\r\n\r\n',
+        'utf8',
+      );
+      const son = Buffer.from(`\r\n--${sinir}--\r\n`, 'utf8');
+      async function* govde() {
+        yield bas;
+        yield* createReadStream(dosyaYolu, { highWaterMark: 1024 * 1024 });
+        yield son;
+      }
       return {
         method: 'POST',
-        body: formData,
-        headers: this.headers(),
+        // Async yineleyici DOGRUDAN (undici destekler; DOM tipinde yok): undici onu
+        // istek uzerine cekilen bir akisa cevirir; soket dolunca okuma durur.
+        body: govde() as unknown as BodyInit,
+        // Akis govdeli fetch icin zorunlu (undici).
+        duplex: 'half',
+        // ⚠ IKISI BIRLIKTE ZORUNLU: aksi hâlde undici istegi yonlendirmede yeniden
+        // gonderebilmek icin KLONLAR ve akisi `tee()` ile ikiye boler; okunmayan kol
+        // gonderilen HER parcayi bellekte biriktirir. Olculdu 26.09 (canli imaj Node
+        // 20.20.2 / undici 6.24.1 ve Node 24): 200 MB iletimde GC sonrasi +52..+192 MB,
+        // motorun aldigi baytla adim adim. Motor ic agdadir, yonlendirme yapmaz.
+        // Kapi: `test:dwg-yukleme` S8.
+        redirect: 'error',
+        window: null,
+        headers: {
+          ...this.headers(),
+          'content-type': `multipart/form-data; boundary=${sinir}`,
+          'content-length': String(bas.length + boyut + son.length),
+        },
         signal: AbortSignal.timeout(timeoutMs),
-      };
+      } as RequestInit;
     };
+
+    // PRD 2.4 — timeout hizalama: Python /upload LibreDWG donusumu YAPMIYOR
+    // (izole subprocess'te), yalniz disk yazimi + kayit. Ic agda 15 sn, 10 MB
+    // basina +1 sn (250 MB → 40 sn; canli imajda 200 MB'in alim + kaydi ~1,2 sn
+    // olculdu). Yeniden deneme iki kati. Frontend axios 120 sn.
+    const ilkZamanAsimi = 15_000 + Math.ceil(boyut / (10 * 1024 * 1024)) * 1_000;
 
     try {
       const response = await this.fetchWithRetry(
         `${this.pythonServiceUrl}/upload`,
         factory,
-        // PRD 2.4 — timeout hizalama: Python /upload artik LibreDWG donusumu
-        // YAPMIYOR (izole subprocess'e tasindi), sadece disk yazimi + spawn.
-        // 15sn ic-ag dosya transferi icin bol pay. Toplam en kotu senaryo
-        // 15+2+30=47sn < frontend axios 120sn — katmanlar artik CAKISMAZ,
-        // eski 30/60sn ile buyuk DWG'de olusan 503 zinciri kalkti.
-        15_000,
-        30_000,
+        ilkZamanAsimi,
+        2 * ilkZamanAsimi,
         'uploadAsync',
+        istemciKoptu,
       );
       if (!response.ok) {
-        const error = await response.text();
+        const error = motorHataMetni(await response.text());
+        // Hat dolu: AYNEN 429 (bkz. DwgMotorYogunHatasi). Motor zaten yeniden
+        // denenmez — fetchWithRetry yalniz 5xx ve zaman asiminda dener.
+        if (response.status === HttpStatus.TOO_MANY_REQUESTS) throw new DwgMotorYogunHatasi(error);
         throw new HttpException(
           `Upload hatasi: ${error}`,
-          response.status >= 500 || response.status === 429
-            ? HttpStatus.SERVICE_UNAVAILABLE
-            : HttpStatus.UNPROCESSABLE_ENTITY,
+          response.status >= 500 ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
       return await response.json();
     } catch (error) {
+      if (istemciKoptu?.aborted) this.istemciGitti('uploadAsync', baslangic);
       this.translateError(error);
     }
   }

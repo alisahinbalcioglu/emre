@@ -6,7 +6,11 @@ import { FaturaServisi } from '../fatura/fatura.servisi';
 import { DunningServisi } from '../dunning/dunning.servisi';
 import { EpostaServisi } from '../eposta/eposta.servisi';
 import { odemeAlindiEpostasi } from '../eposta/musteri-epostalari';
+import { yonetimeYaz } from '../eposta/yonetim-bildirimi';
+import { tarihYaz } from '../dunning/dunning.metinleri';
+import { sonDuzenlemeGunu } from '../fatura/fatura-kesim-epostasi';
 import { iyzicoTarihi } from '../iyzico/iyzico-tarihi';
+import { odemeAni, tahsilEdilenTutar } from '../iyzico/tahsilat-kaniti';
 
 /**
  * Olay basina deneme siniri. Asan olay "olu"dur: tarama onu bir daha almaz.
@@ -14,6 +18,12 @@ import { iyzicoTarihi } from '../iyzico/iyzico-tarihi';
  * yeniden kurar (mutabakat.job.ts → KAYIP TAHSILAT, kural 4).
  */
 export const AZAMI_DENEME = 5;
+
+/**
+ * Tutarı okunamayan tahsilatın denetim izi (`AbonelikOlayi.tip`, 28.09) —
+ * yönetici uyarısı sipariş başına BİR kez bu kayda bakarak gider.
+ */
+export const TUTAR_OKUNAMADI_OLAYI = 'fatura.tutar.okunamadi';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -142,19 +152,57 @@ export class WebhookIsleyici {
 
     // Fatura kuyruğa alınır — burada kesilmez. Paraşüt yavaşsa ya da
     // ölüyse webhook işlemesi bundan etkilenmemeli.
-    const tutar = sonuc.siparis?.paidPrice ?? Number(sonuc.abonelik.paketSurumu.tutar);
-    const paraBirimi = sonuc.abonelik.paketSurumu.paraBirimi;
+    //
+    // ⚠ 28.09 — TUTAR ve ÖDEME ANI iyzico siparişinin KENDİ kaydından (tek
+    // kural: `tahsilEdilenTutar` / `odemeAni`, iyzico/tahsilat-kaniti.ts).
+    // Eskiden `paidPrice ?? paket fiyatı`: ölçülen alan `price` ATLANIYOR,
+    // aboneliğin O ANKİ paketinin fiyatı faturaya yazılıyordu. Emre kararı
+    // (28.09): tutar okunamazsa fatura kuyruğa ALINMAZ — uydurulmaz. Olay yine
+    // işlendi sayılır (erişim ve dunning yazıldı; yeniden deneme tutarı
+    // getirmez); yöneticiye son günlü uyarı gider, gece mutabakatı siparişi
+    // "elle fatura" sayar (mutabakat.job.ts, kural 7).
+    //
+    // `cekim` fatura, makbuz ve dunning'in "ödemeniz alındı"sının ORTAK
+    // tutarıdır; para birimi de siparişten (yoksa paketin — ölçümde her
+    // siparişte vardı).
+    const tahsil = tahsilEdilenTutar(sonuc.siparis);
+    const cekim = tahsil
+      ? { tutar: tahsil.tutar, paraBirimi: tahsil.paraBirimi ?? sonuc.abonelik.paketSurumu.paraBirimi }
+      : null;
     const donemBasi = iyzicoTarihi(sonuc.siparis?.startPeriod);
-    const yeniTahsilat = await this.fatura.kuyrugaAl({
-      abonelikId: sonuc.abonelik.id,
-      tahsilatKodu: siparisKodu,
-      tutar,
-      paraBirimi,
-      // Tarih TEK cozucuden (24.09): rakam-dizesi `new Date` ile Invalid Date
-      // olup faturayi yazdirmiyordu. Cozulemezse eksik gibi: tahsilat ani.
-      donemBasi: donemBasi ?? new Date(),
-      donemSonu: sonuc.donemSonu,
-    });
+    // Ödeme anı: iyzico'nun başarılı denemesi; yoksa dönem başı (iyzico dönem
+    // başında çeker); o da yoksa işleme anı (son çare).
+    const odemeTarihi = odemeAni(sonuc.siparis) ?? donemBasi ?? new Date();
+    // ÖDENEN paket: yükseltme bekliyorken dönemi ödenmiş olan eski paket
+    // (`odenenPaketSurumuId`, paket-degisimi.servisi — eski halkanın geç
+    // gelen siparişi); değilse tahsilatın hizaladığı etkin paket. Fatura ve
+    // makbuz AYNI paketi yazar. BİLİNEN SINIR (kod incelemesi, ÇIKARIM):
+    // kilit kalktıktan SONRA işlenen eski halka siparişi yeni paketi alır —
+    // o yol yalnız mutabakattan gelebilir ve kural 7e/7b onu oynatmaz.
+    const odenenPaket = sonuc.abonelik.odenenPaketSurumuId ?? sonuc.abonelik.paketSurumuId;
+    let yeniTahsilat = false;
+    if (!cekim) {
+      await this.tutarsizTahsilatiBildir({
+        abonelikId: sonuc.abonelik.id,
+        firmaId: sonuc.abonelik.firmaId,
+        abonelikKodu,
+        siparisKodu,
+        odeme: odemeTarihi,
+      });
+    } else {
+      yeniTahsilat = await this.fatura.kuyrugaAl({
+        abonelikId: sonuc.abonelik.id,
+        tahsilatKodu: siparisKodu,
+        tutar: cekim.tutar,
+        paraBirimi: cekim.paraBirimi,
+        // Tarih TEK cozucuden (24.09): rakam-dizesi `new Date` ile Invalid Date
+        // olup faturayi yazdirmiyordu. Cozulemezse eksik gibi: tahsilat ani.
+        donemBasi: donemBasi ?? new Date(),
+        donemSonu: sonuc.donemSonu,
+        tahsilatTarihi: odemeTarihi,
+        paketSurumuId: odenenPaket,
+      });
+    }
 
     // Dunning'den çıktıysa "geri hoş geldiniz" bildirimi. ⚠ Karar
     // `tahsilatBasarili`nin sayaçları SIFIRLARKEN verdiği cevaptan gelir
@@ -163,9 +211,10 @@ export class WebhookIsleyici {
     // kural): posta sunucusu düştü diye doğrulanmış tahsilat olayı
     // düşürülmez — yeniden deneme e-postayı zaten gönderemezdi (döngü izi
     // silindi), yalnız tahsilat yolunu boşuna yeniden koştururdu. Ama SESSİZ
-    // değil: hata günlüğe yazılır.
+    // değil: hata günlüğe yazılır. 28.09: e-posta ÇEKİLEN tutarı yazar
+    // (`cekim`; okunamadıysa tutarsız cümle — paket fiyatı uydurulmaz).
     await this.dunning
-      .tahsilatToparlandi(sonuc.abonelik.id, sonuc.dunningdenCikti)
+      .tahsilatToparlandi(sonuc.abonelik.id, sonuc.dunningdenCikti, cekim)
       .catch((e) =>
         this.logger.error(
           `"Ödemeniz alındı" e-postası gönderilemedi (abonelik=${sonuc.abonelik.id}): ` +
@@ -179,11 +228,14 @@ export class WebhookIsleyici {
     // mutabakat oynatması `false` alır) ve dunning'den ÇIKILMADIYSA (o hâlde
     // yukarıdaki e-posta gitti; aynı ödemeye iki "ödemeniz alındı" gitmez).
     // Kritik değil: posta hatası doğrulanmış tahsilatı düşürmez, günlüğe yazılır.
-    if (yeniTahsilat && !sonuc.dunningdenCikti) {
+    // 28.09: makbuz faturanın AYNI tutarını ve paketini yazar; tutar
+    // okunamadıysa fatura da makbuz da yok (`yeniTahsilat` false).
+    if (cekim && yeniTahsilat && !sonuc.dunningdenCikti) {
       await this.odemeAlindiBildir({
         abonelikId: sonuc.abonelik.id,
-        tutar,
-        paraBirimi,
+        paketSurumuId: odenenPaket,
+        tutar: cekim.tutar,
+        paraBirimi: cekim.paraBirimi,
         donemBasi,
         donemSonu: sonuc.donemSonu,
       }).catch((e) =>
@@ -195,9 +247,86 @@ export class WebhookIsleyici {
     }
   }
 
+  /**
+   * 28.09 — TUTARI OKUNAMAYAN tahsilat (Emre kararı "kuyruğa alma, uyar"):
+   * fatura yazılmadı; yöneticiye NES iş akışının kanalından (yönetim
+   * e-postası) SON GÜNLÜ uyarı gider — faturayı elle o keser. Yalnız gece
+   * günlüğüne kalsaydı VUK'un 7 günü içinde kimse görmeyebilirdi (kod
+   * incelemesi). Posta best-effort (`yonetimeYaz` fırlatmaz; gönderilemezse
+   * içerik HATA günlüğünde kalır); denetim izinin veritabanı hatası fırlar —
+   * olay yeniden denenir.
+   *
+   * Sipariş başına BİR uyarı: anlık deneme olayı ile iyzico'nun kendi
+   * bildirimi aynı siparişi iki olay olarak işleyebilir (kod incelemesi
+   * 28.09). Çapa `TUTAR_OKUNAMADI_OLAYI` denetim izidir — `tahsilat.cift` ile
+   * aynı anlık görüntü deseni: eşzamanlı iki işlemede iki uyarı gidebilir
+   * (zararsız). Hata günlüğü her işlemede yazılır.
+   */
+  private async tutarsizTahsilatiBildir(p: {
+    abonelikId: string;
+    firmaId: string;
+    abonelikKodu: string;
+    siparisKodu: string;
+    odeme: Date;
+  }): Promise<void> {
+    const sonGun = sonDuzenlemeGunu(p.odeme);
+    this.logger.error(
+      `FATURA KUYRUĞA ALINMADI: sipariş ${p.siparisKodu} (abonelik ${p.abonelikId}) — iyzico siparişi ` +
+        `tahsil edilen tutarı taşımıyor (price/paidPrice). Tutar UYDURULMADI; NES'te elle kesin — ` +
+        `son düzenleme günü ${tarihYaz(sonGun)}.`,
+    );
+    const onceki = await this.prisma.abonelikOlayi.findMany({
+      where: { abonelikId: p.abonelikId, tip: TUTAR_OKUNAMADI_OLAYI },
+      select: { veri: true },
+    });
+    if (onceki.some((o) => (o.veri as { siparisKodu?: unknown } | null)?.siparisKodu === p.siparisKodu)) {
+      this.logger.warn(
+        `Tutarı okunamayan tahsilat zaten bildirildi: sipariş ${p.siparisKodu} (abonelik ${p.abonelikId}) — ikinci uyarı yazılmadı`,
+      );
+      return;
+    }
+    await this.prisma.abonelikOlayi.create({
+      data: {
+        abonelikId: p.abonelikId,
+        tip: TUTAR_OKUNAMADI_OLAYI,
+        aciklama:
+          `Kart tahsilatının tutarı okunamadı (sipariş ${p.siparisKodu}) — fatura kuyruğa ALINMADI; ` +
+          `NES'te elle kesilmeli, son düzenleme günü ${tarihYaz(sonGun)}`,
+        veri: {
+          abonelikKodu: p.abonelikKodu,
+          siparisKodu: p.siparisKodu,
+          odemeAni: p.odeme.toISOString(),
+          sonDuzenlemeGunu: sonGun.toISOString(),
+        },
+        aktor: 'webhook',
+      },
+    });
+    const firma = await this.prisma.firma
+      .findUnique({ where: { id: p.firmaId }, select: { ad: true } })
+      .catch(() => null);
+    const firmaAdi = firma?.ad ?? p.firmaId;
+    await yonetimeYaz(
+      { prisma: this.prisma, eposta: this.eposta, logger: this.logger },
+      {
+        konu: `[MetaPriceX] Fatura kuyruğa alınamadı — tutar okunamadı — ${firmaAdi} — ${p.siparisKodu}`,
+        baslik: 'Kart tahsilatının tutarı okunamadı',
+        paragraflar: [
+          `Firma: ${firmaAdi} · abonelik kaydı: ${p.abonelikId}`,
+          `iyzico aboneliği: ${p.abonelikKodu} · sipariş: ${p.siparisKodu}`,
+          `Ödeme tarihi: ${tarihYaz(p.odeme)} · Son düzenleme günü: ${tarihYaz(sonGun)} (VUK md. 231/5)`,
+          'iyzico siparişi tahsil edilen tutarı taşımıyor. Tutar UYDURULMADI: fatura kuyruğa ALINMADI, ' +
+            'müşteriye giden e-postaya tutar yazılmadı.',
+          "Yapılacak: çekilen tutarı iyzico panelinden okuyup faturayı NES'te elle kesin.",
+        ],
+      },
+    );
+  }
+
   /** Sorunsuz yenilemenin makbuzu — metin `musteri-epostalari.ts`. */
   private async odemeAlindiBildir(p: {
     abonelikId: string;
+    /** ÖDENEN paket sürümü (faturayla aynı) — satırın o anki paketi değil. */
+    paketSurumuId: string;
     tutar: number;
     paraBirimi: string;
     donemBasi: Date | null;
@@ -212,9 +341,13 @@ export class WebhookIsleyici {
     }
     const ab = await this.prisma.abonelik.findUnique({
       where: { id: p.abonelikId },
-      select: { firmaId: true, paketSurumu: { select: { paket: { select: { ad: true } } } } },
+      select: { firmaId: true },
     });
     if (!ab) return;
+    const surum = await this.prisma.paketSurumu.findUnique({
+      where: { id: p.paketSurumuId },
+      select: { paket: { select: { ad: true } } },
+    });
     const firma = await this.prisma.firma.findUnique({
       where: { id: ab.firmaId },
       select: { ad: true, faturaEposta: true, yetkiliEposta: true },
@@ -228,7 +361,7 @@ export class WebhookIsleyici {
       kime,
       ...odemeAlindiEpostasi({
         firmaAdi: firma.ad,
-        paketAdi: ab.paketSurumu?.paket?.ad ?? 'MetaPriceX',
+        paketAdi: surum?.paket?.ad ?? 'MetaPriceX',
         tutar: p.tutar,
         paraBirimi: p.paraBirimi,
         donemBasi: p.donemBasi,

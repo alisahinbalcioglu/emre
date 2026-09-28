@@ -7,6 +7,7 @@ import { toast } from '@/ortak/hooks/use-toast';
 import api from '@/ortak/lib/api';
 import { MetrajResult } from './types';
 import { gecerliOlcek } from './unit-detection';
+import { yogunMu, yuklemeHataMetni, yuklemeYenidenGonderilir } from './yukleme-hatasi';
 import { DwgProjectWorkspace } from '@/components/dwg-workspace';
 import DwgSayfaCercevesi from './DwgSayfaCercevesi';
 
@@ -91,6 +92,10 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
   const [extractingLayers, setExtractingLayers] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  /** Sunucu dolu (429): dosya otomatik yeniden GONDERILMEZ, "Tekrar dene" gosterilir. */
+  const [yogun, setYogun] = useState(false);
+  /** "Tekrar dene" son yuklemeyi ayni secenekle (birim ezmesi dahil) yineler. */
+  const sonYukleme = useRef<{ f: File; opts: { override?: number } } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -265,6 +270,8 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     setBirimPaneli(false);
     setBirimElle(false);
     setError(null);
+    setYogun(false);
+    sonYukleme.current = { f, opts };
     setExtractingLayers(true);
     startTimer();
 
@@ -274,9 +281,11 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     const contentHash = await computeFileHash(f);
     setFileHash(contentHash);
 
-    // /upload icin retry: cold-start ihtimaline karsi 4 deneme
-    // (upload kendi 2-30sn, parse arka planda → kisa toplam timeout yeter)
+    // /upload icin retry: cold-start ihtimaline karsi 4 deneme — YALNIZ 5xx / ag /
+    // zaman asimi. 429 (sunucu dolu) yeniden GONDERILMEZ: her deneme dosyanin
+    // TAMAMINI tasir (bkz. yukleme-hatasi.ts).
     const UPLOAD_RETRY_DELAYS = [3000, 8000, 20000, 45000];
+    // Yalniz /status yoklamasi icin (dosya tasimaz): gecici hatada yoklama surer.
     const isTransient = (e: any): boolean => {
       const status = e?.response?.status;
       if (status === 503 || status === 502 || status === 504 || status === 500) return true;
@@ -305,7 +314,7 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
           break;
         } catch (err: any) {
           uploadErr = err;
-          if (!isTransient(err)) throw err;
+          if (!yuklemeYenidenGonderilir(err)) throw err;
           if (attempt >= UPLOAD_RETRY_DELAYS.length) throw err;
           await new Promise((r) => setTimeout(r, UPLOAD_RETRY_DELAYS[attempt]));
         }
@@ -420,9 +429,13 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
 
       setFileId(uploadFileId);
     } catch (e: any) {
-      const msg = e?.response?.data?.message ?? e?.response?.data?.detail ?? e?.message ?? 'Proje yuklenemedi';
+      const msg = yuklemeHataMetni(e);
+      const dolu = yogunMu(e);
+      setYogun(dolu);
       setError(msg);
-      toast({ title: 'Hata', description: msg, variant: 'destructive' });
+      toast(dolu
+        ? { title: 'Sunucu yoğun', description: msg }
+        : { title: 'Hata', description: msg, variant: 'destructive' });
     } finally {
       setExtractingLayers(false);
       stopTimer();
@@ -438,6 +451,7 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
     setBirimPaneli(false);
     setBirimElle(false);
     setError(null);
+    setYogun(false);
     setExtractingLayers(false);
     // Session storage temizle — kullanici yeni DWG yuklemek istiyor
     try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
@@ -628,14 +642,33 @@ export default function DwgUploader({ onMetrajApproved }: DwgUploaderProps) {
         <input ref={inputRef} type="file" accept=".dwg,.dxf" className="hidden" onChange={handleInputChange} />
       </div>
 
-      {/* Hata */}
+      {/* Hata — sunucu doluysa (429) sari kutu + "Tekrar dene": dosya otomatik yeniden gonderilmez */}
       {error && (
-        <div className="mt-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-          <AlertCircle className="h-4 w-4 shrink-0 text-red-500 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-red-800">Hata</p>
-            <p className="text-xs text-red-600 mt-1">{error}</p>
+        <div
+          className={cn(
+            'mt-4 flex items-start gap-3 rounded-lg border px-4 py-3',
+            yogun ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50',
+          )}
+        >
+          <AlertCircle className={cn('h-4 w-4 shrink-0 mt-0.5', yogun ? 'text-amber-600' : 'text-red-500')} />
+          <div className="min-w-0 flex-1">
+            <p className={cn('text-sm font-medium', yogun ? 'text-amber-900' : 'text-red-800')}>
+              {yogun ? 'Sunucu yoğun' : 'Hata'}
+            </p>
+            <p className={cn('text-xs mt-1', yogun ? 'text-amber-800' : 'text-red-600')}>{error}</p>
           </div>
+          {yogun && sonYukleme.current && (
+            <button
+              type="button"
+              onClick={() => {
+                const son = sonYukleme.current;
+                if (son) extractLayers(son.f, son.opts);
+              }}
+              className="shrink-0 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+            >
+              Tekrar dene
+            </button>
+          )}
         </div>
       )}
 

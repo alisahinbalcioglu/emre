@@ -533,6 +533,18 @@ const SUITES: Suite[] = [
   //    görmüyordu; denetleyici gövdeyi akıtır, 256 KiB'lık kopma da motoru keser.
   //    Motor tarafı: python `tests/test_olay_dongusu.py` (CI'da yok).
   { ad: 'DWG istemci koptu: saf sinyal · kopma motoru keser · büyük gövdede de · normal istek · önceden kopmuş · zaman aşımı · eski yollar kapalı (S/K/B/N/Y/Z/E)', script: 'test:dwg-istemci-koptu', zincir: 'Z0' },
+  // DWG YÜKLEME (26.09): `/dwg-engine/upload` gövdeyi bellekte tutuyordu (multer
+  //    memoryStorage 1 GB + motora Blob kopyası: istek başına ~2 GB); kenarda gövde
+  //    sınırı, DWG uçlarında eş zamanlılık sınırı yoktu. Şimdi diske akar, diskten
+  //    motora akar; tavan 250 MB (ölçülen en büyük gerçek DWG 98,8 MB), firma başına
+  //    2 eş zamanlı yükleme, Caddy 260 MiB / diğer /api 60 MiB. İlk koşu undici'nin
+  //    akış gövdesini `tee()`leyip tamamını bellekte biriktirdiğini yakaladı (S8).
+  //    Motor tarafı (döngü dışı kopya/özet, ayrı sınırlı semaforlar): python
+  //    `tests/test_olay_dongusu.py` D4 + Y1-Y3 (CI: regression-gate `dwg-engine` isi).
+  { ad: 'DWG yükleme: Caddy↔Nest tavan · kapı sırası · 200 MB bayt bayt ve bellek dışı · ön 413 · multer 413 · firma başına 429 · kopmada temizlik · motor hatası (C/M/G/S/O/L/E/A/H)', script: 'test:dwg-yukleme', zincir: 'Z0' },
+  // 26.09: Nest geometriyi (17 MB) cozup yeniden yaziyordu — olay dongusu her proje
+  // acilisinda ~0,7 sn duruyordu (canli imaj). Artik motorun baytlari AKITILIR.
+  { ad: 'DWG geometri akışı: baytlar aynen · döngü serbest · hata eşlemesi · sahiplik önce · kopma · yarım akış · zaman aşımı (A/D/H/S/K/Y/Z)', script: 'test:dwg-geometri-akis', zincir: 'Z0' },
   // DWG kiracı dedup (26.09.2026): motor aynı içeriği TÜM kiracılar arasında
   //    tekilleştiriyordu; ikinci firma birincinin file_id'sini `dedup: true` ile
   //    alıp kendi yüklemesinde 403 yiyor, çizimi başkasının yüklediğini öğreniyordu
@@ -646,7 +658,7 @@ const SUITES: Suite[] = [
   //    bloğunda ölçülür) iç içe geçme sıralarını, gerçek fatura taramasıyla
   //    NES kesim talebini ve denetleyicinin yol kimliğini ölçer. DB/AĞ/iyzico
   //    GEREKTİRMEZ.
-  { ad: 'Havale durum geçişleri: READ COMMITTED taklidi · çift onay (4 sıra) · iptal ↔ onay · fatura kesildi · kusurdan kalma satır · denetleyici · Prisma önkoşulu (T/Y1-Y4/S/İ/F/FK/G/D/K)', script: 'test:havale-onay-yarisi', zincir: 'Z0' },
+  { ad: 'Havale durum geçişleri: READ COMMITTED taklidi · çift onay (4 sıra) · iptal ↔ onay · fatura kesildi · kusurdan kalma satır · denetleyici · farklı havale kilidi · yeni firma vitrini + kart kapısı · fatura onayla aynı işlemde · Prisma önkoşulu (T/Y1-Y4/S/İ/F/FK/G/D/FH/V/FT/K)', script: 'test:havale-onay-yarisi', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 6.12a DENEME BİR KEZ. DB ve AĞ GEREKTİRMEZ (bellek-Prisma,
   //    kısıt + ILIKE joker + iç içe geçen çağrılar). Ölçülen: deneme hakkı hiçbir
   //    kimliğe bağlı değildi; aynı firma (iptal/deneme sonu ödeme alınamadı), hesap
@@ -698,6 +710,20 @@ const SUITES: Suite[] = [
   //    Satırlar GERÇEK satın alma yazımıyla kurulur; NES talebi GERÇEK fatura
   //    kesim turundan (oynatma VUK 231/5 son gününü ertelemez). Eski hâl 52 kırmızı.
   { ad: 'Mutabakat erişimi uzatmayan kayıp tahsilat: saf kural · ölçüt · miras · köprü · miras dunning · bitmiş dönem · engeller · deneme · tekrar · gece · NES son günü (S/Ö/M/K/R/B/E/D/İ/G/V)', script: 'test:mutabakat-faturasiz-tahsilat', zincir: 'Z0' },
+  // ── 28.09.2026 — FATURA DOĞRULUĞU (iyzico canlıdan önce). DB/AĞ GEREKTİRMEZ.
+  //    Üç açık: fatura kalemi paketi KESİM anındaki paketten okuyordu (arada
+  //    değişen / eski halkanın geç siparişi ödenmeyen paketi yazardı); satır
+  //    ödeme anını taşımıyordu (NES son günü min(kuyruk, dönem başı) — yeniden
+  //    denemede günler erken; "süre geçti" hiç yok); tutar `paidPrice ?? paket
+  //    fiyatı` — ölçülen `price` atlanıyordu. Tek göç (`paketAdi`,
+  //    `tahsilatTarihi`, yalnız ekler). Kurallar TEK yerde: `tahsilEdilenTutar`
+  //    / `odemeAni` (tahsilat-kaniti.ts), `faturaSatiriVerisi`,
+  //    `istanbulGunSonu` (son gün İstanbul GÜNÜ). Emre 28.09: tutar okunamazsa
+  //    fatura ve makbuz YOK, uydurma yok — yöneticiye son günlü uyarı, gece
+  //    kural 7f "elle fatura" (oynatma yok). Kod incelemesi: dunning çıkışının
+  //    "ödemeniz alındı"sı da çekilen tutarı yazar; kalem dönemi İstanbul günü.
+  //    GERÇEK işleyici + servisler + dunning + kesim turu + gece işi.
+  { ad: 'Fatura doğruluğu: saf kurallar · NES son günü · tutar/ödeme anı/paket uçtan uca · tutarsız sipariş · dunning çıkışı · dönem günü (S/E/W)', script: 'test:fatura-dogrulugu', zincir: 'Z0' },
   // ── 24.09.2026 — WEBHOOK GÖVDESİ TAHSİLAT KANITI DEĞİL. DB/AĞ GEREKTİRMEZ.
   //    Uç açık, imza varsayılan olarak zorunlu değil. Eski hâl (30 kırmızı):
   //    `tahsilatBasarili` siparişin VARLIĞINA bakıyordu — iyzico'nun önceden
@@ -899,6 +925,10 @@ const SUITES: Suite[] = [
   // 10 dk dönüş işi + dunning kısıt günü). GERÇEK MutabakatJob + Abonelik +
   // SatinAlma + Havale + Dunning + Webhook + Erisim + MirasDonusuJob; yarışlar
   // okuma kancasıyla, TZ=UTC. DB/AĞ/iyzico GEREKTİRMEZ.
+  // 27.09: D9/D10 — saatlik süre dolumu işinin yazımı aday okumasına koşullu
+  // (miras DIŞI satırlar da: havale onayı / gecikmiş deneme tahsilatı yarışı).
+  // 27.09: H7/H8 — hak taşıyan firmaya BAŞKA miras paketiyle havale teklifi
+  // reddedilir (teklif + onay; güvenlik ORTA-1, Emre kararı b).
   { ad: 'Miras hakkı: saf kural · kart · iptal yolları · dönüş · havale · dunning · kapı · deneme · metinler · kapatma · bağlantı (S/K/İ/D/H/N/G/T/E/C/B/Z)', script: 'test:miras-hakki', zincir: 'Z0' },
   // 23.09 (Emre kararı): paketsiz YENİ hesap duvar görmez, uygulamayı GEZER
   // ("yalnızca gezsin"); Malzeme Havuzu'nda "fiyatlar paketle açılsın".

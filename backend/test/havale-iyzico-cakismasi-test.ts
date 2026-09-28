@@ -380,6 +380,21 @@ function bellekPrisma() {
       await Promise.resolve();
       return yansit(model, olustur(model, arg.data), arg);
     },
+    // 28.09: havale onayı faturayı İŞLEM İÇİNDE `createMany({ skipDuplicates })`
+    // (ON CONFLICT DO NOTHING) ile yazar — tekil çakışmada satır atlanır.
+    createMany: async (arg: any) => {
+      await Promise.resolve();
+      let count = 0;
+      for (const veri of arg.data as Satir[]) {
+        try {
+          olustur(model, veri);
+          count++;
+        } catch (e: any) {
+          if (!(arg.skipDuplicates && e?.code === 'P2002')) throw e;
+        }
+      }
+      return { count };
+    },
     update: async (arg: any) => {
       await Promise.resolve();
       const s = tablo(model).find((r) => whereUygula(r, arg.where));
@@ -540,8 +555,11 @@ function sahteIyzico() {
       orderStatus: p.basarili ? 'SUCCESS' : 'FAILED',
       startPeriod: yaz(p.baslangic),
       endPeriod: yaz(p.bitis),
+      // 28.09: ÖLÇÜLEN biçim — 20.08 sandbox tutanağında tutar `price`,
+      // `paidPrice` HİÇ yok. Eskiden başarılı siparişe `paidPrice` da
+      // konuyordu: tutar kuralı `price`ı okumasa (yalnız `paidPrice`) çift
+      // tahsilat kapısı yine yeşildi (mutasyon A2, `test:fatura-dogrulugu`).
       price: tutar,
-      ...(p.basarili ? { paidPrice: tutar } : {}),
       paymentAttempts: [{ paymentAttemptStatus: p.basarili ? 'SUCCESS' : 'FAILED' }],
     });
     a.durum = p.basarili ? 'ACTIVE' : 'UNPAID';
@@ -559,7 +577,6 @@ function sahteIyzico() {
     const s = a.siparisler.find((x) => x.referenceCode === siparis);
     if (!s || s.orderStatus !== 'FAILED' || a.durum === 'CANCELED' || a.durum === 'EXPIRED') return null;
     s.orderStatus = 'SUCCESS';
-    s.paidPrice = s.price;
     s.paymentAttempts = [...(s.paymentAttempts ?? []), { paymentAttemptStatus: 'SUCCESS' }];
     a.durum = 'ACTIVE';
     tahsilatlar.push({ kod, siparis, tutar: s.price ?? PAKET_TUTARI, an });
