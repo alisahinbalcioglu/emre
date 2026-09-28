@@ -1927,6 +1927,18 @@ model Fatura {
   musteriIl           String?
   musteriIlce         String?
 
+  /// ── 28.09.2026 — ÖDEME ANI + PAKET ADI KUYRUĞA ALMA ANINDA KOPYALANIR ──
+  /// `tahsilatTarihi`: VUK md. 231/5 son düzenleme günü (7 gün) buna göre.
+  /// Kart: iyzico'nun başarılı ödeme denemesi (`createdDate`); havale: onay
+  /// anı. Satır eskiden ödeme anını taşımıyordu: e-posta min(kuyruk, dönem
+  /// başı) yazıyordu — yeniden denemeyle toparlanan tahsilatta gerçek ödemeden
+  /// ÖNCE. `paketAdi`: kalem adı KESİM anındaki aboneliğin paketinden
+  /// okunuyordu; paket arada değişirse (havale onayı, yükseltme) bekleyen
+  /// fatura yanlış adla kesilirdi. NULL = bu alanlardan ÖNCE kuyruğa alınmış
+  /// satır → eski davranış (geriye doldurma YOK: tahmin olurdu).
+  tahsilatTarihi DateTime?
+  paketAdi       String?
+
   denemeSayisi Int       @default(0)
   sonDeneme    DateTime?
   hata         String?

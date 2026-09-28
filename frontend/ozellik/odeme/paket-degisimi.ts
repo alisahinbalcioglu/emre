@@ -79,6 +79,16 @@ export function kartEylemi(
 }
 
 /**
+ * 28.09 — Kartın deneme satırı ("30 gün ücretsiz deneme") çizilsin mi? Deneme
+ * bir KART SATIN ALMA vaadidir: sunucu kartın yolunu kapattıysa (bekleyen
+ * havale teklifi, iyzico'da açık eski kart aboneliği…) vaat düğmenin altındaki
+ * "neden kapalı" cümlesiyle çelişir. Öbür eylemlerde eskisi gibi.
+ */
+export function kartDenemesiGosterilsinMi(eylem: KartEylemi): boolean {
+  return eylem.tur !== 'kapali';
+}
+
+/**
  * Onay penceresindeki açıklama — sunucunun e-postada/olay kaydında yazacağı
  * cümlenin (`degisimCumlesi`) "değişimden ÖNCE" hâli. Müşteri neyin NE ZAMAN
  * olacağını ve NE KADAR ödeyeceğini onaydan ÖNCE görür.

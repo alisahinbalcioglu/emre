@@ -1316,10 +1316,14 @@ async function hBlogu(): Promise<void> {
       abonelikId: ab.id, paketSurumuId: 'S-MP', durum: 'ODEME_BEKLENIYOR', tutar: new Prisma.Decimal(1649), paraBirimi: 'TRY',
       ayAdedi: 1, teklifNo: 'T-ESKI-1', faturaNo: 'FTR-ESKI-1',
     });
-    const once = JSON.stringify(d.oku('F-H7O'));
+    // 28.09: onay uzatmadan ÖNCE abonelik satırını kilitler (`guncellendi`
+    // yazımı, `test:havale-onay-yarisi` FH); Postgres'te ret onu geri alır, bu
+    // taklit atomik değil — ölçüt satırın İÇERİĞİ.
+    const icerik = (s: Record<string, unknown>) => JSON.stringify({ ...s, guncellendi: undefined });
+    const once = icerik(d.oku('F-H7O'));
     const hata = await saatte(T0, () => d.havale.odemeyiOnayla({ havaleId: eski.id, onaylayanId: 'yonetici-1' })).then(() => null, (e: unknown) => e);
     check('H7d ⭐ kural öncesi verilmiş farklı miras paketi teklifi ONAYDA da reddedildi (400); abonelik satırı AYNEN (uzatma yok, paket miras-core), fatura yok',
-      hata instanceof BadRequestException && JSON.stringify(d.oku('F-H7O')) === once && d.db.tablo('fatura').length === 0,
+      hata instanceof BadRequestException && icerik(d.oku('F-H7O')) === once && d.db.tablo('fatura').length === 0,
       `${redMetni(hata)} · ${ozet(d.oku('F-H7O'))}`);
   }
   {

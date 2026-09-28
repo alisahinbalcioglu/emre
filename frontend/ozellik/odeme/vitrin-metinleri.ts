@@ -67,12 +67,21 @@ export interface VitrinDenemeBilgisi {
  *   yanlış yön "var" demek olurdu.
  * ⚠ Gün sayıları paketten pakete FARKLIYSA rakam yazılmaz — hangi paketi
  *   seçeceği belli olmayan kişiye tek bir rakam söylemek yalan olabilirdi.
+ * ⚠ 28.09 — deneme bir KART SATIN ALMA vaadidir: sunucu paketin kart yolunu
+ *   kapattıysa (`degisim.yol` `satin-al` değil — ör. bekleyen havale teklifi
+ *   `HAVALE_TEKLIFI_BEKLIYOR`) o paket sayılmaz; hiçbiri satın alınamıyorsa
+ *   satır YOK, şerit sunucunun metnini ("Dekontunuz onaylanınca…") gösterir.
+ *   `degisim` gelmezse (eski sunucu) paket eskisi gibi sayılır.
  */
 export function vitrinDenemeSatiri(
-  paketler: ReadonlyArray<{ surum?: Pick<PaketSurumu, 'denemeGunu' | 'denemeHakki' | 'denemeGerekcesi'> | null }> | null | undefined,
+  paketler: ReadonlyArray<{
+    surum?: Pick<PaketSurumu, 'denemeGunu' | 'denemeHakki' | 'denemeGerekcesi'> | null;
+    degisim?: { yol: string } | null;
+  }> | null | undefined,
 ): VitrinDenemeBilgisi | null {
   if (!Array.isArray(paketler)) return null;
   const denemeli = paketler
+    .filter((p) => !p?.degisim || p.degisim.yol === 'satin-al')
     .map((p) => p?.surum)
     .filter((s): s is Pick<PaketSurumu, 'denemeGunu' | 'denemeHakki' | 'denemeGerekcesi'> =>
       !!s && typeof s.denemeGunu === 'number' && s.denemeGunu > 0);

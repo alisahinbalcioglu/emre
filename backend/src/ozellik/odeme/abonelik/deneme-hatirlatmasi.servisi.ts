@@ -5,6 +5,7 @@ import { AbonelikDurumu, OdemeYontemi, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { EpostaServisi } from '../eposta/eposta.servisi';
 import { denemeBitiyorEpostasi } from '../eposta/musteri-epostalari';
+import { istanbulGunSonu } from '../dunning/dunning.metinleri';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    "DENEME SÜRENİZ BİTİYOR" HATIRLATMASI (25.09.2026)
@@ -34,8 +35,6 @@ import { denemeBitiyorEpostasi } from '../eposta/musteri-epostalari';
 
 export const DENEME_HATIRLATMA_GUNU = 3;
 const GUN_MS = 24 * 60 * 60 * 1000;
-/** İstanbul UTC+3 — 2016'dan beri yaz saati uygulaması YOK. */
-const ISTANBUL_MS = 3 * 60 * 60 * 1000;
 /** Tur başına aday sınırı (dolarsa günlüğe uyarı; kalanlar sonraki turda). */
 export const TUR_SINIRI = 200;
 
@@ -46,11 +45,12 @@ export interface TaramaSonucu {
   dusen: number;
 }
 
-/** `t`nin İstanbul takvim gününün SON anı. */
-export function istanbulGunSonu(t: Date): Date {
-  const gunBasi = Math.floor((t.getTime() + ISTANBUL_MS) / GUN_MS) * GUN_MS;
-  return new Date(gunBasi + GUN_MS - 1 - ISTANBUL_MS);
-}
+/**
+ * `t`nin İstanbul takvim gününün SON anı. 28.09: tanım `dunning.metinleri.ts`e
+ * taşındı (NES son düzenleme günü de okur — tek kural); burada yeniden dışa
+ * verilir.
+ */
+export { istanbulGunSonu };
 
 /**
  * Hatırlatmaya aday: KART + denemede + iptalsiz + iyzico'da açık + gönderilmemiş

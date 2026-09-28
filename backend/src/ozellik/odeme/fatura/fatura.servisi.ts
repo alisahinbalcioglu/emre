@@ -209,11 +209,58 @@ export interface FaturaTalebi {
   abonelikId: string;
   /** Tekilleştirme anahtarı — aynı tahsilat için iki fatura kesilmesin. */
   tahsilatKodu: string;
-  /** KDV DAHİL tahsil edilen tutar. */
+  /** KDV DAHİL tahsil edilen tutar. Kart: iyzico siparişinin KENDİ tutarı (`tahsilEdilenTutar`). */
   tutar: number;
   paraBirimi: string;
   donemBasi: Date;
   donemSonu: Date;
+  /**
+   * 28.09 — ÖDEME ANI; VUK md. 231/5 son düzenleme günü (7 gün) buradan
+   * sayılır. Kart: iyzico'nun başarılı denemesi (`odemeAni`); havale: onay
+   * anı. ZORUNLU ve kuyruğa alma anı yedeği YOK: geç işlenen webhook
+   * (yeniden deneme, mutabakat oynatması) son günü ertelerdi.
+   */
+  tahsilatTarihi: Date;
+  /**
+   * 28.09 — ÖDENEN paket sürümü; adı BURADA faturaya kopyalanır (`paketAdi`),
+   * kesim aboneliğin o anki paketini okumaz. Çağıranın elindeki satırdan
+   * gelir: `kuyrugaAl` aboneliği okumaz (havale onayı işlem İÇİNDE çağırırsa
+   * henüz yazılmamış paketi görürdü).
+   */
+  paketSurumuId: string;
+}
+
+/**
+ * Kuyruğa alınacak `Fatura` satırının VERİSİ — SAF, TEK YER (28.09). Yazım
+ * bundan AYRI tutulur: `kuyrugaAl` bugün `create` ile yazar; bir yol işlem
+ * içinde `createMany({ skipDuplicates })` gerekirse (havale onayı) veri kuralı
+ * değişmeden yalnız yazım değişir. Tutar KDV DAHİL gelir; matrah ve KDV
+ * BURADA ayrıştırılır. Müşteri kopyası (K4) ve paket adı tahsilat anında
+ * okunup verilir — bu fonksiyon DB bilmez.
+ */
+export function faturaSatiriVerisi(
+  t: FaturaTalebi,
+  p: { kopya: FaturaMusteriKopyasi; paketAdi: string | null; kdvOrani: number; simdi: Date },
+): Prisma.FaturaCreateManyInput {
+  const carpan = 1 + p.kdvOrani / 100;
+  const matrah = Math.round((t.tutar / carpan) * 100) / 100;
+  const kdv = Math.round((t.tutar - matrah) * 100) / 100;
+  return {
+    abonelikId: t.abonelikId,
+    tahsilatKodu: t.tahsilatKodu,
+    durum: FaturaDurumu.BEKLIYOR,
+    ...p.kopya,
+    paketAdi: p.paketAdi,
+    tahsilatTarihi: t.tahsilatTarihi,
+    tutar: new Prisma.Decimal(matrah),
+    kdvOrani: p.kdvOrani,
+    kdvTutari: new Prisma.Decimal(kdv),
+    toplamTutar: new Prisma.Decimal(t.tutar),
+    paraBirimi: t.paraBirimi,
+    donemBasi: t.donemBasi,
+    donemSonu: t.donemSonu,
+    sonDeneme: new Date(p.simdi.getTime() - 60_000), // hemen işlensin
+  };
 }
 
 @Injectable()
@@ -244,33 +291,17 @@ export class FaturaServisi {
    * cevaba bağlıdır — tahsilat başına TAM BİR KEZ (`WebhookIsleyici`).
    */
   async kuyrugaAl(t: FaturaTalebi): Promise<boolean> {
-    // Tutar KDV dahil geliyor; matrahı ve KDV'yi ayrıştır.
-    const carpan = 1 + this.kdvOrani / 100;
-    const matrah = Math.round((t.tutar / carpan) * 100) / 100;
-    const kdv = Math.round((t.tutar - matrah) * 100) / 100;
-
     // ── K4: MUSTERI KIMLIGI TAM BURADA DONAR ─────────────────────────────
     // Bu metot TAHSILAT anindan cagrilir (webhook.isleyici:basariliTahsilat).
     // Kesim sonra kosar; arada adres degisirse fatura ESKI adresi tasimalidir.
     const kopya = await this.musteriKopyasiniCikar(t.abonelikId);
+    // 28.09 — PAKET ADI da tahsilat anında donar (kesim o anki paketi okumaz).
+    const paketAdi = await this.paketAdiniCikar(t.paketSurumuId);
+    // Veri kuralı SAF yardımcıda (`faturaSatiriVerisi`); burada yalnız yazım.
+    const data = faturaSatiriVerisi(t, { kopya, paketAdi, kdvOrani: this.kdvOrani, simdi: new Date() });
 
     try {
-      await this.prisma.fatura.create({
-        data: {
-          abonelikId: t.abonelikId,
-          tahsilatKodu: t.tahsilatKodu,
-          durum: FaturaDurumu.BEKLIYOR,
-          ...kopya,
-          tutar: new Prisma.Decimal(matrah),
-          kdvOrani: this.kdvOrani,
-          kdvTutari: new Prisma.Decimal(kdv),
-          toplamTutar: new Prisma.Decimal(t.tutar),
-          paraBirimi: t.paraBirimi,
-          donemBasi: t.donemBasi,
-          donemSonu: t.donemSonu,
-          sonDeneme: new Date(Date.now() - 60_000), // hemen işlensin
-        },
-      });
+      await this.prisma.fatura.create({ data });
       this.logger.log(`Fatura kuyruğa alındı: ${t.tahsilatKodu}`);
       return true;
     } catch (e: unknown) {
@@ -317,6 +348,28 @@ export class FaturaServisi {
       );
     }
     return faturaMusteriKopyasiCikar(ab?.firma);
+  }
+
+  /**
+   * 28.09 — ödenen paket sürümünün ADI (fatura kalemine kopyalanır). Sürüm
+   * BULUNAMAZSA fırlatmaz (K4 ile aynı kural): NULL yazılır, kesim eski
+   * davranışa (aboneliğin o anki paketi) düşer — günlüğe yazılır. Veritabanı
+   * HATASI fırlar (kopya çıkarmadaki gibi); kararı `kuyrugaAl`ı çağıran
+   * verir: webhook olayı yeniden denenir, havale onayı yalnız günlüğe yazar
+   * (o fatura kaybolur — bu işten önce de böyleydi, ayrı iş).
+   */
+  private async paketAdiniCikar(paketSurumuId: string): Promise<string | null> {
+    const surum = await this.prisma.paketSurumu.findUnique({
+      where: { id: paketSurumuId },
+      select: { paket: { select: { ad: true } } },
+    });
+    const ad = surum?.paket?.ad ?? null;
+    if (!ad) {
+      this.logger.error(
+        `Fatura paket adı ÇIKARILAMADI: paket sürümü ${paketSurumuId} okunamadı — kesimde aboneliğin o anki paketi yazılacak.`,
+      );
+    }
+    return ad;
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -406,8 +459,11 @@ export class FaturaServisi {
         musteri,
         kalemler: [
           {
-            ad: `${f.abonelik.paketSurumu.paket.ad} — Yazılım Kullanım Bedeli`,
-            aciklama: `Dönem: ${f.donemBasi.toLocaleDateString('tr-TR')} – ${f.donemSonu.toLocaleDateString('tr-TR')}`,
+            // 28.09: tahsilat anında kopyalanan paket; NULL = alandan önceki satır.
+            ad: `${f.paketAdi ?? f.abonelik.paketSurumu.paket.ad} — Yazılım Kullanım Bedeli`,
+            // 28.09 (kod incelemesi): gün İSTANBUL'a göre — konteyner UTC;
+            // 00:00-02:59 arası başlayan dönem bir gün önce yazılıyordu.
+            aciklama: `Dönem: ${f.donemBasi.toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' })} – ${f.donemSonu.toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' })}`,
             miktar: 1,
             birim: 'Adet',
             birimFiyat: Number(f.tutar),
@@ -417,13 +473,17 @@ export class FaturaServisi {
         paraBirimi: f.paraBirimi,
         duzenlemeTarihi: new Date(),
         // Satırın KENDİ tutarları + ödeme anı (elle/NES kesim yöneticiye
-        // yazar). Ödeme anı = dönem başı ile kuyruğa alınmanın ERKENİ:
-        // geç işlenen webhook son günü ertelemesin (VUK 231/5, 7 gün).
+        // yazar; VUK 231/5 son günü buradan). 28.09: ödeme anı satırın
+        // `tahsilatTarihi`dir. NULL (alandan ÖNCE kuyruğa alınmış satır) →
+        // eski kural: dönem başı ile kuyruğa alınmanın ERKENİ — geç işlenen
+        // webhook son günü ertelemesin.
         tahsilat: {
           matrah: Number(f.tutar),
           kdv: Number(f.kdvTutari),
           toplam: Number(f.toplamTutar),
-          tarih: f.olusturuldu && f.olusturuldu < f.donemBasi ? f.olusturuldu : f.donemBasi,
+          tarih:
+            f.tahsilatTarihi ??
+            (f.olusturuldu && f.olusturuldu < f.donemBasi ? f.olusturuldu : f.donemBasi),
         },
       });
 

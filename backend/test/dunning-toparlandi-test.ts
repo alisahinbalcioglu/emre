@@ -442,7 +442,8 @@ function sahteIyzico(bariyer = 0) {
  * Sipariş — 20.08 sandbox tutanağındaki biçim (docs/adim0-tutanak/adim0-cikti.json):
  * epoch-ms SAYI `startPeriod`/`endPeriod`, `orderStatus`,
  * `paymentAttempts[].paymentStatus`. `paidPrice` tutanakta YOK — konmadı
- * (işleyici faturayı paket tutarından yazar).
+ * (28.09'dan beri işleyici faturayı ve "ödemeniz alındı"yı siparişin
+ * `price`ından yazar — `tahsilEdilenTutar`; kapı `test:fatura-dogrulugu` W7).
  */
 function siparis(kod: string, bas: number, son: number, denemeler: string[] = ['SUCCESS'], durum = 'SUCCESS') {
   return {

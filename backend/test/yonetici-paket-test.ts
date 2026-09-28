@@ -488,6 +488,9 @@ function sahteDb(p: {
       // `where` GERCEKTEN uygulanir (abonelik + tip + yeniDurum in + olusturuldu gt).
       count: async ({ where }: any) => olaylar.filter((o) => eslesir(o, where)).length,
     },
+    // 28.09: satın alma kapısı bekleyen havale teklifini sorar
+    // (`bekleyenHavaleVarMi`); bu dünyada havale yok.
+    havaleOdemesi: { count: async () => 0 },
     yoneticiOlayi: {
       create: async ({ data }: any) => {
         if (p.dusenDenetim && data.tip === p.dusenDenetim) throw new Error('sahte DB: denetim yazimi dustu');

@@ -540,8 +540,11 @@ function sahteIyzico() {
       orderStatus: p.basarili ? 'SUCCESS' : 'FAILED',
       startPeriod: yaz(p.baslangic),
       endPeriod: yaz(p.bitis),
+      // 28.09: ÖLÇÜLEN biçim — 20.08 sandbox tutanağında tutar `price`,
+      // `paidPrice` HİÇ yok. Eskiden başarılı siparişe `paidPrice` da
+      // konuyordu: tutar kuralı `price`ı okumasa (yalnız `paidPrice`) çift
+      // tahsilat kapısı yine yeşildi (mutasyon A2, `test:fatura-dogrulugu`).
       price: tutar,
-      ...(p.basarili ? { paidPrice: tutar } : {}),
       paymentAttempts: [{ paymentAttemptStatus: p.basarili ? 'SUCCESS' : 'FAILED' }],
     });
     a.durum = p.basarili ? 'ACTIVE' : 'UNPAID';
@@ -559,7 +562,6 @@ function sahteIyzico() {
     const s = a.siparisler.find((x) => x.referenceCode === siparis);
     if (!s || s.orderStatus !== 'FAILED' || a.durum === 'CANCELED' || a.durum === 'EXPIRED') return null;
     s.orderStatus = 'SUCCESS';
-    s.paidPrice = s.price;
     s.paymentAttempts = [...(s.paymentAttempts ?? []), { paymentAttemptStatus: 'SUCCESS' }];
     a.durum = 'ACTIVE';
     tahsilatlar.push({ kod, siparis, tutar: s.price ?? PAKET_TUTARI, an });

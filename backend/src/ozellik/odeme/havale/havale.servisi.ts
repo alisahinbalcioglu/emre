@@ -10,6 +10,8 @@ import { etkinHesapKosulu } from '../../firma/uyelik-kurallari';
 import { koltukEtkisi } from '../abonelik/yonetici/yonetici-islemi';
 import { kartUyarisiOku, teklifSonrasiKartCekimleri } from './havale-kart-penceresi';
 import { mirasPaketiDegisimi, mirasPaketiDegisimMesaji } from '../abonelik/miras-hakki';
+// ONAYLANABİLİR koşulu erişim kararı ve kart satın alma kapısıyla paylaşılır (28.09).
+import { ONAYLANABILIR } from './havale-durumlari';
 
 /** Düşürmenin koltuk etkisi — sayım `etkinHesapKosulu`, kural `koltukEtkisi`. */
 export interface HavaleKoltukEtkisi {
@@ -118,15 +120,6 @@ export function koltukEpostaCumlesi(k: Pick<HavaleKoltukEtkisi, 'yeniHak' | 'top
  */
 
 /**
- * ONAYLANABİLİR HAVALE: onay bekleyen durumda VE hiç onaylanmamış. Durum
- * yazan üç yol (onayın sahiplenmesi, "fatura kesildi", iptal) ve yönetim
- * listesi (`bekleyenler`) AYNI koşulu okur: listede görünen satır
- * onaylanabilir olandır. `onaylandi`yı yalnız onay yazar ve hiçbir yol
- * silmez: durumu 25.09 öncesi "fatura kesildi" kusuruyla geri çekilmiş
- * onaylı satır da onaylı sayılır. KAPALI liste — şemaya eklenen yeni bir
- * durum kendiliğinden onaylanabilir OLMAZ.
- */
-/**
  * İptalde müşteriye e-posta giden durumlar (25.09): müşteri ödeme sürecine
  * GİRMİŞ — fatura/proforma kesilmiş ya da ödeme bekleniyor. TEKLIF aşaması
  * sistemden müşteriye iletilmez; iptali de duyurulmaz.
@@ -135,17 +128,6 @@ const MUSTERIYE_BILDIRILEN_IPTAL_DURUMLARI: HavaleDurumu[] = [
   HavaleDurumu.FATURA_KESILDI,
   HavaleDurumu.ODEME_BEKLENIYOR,
 ];
-
-const ONAYLANABILIR: Prisma.HavaleOdemesiWhereInput = {
-  durum: {
-    in: [
-      HavaleDurumu.TEKLIF,
-      HavaleDurumu.FATURA_KESILDI,
-      HavaleDurumu.ODEME_BEKLENIYOR,
-    ],
-  },
-  onaylandi: null,
-};
 
 @Injectable()
 export class HavaleServisi {
@@ -433,6 +415,22 @@ export class HavaleServisi {
         );
       }
 
+      // ⚠ 28.09 — ABONELİK SATIRI KİLİDİ, uzatmanın OKUMASINDAN ÖNCE. Sahiplenme
+      // yalnız HAVALE satırını kilitler: aynı aboneliğin FARKLI iki havalesi
+      // (iki teklif, iki yönetici) ikisi de sahiplenir, `erisimiUzat` ikisinde
+      // de satırı kilitsiz okur, ikisi de AYNI bitişten uzatır — iki ödeme,
+      // tek uzatma (ölçüldü: aynı anda da, biri açıkken de +365; sıralı +731).
+      // Bu koşulsuz yazım satırı işlem boyunca kilitler; ikinci onay burada
+      // BEKLER, birincinin commit'inden sonra uzatmanın okuması (READ
+      // COMMITTED'da her deyim yeni anlık görüntü) YENİ bitişi görür. Yazılan
+      // değer zararsız: `guncellendi` uzatmanın kendi yazısında da tazelenir.
+      // Kilit sırası havale → abonelik; iki satırı tutan başka işlem yok
+      // (havale satırına yalnız bu servis yazar). Kapı: `test:havale-onay-yarisi` FH.
+      await tx.abonelik.updateMany({
+        where: { id: mevcut.abonelikId },
+        data: { guncellendi: new Date() },
+      });
+
       // 26.09 — teklifin paketi uzatmaya da geçer: miras (göç) satırından başka
       // pakete geçişte ödenen dönem BUGÜN başlar, miras hakkı ayrı taşınır
       // (`AbonelikServisi.erisimiUzat` → `miras-hakki.ts`).
@@ -477,6 +475,11 @@ export class HavaleServisi {
           paraBirimi: mevcut.paraBirimi,
           donemBasi,
           donemSonu: sonuc.abonelik.erisimSonu,
+          // 28.09 — ödeme anı = ONAY anı (havalenin banka tarihi kayıtlı
+          // değil); paket = onayın yazdığı etkin paket (teklifin paketi) —
+          // fatura kesim anındaki paketi DEĞİL bunu yazar.
+          tahsilatTarihi: sonuc.havale.onaylandi ?? donemBasi,
+          paketSurumuId: sonuc.abonelik.paketSurumuId,
         })
         .catch((e) => this.logger.error(`Havale faturası kuyruğa alınamadı: ${e}`));
     }

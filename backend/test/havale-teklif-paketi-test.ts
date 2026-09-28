@@ -643,11 +643,15 @@ function dunyaKur() {
   };
   const config = new ConfigService({ UYGULAMA_URL: 'https://ornek.test' });
   /** Muhasebeye giden kesim talepleri — fatura kalemi hangi paketi yazıyor? */
-  const kesimler: Array<{ harciAnahtar: string; kalem: string; toplam: number }> = [];
+  const kesimler: Array<{ harciAnahtar: string; kalem: string; toplam: number; tarih: number | null }> = [];
   const muhasebe: any = {
     ad: 'sahte',
     faturaKes: async (t: any) => {
-      kesimler.push({ harciAnahtar: t.harciAnahtar, kalem: String(t.kalemler?.[0]?.ad), toplam: Number(t.tahsilat?.toplam) });
+      kesimler.push({
+        harciAnahtar: t.harciAnahtar, kalem: String(t.kalemler?.[0]?.ad), toplam: Number(t.tahsilat?.toplam),
+        // 28.09: NES son gününün başlangıcı (ödeme anı) — kesim talebinde.
+        tarih: t.tahsilat?.tarih instanceof GercekDate ? t.tahsilat.tarih.getTime() : null,
+      });
       return { saglayiciId: `sahte-${kesimler.length}`, faturaNo: `TEST${kesimler.length}` };
     },
   };
@@ -860,6 +864,15 @@ async function kBlogu(): Promise<void> {
   check('K4 havale faturasının kalemi ödenen paketi yazıyor ("Pro — Mekanik — …", 19.788 TL)',
     /^Pro — Mekanik — Yazılım Kullanım Bedeli/.test(String(kesim?.kalem)) && kesim?.toplam === HAVALE_TUTARI,
     `kesim=${JSON.stringify(kesim)}`);
+  // 28.09 (fatura doğruluğu): paket adı ve ödeme anı KUYRUĞA ALIRKEN satıra
+  // kopyalanır; havalenin ödeme anı ONAY anıdır (banka tarihi kayıtlı değil).
+  const faturaSatiri = d.db.tablo('fatura').find((f) => f.tahsilatKodu === `havale:${havaleId}`);
+  const onaylandi = d.db.tablo('havaleOdemesi').find((h) => h.id === havaleId)?.onaylandi;
+  check('K4b ⭐ fatura satırı ödenen paketin ADINI ve ödeme anını (ONAY anı) taşır; kesim talebi o anı yazar (NES son günü)',
+    faturaSatiri?.paketAdi === 'Pro — Mekanik' && onaylandi instanceof GercekDate &&
+      faturaSatiri?.tahsilatTarihi?.getTime() === onaylandi.getTime() && kesim?.tarih === onaylandi.getTime(),
+    `paketAdi=${faturaSatiri?.paketAdi} tahsilatTarihi=${faturaSatiri?.tahsilatTarihi?.toISOString?.()} ` +
+      `onaylandi=${onaylandi?.toISOString?.()} kesimTarih=${kesim?.tarih}`);
   check('K5 müşteri e-postası ödenen paketi yazıyor ("Pro — Mekanik aboneliğiniz")',
     /Pro — Mekanik aboneliğiniz/.test(String(posta?.paragraflar[0])), `e-posta=${posta?.paragraflar[0]}`);
   const olay = paketOlaylari[0];
@@ -907,6 +920,24 @@ async function kBlogu(): Promise<void> {
   const uzama = Math.round((d.oku('K1').erisimSonu.getTime() - oncekiSon) / GUN);
   olcum(`K · ONAYDAN SONRA "fatura kesildi" → havale durumu=${sonradanDurum}, bekleyenler listesinde=${listede}; ` +
     `yeniden onay=${ucuncuHata ? hataMetni(ucuncuHata) : 'GEÇTİ'} → erişim +${uzama} gün (kapsam dışı: çift uzatma işi)`);
+
+  // 28.09 (fatura doğruluğu, madde 1): kesim eskiden kalem adını KESİM anındaki
+  // aboneliğin paketinden okuyordu. Onay (Pro) ile dakikalık kesim arasında
+  // paket değişirse (başka bir havale onayı, yönetici düşürmesi, yükseltme)
+  // bekleyen fatura YANLIŞ paketle kesilirdi.
+  const d2 = dunyaKur();
+  d2.kartliSatir('K4C', BASIC, { erisimSonu: new GercekDate(T0 + 12 * GUN) });
+  const o2 = await d2.havaleIleOde('K4C', PRO, T0);
+  const satir2 = d2.db.tablo('abonelik').find((r) => r.firmaId === 'K4C');
+  check('K4c-FIXTURE onay hesabı Pro yaptı; fatura henüz KESİLMEDİ (kuyrukta)',
+    satir2?.paketSurumuId === PRO && d2.kesimler.length === 0 &&
+      d2.db.tablo('fatura').some((f) => f.tahsilatKodu === `havale:${o2.havaleId}` && f.durum === 'BEKLIYOR'),
+    `paket=${pk(satir2?.paketSurumuId)} kesim=${d2.kesimler.length}`);
+  if (satir2) satir2.paketSurumuId = BASIC; // kesimden ÖNCE paket değişti
+  await d2.faturaKuyrugu(T0 + 2 * 60_000);
+  const kesim2 = d2.kesimler.find((k) => k.harciAnahtar === `havale:${o2.havaleId}`);
+  check('K4c ⭐ onaydan sonra paket değişse de kesim ÖDENEN paketi yazar ("Pro — Mekanik", "Basic" DEĞİL)',
+    /^Pro — Mekanik — Yazılım Kullanım Bedeli/.test(String(kesim2?.kalem)), `kesim=${JSON.stringify(kesim2)}`);
 }
 
 // ═════════════════════════════════════════════════════════════════════════

@@ -733,7 +733,13 @@ function odemeDunyasi(o: { epostasiz?: boolean; gecikme?: number } = {}) {
   const tahsilat = {
     cagri: 0,
     sonuc: {
-      abonelik: { id: 'AB1', paketSurumu: { tutar: new Prisma.Decimal(1649), paraBirimi: 'TRY' } },
+      // Gerçek `tahsilatBasarili` TAM satırı döndürür: `paketSurumuId` (FK,
+      // zorunlu) ve `odenenPaketSurumuId` — 28.09'dan beri fatura ödenen
+      // paketin ADINI bunlardan kopyalar.
+      abonelik: {
+        id: 'AB1', paketSurumuId: 'S1', odenenPaketSurumuId: null,
+        paketSurumu: { tutar: new Prisma.Decimal(1649), paraBirimi: 'TRY' },
+      },
       siparis: { paidPrice: 1649, startPeriod: new Date('2026-09-20T12:00:00Z').getTime() } as any,
       donemSonu: new Date('2026-10-20T12:00:00Z'),
       dunningdenCikti: false,
