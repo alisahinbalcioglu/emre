@@ -4,7 +4,6 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
 import { istemciKopmaSinyali } from '../../altyapi/http/istemci-koptu';
 import { DwgEngineService } from './dwg-engine.service';
@@ -12,6 +11,8 @@ import { resolveScaleParam } from './scale-param';
 import { CurrentUser } from '../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../altyapi/auth/kimlik';
 import { DwgSahiplikServisi, dedupKapsami } from './dwg-sahiplik.servisi';
+import { DwgGeciciDepo, geciciDosyayiSil, yuklenenDosyaAdi } from './dwg-gecici-depo';
+import { DWG_YUKLEME_AZAMI_BAYT, DwgYuklemeKapisi } from './dwg-yukleme-kapisi';
 import { ErisimGuard, GerekliYetenek } from '../../ozellik/odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../ozellik/odeme/abonelik/erisim.servisi';
 
@@ -142,24 +143,46 @@ export class DwgEngineController {
    * KIRACI DEDUP (26.09): motor ayni icerigi YALNIZ bu firmanin kapsaminda
    * tekillestirir. Kapsamsizken ikinci firma birincinin file_id'sini aliyor,
    * kendi yuklemesinde 403 yiyordu. Bkz. `dwg-sahiplik.servisi.ts`.
+   *
+   * BELLEKSIZ YUKLEME (26.09): govde diske akar (`DwgGeciciDepo`), motora
+   * diskten akarak gider, is bitince (basari ya da hata) gecici dosya silinir.
+   * Eskiden multer memoryStorage (1 GB sinir) + motora Blob kopyasi: istek basina
+   * ~2 GB bellek. Tavan 250 MB ve firma basina 2 es zamanli yukleme
+   * (`DwgYuklemeKapisi`, govde okunmadan once). Kapi: `test:dwg-yukleme`.
+   * Istemci motora iletim SURERKEN koparsa iletim de kesilir: kapi firmanin yerini
+   * 'close'da geri verir, iletim surseydi yer bosken 250 MB'lik is motora gitmeye
+   * devam eder ve kimsenin yoklamadigi bir hat isi kuyruga girerdi (guvenlik
+   * incelemesi L1, 26.09).
    */
   @Post('upload')
   @GerekliYetenek(Yetenek.DWG_YUKLE)
+  @UseGuards(DwgYuklemeKapisi)
   @UseInterceptors(FileInterceptor('file', {
-    storage: memoryStorage(),
-    limits: { fileSize: 1024 * 1024 * 1024 },
+    storage: new DwgGeciciDepo(),
+    // +1: busboy `fileSize === sinir` olunca da 'limit' yayar — tam tavandaki dosya
+    // aksi hâlde 413 alirdi (inceleme 26.09; kapi L1/L2 tavan ve tavan+1 bayt).
+    limits: { fileSize: DWG_YUKLEME_AZAMI_BAYT + 1, files: 1, fields: 8, fieldSize: 64 * 1024, parts: 10 },
   }))
   async uploadAsync(
     @CurrentUser() kullanici: unknown,
     @UploadedFile() file: Express.Multer.File,
+    @Res({ passthrough: true }) res: Response,
   ) {
     if (!file) return { error: 'Dosya yuklenemedi' };
-    const { firmaId, userId } = kimlikCoz(kullanici);
-    const yanit = await this.dwgEngine.uploadAsync(file.buffer, file.originalname, dedupKapsami(firmaId));
-    await this.sahiplik.kaydet(yanit, firmaId, userId, file.originalname);
-    // Istemciye yalniz on yuzun kullandigi alanlar: motorun ic alanlari (kapsamli…) gecmez.
-    const { file_id, status, dedup } = yanit as { file_id: string; status: string; dedup?: boolean };
-    return dedup === true ? { file_id, status, dedup } : { file_id, status };
+    const istemciKoptu = istemciKopmaSinyali(res);
+    try {
+      const { firmaId, userId } = kimlikCoz(kullanici);
+      const dosyaAdi = yuklenenDosyaAdi(file.originalname);
+      const yanit = await this.dwgEngine.uploadAsync(
+        file.path, file.size, dosyaAdi, dedupKapsami(firmaId), istemciKoptu,
+      );
+      await this.sahiplik.kaydet(yanit, firmaId, userId, dosyaAdi);
+      // Istemciye yalniz on yuzun kullandigi alanlar: motorun ic alanlari (kapsamli…) gecmez.
+      const { file_id, status, dedup } = yanit as { file_id: string; status: string; dedup?: boolean };
+      return dedup === true ? { file_id, status, dedup } : { file_id, status };
+    } finally {
+      await geciciDosyayiSil(file.path);
+    }
   }
 
   /**
