@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 840
-Toplam satir: 227287
+Toplam satir: 227543
 Uc nokta: 238
 test:* scripti: 137
 
@@ -231,7 +231,7 @@ test:* scripti: 137
 | `backend/src/ozellik/kutuphane/silme-etkisi.ts` | 74 |
 | `backend/src/ozellik/kutuphane/utils/import-fidelity.ts` | 468 |
 | `backend/src/ozellik/odeme/abonelik/abonelik.controller.ts` | 277 |
-| `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | 1742 |
+| `backend/src/ozellik/odeme/abonelik/abonelik.servisi.ts` | 1760 |
 | `backend/src/ozellik/odeme/abonelik/ceviri-kota.servisi.ts` | 610 |
 | `backend/src/ozellik/odeme/abonelik/ceviri-kotasi.ts` | 393 |
 | `backend/src/ozellik/odeme/abonelik/deneme-hakki.servisi.ts` | 91 |
@@ -246,8 +246,8 @@ test:* scripti: 137
 | `backend/src/ozellik/odeme/abonelik/iyzico-donus.controller.ts` | 103 |
 | `backend/src/ozellik/odeme/abonelik/kart-kapatma.ts` | 91 |
 | `backend/src/ozellik/odeme/abonelik/miras-donusu.job.ts` | 89 |
-| `backend/src/ozellik/odeme/abonelik/miras-hakki.ts` | 204 |
-| `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | 801 |
+| `backend/src/ozellik/odeme/abonelik/miras-hakki.ts` | 246 |
+| `backend/src/ozellik/odeme/abonelik/mutabakat.job.ts` | 833 |
 | `backend/src/ozellik/odeme/abonelik/paket-degisimi.servisi.ts` | 776 |
 | `backend/src/ozellik/odeme/abonelik/paket-degisimi.ts` | 427 |
 | `backend/src/ozellik/odeme/abonelik/satinalma.servisi.ts` | 1682 |
@@ -272,7 +272,7 @@ test:* scripti: 137
 | `backend/src/ozellik/odeme/fatura/muhasebe.adaptor.ts` | 425 |
 | `backend/src/ozellik/odeme/havale/havale-kart-penceresi.ts` | 472 |
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | 99 |
-| `backend/src/ozellik/odeme/havale/havale.servisi.ts` | 826 |
+| `backend/src/ozellik/odeme/havale/havale.servisi.ts` | 841 |
 | `backend/src/ozellik/odeme/iyzico/imza.ts` | 206 |
 | `backend/src/ozellik/odeme/iyzico/iyzico-hata.filter.ts` | 108 |
 | `backend/src/ozellik/odeme/iyzico/iyzico-tarihi.ts` | 46 |
@@ -395,7 +395,7 @@ test:* scripti: 137
 | `backend/test/matching-unit-test.ts` | 714 |
 | `backend/test/migration-zinciri-test.ts` | 893 |
 | `backend/test/miras-erisimi-test.ts` | 701 |
-| `backend/test/miras-hakki-test.ts` | 1640 |
+| `backend/test/miras-hakki-test.ts` | 1785 |
 | `backend/test/musteri-epostalari-test.ts` | 1112 |
 | `backend/test/mutabakat-deneme-test.ts` | 665 |
 | `backend/test/mutabakat-faturasiz-tahsilat-test.ts` | 1456 |
@@ -419,7 +419,7 @@ test:* scripti: 137
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 993 |
+| `backend/test/regression-all.ts` | 997 |
 | `backend/test/s45-malzeme-aile-test.ts` | 441 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 898 |
@@ -1084,7 +1084,7 @@ test:* scripti: 137
 | `backend/src/ozellik/odeme/fatura/muhasebe.adaptor.ts` | `@nestjs/common` `@nestjs/config` `../../../altyapi/db/prisma.service` `../eposta/eposta.servisi` `../eposta/yonetim-bildirimi` `./fatura-kesim-epostasi` |
 | `backend/src/ozellik/odeme/havale/havale-kart-penceresi.ts` | `@nestjs/common` `@prisma/client` `../../../altyapi/db/prisma.service` `../abonelik/abonelik.servisi` `../eposta/eposta.servisi` `../dunning/dunning.metinleri` `../abonelik/kart-kapatma` `../abonelik/ceviri-kotasi` `../eposta/yonetim-bildirimi` `../iyzico/iyzico-tarihi` `../iyzico/tahsilat-kaniti` `../iyzico/iyzico.client` |
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | `@nestjs/common` `./havale.servisi` `../../../altyapi/auth/guards/jwt-auth.guard` `../../../altyapi/auth/guards/roles.guard` `../../../altyapi/auth/decorators/roles.decorator` `../../../altyapi/auth/decorators/current-user.decorator` |
-| `backend/src/ozellik/odeme/havale/havale.servisi.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `@prisma/client` `../abonelik/abonelik.servisi` `../fatura/fatura.servisi` `../eposta/eposta.servisi` `../eposta/musteri-epostalari` `../dunning/dunning.metinleri` `../../firma/uyelik-kurallari` `../abonelik/yonetici/yonetici-islemi` `./havale-kart-penceresi` |
+| `backend/src/ozellik/odeme/havale/havale.servisi.ts` | `@nestjs/common` `../../../altyapi/db/prisma.service` `@prisma/client` `../abonelik/abonelik.servisi` `../fatura/fatura.servisi` `../eposta/eposta.servisi` `../eposta/musteri-epostalari` `../dunning/dunning.metinleri` `../../firma/uyelik-kurallari` `../abonelik/yonetici/yonetici-islemi` `./havale-kart-penceresi` `../abonelik/miras-hakki` |
 | `backend/src/ozellik/odeme/iyzico/imza.ts` | `node:crypto` |
 | `backend/src/ozellik/odeme/iyzico/iyzico-hata.filter.ts` | `express` `./iyzico.client` |
 | `backend/src/ozellik/odeme/iyzico/iyzico.client.ts` | `@nestjs/common` `@nestjs/config` `../yapilandirma` `node:crypto` |

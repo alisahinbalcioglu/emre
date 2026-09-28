@@ -132,6 +132,48 @@ export function odenenDonemTabani(ab: MirasSatiri, hedef: HedefPaket | null, sim
   return zaman(bitis) > zaman(simdi) ? bitis : simdi;
 }
 
+/**
+ * Satırın ŞU AN süren miras paketinin kodu (27.09, güvenlik incelemesi
+ * ORTA-1): satır mirastaysa ve miras dönemi sürüyorsa etkin paketin kodu;
+ * ücretli paketteyse geçerli hakkın paketinin kodu; yoksa `null`. Kodları
+ * çağıran okur (`paketSurumu.paket.kod`, `mirasPaketSurumu.paket.kod`).
+ */
+export function surenMirasKodu(
+  ab: MirasSatiri & { mirasPaketSurumu?: { paket?: { kod?: string | null } | null } | null },
+  simdi: Date,
+): string | null {
+  if (mirastaMi(ab)) return zaman(ab.erisimSonu) > zaman(simdi) ? (ab.paketSurumu?.paket?.kod ?? null) : null;
+  return mirasGecerliMi(ab, simdi) ? (ab.mirasPaketSurumu?.paket?.kod ?? null) : null;
+}
+
+/**
+ * Havale teklifi / onayı süren miras paketini BAŞKA bir miras paketine mi
+ * çeviriyor (miras-core → miras-pro)? Emre kararı (b), 27.09: REDDEDİLİR —
+ * "miras yenilemesi" ESKİ bitişten uzar ve onay paketi hemen değiştirir:
+ * 1 aylık tutarla miras bitişine kadar üst katman verirdi. Aynı miras
+ * paketiyle yenileme ve satıştaki pakete geçiş (ödenen dönem bugün başlar,
+ * hak korunur) serbest; miras dönemi bitmiş ya da hakkı olmayan firma bu
+ * kuralın dışında (açık yok: dönem bugün başlar).
+ */
+export function mirasPaketiDegisimi(
+  ab: (MirasSatiri & { mirasPaketSurumu?: { paket?: { kod?: string | null } | null } | null }) | null,
+  hedefKod: string | null | undefined,
+  simdi: Date,
+): { suren: string; hedef: string } | null {
+  if (!ab || !hedefKod || !mirasPaketiMi(hedefKod)) return null;
+  const suren = surenMirasKodu(ab, simdi);
+  return suren && suren !== hedefKod ? { suren, hedef: hedefKod } : null;
+}
+
+/** Yöneticiye dönen ret metni — teklif ve onay AYNI metni verir. */
+export function mirasPaketiDegisimMesaji(d: { suren: string; hedef: string }): string {
+  return (
+    `Firmanın süren geçiş (miras) paketi ${d.suren}; başka bir geçiş paketiyle (${d.hedef}) havale teklifi ` +
+    'verilemez. Aynı geçiş paketiyle yenileyin ya da satıştaki bir paketle teklif verin (ödenen dönem bugün ' +
+    'başlar, geçiş hakkı korunur).'
+  );
+}
+
 /** Ödeme sorunlu durumlar: ücretli dönem fiilen bitmiştir (tahsilat alınamadı). */
 const ODEME_SORUNLU: readonly string[] = ['ODEME_BEKLIYOR', 'KISITLI', 'ASKIDA'];
 

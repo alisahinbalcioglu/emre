@@ -1,0 +1,287 @@
+# DWG MOTORU PYTEST KARARLILIK OLCUMU (27.09.2026) — CI kosucusunun KENDISINDE.
+#
+# CLAUDE.md kurali: kararsiz test "bazen dusuyor" diye BIRAKILMAZ; kanit kapinin
+# kendi komutuyla VE CI kosucusunda alinir. Motor testlerinin bir kismi zamana
+# bagli esik tasir (test_olay_dongusu D1-D3: is surerken /health < 1 sn;
+# test_parse_iptal I1/I3/I5/I7). Yeni zamanlama kapisi eklenince ya da esik
+# degisince bu is akisi 25 AYRI kosucuda paketi tekrar tekrar kosar ve TEST
+# BASINA sonuc + esiklenen gecikmelerin dagilimini raporlar.
+#
+# Kosucu basina: paket 1x kapinin AYNI komutuyla (regression-gate dwg-motoru isi)
+# + zamanlama dosyalari 2x ayni komutla + 2x olcum eklentisiyle (eklenti yalniz
+# sarar ve yazar, davranisi degistirmez) → 25 tam + 100 zamanlama kosusu.
+#
+# TETIK: `olcum/**` dalina push (master'i, regression-gate'i ve deploy'u
+# etkilemez) ya da elle (Actions → dwg-motor-kararlilik → Run workflow).
+# RAPOR: ozet isinin ek notlari — depo acik, girissiz okunur:
+#   GET /repos/<sahip>/<depo>/check-runs/<ozet isinin id'si>/annotations
+# (is gunlugu girissiz 403). Ayni tablo is akisi ozet sayfasinda.
+#
+# ORTAM: regression-gate'in dwg-motoru isiyle AYNI — uretim motor imajinin tabani
+# python:3.11-slim-bookworm konteyneri (canli Python 3.11; httptools YOK → h11).
+# ubuntu-latest degil ubuntu-24.04: etiket 19.10.2026'da Ubuntu 26'ya geciyor.
+name: dwg-motor-kararlilik
+
+on:
+  push:
+    branches: ['olcum/**']
+  workflow_dispatch:
+
+concurrency:
+  group: dwg-motor-kararlilik-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tekrar:
+    name: kosucu ${{ matrix.kosu }}
+    runs-on: ubuntu-24.04
+    container: python:3.11-slim-bookworm
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        kosu: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+    defaults:
+      run: { working-directory: backend/src/modules/dwg-engine/python }
+    steps:
+      - uses: actions/checkout@v4
+      - run: python --version && pip install --no-cache-dir -r requirements-test.txt
+      - name: Olcum eklentisi (yalniz sarar ve yazar)
+        run: |
+          mkdir -p "$RUNNER_TEMP/eklenti" "$RUNNER_TEMP/olcum"
+          cat > "$RUNNER_TEMP/eklenti/dwg_olcum_eklentisi.py" <<'EKLENTI_SONU'
+          """pytest eklentisi — zamanlama kapilarinin ESIKLE KARSILASTIRDIGI degerleri kaydeder.
+
+          Davranisi DEGISTIRMEZ: yalniz sarar ve yazar. `DWG_OLCUM_JSONL` yoksa hicbir sey yapmaz.
+            - test_olay_dongusu `_istek`: her istegin yolu + suresi (D1-D3'un esikledigi deger)
+            - main `_run_parse_subprocess`: toplam sure + iptal olayindan donuse gecen sure
+              (I1 esigi) + sonuc (I3/I7 toplam sureyi esikler)
+            - her test asamasinin sonucu ve suresi
+          """
+          import json
+          import os
+          import sys
+          import threading
+          import time
+
+          _YOL = os.environ.get("DWG_OLCUM_JSONL")
+          _KILIT = threading.Lock()
+          _TEST = {"id": None}
+
+
+          def _yaz(kayit: dict) -> None:
+              if not _YOL:
+                  return
+              kayit["test"] = _TEST["id"]
+              with _KILIT, open(_YOL, "a", encoding="utf-8") as f:
+                  f.write(json.dumps(kayit) + "\n")
+
+
+          def _istek_sar(asil):
+              def sarili(port, yontem, yol, *a, **k):
+                  t0 = time.monotonic()
+                  try:
+                      return asil(port, yontem, yol, *a, **k)
+                  finally:
+                      _yaz({"olcu": "istek", "yol": f"{yontem} {yol.split('?')[0]}", "sure": time.monotonic() - t0})
+              return sarili
+
+
+          def _parse_sar(asil):
+              def sarili(*a, **k):
+                  iptal = a[3] if len(a) > 3 else k.get("iptal")
+                  damga: dict = {}
+                  if iptal is not None and "set" not in vars(iptal):
+                      asil_set = iptal.set
+
+                      def set_():
+                          damga.setdefault("iptal", time.monotonic())
+                          return asil_set()
+
+                      iptal.set = set_
+                  t0 = time.monotonic()
+                  sonuc = "ok"
+                  try:
+                      return asil(*a, **k)
+                  except BaseException as e:
+                      sonuc = type(e).__name__
+                      raise
+                  finally:
+                      t1 = time.monotonic()
+                      _yaz({"olcu": "parse_alt_sureci", "sure": t1 - t0, "sonuc": sonuc,
+                            "iptalden_donus": (t1 - damga["iptal"]) if "iptal" in damga else None})
+              return sarili
+
+
+          def pytest_collection_modifyitems(session, config, items):
+              if not _YOL:
+                  return
+              for ad, modul in list(sys.modules.items()):
+                  if ad.endswith("test_olay_dongusu") and hasattr(modul, "_istek"):
+                      modul._istek = _istek_sar(modul._istek)
+              ana = sys.modules.get("main")
+              if ana is not None and hasattr(ana, "_run_parse_subprocess"):
+                  ana._run_parse_subprocess = _parse_sar(ana._run_parse_subprocess)
+
+
+          def pytest_runtest_setup(item):
+              _TEST["id"] = item.nodeid
+
+
+          def pytest_runtest_logreport(report):
+              if _YOL and (report.when == "call" or report.outcome != "passed"):
+                  _yaz({"olcu": "sonuc", "asama": report.when, "sonuc": report.outcome, "sure": report.duration,
+                        "id": report.nodeid})
+          EKLENTI_SONU
+      - name: Paket 1x + zamanlama kapilari 2x (kapi komutu) + 2x (olcum eklentisiyle)
+        run: |
+          O="$RUNNER_TEMP/olcum"
+          ZAMAN="tests/test_olay_dongusu.py tests/test_parse_iptal.py"
+          rc=0
+          python -m pytest tests -q -p no:cacheprovider --junitxml="$O/tam.xml" || rc=1
+          for i in 1 2; do
+            python -m pytest $ZAMAN -q -p no:cacheprovider --junitxml="$O/zaman-duz-$i.xml" || rc=1
+          done
+          for i in 1 2; do
+            PYTHONPATH="$RUNNER_TEMP/eklenti" DWG_OLCUM_JSONL="$O/olcum-$i.jsonl" \
+              python -m pytest $ZAMAN -q -p no:cacheprovider -p dwg_olcum_eklentisi \
+              --junitxml="$O/zaman-olcum-$i.xml" || rc=1
+          done
+          exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: olcum-${{ matrix.kosu }}
+          path: ${{ runner.temp }}/olcum/
+          retention-days: 7
+
+  ozet:
+    needs: tekrar
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: olcum }
+      - name: Kararlilik ozeti (test basina sonuc + esiklenen gecikmeler)
+        run: |
+          cat > ozet.py <<'OZET_SONU'
+          """Kararlilik ozeti: JUnit XML (test basina sonuc) + JSONL (esiklenen gecikmeler).
+
+          Kullanim: python3 kararlilik_ozeti.py <kok_dizin>
+            <kok_dizin>/**/*.xml   → pytest --junitxml ciktilari (her kosu bir dosya)
+            <kok_dizin>/**/*.jsonl → dwg_olcum_eklentisi kayitlari
+          Cikti: GitHub notlari (::notice / ::error) + $GITHUB_STEP_SUMMARY tablosu.
+          Cikis: tek bir test ornegi bile dustuyse 1 (kosunun sonucu kararliligi soyler).
+          """
+          import glob
+          import json
+          import os
+          import statistics
+          import sys
+          import xml.etree.ElementTree as ET
+          from collections import defaultdict
+
+          def _ileti(s: str) -> str:
+              """Is akisi komutu iletisi kacisi (GitHub: % \\r \\n)."""
+              return s.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+          def _baslik(s: str) -> str:
+              """Is akisi komutu ozellik kacisi: iletininkiler + ':' ve ','."""
+              return _ileti(s).replace(":", "%3A").replace(",", "%2C")
+
+
+          def not_(tur: str, baslik: str, ileti: str) -> None:
+              print(f"::{tur} title={_baslik(baslik)}::{_ileti(ileti)}")
+
+
+          kok = sys.argv[1]
+          xmller = sorted(glob.glob(os.path.join(kok, "**", "*.xml"), recursive=True))
+          jsonller = sorted(glob.glob(os.path.join(kok, "**", "*.jsonl"), recursive=True))
+
+          sonuc = defaultdict(lambda: {"kosu": 0, "dusen": 0, "atlanan": 0, "ilk_hata": ""})
+          for yol in xmller:
+              for tc in ET.parse(yol).getroot().iter("testcase"):
+                  anahtar = f"{tc.get('classname', '').split('.')[-1]}::{tc.get('name')}"
+                  s = sonuc[anahtar]
+                  s["kosu"] += 1
+                  hata = tc.find("failure") if tc.find("failure") is not None else tc.find("error")
+                  if hata is not None:
+                      s["dusen"] += 1
+                      if not s["ilk_hata"]:
+                          s["ilk_hata"] = (hata.get("message") or hata.text or "")[:300].replace("\n", " ")
+                  elif tc.find("skipped") is not None:
+                      s["atlanan"] += 1
+
+          # Esiklenen degerler (test adi → olcu → [sure...]); esik: kapinin koddaki siniri.
+          ESIK = {
+              ("test_D1", "GET /health"): 1.0, ("test_D1", "GET /status"): 1.0,
+              ("test_D2", "GET /health"): 1.0,
+              ("test_D3", "POST /layers"): 1.0, ("test_D3", "POST /convert"): 1.0, ("test_D3", "POST /parse"): 1.0,
+              ("test_I1", "iptalden_donus"): 2.0, ("test_I3", "parse_sure"): 3.0, ("test_I7", "parse_sure"): 5.0,
+              ("test_I5", "iptalden_donus"): None,
+          }
+          olcum = defaultdict(list)
+          for yol in jsonller:
+              with open(yol, encoding="utf-8") as f:
+                  for satir in f:
+                      k = json.loads(satir)
+                      test = (k.get("test") or "").split("::")[-1]
+                      kisa = "_".join(test.split("_")[:2])  # test_D1_... → test_D1
+                      if k["olcu"] == "istek":
+                          yolad = k["yol"]
+                          if yolad.startswith("GET /status/"):
+                              yolad = "GET /status"
+                          olcum[(kisa, yolad)].append(k["sure"])
+                      elif k["olcu"] == "parse_alt_sureci":
+                          olcum[(kisa, "parse_sure")].append(k["sure"])
+                          if k.get("iptalden_donus") is not None:
+                              olcum[(kisa, "iptalden_donus")].append(k["iptalden_donus"])
+
+          toplam_ornek = sum(s["kosu"] for s in sonuc.values())
+          toplam_dusen = sum(s["dusen"] for s in sonuc.values())
+          dusenler = sorted(((a, s) for a, s in sonuc.items() if s["dusen"]), key=lambda x: -x[1]["dusen"])
+
+          not_("notice", "Kararlilik ozeti", f"{len(xmller)} pytest kosusu · {len(sonuc)} test · "
+               f"{toplam_ornek} test ornegi · dusen {toplam_dusen} · {len(dusenler)} test en az bir kez dustu")
+          for anahtar, s in dusenler[:10]:
+              not_("error", f"DUSTU {anahtar}", f"{s['dusen']}/{s['kosu']} · ilk hata: {s['ilk_hata']}")
+
+          satirlar = []
+          for (kisa, olcu), degerler in sorted(olcum.items()):
+              esik = ESIK.get((kisa, olcu))
+              d = sorted(degerler)
+              p95 = d[max(0, int(round(0.95 * len(d))) - 1)]
+              satirlar.append((kisa, olcu, len(d), statistics.median(d), p95, d[-1], esik))
+          parca = []
+          for kisa, olcu, n, med, p95, mx, esik in satirlar:
+              pay = f" esik {esik:g}s → pay x{esik / mx:.0f}" if esik and mx > 0 else ""
+              parca.append(f"{kisa} {olcu}: n={n} med={med * 1000:.0f}ms p95={p95 * 1000:.0f}ms max={mx * 1000:.0f}ms{pay}")
+          for i in range(0, len(parca), 4):
+              not_("notice", f"Esiklenen gecikmeler ({i // 4 + 1})", " | ".join(parca[i:i + 4]))
+
+          zaman_testleri = sorted(a for a in sonuc if "test_olay_dongusu" in a or "test_parse_iptal" in a)
+          ozet_zaman = ", ".join(
+              f"{'_'.join(a.split('::')[1].split('_')[1:3])} {sonuc[a]['kosu'] - sonuc[a]['dusen']}/{sonuc[a]['kosu']}"
+              for a in zaman_testleri)
+          not_("notice", "Zamanlama kapilari (gecen/kosu)", ozet_zaman)
+
+          md = os.environ.get("GITHUB_STEP_SUMMARY")
+          if md:
+              with open(md, "a", encoding="utf-8") as f:
+                  f.write(f"## DWG motoru kararlilik olcumu\n\n{len(xmller)} kosu · {toplam_ornek} ornek · dusen **{toplam_dusen}**\n\n")
+                  f.write("| test | kosu | dusen | ilk hata |\n|---|---|---|---|\n")
+                  for a in sorted(sonuc):
+                      s = sonuc[a]
+                      if s["dusen"] or a in zaman_testleri:
+                          f.write(f"| `{a}` | {s['kosu']} | {s['dusen']} | {s['ilk_hata'][:120]} |\n")
+                  f.write("\n| test | olcu | n | medyan | p95 | max | esik |\n|---|---|---|---|---|---|---|\n")
+                  for kisa, olcu, n, med, p95, mx, esik in satirlar:
+                      f.write(f"| {kisa} | {olcu} | {n} | {med * 1000:.0f} ms | {p95 * 1000:.0f} ms | {mx * 1000:.0f} ms | {esik or '-'} |\n")
+
+          sys.exit(1 if toplam_dusen or not xmller else 0)
+          OZET_SONU
+          python3 ozet.py olcum
