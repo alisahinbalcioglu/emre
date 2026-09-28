@@ -644,7 +644,7 @@ const SUITES: Suite[] = [
   //    çağrıları kiraya aynı anda getirip (bariyer) İKİ sırada tek çekim ölçer;
   //    hedef siparişi iyzico'nun listesinden doğrular (bildirim kanıt değil);
   //    başarı yolunu GERÇEK işleyicide koşup tek "ödemeniz alındı" sayar.
-  { ad: 'Anında tahsilat: kart güncellenince bekleyen ödeme bir kez, kira ile tam bir kez, merdivenle ortak (S/A/T/M/E/C/P)', script: 'test:aninda-tahsilat', zincir: 'Z0' },
+  { ad: 'Anında tahsilat: kart güncellenince bekleyen ödeme bir kez, kira ile tam bir kez, merdivenle ortak, merdiven hedefi doğrulanır (S/A/T/M/H/E/C/P)', script: 'test:aninda-tahsilat', zincir: 'Z0' },
   // ── 25.09.2026 — HAVALE DURUM GEÇİŞLERİ (aynı havaleye iki onay + ikizleri).
   //    `odemeyiOnayla` durumu işlem DIŞINDA okuyup en sonda KOŞULSUZ ONAYLANDI
   //    yazıyordu: iki istek ikisi de geçiyor, aboneliği iki kez uzatıyor

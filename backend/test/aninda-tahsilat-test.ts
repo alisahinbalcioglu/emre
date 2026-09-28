@@ -43,7 +43,8 @@
  *      çekimsiz bir kez ertelenir, ikinci gün bildirim gider · erteleme hakkı
  *      zaman aşımıyla ortak · bildirimsiz başarısızlıkta iyzico'ya gidilmez ·
  *      hedef kiradan SONRA sorulur · iki merdiven ve ödenmiş hedefte merdiven +
- *      müşteri eşzamanlı (İKİ sırada) → tek çekim / sıfır çekim
+ *      müşteri eşzamanlı (İKİ sırada) → tek çekim / sıfır çekim · ESKİ DÖNEM
+ *      adayı (sonraki dönemi başlamış ve işlenmiş) karar vermez — S12-S14, A12, H9
  *   E  uçtan uca başarı: anlık denemenin kuyruğa yazdığı olay GERÇEK işleyicide →
  *      AKTİF + tam BİR "ödemeniz alındı"; iyzico'nun kendi webhook'u da gelince
  *      yine TEK e-posta, TEK fatura satırı
@@ -546,6 +547,17 @@ function dunyaKur() {
   return { db, iyz, giden, dunning, isleyici, dunningSatiri, olay, satir, olaylar, kuyruk, alindiPostasi };
 }
 
+/**
+ * ESKİ DÖNEM senaryosu (28.09): EN YENİ başarısızlık bildirimi bir önceki dönemin
+ * ÖDENMİŞ siparişini (`<kod>-1`) anıyor — tekrar ya da sahte. Listede ayrıca
+ * önceden açılmış, vadesi GELMEMİŞ, reddedilmiş işaretli sonraki dönem (`<kod>-3`)
+ * var. Doğru hedef güncel reddedilmiş sipariştir (`<kod>-2`).
+ */
+function eskiDonemBildirimi(d: ReturnType<typeof dunyaKur>, s: { kod: string }): void {
+  d.olay(BASARISIZ, s.kod, `${s.kod}-1`, Date.now() - DK, true);
+  d.iyz.detaylar.get(s.kod).orders.push(belgedekiBasarisizSiparis(`${s.kod}-3`, Date.now() + 5 * GUN, Date.now() + 35 * GUN));
+}
+
 // ═════════════════════════════════════════════════════════════════════════
 //  S — SAF KURALLAR
 // ═════════════════════════════════════════════════════════════════════════
@@ -577,6 +589,19 @@ function sBlogu(): void {
   const h11 = yenidenDenemeHedefi(detay([yalnizDeneme], 'ACTIVE'), ['o-6']);
   check('S11 belgedeki deneme değeri (paymentStatus FAILED) sipariş WAITING kalsa da ret kanıtı',
     h11.tur === 'dene' && h11.kod === 'o-6', JSON.stringify(h11));
+  // ESKİ DÖNEM (28.09, `sonrakiDonemIslenmisMi`): sonraki dönemi BAŞLAMIŞ ve işlenmiş aday karar vermez.
+  const eskiOdenmis = siparis('o-7', bas - 30 * GUN, bas, ['SUCCESS'], 'SUCCESS');
+  const h12 = yenidenDenemeHedefi(detay([eskiOdenmis, belgedekiBasarisizSiparis('o-8', bas, bas + 30 * GUN)]), ['o-7', 'o-8']);
+  check('S12 ⭐ en yeni bildirim ESKİ DÖNEMİN ödenmiş siparişi → "ödenmiş" SAYILMAZ, güncel reddedilmiş sipariş denenir',
+    h12.tur === 'dene' && h12.kod === 'o-8', JSON.stringify(h12));
+  const eskiRet = belgedekiBasarisizSiparis('o-9', bas - 30 * GUN, bas);
+  const h13 = yenidenDenemeHedefi(detay([eskiRet, siparis('o-10', bas, bas + 30 * GUN, ['SUCCESS'], 'SUCCESS')], 'ACTIVE'), ['o-9']);
+  check('S13 ⭐ sonraki dönemi ödenmiş ESKİ reddedilmiş sipariş yeniden ÇEKİLMEZ (yok, gerekçe eski dönem)',
+    h13.tur === 'yok' && /eski dönem/.test(h13.gerekce), JSON.stringify(h13));
+  const vadesiGelmemis = belgedekiBasarisizSiparis('o-12', Date.now() + 5 * GUN, Date.now() + 35 * GUN);
+  const h14 = yenidenDenemeHedefi(detay([belgedekiBasarisizSiparis('o-11', bas, bas + 30 * GUN), vadesiGelmemis]), ['o-11']);
+  check('S14 vadesi GELMEMİŞ (önceden açılmış, reddedilmiş işaretli) sonraki dönem güncel siparişi eskitmez → denenir',
+    h14.tur === 'dene' && h14.kod === 'o-11', JSON.stringify(h14));
 
   const sinif = [
     denemeHatasiSinifi(new IyzicoHatasi('10051', 'Kart limiti yetersiz', 400)),
@@ -732,6 +757,17 @@ async function aBlogu(): Promise<void> {
     const { sonuc } = await gunluguTopla(() => d.dunning.anindaDene('F-A11'));
     check('A11 başarısızlık bildirimi yok → "yapilamadi"; iyzico\'ya gidilmez, kira dokunulmaz',
       sonuc.sonuc === 'yapilamadi' && d.iyz.sorulan.length === 0 && d.satir(s.ab.id).tahsilatKirasi === null, JSON.stringify(sonuc));
+  }
+  {
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-A12');
+    eskiDonemBildirimi(d, s);
+    const { sonuc } = await gunluguTopla(() => d.dunning.anindaDene('F-A12'));
+    const k = d.kuyruk();
+    check('A12 ⭐ en yeni bildirim ESKİ DÖNEMİN ödenmiş siparişi → çekim GÜNCEL siparişe, başarı yolu da onun (eski dönem karar vermez)',
+      sonuc.sonuc === 'alindi' && JSON.stringify(d.iyz.tekrarlanan) === JSON.stringify([s.hedef]) &&
+        k.length === 1 && k[0].siparisKodu === s.hedef,
+      `sonuc=${JSON.stringify(sonuc)} cekim=${JSON.stringify(d.iyz.tekrarlanan)} kuyruk=${JSON.stringify(k.map((x) => x.siparisKodu))}`);
   }
 }
 
@@ -1018,6 +1054,19 @@ async function hBlogu(): Promise<void> {
       d.iyz.tekrarlanan.length === 0 && d.kuyruk().length === 1 && d.giden.length === 0 && d.iyz.sorulan.length === 1 &&
         ['alindi', 'zaten-deneniyor'].includes(anlik.sonuc.sonuc),
       `cekim=${d.iyz.tekrarlanan.length} kuyruk=${d.kuyruk().length} sorulan=${d.iyz.sorulan.length} anlik=${JSON.stringify(anlik.sonuc)}`);
+  }
+  {
+    // Eski dönem kuralı olmadan merdiven burada KİLİTLENİRDİ: her gün "ödenmiş" der, başarı yolu eski
+    // dönemde döngüyü sıfırlamaz (webhook işi 28.09) — ne çekim ne bildirim.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-H9', ucuncuGun);
+    eskiDonemBildirimi(d, s);
+    await merdiven(d);
+    const ab = d.satir(s.ab.id);
+    check('H9 ⭐⭐ en yeni bildirim ESKİ DÖNEMİN ödenmiş siparişi → merdiven kilitlenmez: GÜNCEL sipariş çekilir, basamak işlendi, eski için başarı kuyruğa yazılmaz',
+      JSON.stringify(d.iyz.tekrarlanan) === JSON.stringify([s.hedef]) && ab.denemeSayisi === 2 && d.kuyruk().length === 0 &&
+        d.olaylar(s.ab.id, 'dunning.tekrar.odenmis').length === 0 && d.olaylar(s.ab.id, 'dunning.tekrar.denendi').length === 1,
+      `cekim=${JSON.stringify(d.iyz.tekrarlanan)} deneme=${ab.denemeSayisi} kuyruk=${d.kuyruk().length}`);
   }
 }
 

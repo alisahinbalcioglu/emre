@@ -240,7 +240,7 @@ export type DenemeHedefi =
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  ANLIK YENİDEN DENEMENİN HEDEFİ (26.09.2026) — SAF
+ *  YENİDEN DENEMENİN HEDEFİ — anlık (26.09) + merdiven (28.09) · SAF
  * ═══════════════════════════════════════════════════════════════════════════
  *  Adaylar: bu aboneliğin başarısızlık BİLDİRİMLERİNDEKİ sipariş kodları,
  *  YENİDEN ESKİYE. Bildirim kanıt DEĞİLDİR (uç açık, imza zorunlu değil):
@@ -248,7 +248,15 @@ export type DenemeHedefi =
  *  anlık deneme ve (28.09'dan beri) dunning merdiveni, ikisi de
  *  `DunningServisi.hedefiDogrula` — karar vermeden iyzico'nun KENDİ listesine bakar:
  *   · listede OLMAYAN aday atlanır (sahte ya da başka aboneliğin kodu);
- *   · listede olan İLK (en yeni) aday karar verir:
+ *   · ESKİ DÖNEM adayı atlanır (28.09, `sonrakiDonemIslenmisMi` — webhook'un
+ *     ret ve başarı yollarıyla TEK kural, UNPAID genişlemesi OLMADAN): sonraki
+ *     dönemi başlamış ve iyzico'da işlenmiş sipariş, ödenmiş olsun olmasın,
+ *     karar VERMEZ. Reddedilmişse yeniden çekilmez (geçmiş dönemin parası);
+ *     ödenmişse "ödenmiş" SAYILMAZ — bugünkü borcu gizlerdi: başarı yolu eski
+ *     dönemde döngüyü sıfırlamadığı için merdiven her gün "ödenmiş" deyip ne
+ *     çekerdi ne bildirirdi. Genişleme bilerek YOK: dönemi bitmiş başarısız
+ *     sipariş (kartını 40. günde güncelleyen ASKIDA müşteri) denenmez olurdu;
+ *   · listede olan İLK (en yeni) GÜNCEL aday karar verir:
  *       ödenmiş               → `odenmis` (bekleyen ödeme yok; başarı yolu
  *                               kuyruğa yazılır, yeniden ÇEKİLMEZ);
  *       ödenmemiş + KANITLI   → `dene`;
@@ -259,12 +267,21 @@ export type DenemeHedefi =
  *  aynı fonksiyondan, ikiz kural yok.
  * ═══════════════════════════════════════════════════════════════════════════
  */
-export function yenidenDenemeHedefi(detay: unknown, adaylar: readonly unknown[]): DenemeHedefi {
+export function yenidenDenemeHedefi(
+  detay: unknown,
+  adaylar: readonly unknown[],
+  simdi: Date = new Date(Date.now()),
+): DenemeHedefi {
   const d = detay && typeof detay === 'object' ? (detay as Record<string, unknown>) : {};
   const siparisler = Array.isArray(d.orders) ? (d.orders as unknown[]) : undefined;
+  let eski = 0;
   for (const aday of adaylar) {
     const siparis = siparisiBul(siparisler, aday);
     if (!siparis) continue;
+    if (sonrakiDonemIslenmisMi(siparisler, siparis, simdi)) {
+      eski++;
+      continue;
+    }
     const kod = aday as string;
     if (odenmisSiparisMi(siparis)) return { tur: 'odenmis', kod, gerekce: `sipariş ${kod} iyzico'da ödenmiş` };
     const k = tahsilatBasarisizligiKarari(detay, kod);
@@ -272,7 +289,12 @@ export function yenidenDenemeHedefi(detay: unknown, adaylar: readonly unknown[])
       ? { tur: 'dene', kod, gerekce: k.gerekce }
       : { tur: 'yok', gerekce: `sipariş ${kod}: ${k.gerekce}` };
   }
-  return { tur: 'yok', gerekce: `${adaylar.length} adayın hiçbiri iyzico listesinde yok` };
+  return {
+    tur: 'yok',
+    gerekce: eski
+      ? `${adaylar.length} adaydan ${eski}'i eski dönem (sonraki dönem işlenmiş), gerisi iyzico listesinde yok`
+      : `${adaylar.length} adayın hiçbiri iyzico listesinde yok`,
+  };
 }
 
 /**
@@ -282,6 +304,7 @@ export function yenidenDenemeHedefi(detay: unknown, adaylar: readonly unknown[])
  *  Listede bu siparişten SONRA başlayan bir dönemin siparişi iyzico'da zaten
  *  İŞLENMİŞSE (ödenmiş ya da çekimi reddedilmiş) bu sipariş ESKİ DÖNEMDİR:
  *  ödeme gerçektir ama aboneliğin BUGÜNKÜ hâli hakkında bir şey söylemez.
+ *  `yenidenDenemeHedefi` böyle adayı atlar (yeniden çekmez, "ödenmiş" saymaz).
  *  `AbonelikServisi.tahsilatBasarili` böyle siparişle dunning'i SIFIRLAMAZ,
  *  durumu DEĞİŞTİRMEZ (24.09 yoklaması, ölçüldü: eski ödenmiş siparişi anan
  *  gövde KISITLI satırı AKTIF'e çekiyor, dunning'i sıfırlıyordu; ertesi gece

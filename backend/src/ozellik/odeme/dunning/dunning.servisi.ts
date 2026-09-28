@@ -289,13 +289,14 @@ export class DunningServisi {
 
     // KİRA (26.09): müşterinin anlık denemesiyle AYNI kira. Satır okunduktan
     // sonra müşteri kazandıysa iyzico'ya GİDİLMEZ, basamak yarına kalır.
-    const kira = await this.kiraAl(abonelikId, new Date());
+    const simdi = new Date();
+    const kira = await this.kiraAl(abonelikId, simdi);
     if (!kira) {
       this.logger.log(`Abonelik ${abonelikId}: kira başka bir denemede — basamak ${basamakNo} yarına`);
       return 'dur';
     }
 
-    const hedef = await this.hedefiDogrula(abonelikKodu, adaylar);
+    const hedef = await this.hedefiDogrula(abonelikKodu, adaylar, simdi);
     if (hedef.tur === 'odenmis') {
       // Bekleyen ödeme YOK — başarının webhook'u gecikmiş ya da kaybolmuş.
       // Yeniden ÇEKİLMEZ, "alınamadı" bildirimi GİTMEZ; başarı yolu kuyruğa
@@ -535,7 +536,7 @@ export class DunningServisi {
     }
 
     // Hedef iyzico'ya SORULUR — merdivenle TEK kural (`hedefiDogrula`).
-    const hedef = await this.hedefiDogrula(abonelikKodu, adaylar);
+    const hedef = await this.hedefiDogrula(abonelikKodu, adaylar, simdi);
     if (hedef.tur === 'odenmis') {
       // Bekleyen ödeme YOK: başarının webhook'u gecikmiş ya da kaybolmuş.
       // Yeniden ÇEKİLMEZ; başarı yolu kuyruğa yazılır, kira uzun kalır.
@@ -633,15 +634,21 @@ export class DunningServisi {
    * Kiradan SONRA çağrılır: karar, kirayı tutan sürecin gördüğü güncel iyzico
    * listesine dayanır. GET kopan bağlantıda kendiliğinden yeniden denenir (para
    * çekmez). `okunamadi` ve `yok`ta çekim GÖNDERİLMEZ; çağıran kirayı bırakır.
+   * `simdi` kiranın anı: eski dönem kuralı (`sonrakiDonemIslenmisMi`) "başlamış
+   * dönem"i ona göre ölçer.
    */
-  private async hedefiDogrula(abonelikKodu: string, adaylar: readonly string[]): Promise<DogrulananHedef> {
+  private async hedefiDogrula(
+    abonelikKodu: string,
+    adaylar: readonly string[],
+    simdi: Date,
+  ): Promise<DogrulananHedef> {
     let detay: IyzicoAbonelikDetayi;
     try {
       detay = await this.iyzico.abonelikGetir(abonelikKodu);
     } catch (e) {
       return { tur: 'okunamadi', gerekce: `iyzico okunamadı: ${hataMetni(e)}` };
     }
-    const hedef = yenidenDenemeHedefi(detay, adaylar);
+    const hedef = yenidenDenemeHedefi(detay, adaylar, simdi);
     return hedef.tur === 'yok' ? hedef : { ...hedef, detay };
   }
 
