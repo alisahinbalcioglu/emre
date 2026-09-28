@@ -7,7 +7,7 @@ import type { AbonelikWebhookGovdesi } from '../iyzico/imza';
 import { iyzicoTarihi } from '../iyzico/iyzico-tarihi';
 import { odenmisSiparisMi } from '../iyzico/tahsilat-kaniti';
 import { AZAMI_DENEME as WEBHOOK_AZAMI_DENEME } from '../webhook/webhook.isleyici';
-import { AbonelikServisi, iyzicoDurumunuYorumla } from './abonelik.servisi';
+import { AbonelikServisi, DonemBitmediHatasi, iyzicoDurumunuYorumla } from './abonelik.servisi';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -459,6 +459,16 @@ export function kayipTahsilatKarari(
   return { oynatilacak, elleFatura };
 }
 
+/**
+ * Saatlik kapatmanın BEKLENEN yarış sonucu mu (27.09)? Aday okumasından sonra
+ * satır değişti: koşullu yazım tutmadı (Prisma P2025) ya da SONA_ERDI geçidi
+ * taze satırın dönemini sürüyor buldu (`DonemBitmediHatasi`, miras alanlı
+ * satır). İkisi hata değildir — sonraki tur taze satırla karar verir.
+ */
+function adayBayatMi(e: unknown): boolean {
+  return e instanceof DonemBitmediHatasi || (e as { code?: unknown } | null)?.code === 'P2025';
+}
+
 @Injectable()
 export class MutabakatJob {
   private readonly logger = new Logger(MutabakatJob.name);
@@ -561,16 +571,38 @@ export class MutabakatJob {
       select: { id: true, durum: true },
     });
 
+    let kapatilan = 0;
+    let atlanan = 0;
     for (const ab of adaylar) {
       await this.abonelikServisi
         .durumDegistir(ab.id, AbonelikDurumu.SONA_ERDI, {
           aciklama: 'Erişim süresi doldu',
           aktor: 'mutabakat',
+          // ⚠ 27.09 — aday okuması BAYATLAYABİLİR: okuma ile yazım arasında
+          // satıra taze ödeme gelirse (havale onayı IPTAL → AKTIF HAVALE, deneme
+          // satırında tahsilat webhook'u DENEME → AKTIF) koşulsuz yazım ödenmiş
+          // dönemi SONA_ERDI yapıyordu. Yazım yalnız satır hâlâ okunan durumda
+          // ve erişimi hâlâ bitmişse olur; değilse P2025 → atlanır, sonraki tur
+          // taze satırla karar verir. Miras alanlı satırı geçit de korur
+          // (`DonemBitmediHatasi`). Kapı: `test:miras-hakki` D9/D10.
+          kosul: { durum: ab.durum, erisimSonu: { lte: simdi } },
         })
-        .catch((e) => this.logger.error(`Kapatma hatası (${ab.id}): ${e}`));
+        .then(
+          () => void kapatilan++,
+          (e: unknown) => {
+            if (adayBayatMi(e)) {
+              atlanan++;
+              this.logger.warn(`Kapatma atlandı (${ab.id}): aday bayat — satır okumadan sonra değişti`);
+              return;
+            }
+            this.logger.error(`Kapatma hatası (${ab.id}): ${e}`);
+          },
+        );
     }
-    if (adaylar.length) {
-      this.logger.log(`${adaylar.length} abonelik süresi dolduğu için kapatıldı`);
+    if (kapatilan || atlanan) {
+      this.logger.log(
+        `${kapatilan} abonelik süresi dolduğu için kapatıldı` + (atlanan ? ` · ${atlanan} bayat aday atlandı` : ''),
+      );
     }
   }
 
