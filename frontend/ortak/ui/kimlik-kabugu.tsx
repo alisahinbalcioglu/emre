@@ -17,7 +17,11 @@ export function KimlikKabugu({
   children,
   altBaglanti,
 }: {
-  baslik: string;
+  /**
+   * Kart başlığı. Verilmezse başlık çizilmez: içerik kendi başlığını taşıyorsa
+   * (ör. iki adımlı giriş kurulum sihirbazı) kartta iki başlık üst üste binmesin.
+   */
+  baslik?: string;
   aciklama?: string;
   children: React.ReactNode;
   altBaglanti?: { metin: string; baglantiMetni: string; href: string };
@@ -36,9 +40,9 @@ export function KimlikKabugu({
       </div>
 
       <div className="w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-        <h2 className="text-base font-bold text-slate-900">{baslik}</h2>
+        {baslik && <h2 className="text-base font-bold text-slate-900">{baslik}</h2>}
         {aciklama && <p className="mt-1.5 text-xs leading-relaxed text-slate-500">{aciklama}</p>}
-        <div className="mt-5">{children}</div>
+        <div className={baslik || aciklama ? 'mt-5' : undefined}>{children}</div>
 
         {altBaglanti && (
           <div className="mt-6 text-center text-xs text-slate-500">
