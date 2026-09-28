@@ -809,7 +809,7 @@ async def get_geometry(file_id: str):
     try:
         bilgi = os.stat(yol)
     except FileNotFoundError:
-        if (_read_state(file_id) or {}).get("status") == "processing":
+        if (_sahipsiz_islemeyi_kapat(file_id, _read_state(file_id)) or {}).get("status") == "processing":
             raise HTTPException(409, "Geometri henuz hazir degil — dosya isleniyor.")
         _get_cached_dxf(file_id)  # 404 bilinmiyor · 410 suresi doldu (anlamlar aynen)
         raise HTTPException(409, "Geometri onbellekte yok — dosyayi yeniden yukleyin.")
@@ -835,6 +835,23 @@ import threading
 # yalniz biri yeni pipeline baslatir. (Process-ici lock; WORKERS=1'de tam
 # guvence, WORKERS>1'de pencere cok kucuk — state dosyasi yine tekilligi saglar.)
 _UPLOAD_LOCK = asyncio.Lock()
+
+# SAHIPSIZ "processing" (26.09): kaydin sonucunu ("ready"/"error") arka plan isi
+# yazar. Motor sureci is surerken olurse (her deploy konteyneri yeniden olusturur)
+# yazacak kimse kalmaz: kayit sonsuza dek "processing" kalir, dedup ayni icerigi o
+# olu kimlige baglar, on yuz 10 dk yoklayip zaman asimina duser (TTL'e, 24 sa, dek).
+# Bu surecin isleri burada: /upload kaydi "processing" yazmadan ONCE ekler,
+# `_background_pipeline` son durumu yazdiktan SONRA cikarir. Tek iscide (WORKERS=1,
+# canli) kumede olmayan "processing" kaydinin sahibi olmus bir surectir →
+# `_sahipsiz_islemeyi_kapat`. YAS SINIRI YOK (bilerek): `asyncio.to_thread` havuzu
+# (cpu+4 is parcacigi) doluyken sonraki yukleme SIRADA bekler — `started_at`'ten
+# olculen sinir canli isi oldururdu. Cok iscide (WORKERS>1) kume baska iscinin
+# isini gormez → kapatma YOK (eski davranis: TTL). Kapi: tests/test_yeniden_baslama.py.
+_ETKIN_YUKLEMELER: set[str] = set()
+# Isci sayisi TEK yerden okunur: kapatma karari ve uvicorn.run (dosya sonu) ayni degeri
+# kullanir. uvicorn `workers or 1` alir, yalniz >1'de cok surec acar → tek isci = <= 1.
+_ISCI_SAYISI = int(os.environ.get("WORKERS") or 1)
+_TEK_ISCI = _ISCI_SAYISI <= 1
 
 
 def _clean_surrogates(s: str) -> str:
@@ -1132,6 +1149,45 @@ def _yarim_ciktilari_sil(file_id: str) -> None:
             logging.warning("Yarim yukleme ciktisi silinemedi %s: %r", yol, e)
 
 
+def _sahipsiz_islemeyi_kapat(file_id: str, durum: dict | None) -> dict | None:
+    """Sahibi olmus "processing" kaydini "error"a cevirir; yarim ciktilari ve ham kaynagi siler.
+
+    Sahipsiz = tek iscide bu surecin etkin isleri arasinda yok (bkz. _ETKIN_YUKLEMELER).
+    Guncel durumu dondurur (kapatilmadiysa verilenin aynisi). SIRA: once kume, sonra
+    disk — is son durumu yazip kumeden CIKMIS olabilir (once yazar, sonra cikar);
+    kumede yoksa diskten YENIDEN okunan durum son hali gosterir, cagiranin elindeki
+    eski okuma hala "processing" der. Olay dongusunde cagrilir: yalniz kucuk dosya islemi.
+    """
+    if (durum or {}).get("status") != "processing" or not _TEK_ISCI or file_id in _ETKIN_YUKLEMELER:
+        return durum
+    durum = _read_state(file_id)
+    if (durum or {}).get("status") != "processing":
+        return durum
+    _yarim_ciktilari_sil(file_id)
+    for uzanti in ("dwg", "dxf"):
+        try:
+            os.unlink(_src_path(file_id, uzanti))
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            logging.warning("Sahipsiz kaydin kaynagi silinemedi %s: %r", file_id, e)
+    kapali = {
+        "status": "error",
+        "hash": durum.get("hash"),
+        "kapsam": durum.get("kapsam"),
+        "started_at": durum.get("started_at"),
+        "completed_at": time.time(),
+        "error_type": "IslemYaridaKaldi",
+        "error": "Sunucu yeniden basladi, dosyanin islenmesi yarida kaldi. Lutfen dosyayi yeniden yukleyin.",
+    }
+    try:
+        _write_state(file_id, kapali)
+    except OSError as e:  # yazilamazsa bir sonraki denetim yine kapatir
+        logging.warning("Sahipsiz kayit yazilamadi %s: %r", file_id, e)
+    logging.warning("Sahipsiz 'processing' kaydi kapatildi: %s", file_id)
+    return kapali
+
+
 def _background_pipeline(file_id: str, src_path: str) -> None:
     """Background pipeline orkestratoru — sync function, asyncio.to_thread ile cagrilir.
 
@@ -1214,6 +1270,8 @@ def _background_pipeline(file_id: str, src_path: str) -> None:
                 os.unlink(src_path)
         except OSError:
             pass
+        # EN SON: son durum yazildi — sahipsiz denetimi artik diskte onu gorur.
+        _ETKIN_YUKLEMELER.discard(file_id)
 
 
 @app.post("/upload")
@@ -1289,7 +1347,8 @@ async def upload_async(file: UploadFile = File(...), kapsam: str | None = Form(N
                     logging.info("Dedup atlandi (birim tespit surumu eski: %s != %s)",
                                  st.get("detector_version"), DETECTOR_VERSION)
                     continue
-                status = st.get("status")
+                # Olu surecin "processing" kaydi kapatilir, ona BAGLANILMAZ.
+                status = (_sahipsiz_islemeyi_kapat(fid, st) or {}).get("status")
                 # Geometri dosyasi da SART: yoksa (deploy oncesi eski bicim ya da
                 # silinmis) /geometry 409 verir — ayni file_id'ye dedup kullaniciyi
                 # 24 saat kilitlerdi; yeniden isleme dosyayi uretir.
@@ -1306,6 +1365,9 @@ async def upload_async(file: UploadFile = File(...), kapsam: str | None = Form(N
 
             # ── Yeni pipeline: ham dosyayi diske yaz + state + spawn ──
             file_id = uuid.uuid4().hex[:12]
+            # "processing" yazilmadan ONCE bu surecin isi: denetim onu hic sahipsiz
+            # gormez (yazim patlarsa kalan kimlik zararsiz — kaydi yok).
+            _ETKIN_YUKLEMELER.add(file_id)
             src_path = _src_path(file_id, ext)
             with open(src_path, "wb") as sf:
                 sf.write(content)
@@ -1358,7 +1420,7 @@ async def get_upload_status(file_id: str):
     "error" field'inda.
     """
     try:
-        state = _read_state(file_id)
+        state = _sahipsiz_islemeyi_kapat(file_id, _read_state(file_id))
         if state is None:
             raise HTTPException(404, "file_id bilinmiyor (cache TTL gecmis olabilir)")
 
@@ -1548,5 +1610,5 @@ if __name__ == "__main__":
     # Filesystem-based cache (yukaridaki _cache_path) sayesinde tek worker bile
     # restart sonrasi cache'i koruyor — multi-worker artik strictly gerekli degil.
     # Daha fazla CPU/RAM (Starter plan) ile WORKERS=2 ayarlanabilir.
-    workers = int(os.environ.get("WORKERS") or 1)
-    uvicorn.run("main:app", host="0.0.0.0", port=port, workers=workers)
+    # Tek okuma: _ISCI_SAYISI (sahipsiz "processing" karari da onu kullanir).
+    uvicorn.run("main:app", host="0.0.0.0", port=port, workers=_ISCI_SAYISI)

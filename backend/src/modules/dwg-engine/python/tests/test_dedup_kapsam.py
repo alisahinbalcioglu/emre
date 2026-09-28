@@ -62,6 +62,8 @@ def istemci(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "_CACHE_DIR", str(tmp_path))
     monkeypatch.setattr(main, "_INTERNAL_API_TOKEN", "")
     monkeypatch.setattr(main, "_background_pipeline", lambda file_id, src_path: None)
+    # Taklit is hic bitmez: /upload'in ekledigi kimlik kumede kalir, kayit "processing" surer.
+    monkeypatch.setattr(main, "_ETKIN_YUKLEMELER", set())
     with TestClient(main.app) as c:
         yield c
 
@@ -214,6 +216,8 @@ def _sahte_kayit(dizin, kimlik: str, kapsam: str) -> None:
         json.dump(st, f)
     with open(os.path.join(dizin, f"dwg_cache_{kimlik}.src.dxf"), "wb") as f:
         f.write(ICERIK)
+    # Isi BU surecte suruyor — sahipsiz "processing" kapatilir (tests/test_yeniden_baslama.py).
+    main._ETKIN_YUKLEMELER.add(kimlik)
 
 
 def test_v3_bicimsiz_adli_state_atlanir(istemci, tmp_path):

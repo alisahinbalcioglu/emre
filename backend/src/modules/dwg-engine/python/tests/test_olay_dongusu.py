@@ -182,6 +182,7 @@ def ortam(tmp_path, monkeypatch):
     onbellek.mkdir()
     monkeypatch.setattr(main, "_CACHE_DIR", str(onbellek))
     monkeypatch.setattr(main, "_INTERNAL_API_TOKEN", "")
+    monkeypatch.setattr(main, "_ETKIN_YUKLEMELER", set())
     # converter'in `mkdtemp(prefix="dwg2dxf_")` dizini (bu surecte ve upload_worker
     # alt surecinde) kalici birime degil buraya duser.
     gecici = tmp_path / "gecici"
@@ -432,6 +433,8 @@ def _hazir_kayit(file_id: str, durum: str = "ready", geometri: bytes | None = No
             f.write(geometri)
     main._write_state(file_id, {"status": durum, "hash": hash_, "started_at": time.time(),
                                 "detector_version": main.DETECTOR_VERSION, "kapsam": kapsam})
+    if durum == "processing":  # isi BU surecte suruyor (sahipsiz kayit kapatilir: test_yeniden_baslama)
+        main._ETKIN_YUKLEMELER.add(file_id)
 
 
 def _geometri_cek(port: int, yol: str, kutu: dict, i: int) -> None:

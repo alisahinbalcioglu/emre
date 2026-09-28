@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 839
-Toplam satir: 227900
+Kod dosyasi: 840
+Toplam satir: 228346
 Uc nokta: 238
 test:* scripti: 138
 
@@ -99,15 +99,15 @@ test:* scripti: 138
 | `backend/src/modules/dwg-engine/python/deploy-to-cloudrun.sh` | 71 |
 | `backend/src/modules/dwg-engine/python/geometry.py` | 757 |
 | `backend/src/modules/dwg-engine/python/graph.py` | 356 |
-| `backend/src/modules/dwg-engine/python/main.py` | 1553 |
+| `backend/src/modules/dwg-engine/python/main.py` | 1615 |
 | `backend/src/modules/dwg-engine/python/models.py` | 91 |
 | `backend/src/modules/dwg-engine/python/parse_worker.py` | 87 |
 | `backend/src/modules/dwg-engine/python/pipe_segments.py` | 1875 |
 | `backend/src/modules/dwg-engine/python/tests/__init__.py` | 1 |
 | `backend/src/modules/dwg-engine/python/tests/test_block_to_line_split.py` | 104 |
-| `backend/src/modules/dwg-engine/python/tests/test_dedup_kapsam.py` | 250 |
+| `backend/src/modules/dwg-engine/python/tests/test_dedup_kapsam.py` | 254 |
 | `backend/src/modules/dwg-engine/python/tests/test_detector_version_kapisi.py` | 200 |
-| `backend/src/modules/dwg-engine/python/tests/test_olay_dongusu.py` | 1030 |
+| `backend/src/modules/dwg-engine/python/tests/test_olay_dongusu.py` | 1033 |
 | `backend/src/modules/dwg-engine/python/tests/test_parse_iptal.py` | 258 |
 | `backend/src/modules/dwg-engine/python/tests/test_pipe_segments.py` | 85 |
 | `backend/src/modules/dwg-engine/python/tests/test_scale_normalization.py` | 127 |
@@ -115,6 +115,7 @@ test:* scripti: 138
 | `backend/src/modules/dwg-engine/python/tests/test_symbol_cluster_split.py` | 499 |
 | `backend/src/modules/dwg-engine/python/tests/test_tolerance_robustness.py` | 118 |
 | `backend/src/modules/dwg-engine/python/tests/test_unit_detect.py` | 597 |
+| `backend/src/modules/dwg-engine/python/tests/test_yeniden_baslama.py` | 377 |
 | `backend/src/modules/dwg-engine/python/topology.py` | 268 |
 | `backend/src/modules/dwg-engine/python/unit_detect.py` | 766 |
 | `backend/src/modules/dwg-engine/python/upload_worker.py` | 150 |
