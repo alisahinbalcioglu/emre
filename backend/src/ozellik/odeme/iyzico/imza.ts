@@ -40,13 +40,23 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export type ImzaSirasi = 'merchantId-once' | 'secretKey-once' | 'bilinmiyor';
 
+/**
+ * Abonelik bildirimi gövdesi. Belge (docs.iyzico.com/ek-servisler/webhook,
+ * 28.09 okundu) altı alanı da listeler, zorunlu/isteğe bağlı ayrımı YAPMAZ;
+ * örnek gövdede kodlar UUID, `iyziEventTime` milisaniye (Long). Canlıdaki TEK
+ * kayıtta (06.09, koordinatör ölçümü 28.09) `customerReferenceCode` ve
+ * `iyziEventTime` YOKTU, kodlar 9/9/19 karakterdi — o yüzden ikisi isteğe
+ * bağlı. ⚠ Müşteri kodu imza girdisindedir (`anahtarUret`); gövdede yokken
+ * iyzico'nun imzaya ne koyduğu ÖLÇÜLMEDİ — zorunluluk runbook'taki ölçüm
+ * şartıyla açılır (imzalı gerçek bildirimde `imzaGecerli=true`).
+ */
 export interface AbonelikWebhookGovdesi {
   orderReferenceCode: string;
-  customerReferenceCode: string;
+  customerReferenceCode?: string;
   subscriptionReferenceCode: string;
   iyziReferenceCode: string;
   iyziEventType: 'subscription.order.success' | 'subscription.order.failure';
-  iyziEventTime: number;
+  iyziEventTime?: number;
 }
 
 export interface ImzaSonucu {

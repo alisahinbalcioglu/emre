@@ -14,7 +14,7 @@ Geçiş dört işten oluşur:
 
 - [ ] Canlı üye işyeri hesabı açık ve **Abonelik** ürünü canlı hesapta etkin. Sandbox'ta bunun için ayrı talep gerekmişti (`docs/RAPOR_ADIM0_iyzico_Sandbox.md` S3).
 - [ ] **Webhook imzası** (X-IYZ-SIGNATURE-V3) CANLI hesap için ayrıca talep edildi (entegrasyon@iyzico.com). Sandbox'ta açık olması canlıda açık olduğu anlamına gelmez.
-  - ⚠ 28.09 canlı ölçüm: sandbox'tan alınan TEK bildirimde (06.09) imza başlığı YOKTU.
+  - ⚠ 28.09 canlı ölçüm: sandbox'tan alınan TEK bildirimde (06.09) imza başlığı YOKTU. Gövdesi de belgedeki altı alanın dördünü taşıyordu (müşteri kodu ve olay zamanı yok, kodlar UUID değil 9/9/19 karakter). Elle ya da panelden gönderilmiş bir deneme olabilir; gerçek abonelik bildiriminin biçimi ilk canlı satın almada (§2.6) okunur.
 - [ ] Canlı panelde abonelik bildirim adresi girildi: `https://<alan-adı>/api/webhook/iyzico/abonelik`.
   - Yer: Ayarlar > Üye İşyeri Ayarları > **Üye İşyeri Abonelik Bildirimleri**. Ödeme bildirimleri ayrı alandır, oraya girilmez.
 - [ ] Canlı API anahtarı, gizli anahtar ve üye işyeri numarası (MID) elde.
@@ -146,6 +146,7 @@ Doğrulama (salt okuma):
 - [ ] Ödeme → dönüş → abonelik AKTIF.
 - [ ] Webhook geldi: `WebhookOlayi` son satırında imza başlığı dolu mu (`imzaBasligi`), doğrulandı mı (`imzaGecerli`)?
 - [ ] Günlükte `İmza doğrulandı. Alan sırası: "…"` satırı → bölüm 3 için sırayı not edin.
+- [ ] Gerçek bildirimin gövde alanları (§5 Q9): hangi alanlar geldi, müşteri kodu ve olay zamanı var mı. Uç ikisini de kabul eder; imza zorunluluğu kararı (§3) için okunur.
 
 ## 3. İmza zorunluluğu — ÖN KOŞULLU, geçişten SONRA
 
@@ -177,8 +178,11 @@ Zorunluyken imzası tutmayan gerçek bildirimler de 401 alır; iyzico 15 dk aray
 Zorunluyken davranış (kapı `test:webhook-tahsilat-dogrulama` I):
 - Eksik ya da yanlış imza → 401, satır YAZILMAZ, işlenmez.
 - Beklenen imza günlüğe yazılmaz.
-- Biçimsiz gövde (kod biçimi, eksik alan) her durumda 400 alır ve kaydedilmez.
+- Biçimsiz gövde her durumda 400 alır ve kaydedilmez: zorunlu üç kod (abonelik · sipariş · iyzico olay) eksik ya da harf/rakam/tire dışı, olay tipi biçimsiz ya da müşteri kodu VARKEN biçimsiz.
+- Müşteri kodu ve olay zamanı yoksa bildirim geçer: belge (docs.iyzico.com/ek-servisler/webhook) altı alanı listeler, ama canlıdaki tek kayıt (06.09) dört alanlıydı (28.09 ölçümü).
 - Uçta 16 KB gövde tavanı var.
+
+⚠ Müşteri kodu imza girdisindedir. Gövdede müşteri kodu yokken iyzico'nun imzaya ne koyduğu ÖLÇÜLMEDİ. Açma şartı (gerçek imzalı bildirimde `imzaGecerli = true`) bunu da yakalar: böyle bir bildirimde imza tutmuyorsa zorunluluğu AÇMAYIN, iyzico'ya sorun.
 
 ⚠ 28.09 öncesi kodda `IYZICO_IMZA_ZORUNLU=true` hiçbir şeyi korumuyordu: reddedilen olay `islendi=false` ile kaydediliyor, dakikalık tarama onu yine işliyordu. Ölçüldü: imzası yanlış gövde erişimi uzattı, fatura açtı.
 
@@ -214,3 +218,27 @@ Zorunluyken davranış (kapı `test:webhook-tahsilat-dogrulama` I):
   ```
 
   Ölçüm kaydı: 28.09'da koordinatörün koştuğu sorgu seti (Q1–Q8) PGlite + göç zinciriyle doğrulandı (17/17). Bu sorgu Q8'dir.
+- Kayıtlı bildirimler uçtaki biçim kuralını geçiyor mu, gövdede hangi alanlar var (Q9; değer yazdırmaz, alan ADLARI ve olay zamanı TÜRÜ). Beklenen: iyzico satırında `bicime_uyan = toplam`:
+
+  ```sql
+  BEGIN READ ONLY;
+  WITH o AS (
+    SELECT "kaynak",
+           ("abonelikKodu" ~ '^[A-Za-z0-9-]{1,64}$'
+            AND "siparisKodu" ~ '^[A-Za-z0-9-]{1,64}$'
+            AND ("musteriKodu" IS NULL OR "musteriKodu" = '' OR "musteriKodu" ~ '^[A-Za-z0-9-]{1,64}$')
+            AND "iyzicoRefKodu" ~ '^[A-Za-z0-9-]{1,64}$'
+            AND "olayTipi" ~ '^[a-z]+(\.[a-z]+){1,4}$') AS uyar,
+           (SELECT string_agg(k, ',' ORDER BY k)
+              FROM jsonb_object_keys(CASE WHEN jsonb_typeof("hamGovde"::jsonb) = 'object'
+                                          THEN "hamGovde"::jsonb ELSE '{}'::jsonb END) AS k) AS alanlar,
+           jsonb_typeof("hamGovde"::jsonb -> 'iyziEventTime') AS zaman_turu
+      FROM "WebhookOlayi")
+  SELECT "kaynak", count(*)::int AS toplam, count(*) FILTER (WHERE uyar)::int AS bicime_uyan,
+         string_agg(DISTINCT alanlar, ' | ' ORDER BY alanlar) AS govde_alanlari,
+         string_agg(DISTINCT zaman_turu, ',' ORDER BY zaman_turu) AS olay_zamani_turu
+    FROM o GROUP BY 1 ORDER BY 1;
+  ROLLBACK;
+  ```
+
+  28.09 ilk koşumu (müşteri kodu zorunluyken) KIRMIZIYDI: canlıdaki tek kayıtta müşteri kodu yoktu → kural gevşetildi, bu sürüm PGlite'ta 24/24.

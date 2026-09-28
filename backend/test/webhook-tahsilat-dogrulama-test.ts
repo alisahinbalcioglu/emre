@@ -2025,6 +2025,64 @@ async function iBlogu(): Promise<void> {
       JSON.stringify([eksik, yol, tip].map((x) => [String(x.hata), !!x.olay])) + ` sorulan=${d.iyz.sorulan}`);
   }
 
+  console.log('\n── I · İKİ GERÇEK BİÇİM: canlıdaki tek kayıt (4 alan) ve belge örneği (6 alan) — ikisi de kaydedilir ve işlenir ──');
+  {
+    // 28.09 koordinatör ölçümü (salt okuma): canlıdaki TEK iyzico kaydının
+    // gövdesi DÖRT alan — iyziEventType, iyziReferenceCode, orderReferenceCode,
+    // subscriptionReferenceCode; müşteri kodu ve olay zamanı YOK; kodlar
+    // 9/9/19 karakter. Belge (docs.iyzico.com/ek-servisler/webhook, 28.09
+    // okundu) altı alanı listeler, zorunluluk belirtmez; örneği UUID +
+    // milisaniye. Biçim kuralı ikisini de geçirmeli: 400 alan gerçek bildirim
+    // iyzico'da üç denemeden sonra KAYBOLUR.
+    const d = dunyaKur();
+    const bas = Date.now() - 2 * GUN;
+    const son = bas + 30 * GUN;
+    const canli = d.kartSatiri('F-I13', 'SUB000913', { durum: 'AKTIF', erisimSonu: new Date(bas) });
+    d.iyz.detaylar.set('SUB000913', iyzicoDetayi('SUB000913', 'ACTIVE', [
+      siparis({ kod: 'ORD000913', durum: 'SUCCESS', bas, son, denemeler: ['SUCCESS'] }),
+    ]));
+    const w4 = await d.webhookGonder(BASARI, 'SUB000913', 'ORD000913', {
+      customerReferenceCode: undefined, iyziEventTime: undefined, iyziReferenceCode: 'IYZ0000000000000913',
+    });
+    const BELGE = {
+      sub: 'ea0362e2-a1c4-4fda-89f0-3758a5c20a28', ord: 'ae5fcbf8-4fd2-46e5-b199-8f690ae9fae5',
+      cus: 'ff4052ca-0588-40eb-81a9-848c0c409472', ref: '18d7cc48-a64b-4cd3-ae68-71aff1c76ed9', zaman: 1758704403161,
+    };
+    const belge = d.kartSatiri('F-I14', BELGE.sub, { durum: 'AKTIF', erisimSonu: new Date(bas) });
+    d.iyz.detaylar.set(BELGE.sub, iyzicoDetayi(BELGE.sub, 'ACTIVE', [
+      siparis({ kod: BELGE.ord, durum: 'SUCCESS', bas, son, denemeler: ['SUCCESS'] }),
+    ]));
+    const w6 = await d.webhookGonder(BASARI, BELGE.sub, BELGE.ord, {
+      customerReferenceCode: BELGE.cus, iyziReferenceCode: BELGE.ref, iyziEventTime: BELGE.zaman,
+    });
+    const g = await d.isle();
+    const dortAlan = ['iyziEventType', 'iyziReferenceCode', 'orderReferenceCode', 'subscriptionReferenceCode'];
+    check('I10 ⭐ canlıdaki GERÇEK biçim (4 alan, müşteri kodu ve olay zamanı YOK, kodlar 9/9/19): 200, kaydedildi (müşteri kodu ve olay zamanı boş, ham gövde tam bu dört alan), İŞLENDİ — erişim dönem sonuna, fatura',
+      w4.hata === null && !!w4.olay && w4.olay.musteriKodu == null && w4.olay.olayZamani == null &&
+        JSON.stringify(Object.keys(w4.olay.hamGovde ?? {}).sort()) === JSON.stringify(dortAlan) &&
+        w4.olay.islendi === true && canli.erisimSonu.getTime() === son && d.faturalar(canli.id).length === 1 &&
+        g.hatalar.length === 0,
+      `hata=${String(w4.hata)} olay=${!!w4.olay} musteri=${w4.olay?.musteriKodu} zaman=${iso(w4.olay?.olayZamani)} ` +
+        `alanlar=${JSON.stringify(Object.keys(w4.olay?.hamGovde ?? {}))} islendi=${w4.olay?.islendi} ` +
+        `erisimSonu=${iso(canli.erisimSonu)} ${gunlukYaz(g)}`);
+    check('I10b belge ÖRNEĞİ (6 alan, UUID, olay zamanı milisaniye): 200, müşteri kodu ve olay zamanı saklandı, İŞLENDİ',
+      w6.hata === null && !!w6.olay && w6.olay.musteriKodu === BELGE.cus &&
+        w6.olay.olayZamani?.getTime() === BELGE.zaman && w6.olay.islendi === true &&
+        belge.erisimSonu.getTime() === son && d.faturalar(belge.id).length === 1,
+      `hata=${String(w6.hata)} musteri=${w6.olay?.musteriKodu} zaman=${iso(w6.olay?.olayZamani)} ` +
+        `erisimSonu=${iso(belge.erisimSonu)}`);
+    // Müşteri kodu isteğe bağlı ama VARSA denetlenir; boş (null/"") yok sayılır.
+    const bicimsiz = await d.webhookGonder(BASARI, 'sub-i15', 'ord-i15', { customerReferenceCode: 'cus/../x' });
+    const satirSonlu = await d.webhookGonder(BASARI, 'sub-i15', 'ord-i16', { customerReferenceCode: 'cus\nSAHTE SATIR' });
+    const bos = await d.webhookGonder(BASARI, 'sub-i15', 'ord-i17', { customerReferenceCode: '' });
+    const nul = await d.webhookGonder(BASARI, 'sub-i15', 'ord-i18', { customerReferenceCode: null });
+    check('I10c müşteri kodu VARSA biçimi denetlenir (yol karakteri, satır sonu → 400, kayıt yok); boş dize ve null yok sayılır (200, sütun boş)',
+      durum400(bicimsiz.hata) && !bicimsiz.olay && durum400(satirSonlu.hata) && !satirSonlu.olay &&
+        bos.hata === null && !!bos.olay && bos.olay.musteriKodu == null &&
+        nul.hata === null && !!nul.olay && nul.olay.musteriKodu == null,
+      JSON.stringify([bicimsiz, satirSonlu, bos, nul].map((x) => [String(x.hata), !!x.olay, x.olay?.musteriKodu ?? null])));
+  }
+
   console.log('\n── I · gövde tavanı: webhook yolunda 16 KB (global 50 MB değil) — gerçek HTTP, gerçek denetleyici ──');
   {
     const db = bellekPrisma();

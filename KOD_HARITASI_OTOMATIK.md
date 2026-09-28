@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 853
-Toplam satir: 236870
+Toplam satir: 236951
 Uc nokta: 238
 test:* scripti: 141
 
@@ -280,13 +280,13 @@ test:* scripti: 141
 | `backend/src/ozellik/odeme/havale/havale-kart-penceresi.ts` | 472 |
 | `backend/src/ozellik/odeme/havale/havale.controller.ts` | 99 |
 | `backend/src/ozellik/odeme/havale/havale.servisi.ts` | 850 |
-| `backend/src/ozellik/odeme/iyzico/imza.ts` | 206 |
+| `backend/src/ozellik/odeme/iyzico/imza.ts` | 216 |
 | `backend/src/ozellik/odeme/iyzico/iyzico-hata.filter.ts` | 108 |
 | `backend/src/ozellik/odeme/iyzico/iyzico-tarihi.ts` | 46 |
 | `backend/src/ozellik/odeme/iyzico/iyzico.client.ts` | 598 |
 | `backend/src/ozellik/odeme/iyzico/tahsilat-kaniti.ts` | 350 |
 | `backend/src/ozellik/odeme/odeme.module.ts` | 133 |
-| `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | 243 |
+| `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | 256 |
 | `backend/src/ozellik/odeme/webhook/webhook.isleyici.ts` | 420 |
 | `backend/src/ozellik/odeme/yapilandirma.ts` | 78 |
 | `backend/src/ozellik/panel/panel.controller.ts` | 36 |
@@ -447,7 +447,7 @@ test:* scripti: 141
 | `backend/test/urun-degil-test.ts` | 89 |
 | `backend/test/varyant-surukleme-test.ts` | 189 |
 | `backend/test/vitrin-test.ts` | 337 |
-| `backend/test/webhook-tahsilat-dogrulama-test.ts` | 2095 |
+| `backend/test/webhook-tahsilat-dogrulama-test.ts` | 2153 |
 | `backend/test/yardimci/bitmezse-kirmizi.ts` | 64 |
 | `backend/test/yardimci/sahte-oidc-saglayici.ts` | 244 |
 | `backend/test/yardimci/uc-envanteri.ts` | 162 |

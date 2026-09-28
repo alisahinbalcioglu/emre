@@ -54,28 +54,34 @@ function gunlukIcin(deger: unknown): string {
  * ⚠ 28.09 — GÖVDE BİÇİMİ (güvenlik incelemesi). Uç herkese açık ve gövde tip
  * ARAYÜZÜYLE alınıyor: ValidationPipe onu doğrulamaz — 50 MB'a kadar her
  * JSON olduğu gibi kaydediliyor, kodlar günlüğe ve iyzico API yoluna HAM
- * gidiyordu. iyzico referans kodları (abonelik · sipariş · müşteri · olay)
- * harf, rakam ve tireden oluşur (UUID): biçimsiz ya da eksik kod 400 alır ve
- * KAYDEDİLMEZ. Olay tipi noktalı küçük harf (bilinmeyen tip yine kaydedilir,
- * işleyici yok sayar). Olay zamanı SERBEST: çözülemeyen değer olayı düşürmez
- * (`test:webhook-tahsilat-dogrulama` T6). Gerekçe alan ADINI söyler, değeri
- * günlüğe yazmaz.
+ * gidiyordu. iyzico referans kodları harf, rakam ve tireden oluşur (belgede
+ * UUID; canlıdaki tek kayıtta 9/9/19 karakter): ZORUNLU üçü (abonelik ·
+ * sipariş · iyzico olay) eksik ya da biçimsizse 400, KAYDEDİLMEZ — işleme
+ * onlarla yürür. Müşteri kodu İSTEĞE BAĞLI (28.09 canlı ölçüm: gövdede YOKTU,
+ * belge listeler): yoksa (`undefined`/`null`/`""`) geçer, varsa aynı biçim
+ * denetlenir; işleme onu kullanmaz, yalnız saklanır. Olay tipi noktalı küçük
+ * harf (bilinmeyen tip yine kaydedilir, işleyici yok sayar). Olay zamanı
+ * SERBEST, yoksa da geçer: çözülemeyen değer olayı düşürmez
+ * (`test:webhook-tahsilat-dogrulama` T6, I10). Gerekçe alan ADINI söyler,
+ * değeri günlüğe yazmaz.
  */
 const KOD_BICIMI = /^[A-Za-z0-9-]{1,64}$/;
 const OLAY_TIPI_BICIMI = /^[a-z]+(?:\.[a-z]+){1,4}$/;
-const KOD_ALANLARI = [
-  'subscriptionReferenceCode',
-  'orderReferenceCode',
-  'customerReferenceCode',
-  'iyziReferenceCode',
-] as const;
+const ZORUNLU_KOD_ALANLARI = ['subscriptionReferenceCode', 'orderReferenceCode', 'iyziReferenceCode'] as const;
+const ISTEGE_BAGLI_KOD_ALANLARI = ['customerReferenceCode'] as const;
+
+const yokMu = (v: unknown) => v === undefined || v === null || v === '';
 
 export function govdeBicimHatasi(govde: unknown): string | null {
   if (!govde || typeof govde !== 'object' || Array.isArray(govde)) return 'gövde nesne değil';
   const g = govde as Record<string, unknown>;
-  for (const alan of KOD_ALANLARI) {
+  for (const alan of ZORUNLU_KOD_ALANLARI) {
     const v = g[alan];
     if (typeof v !== 'string' || !KOD_BICIMI.test(v)) return `${alan} eksik ya da biçimsiz`;
+  }
+  for (const alan of ISTEGE_BAGLI_KOD_ALANLARI) {
+    const v = g[alan];
+    if (!yokMu(v) && (typeof v !== 'string' || !KOD_BICIMI.test(v))) return `${alan} biçimsiz`;
   }
   if (typeof g.iyziEventType !== 'string' || !OLAY_TIPI_BICIMI.test(g.iyziEventType)) {
     return 'iyziEventType eksik ya da biçimsiz';
@@ -83,9 +89,12 @@ export function govdeBicimHatasi(govde: unknown): string | null {
   return null;
 }
 
-/** Kaydedilen ham gövde: YALNIZ bilinen altı alan (bilinmeyen yük tabloya girmez). */
+/**
+ * Kaydedilen ham gövde: YALNIZ bilinen altı alan (bilinmeyen yük tabloya
+ * girmez); gövdede olmayan isteğe bağlı alan eklenmez — gelenin aynısı.
+ */
 function bilinenAlanlar(g: AbonelikWebhookGovdesi): AbonelikWebhookGovdesi {
-  return {
+  const secili: Record<string, unknown> = {
     orderReferenceCode: g.orderReferenceCode,
     customerReferenceCode: g.customerReferenceCode,
     subscriptionReferenceCode: g.subscriptionReferenceCode,
@@ -93,6 +102,9 @@ function bilinenAlanlar(g: AbonelikWebhookGovdesi): AbonelikWebhookGovdesi {
     iyziEventType: g.iyziEventType,
     iyziEventTime: g.iyziEventTime,
   };
+  return Object.fromEntries(
+    Object.entries(secili).filter(([, v]) => v !== undefined),
+  ) as unknown as AbonelikWebhookGovdesi;
 }
 
 @Controller('webhook/iyzico')
@@ -217,7 +229,8 @@ export class IyzicoWebhookController {
           imzaGecerli,
           abonelikKodu: govde.subscriptionReferenceCode,
           siparisKodu: govde.orderReferenceCode,
-          musteriKodu: govde.customerReferenceCode,
+          // İsteğe bağlı (bkz. `govdeBicimHatasi`): yoksa sütun boş kalır.
+          musteriKodu: yokMu(govde.customerReferenceCode) ? undefined : govde.customerReferenceCode,
           iyzicoRefKodu: govde.iyziReferenceCode,
           // iyziEventTime MİLİSANİYE cinsinden (13 hane). TEK çözücüden
           // (24.09): gövde imzasız da gelebilir; rakam-dizesi ya da bozuk
