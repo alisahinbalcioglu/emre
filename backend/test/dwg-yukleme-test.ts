@@ -34,8 +34,8 @@
  *      (+200 MB) — `redirect: 'error'` + `window: null` klonu kapatir
  *   O  ⭐ ON DENETIM: Content-Length tavani asiyorsa govde okunmadan 413 (Turkce),
  *      motora 0 istek, diske 0 parca, yer alinmaz
- *   E  ⭐ FIRMA BASINA ES ZAMANLILIK: A'nin 2 yuklemesi surerken ucuncusu 429 (govdesi
- *      diske yazilmaz, motora gitmez); B etkilenmez; bitince A yeniden yukler; sayac 0
+ *   E  ⭐ FIRMA BASINA ES ZAMANLILIK: A'nin 2 yuklemesi surerken ucuncusu 429 + Retry-After
+ *      (govdesi diske yazilmaz, motora gitmez); B etkilenmez; bitince A yeniden yukler; sayac 0
  *   A  ⭐ ISTEMCI KOPMASI: yukleme ortasinda kopan istemcinin yarim parcasi silinir,
  *      yeri geri verilir, motora istek gitmez, gunluge tek sessiz satir (ERROR yok);
  *      ardindan normal yukleme calisir (multer 2.0.2 kopmada busboy'u kapatmaz —
@@ -45,7 +45,8 @@
  *      250 MB'lik iletim suruyor, kimsenin yoklamadigi is kuyruga giriyordu
  *   H  motor hatasi (500): tek yeniden deneme dosyayi diskten BASTAN akitir (iki
  *      istek de tam ve ayni), 503 metni motorun `detail`i, gecici dosya silinir;
- *      motor 429 (hat dolu) → 503, yeniden deneme yok; iletim ORTASINDA zaman
+ *      ⭐ motor 429 (hat dolu) → Nest 429 + Retry-After (28.09; eskiden 503 idi ve on yuz
+ *      dosyanin tamamini 4 kez daha gonderiyordu), yeniden deneme yok; iletim ORTASINDA zaman
  *      asiminda yeniden deneme dosyayi bastan ve eksiksiz akitir
  *   L  tavan SINIRI: tam 250 MiB gecer (busboy esitlikte de 'limit' yayar — sinir
  *      +1), tavan + 1 bayt uzunluksuz govde 413
@@ -82,6 +83,7 @@ import { dwgGeciciDizin, yuklenenDosyaAdi } from '../src/modules/dwg-engine/dwg-
 import {
   DWG_YUKLEME_AZAMI_BAYT, DWG_YUKLEME_COK_BUYUK_MESAJI, DWG_YUKLEME_SURUYOR_MESAJI,
   DWG_YUKLEME_ZARF_PAYI_BAYT, DwgYuklemeKapisi, FIRMA_BASINA_ES_ZAMANLI_YUKLEME, firmaYuklemeleri,
+  DWG_YUKLEME_SURUYOR_TEKRAR_SN, DWG_MOTOR_YOGUN_TEKRAR_SN,
 } from '../src/modules/dwg-engine/dwg-yukleme-kapisi';
 import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
@@ -263,7 +265,7 @@ type YuklemeSecenegi = {
   /** Dosyanin sonuna eklenecek baytlar (tavan +1 bayt gibi sinir denemeleri). */
   ek?: Buffer;
 };
-type Yanit = { durum: number | string; govde: string; sure: number };
+type Yanit = { durum: number | string; govde: string; sure: number; tekrarSn?: string | null };
 
 /** Tarayici gibi cok parcali govde: UTF-8 ad, akarak (istemci bellegi = bir blok). */
 async function yukle(s: YuklemeSecenegi): Promise<Yanit> {
@@ -302,7 +304,7 @@ async function yukle(s: YuklemeSecenegi): Promise<Yanit> {
       headers: basliklar,
       signal: s.sinyal ? AbortSignal.any([s.sinyal, bekci.signal]) : bekci.signal,
     } as RequestInit);
-    return { durum: r.status, govde: await r.text(), sure: Date.now() - t0 };
+    return { durum: r.status, govde: await r.text(), sure: Date.now() - t0, tekrarSn: r.headers.get('retry-after') };
   } catch (e: any) {
     return { durum: bekci.signal.aborted ? 'BEKCI' : (e?.name ?? 'hata'), govde: '', sure: Date.now() - t0 };
   } finally {
@@ -385,7 +387,11 @@ function mBlogu(): void {
 // ── G: kapi birimi ──────────────────────────────────────────────────────────
 
 function sahteBaglam(basliklar: Record<string, string>, user: unknown, yikildi = false) {
-  const res = Object.assign(new EventEmitter(), { destroyed: yikildi });
+  const yazilan: Record<string, string> = {};
+  const res = Object.assign(new EventEmitter(), {
+    destroyed: yikildi, yazilan,
+    setHeader: (ad: string, deger: string) => { yazilan[ad.toLowerCase()] = String(deger); },
+  });
   const req = { headers: basliklar, user };
   const ctx = { switchToHttp: () => ({ getRequest: () => req, getResponse: () => res }) } as unknown as ExecutionContext;
   return { ctx, res };
@@ -422,11 +428,15 @@ function gBlogu(): void {
       acik.push(res);
     }
     let hata: unknown;
-    try { kapi.canActivate(sahteBaglam({ 'content-length': '1000' }, kul('g3')).ctx); } catch (e) { hata = e; }
+    const ucuncu = sahteBaglam({ 'content-length': '1000' }, kul('g3'));
+    try { kapi.canActivate(ucuncu.ctx); } catch (e) { hata = e; }
     check(`G4 firmanin ${FIRMA_BASINA_ES_ZAMANLI_YUKLEME + 1}. es zamanli yuklemesi 429 (Turkce)`,
       hata instanceof HttpException && hata.getStatus() === 429 && hata.message === DWG_YUKLEME_SURUYOR_MESAJI
         && firmaYuklemeleri.sayi('g3') === FIRMA_BASINA_ES_ZAMANLI_YUKLEME,
       `hata=${(hata as Error)?.message} sayi=${firmaYuklemeleri.sayi('g3')}`);
+    check(`G4b 429 yanitinda Retry-After ${DWG_YUKLEME_SURUYOR_TEKRAR_SN} sn (on yuz otomatik yeniden gondermez)`,
+      ucuncu.res.yazilan['retry-after'] === String(DWG_YUKLEME_SURUYOR_TEKRAR_SN),
+      JSON.stringify(ucuncu.res.yazilan));
     check('G5 baska firma etkilenmez', kapi.canActivate(sahteBaglam({}, kul('g3-baska')).ctx) === true);
     for (const r of acik) r.emit('close');
     check('G6 kapananlar yeri geri verdi', firmaYuklemeleri.sayi('g3') === 0, `sayi=${firmaYuklemeleri.sayi('g3')}`);
@@ -628,6 +638,8 @@ async function eBlogu(): Promise<void> {
   check('E1 ⭐ ucuncu es zamanli yukleme 429 + Turkce ileti',
     ucuncu.durum === 429 && mesaj(ucuncu.govde) === DWG_YUKLEME_SURUYOR_MESAJI,
     `durum=${ucuncu.durum} govde=${ucuncu.govde.slice(0, 160)}`);
+  check(`E1b uctan uca Retry-After ${DWG_YUKLEME_SURUYOR_TEKRAR_SN} sn`,
+    ucuncu.tekrarSn === String(DWG_YUKLEME_SURUYOR_TEKRAR_SN), `retry-after=${ucuncu.tekrarSn}`);
   check('E2 reddedilenin govdesi diske YAZILMADI, motora GITMEDI',
     parcalar().length === 2 && motorKayitlari.length === onceMotor + 2,
     `parca=${parcalar().length} motor=${motorKayitlari.length - onceMotor}`);
@@ -744,15 +756,22 @@ async function hBlogu(): Promise<void> {
     (await bekle(() => parcalar().length === 0, 2_000)) && firmaYuklemeleri.sayi('firma-h') === 0,
     `parca=${parcalar().length} sayi=${firmaYuklemeleri.sayi('firma-h')}`);
 
-  // Motorun "hat dolu" 429'u: bugunku sozlesme 503 + motorun metni, yeniden deneme YOK
-  // (fetchWithRetry yalniz 5xx/zaman asiminda dener). Degisirse bu satir bilerek kizarir.
+  // Motorun "hat dolu" 429'u (28.09): Nest de 429 + Retry-After + motorun metni doner,
+  // motor yeniden DENENMEZ (fetchWithRetry yalniz 5xx/zaman asiminda dener). Eskiden
+  // 503 idi: on yuz 503'u gecici sayip dosyanin TAMAMINI 4 kez daha gonderiyordu.
   motorKipi = 'yogun';
   const onceYogun = motorKayitlari.length;
   const yogun = await yukle({ firma: 'firma-h', adet: 1 });
-  check('H4 motor 429 (hat dolu) → Nest 503 + motorun metni, motora TEK istek',
-    yogun.durum === 503 && mesaj(yogun.govde).includes('cok sayida projeyi isliyor')
-      && motorKayitlari.length === onceYogun + 1,
-    `durum=${yogun.durum} motor=${motorKayitlari.length - onceYogun} govde=${yogun.govde.slice(0, 160)}`);
+  check('H4 ⭐ motor 429 (hat dolu) → Nest 429 + motorun metni (503 DEGIL)',
+    yogun.durum === 429 && mesaj(yogun.govde).includes('cok sayida projeyi isliyor'),
+    `durum=${yogun.durum} govde=${yogun.govde.slice(0, 160)}`);
+  check(`H4b Retry-After ${DWG_MOTOR_YOGUN_TEKRAR_SN} sn`,
+    yogun.tekrarSn === String(DWG_MOTOR_YOGUN_TEKRAR_SN), `retry-after=${yogun.tekrarSn}`);
+  check('H4c motora TEK istek (Nest yeniden denemez)', motorKayitlari.length === onceYogun + 1,
+    `motor=${motorKayitlari.length - onceYogun}`);
+  check('H4d gecici dosya silindi, yer geri verildi',
+    (await bekle(() => parcalar().length === 0, 2_000)) && firmaYuklemeleri.sayi('firma-h') === 0,
+    `parca=${parcalar().length} sayi=${firmaYuklemeleri.sayi('firma-h')}`);
 
   // Iletim ORTASINDA zaman asimi: motor ilk istegin yarisini okuyup durur; Nest zaman
   // asimiyla keser, 2 sn sonra yeniden dener ve dosyayi diskten BASTAN akitir.

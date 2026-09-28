@@ -5,6 +5,22 @@ import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import type { Response as ExpressResponse } from 'express';
+import { DWG_MOTOR_YOGUN_TEKRAR_SN } from './dwg-yukleme-kapisi';
+
+export const DWG_MOTOR_YOGUN_MESAJI =
+  'DWG motoru su an cok sayida projeyi isliyor; birkac dakika sonra tekrar deneyin.';
+
+/**
+ * Motorun donusum hatti DOLU (motor 429) — Nest de 429 doner, denetleyici
+ * `Retry-After` yazar (28.09). Eskiden 503'e cevriliyordu: on yuz 503'u gecici
+ * sayip dosyanin TAMAMINI 4 kez daha gonderiyordu (250 MB'ta ~1 GB aktarim +
+ * Nest'te ve motorda disk yazimi) — tam da sistem bogulmusken.
+ */
+export class DwgMotorYogunHatasi extends HttpException {
+  constructor(mesaj: string, readonly tekrarSn: number = DWG_MOTOR_YOGUN_TEKRAR_SN) {
+    super(mesaj || DWG_MOTOR_YOGUN_MESAJI, HttpStatus.TOO_MANY_REQUESTS);
+  }
+}
 
 /**
  * Geometri GOVDESININ tavani (baslik zaman asimindan AYRI). Govde istemcinin
@@ -452,11 +468,12 @@ export class DwgEngineService {
       );
       if (!response.ok) {
         const error = motorHataMetni(await response.text());
+        // Hat dolu: AYNEN 429 (bkz. DwgMotorYogunHatasi). Motor zaten yeniden
+        // denenmez — fetchWithRetry yalniz 5xx ve zaman asiminda dener.
+        if (response.status === HttpStatus.TOO_MANY_REQUESTS) throw new DwgMotorYogunHatasi(error);
         throw new HttpException(
           `Upload hatasi: ${error}`,
-          response.status >= 500 || response.status === 429
-            ? HttpStatus.SERVICE_UNAVAILABLE
-            : HttpStatus.UNPROCESSABLE_ENTITY,
+          response.status >= 500 ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
       return await response.json();
