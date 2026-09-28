@@ -26,8 +26,13 @@
  *     (TEST 2-dogrulama) — ACTIVE, ödemenin kanıtı DEĞİLDİR;
  *   · iyzico sonraki dönemin siparişini ÖNCEDEN açar (UPGRADED abonelikte
  *     `SUBSCRIPTION_UPGRADED`, deneme yok — TEST 2-dogrulama-2).
- *  ÖLÇÜLMEDİ: reddedilmiş denemenin değeri ('FAILURE'? 'FAILED'?), FAILED
- *  siparişin biçimi, bildirimin iyzico listesinden ÖNCE gelip gelmediği.
+ *  BELGEDE ama ÖLÇÜLMEDİ (canlıda başarısız sipariş yok, 28.09): iyzico
+ *  "Abonelik İşlemleri" → Abonelik Detayı şeması (docs.iyzico.com/urunler/
+ *  abonelik/abonelik-entegrasyonu/abonelik-islemleri, 28.09 okundu) —
+ *  `orderStatus` WAITING · SUCCESS · FAILED; deneme `paymentStatus` SUCCESS ·
+ *  FAILED, `errorCode`/`errorMessage` yalnız FAILED'de; yeniden denemenin
+ *  `referenceCode`u = başarısızlık webhook'unun `orderReferenceCode`u. Örnek
+ *  JSON yok. ÖLÇÜLMEDİ: bildirimin iyzico listesinden ÖNCE gelip gelmediği.
  *
  *  Kapılar: `test:webhook-tahsilat-dogrulama` (S + webhook/mutabakat bağlantısı),
  *  `test:mutabakat-kayip-tahsilat` S, `test:fatura-dogrulugu` S.

@@ -22,7 +22,13 @@
  *
  * ── BLOKLAR ───────────────────────────────────────────────────────────────
  *   S  saf: hedef sipariş (bildirim kanıt değil — iyzico listesi karar verir),
- *      hata sınıfı (yalnız kodlu iyzico reddi kesin ret), ön koşul (ASKIDA dahil)
+ *      hata sınıfı (yalnız kodlu iyzico reddi kesin ret), ön koşul (ASKIDA dahil),
+ *      iyzico BELGESİNDEKİ başarısız sipariş biçimi ACTIVE abonelikte de ret kanıtı
+ *
+ * ── FİKSTÜR: BAŞARISIZ SİPARİŞ = iyzico BELGESİ, ÖLÇÜLMEDİ (28.09) ─────────
+ * Canlıda başarısız sipariş hiç yok, sandbox'ta UNPAID abonelik yok (koordinatör
+ * ölçümü 28.09). Reddedilen sipariş `belgedekiBasarisizSiparis`in biçimindedir
+ * (kaynak orada); ödenmiş sipariş 20.08 sandbox tutanağının ÖLÇÜLEN biçimidir.
  *   A  anlık yol, tek çağrı: alındı · iletildi · reddedildi · belirsiz (zaman
  *      aşımı, kopan bağlantı) · gerekmiyor · sahte bildirim · ödenmiş aday ·
  *      doğrulanamadı · iyzico okunamadı; kira süresi her sonuçta ÖLÇÜLÜR
@@ -449,6 +455,24 @@ function siparis(kod: string, bas: number, son: number, denemeler: string[], dur
   };
 }
 
+/**
+ * Reddedilmiş sipariş — iyzico BELGESİNDEKİ biçim, ÖLÇÜLMEDİ (canlıda başarısız
+ * sipariş yok, sandbox'ta UNPAID abonelik yok — koordinatör ölçümü 28.09).
+ * Kaynak: iyzico "Abonelik İşlemleri" → Abonelik Detayı yanıt şeması
+ * (https://docs.iyzico.com/urunler/abonelik/abonelik-entegrasyonu/abonelik-islemleri ·
+ * EN: https://docs.iyzico.com/en/products/subscription/subscription-implementation/subscription-transactions,
+ * 28.09 okundu): `orderStatus` enum WAITING · SUCCESS · FAILED; `paymentAttempts[].paymentStatus`
+ * enum SUCCESS · FAILED; `errorCode`/`errorMessage` "yalnızca FAILED durumunda", `paymentId`
+ * yalnızca SUCCESS'te. Yeniden denemenin `referenceCode`u = başarısızlık webhook'unun
+ * `orderReferenceCode`u (listedeki siparişin kodu). Belgede örnek JSON YOK.
+ */
+function belgedekiBasarisizSiparis(kod: string, bas: number, son: number) {
+  return {
+    referenceCode: kod, price: 1649, currencyCode: 'TRY', startPeriod: bas, endPeriod: son, orderStatus: 'FAILED',
+    paymentAttempts: [{ conversationId: `c-${kod}-0`, createdDate: bas + DK, paymentStatus: 'FAILED', errorCode: '10051', errorMessage: 'Kart limiti yetersiz' }],
+  };
+}
+
 const MUHASEBE_YASAK = { faturaKes: async () => { throw new Error('bu kapida fatura KESILMEZ'); } } as any;
 
 interface Giden { kime: string; konu: string }
@@ -471,8 +495,9 @@ function dunyaKur() {
 
   /**
    * Dunning döngüsündeki KART satırı + iyzico detayı. Geçen ay ödenmiş sipariş
-   * `<kod>-1`; bu ayın siparişi `<kod>-2` reddedildi (abonelik UNPAID, denemesi
-   * FAILURE) ve başarısızlık bildirimi işlendi — merdivenin başlattığı hâl.
+   * `<kod>-1` (20.08 tutanağının ÖLÇÜLEN biçimi); bu ayın siparişi `<kod>-2`
+   * reddedildi (abonelik UNPAID; sipariş `belgedekiBasarisizSiparis` — ÖLÇÜLMEDİ)
+   * ve başarısızlık bildirimi işlendi — merdivenin başlattığı hâl.
    */
   function dunningSatiri(firmaId: string, p: { durum?: string; gunOnce?: number; denemeSayisi?: number; alanlar?: Satir } = {}) {
     const kod = `sub-${firmaId}`;
@@ -495,7 +520,7 @@ function dunyaKur() {
       subscriptionStatus: 'UNPAID',
       orders: [
         siparis(`${kod}-1`, ilk - 30 * GUN, ilk, ['SUCCESS'], 'SUCCESS'),
-        siparis(`${kod}-2`, ilk, ilk + 30 * GUN, ['FAILURE'], 'WAITING'),
+        belgedekiBasarisizSiparis(`${kod}-2`, ilk, ilk + 30 * GUN),
       ],
     });
     olay(BASARISIZ, kod, `${kod}-2`, ilk + DK, true);
@@ -544,6 +569,14 @@ function sBlogu(): void {
   check('S5 hiçbir aday listede değil → yok', h5.tur === 'yok', JSON.stringify(h5));
   const h6 = yenidenDenemeHedefi(detay([siparis('o-4', bas, bas + GUN, [], 'FAILED')], 'ACTIVE'), ['o-4']);
   check('S6 orderStatus FAILED da ret kanıtıdır (abonelik ACTIVE iken)', h6.tur === 'dene', JSON.stringify(h6));
+  // iyzico BELGESİNDEKİ biçim (ÖLÇÜLMEDİ): UNPAID olmayan abonelikte ret kanıtını sipariş taşır.
+  const h10 = yenidenDenemeHedefi(detay([odenmis, belgedekiBasarisizSiparis('o-5', bas, bas + 30 * GUN)], 'ACTIVE'), ['o-5']);
+  check('S10 ⭐ belgedeki reddedilmiş sipariş (orderStatus FAILED + paymentStatus FAILED) ACTIVE abonelikte de denenir',
+    h10.tur === 'dene' && h10.kod === 'o-5', JSON.stringify(h10));
+  const yalnizDeneme = { ...belgedekiBasarisizSiparis('o-6', bas, bas + 30 * GUN), orderStatus: 'WAITING' };
+  const h11 = yenidenDenemeHedefi(detay([yalnizDeneme], 'ACTIVE'), ['o-6']);
+  check('S11 belgedeki deneme değeri (paymentStatus FAILED) sipariş WAITING kalsa da ret kanıtı',
+    h11.tur === 'dene' && h11.kod === 'o-6', JSON.stringify(h11));
 
   const sinif = [
     denemeHatasiSinifi(new IyzicoHatasi('10051', 'Kart limiti yetersiz', 400)),

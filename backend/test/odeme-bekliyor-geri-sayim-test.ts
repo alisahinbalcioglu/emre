@@ -488,10 +488,15 @@ async function merdivenSenaryosu(ofsetSaat: number, gunSayisi = 12) {
     abonelikKodu: 'sub-F-Y', olayTipi: 'subscription.order.failure',
     siparisKodu: 'siparis-Y', alindi: ab.ilkBasarisizlik,
   });
-  // Reddedilen çekim iyzico'nun listesinde (20.08 tutanağı biçimi): merdiven
-  // hedefi doğrular, basamaklar ertelenmeden yürür.
+  // Reddedilen çekim iyzico'nun listesinde: merdiven hedefi doğrular, basamaklar
+  // ertelenmeden yürür. Biçim iyzico BELGESİNDEKİ, ÖLÇÜLMEDİ (canlıda başarısız
+  // sipariş yok) — kaynak: "Abonelik İşlemleri" → Abonelik Detayı şeması,
+  // https://docs.iyzico.com/urunler/abonelik/abonelik-entegrasyonu/abonelik-islemleri (28.09 okundu).
   d.iyzicoSiparisleri['sub-F-Y'] = [
-    { referenceCode: 'siparis-Y', orderStatus: 'WAITING', paymentAttempts: [{ paymentStatus: 'FAILURE' }] },
+    {
+      referenceCode: 'siparis-Y', orderStatus: 'FAILED',
+      paymentAttempts: [{ paymentStatus: 'FAILED', errorCode: '10051', errorMessage: 'Kart limiti yetersiz' }],
+    },
   ];
   const kosumlar: Kosum[] = [];
   for (let gun = 0; gun <= gunSayisi; gun++) {

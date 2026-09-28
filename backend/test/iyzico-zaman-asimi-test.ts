@@ -767,7 +767,11 @@ function dunningDb(secenek: DunningSecenek = {}) {
 /**
  * 28.09 — merdiven para ceken istekten ONCE hedefi iyzico'ya sorar (anlik
  * denemeyle tek kural, `yenidenDenemeHedefi`). Detay: abonelik UNPAID, sip-1
- * reddedilmis (20.08 tutanagi bicimi: `paymentAttempts[].paymentStatus`).
+ * reddedilmis — iyzico BELGESINDEKI bicim, OLCULMEDI (canlida basarisiz siparis
+ * yok). Kaynak: iyzico "Abonelik Islemleri" → Abonelik Detayi semasi
+ * (https://docs.iyzico.com/urunler/abonelik/abonelik-entegrasyonu/abonelik-islemleri,
+ * 28.09 okundu): `orderStatus` WAITING · SUCCESS · FAILED; deneme `paymentStatus`
+ * SUCCESS · FAILED, `errorCode`/`errorMessage` yalnizca FAILED'de; ornek JSON yok.
  */
 const DETAY = 'GET /v2/subscription/subscriptions/uc-0';
 const REDDEDILMIS_DETAY: Davranis = {
@@ -775,7 +779,13 @@ const REDDEDILMIS_DETAY: Davranis = {
   veri: {
     referenceCode: 'uc-0',
     subscriptionStatus: 'UNPAID',
-    orders: [{ referenceCode: 'sip-1', orderStatus: 'WAITING', paymentAttempts: [{ paymentStatus: 'FAILURE' }] }],
+    orders: [
+      {
+        referenceCode: 'sip-1',
+        orderStatus: 'FAILED',
+        paymentAttempts: [{ paymentStatus: 'FAILED', errorCode: '10051', errorMessage: 'Kart limiti yetersiz' }],
+      },
+    ],
   },
 };
 
