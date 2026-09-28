@@ -22,6 +22,7 @@ import {
 import { EpostaServisi } from '../eposta/eposta.servisi';
 import { AbonelikServisi } from './abonelik.servisi';
 import { DENEMESIZ_PLAN_YOK_MESAJI, planSec } from './satinalma.servisi';
+import { bekleyenHavaleVarMi } from '../havale/havale-durumlari';
 import {
   KILIT_EMNIYET_GUN,
   beklenenGecisTarihi,
@@ -198,11 +199,17 @@ export class PaketDegisimiServisi {
     }
   }
 
-  private aboneligiGetir(firmaId: string) {
-    return this.prisma.abonelik.findUnique({
+  /**
+   * 28.09 — `bekleyenHavaleVar`: bekleyen havale teklifi kart satin almasini
+   * kapatir (`yeniAbonelikEngeli`); paket kartlari ve `degistir` AYNI satiri
+   * okur, ekran "satin al" deyip `baslat` reddedemez.
+   */
+  private async aboneligiGetir(firmaId: string) {
+    const ab = await this.prisma.abonelik.findUnique({
       where: { firmaId },
       include: { paketSurumu: { include: { paket: true } } },
     });
+    return ab && { ...ab, bekleyenHavaleVar: await bekleyenHavaleVarMi(this.prisma, ab.id) };
   }
 
   /**

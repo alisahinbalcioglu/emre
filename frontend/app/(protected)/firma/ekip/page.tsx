@@ -18,6 +18,17 @@ import { Anahtar } from '@/ozellik/firma/ekip/ekip-parcalari';
 import { useVitrin } from '@/ozellik/odeme/VitrinSaglayici';
 
 /**
+ * 27.09.2026 — davet e-postası Spam'e düşebiliyor: 26.09'da Google Workspace
+ * kutusunda oldu (alan adı 01.07.2026'da kaydedildi, itibarı yok; SPF/DKIM/DMARC
+ * tam — ölçüldü). Gmail spam'deki iletide bağlantıyı KAPATIR, yani kişi düğmeye
+ * basamaz. Sahip bunu davet anında öğrenmeli; yoksa davet "gelmedi" sanılır.
+ */
+const DAVET_SPAM_IPUCU =
+  'Birkaç dakika içinde gelmezse kişiden Spam / Gereksiz klasörüne bakmasını ve iletiyi ' +
+  '"Spam değil" olarak işaretlemesini isteyin — spam klasöründe davet bağlantısı açılmayabilir.';
+const DAVET_BILDIRIM_SURESI_MS = 12_000;
+
+/**
  * EKİP SAYFASI — FAZ 7 F1b (§6.5) · 23.09.2026 ikinci tasarım (ekran 1–3).
  *
  * Başlık "Ekip" + "Üye davet et" · "Kullanıcı hakkı" kartı · "Üyeler"
@@ -102,11 +113,19 @@ export default function EkipSayfasi() {
    * Tek yazma kalıbı: sonucu BİLDİRİMLE söyler, sonra listeyi tazeler.
    * Hata metni sunucunun `mesaj`ından (yoksa kod sözlüğünden) gelir.
    */
-  async function calistir(fn: () => Promise<unknown>, basariMetni: string): Promise<boolean> {
+  async function calistir(
+    fn: () => Promise<unknown>,
+    basariMetni: string,
+    davetGitti = false,
+  ): Promise<boolean> {
     setIslemde(true);
     try {
       await fn();
-      toast({ title: basariMetni });
+      if (davetGitti) {
+        toast({ title: basariMetni, description: DAVET_SPAM_IPUCU, duration: DAVET_BILDIRIM_SURESI_MS });
+      } else {
+        toast({ title: basariMetni });
+      }
       await yukle();
       return true;
     } catch (e) {
@@ -136,6 +155,7 @@ export default function EkipSayfasi() {
     return calistir(
       () => api.post('/firma/davetler', { eposta, izinler }),
       `${eposta} adresine davet gönderildi.`,
+      true,
     );
   }
 
@@ -156,6 +176,7 @@ export default function EkipSayfasi() {
     return calistir(
       () => api.post('/firma/davetler', { eposta: d.eposta, izinler }),
       `İzinler kaydedildi; davet ${d.eposta} adresine yeni izinlerle yeniden gönderildi.`,
+      true,
     );
   }
 
@@ -211,6 +232,7 @@ export default function EkipSayfasi() {
     void calistir(
       () => api.post(`/firma/davetler/${id}/yeniden-gonder`),
       `Davet ${eposta} adresine yeniden gönderildi.`,
+      true,
     );
   }
 

@@ -15,8 +15,10 @@ export const KIMLIK_HATA_METINLERI: Record<string, string> = {
   KOLTUK_DOLU:
     'Paketinizin kullanıcı hakkı dolu. Paketi yükseltin ya da bir üyeyi/daveti çıkarın.',
   ZATEN_EKIPTE: 'Bu e-posta adresi zaten ekibinizde.',
+  // ⚠ 27.09: "önce hesabınızı kapatın" DENMEZ — kapatılan adres saklama süresi
+  // boyunca davetle katılamaz (sunucudaki KAPALI_HESAP_VAR dalı).
   BASKA_FIRMADA_KAYITLI:
-    'Bu e-posta adresi başka bir firmada kayıtlı. Katılmak için önce mevcut hesabınızı kapatmanız gerekir.',
+    'Bu e-posta adresiyle zaten bir MetaPriceX hesabı var ve bir hesap aynı anda yalnız bir firmada olabilir. Davet eden kişiden başka bir e-posta adresinize davet göndermesini isteyin.',
   DAVET_GECERSIZ:
     'Davet bağlantısı geçersiz ya da süresi dolmuş. Firma sahibinden yeni davet isteyin.',
   DAVET_YOK: 'Davet bulunamadı.',

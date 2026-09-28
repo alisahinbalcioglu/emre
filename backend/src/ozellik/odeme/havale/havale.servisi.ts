@@ -9,6 +9,9 @@ import { tarihYaz, tutarYaz } from '../dunning/dunning.metinleri';
 import { etkinHesapKosulu } from '../../firma/uyelik-kurallari';
 import { koltukEtkisi } from '../abonelik/yonetici/yonetici-islemi';
 import { kartUyarisiOku, teklifSonrasiKartCekimleri } from './havale-kart-penceresi';
+import { mirasPaketiDegisimi, mirasPaketiDegisimMesaji } from '../abonelik/miras-hakki';
+// ONAYLANABİLİR koşulu erişim kararı ve kart satın alma kapısıyla paylaşılır (28.09).
+import { ONAYLANABILIR } from './havale-durumlari';
 
 /** Düşürmenin koltuk etkisi — sayım `etkinHesapKosulu`, kural `koltukEtkisi`. */
 export interface HavaleKoltukEtkisi {
@@ -117,15 +120,6 @@ export function koltukEpostaCumlesi(k: Pick<HavaleKoltukEtkisi, 'yeniHak' | 'top
  */
 
 /**
- * ONAYLANABİLİR HAVALE: onay bekleyen durumda VE hiç onaylanmamış. Durum
- * yazan üç yol (onayın sahiplenmesi, "fatura kesildi", iptal) ve yönetim
- * listesi (`bekleyenler`) AYNI koşulu okur: listede görünen satır
- * onaylanabilir olandır. `onaylandi`yı yalnız onay yazar ve hiçbir yol
- * silmez: durumu 25.09 öncesi "fatura kesildi" kusuruyla geri çekilmiş
- * onaylı satır da onaylı sayılır. KAPALI liste — şemaya eklenen yeni bir
- * durum kendiliğinden onaylanabilir OLMAZ.
- */
-/**
  * İptalde müşteriye e-posta giden durumlar (25.09): müşteri ödeme sürecine
  * GİRMİŞ — fatura/proforma kesilmiş ya da ödeme bekleniyor. TEKLIF aşaması
  * sistemden müşteriye iletilmez; iptali de duyurulmaz.
@@ -134,17 +128,6 @@ const MUSTERIYE_BILDIRILEN_IPTAL_DURUMLARI: HavaleDurumu[] = [
   HavaleDurumu.FATURA_KESILDI,
   HavaleDurumu.ODEME_BEKLENIYOR,
 ];
-
-const ONAYLANABILIR: Prisma.HavaleOdemesiWhereInput = {
-  durum: {
-    in: [
-      HavaleDurumu.TEKLIF,
-      HavaleDurumu.FATURA_KESILDI,
-      HavaleDurumu.ODEME_BEKLENIYOR,
-    ],
-  },
-  onaylandi: null,
-};
 
 @Injectable()
 export class HavaleServisi {
@@ -175,7 +158,8 @@ export class HavaleServisi {
     // olur. Gövde satır içi tip literaliyle gelir (ValidationPipe DENETLEMEZ);
     // eskiden mevcut satırda paket hiç okunmadığı için eksik ya da yanlış
     // kimlik sessizce geçiyordu. Satış dışı sürüm (miras yenilemesi) serbest:
-    // paketi yönetici seçer.
+    // paketi yönetici seçer — ama hak taşıyan firmaya BAŞKA bir miras paketi
+    // DEĞİL (aşağıda, 27.09).
     const surum = p.paketSurumuId
       ? await this.prisma.paketSurumu.findUnique({
           where: { id: p.paketSurumuId },
@@ -203,17 +187,30 @@ export class HavaleServisi {
         iyzicoDurum: true,
         iptalTalebi: true,
         planliPaketSurumuId: true,
+        paketSurumuId: true,
+        mirasPaketSurumuId: true,
+        mirasErisimSonu: true,
         paketSurumu: {
           select: {
             tutar: true,
             paraBirimi: true,
             periyot: true,
             periyotAdedi: true,
-            paket: { select: { kullaniciHakki: true } },
+            paket: { select: { kullaniciHakki: true, kod: true } },
           },
         },
+        mirasPaketSurumu: { select: { paket: { select: { kod: true } } } },
       },
     });
+    // ⚠ 27.09 — MİRAS PAKETİ DEĞİŞMEZ (26.09 güvenlik incelemesi ORTA-1, Emre
+    // kararı b): hak taşıyan firmaya BAŞKA bir miras paketiyle teklif verilmez
+    // — miras yenilemesi ESKİ bitişten uzar ve onay paketi hemen değiştirir
+    // (1 aylık tutarla miras bitişine kadar üst katman). Kural ve metin
+    // `miras-hakki.ts`; onay da aynı kuralı uygular (`AbonelikServisi.
+    // erisimiUzat`, kural öncesi verilmiş teklif). Ret HİÇBİR şey yazmadan ve
+    // iyzico'ya gitmeden döner. Kapı: `test:miras-hakki` H7/H8.
+    const mirasDegisimi = mirasPaketiDegisimi(bugunku, surum.paket.kod, new Date());
+    if (mirasDegisimi) throw new BadRequestException(mirasPaketiDegisimMesaji(mirasDegisimi));
     // ⚠ 25.09 — KART ABONELİĞİ AÇIK MI (Emre kararı: "uyar + onayda bildir"):
     // teklif ile onay arasında kart aboneliği iyzico'da açık kalır; yenileme
     // o pencereye düşerse satır hâlâ KART olduğu için webhook onu olağan
@@ -417,6 +414,22 @@ export class HavaleServisi {
             : 'Bu ödeme zaten onaylanmış',
         );
       }
+
+      // ⚠ 28.09 — ABONELİK SATIRI KİLİDİ, uzatmanın OKUMASINDAN ÖNCE. Sahiplenme
+      // yalnız HAVALE satırını kilitler: aynı aboneliğin FARKLI iki havalesi
+      // (iki teklif, iki yönetici) ikisi de sahiplenir, `erisimiUzat` ikisinde
+      // de satırı kilitsiz okur, ikisi de AYNI bitişten uzatır — iki ödeme,
+      // tek uzatma (ölçüldü: aynı anda da, biri açıkken de +365; sıralı +731).
+      // Bu koşulsuz yazım satırı işlem boyunca kilitler; ikinci onay burada
+      // BEKLER, birincinin commit'inden sonra uzatmanın okuması (READ
+      // COMMITTED'da her deyim yeni anlık görüntü) YENİ bitişi görür. Yazılan
+      // değer zararsız: `guncellendi` uzatmanın kendi yazısında da tazelenir.
+      // Kilit sırası havale → abonelik; iki satırı tutan başka işlem yok
+      // (havale satırına yalnız bu servis yazar). Kapı: `test:havale-onay-yarisi` FH.
+      await tx.abonelik.updateMany({
+        where: { id: mevcut.abonelikId },
+        data: { guncellendi: new Date() },
+      });
 
       // 26.09 — teklifin paketi uzatmaya da geçer: miras (göç) satırından başka
       // pakete geçişte ödenen dönem BUGÜN başlar, miras hakkı ayrı taşınır

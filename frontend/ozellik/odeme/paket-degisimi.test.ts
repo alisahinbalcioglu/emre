@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bekleyenDegisimCumlesi,
   degisimOnayMetni,
+  kartDenemesiGosterilsinMi,
   kartEylemi,
   mevcutPaketMi,
   type DegisimOzeti,
@@ -121,8 +122,34 @@ describe('B · bekleyen değişim cümlesi', () => {
   });
 });
 
+// 28.09 — havale teklifi bekleyen firmada kart yolu kapalı: kartın "30 gün
+// ücretsiz deneme" satırı düğmenin altındaki "teklifiniz açık" cümlesiyle
+// çelişiyordu (görsel kontrolde yakalandı).
+describe('T · deneme vaadi yalnız kart yolu kapalı DEĞİLKEN', () => {
+  const sahip = { mevcutMu: false, sahipMi: true };
+  const havale: DegisimOzeti = { yol: 'yok', kod: 'HAVALE_TEKLIFI_BEKLIYOR', mesaj: 'Havale ile ödeme teklifiniz açık.' };
+
+  it('⭐ kapalı kart (bekleyen havale teklifi) → deneme satırı YOK', () => {
+    const eylem = kartEylemi({ kod: 'a', degisim: havale }, sahip);
+    expect(eylem.tur).toBe('kapali');
+    expect(kartDenemesiGosterilsinMi(eylem)).toBe(false);
+  });
+
+  it('satın al / geç / mevcut / sahip değil → eskisi gibi çizilir', () => {
+    expect(kartDenemesiGosterilsinMi(kartEylemi({ kod: 'a', degisim: { yol: 'satin-al' } }, sahip))).toBe(true);
+    expect(kartDenemesiGosterilsinMi(kartEylemi({ kod: 'a', degisim: DEGISTIR_HEMEN }, sahip))).toBe(true);
+    expect(kartDenemesiGosterilsinMi(kartEylemi({ kod: 'a' }, { mevcutMu: true, sahipMi: true }))).toBe(true);
+    expect(kartDenemesiGosterilsinMi(kartEylemi({ kod: 'a' }, { mevcutMu: false, sahipMi: false }))).toBe(true);
+  });
+});
+
 describe('S · BAĞLANTI — sayfa bu kurallara GERÇEKTEN bağlı', () => {
   const sayfa = kodu(oku('app/(protected)/abonelik/page.tsx'));
+
+  it('⭐ kartın deneme satırı kart eylemine bağlı (tek yer, koşulsuz ikizi YOK)', () => {
+    expect(sayfa).toContain('{kartDenemesiGosterilsinMi(eylem) && <DenemeSatiri surum={p.surum} />}');
+    expect(sayfa.split('<DenemeSatiri').length - 1).toBe(1);
+  });
 
   it('kart kararı modülden (sahiplik ölçütü AYNI ifade)', () => {
     expect(sayfa).toContain("from '@/ozellik/odeme/paket-degisimi'");

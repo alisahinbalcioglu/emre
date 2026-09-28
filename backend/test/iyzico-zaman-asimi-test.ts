@@ -560,6 +560,9 @@ function sahteDb() {
     },
     // Adres yok: degisim maili ATLANIR (e-posta bu kapinin konusu degil).
     firma: { findUnique: async () => null },
+    // 28.09: satın alma kapısı bekleyen havale teklifini sorar
+    // (`bekleyenHavaleVarMi`); bu dünyada havale yok.
+    havaleOdemesi: { count: async () => 0 },
     $transaction: async (fn: any) => fn(db),
   };
   return db;

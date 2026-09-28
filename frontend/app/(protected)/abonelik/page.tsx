@@ -9,6 +9,7 @@ import { KAPSAM_ETIKET, SEVIYE_ETIKET, donemEki, kotaCumlesi, odemeDenemeNotu, p
 import {
   bekleyenDegisimCumlesi,
   degisimOnayMetni,
+  kartDenemesiGosterilsinMi,
   kartEylemi,
   mevcutPaketMi,
   type PaketGecisi,
@@ -656,8 +657,9 @@ export default function AbonelikSayfasi() {
                     {vitrinFiyati(p.surum).alt}
                   </p>
                 )}
-                {/* Faz 6.12a: deneme BİR KEZ — hakkı olmayana "daha önce kullanıldı". */}
-                <DenemeSatiri surum={p.surum} />
+                {/* Faz 6.12a: deneme BİR KEZ — hakkı olmayana "daha önce kullanıldı".
+                    28.09: kart yolu kapalı kartta vaat yok (`kartDenemesiGosterilsinMi`). */}
+                {kartDenemesiGosterilsinMi(eylem) && <DenemeSatiri surum={p.surum} />}
 
               </div>
 

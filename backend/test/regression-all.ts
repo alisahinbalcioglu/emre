@@ -533,6 +533,9 @@ const SUITES: Suite[] = [
   //    görmüyordu; denetleyici gövdeyi akıtır, 256 KiB'lık kopma da motoru keser.
   //    Motor tarafı: python `tests/test_olay_dongusu.py` (CI'da yok).
   { ad: 'DWG istemci koptu: saf sinyal · kopma motoru keser · büyük gövdede de · normal istek · önceden kopmuş · zaman aşımı · eski yollar kapalı (S/K/B/N/Y/Z/E)', script: 'test:dwg-istemci-koptu', zincir: 'Z0' },
+  // 26.09: Nest geometriyi (17 MB) cozup yeniden yaziyordu — olay dongusu her proje
+  // acilisinda ~0,7 sn duruyordu (canli imaj). Artik motorun baytlari AKITILIR.
+  { ad: 'DWG geometri akışı: baytlar aynen · döngü serbest · hata eşlemesi · sahiplik önce · kopma · yarım akış · zaman aşımı (A/D/H/S/K/Y/Z)', script: 'test:dwg-geometri-akis', zincir: 'Z0' },
   // DWG kiracı dedup (26.09.2026): motor aynı içeriği TÜM kiracılar arasında
   //    tekilleştiriyordu; ikinci firma birincinin file_id'sini `dedup: true` ile
   //    alıp kendi yüklemesinde 403 yiyor, çizimi başkasının yüklediğini öğreniyordu
@@ -646,7 +649,7 @@ const SUITES: Suite[] = [
   //    bloğunda ölçülür) iç içe geçme sıralarını, gerçek fatura taramasıyla
   //    NES kesim talebini ve denetleyicinin yol kimliğini ölçer. DB/AĞ/iyzico
   //    GEREKTİRMEZ.
-  { ad: 'Havale durum geçişleri: READ COMMITTED taklidi · çift onay (4 sıra) · iptal ↔ onay · fatura kesildi · kusurdan kalma satır · denetleyici · Prisma önkoşulu (T/Y1-Y4/S/İ/F/FK/G/D/K)', script: 'test:havale-onay-yarisi', zincir: 'Z0' },
+  { ad: 'Havale durum geçişleri: READ COMMITTED taklidi · çift onay (4 sıra) · iptal ↔ onay · fatura kesildi · kusurdan kalma satır · denetleyici · farklı havale kilidi · yeni firma vitrini + kart kapısı · Prisma önkoşulu (T/Y1-Y4/S/İ/F/FK/G/D/FH/V/K)', script: 'test:havale-onay-yarisi', zincir: 'Z0' },
   // ── 16.09.2026 — FAZ 6.12a DENEME BİR KEZ. DB ve AĞ GEREKTİRMEZ (bellek-Prisma,
   //    kısıt + ILIKE joker + iç içe geçen çağrılar). Ölçülen: deneme hakkı hiçbir
   //    kimliğe bağlı değildi; aynı firma (iptal/deneme sonu ödeme alınamadı), hesap
@@ -913,6 +916,10 @@ const SUITES: Suite[] = [
   // 10 dk dönüş işi + dunning kısıt günü). GERÇEK MutabakatJob + Abonelik +
   // SatinAlma + Havale + Dunning + Webhook + Erisim + MirasDonusuJob; yarışlar
   // okuma kancasıyla, TZ=UTC. DB/AĞ/iyzico GEREKTİRMEZ.
+  // 27.09: D9/D10 — saatlik süre dolumu işinin yazımı aday okumasına koşullu
+  // (miras DIŞI satırlar da: havale onayı / gecikmiş deneme tahsilatı yarışı).
+  // 27.09: H7/H8 — hak taşıyan firmaya BAŞKA miras paketiyle havale teklifi
+  // reddedilir (teklif + onay; güvenlik ORTA-1, Emre kararı b).
   { ad: 'Miras hakkı: saf kural · kart · iptal yolları · dönüş · havale · dunning · kapı · deneme · metinler · kapatma · bağlantı (S/K/İ/D/H/N/G/T/E/C/B/Z)', script: 'test:miras-hakki', zincir: 'Z0' },
   // 23.09 (Emre kararı): paketsiz YENİ hesap duvar görmez, uygulamayı GEZER
   // ("yalnızca gezsin"); Malzeme Havuzu'nda "fiyatlar paketle açılsın".
