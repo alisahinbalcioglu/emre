@@ -6,7 +6,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../../altyapi/auth/guards/jwt-auth.guard';
 import { istemciKopmaSinyali } from '../../altyapi/http/istemci-koptu';
-import { DwgEngineService } from './dwg-engine.service';
+import { DwgEngineService, DwgMotorYogunHatasi } from './dwg-engine.service';
 import { resolveScaleParam } from './scale-param';
 import { CurrentUser } from '../../altyapi/auth/decorators/current-user.decorator';
 import { kimlikCoz } from '../../altyapi/auth/kimlik';
@@ -180,6 +180,10 @@ export class DwgEngineController {
       // Istemciye yalniz on yuzun kullandigi alanlar: motorun ic alanlari (kapsamli…) gecmez.
       const { file_id, status, dedup } = yanit as { file_id: string; status: string; dedup?: boolean };
       return dedup === true ? { file_id, status, dedup } : { file_id, status };
+    } catch (e) {
+      // Motor hatti dolu (429): onerilen bekleme basliga; on yuz otomatik yeniden gondermez.
+      if (e instanceof DwgMotorYogunHatasi) res.setHeader('Retry-After', String(e.tekrarSn));
+      throw e;
     } finally {
       await geciciDosyayiSil(file.path);
     }

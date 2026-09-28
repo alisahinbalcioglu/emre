@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 845
-Toplam satir: 230828
+Kod dosyasi: 847
+Toplam satir: 231059
 Uc nokta: 238
 test:* scripti: 139
 
@@ -91,12 +91,12 @@ test:* scripti: 139
 | `backend/src/app.module.ts` | 72 |
 | `backend/src/health.controller.ts` | 33 |
 | `backend/src/main.ts` | 87 |
-| `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | 224 |
+| `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | 228 |
 | `backend/src/modules/dwg-engine/dwg-engine.module.ts` | 14 |
-| `backend/src/modules/dwg-engine/dwg-engine.service.ts` | 517 |
+| `backend/src/modules/dwg-engine/dwg-engine.service.ts` | 534 |
 | `backend/src/modules/dwg-engine/dwg-gecici-depo.ts` | 132 |
 | `backend/src/modules/dwg-engine/dwg-sahiplik.servisi.ts` | 199 |
-| `backend/src/modules/dwg-engine/dwg-yukleme-kapisi.ts` | 101 |
+| `backend/src/modules/dwg-engine/dwg-yukleme-kapisi.ts` | 110 |
 | `backend/src/modules/dwg-engine/python/converter.py` | 598 |
 | `backend/src/modules/dwg-engine/python/deploy-to-cloudrun.sh` | 71 |
 | `backend/src/modules/dwg-engine/python/geometry.py` | 757 |
@@ -335,7 +335,7 @@ test:* scripti: 139
 | `backend/test/dwg-geometri-akis-test.ts` | 528 |
 | `backend/test/dwg-istemci-koptu-test.ts` | 449 |
 | `backend/test/dwg-kiraci-dedup-test.ts` | 463 |
-| `backend/test/dwg-yukleme-test.ts` | 838 |
+| `backend/test/dwg-yukleme-test.ts` | 857 |
 | `backend/test/ekip-izinleri-test.ts` | 568 |
 | `backend/test/erisim-kapisi-test.ts` | 692 |
 | `backend/test/erken-kurtarma-test.ts` | 402 |
@@ -505,7 +505,7 @@ test:* scripti: 139
 | `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | 176 |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | 36 |
 | `frontend/components/dwg-metraj/DwgSayfaCercevesi.tsx` | 31 |
-| `frontend/components/dwg-metraj/DwgUploader.tsx` | 646 |
+| `frontend/components/dwg-metraj/DwgUploader.tsx` | 679 |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | 484 |
 | `frontend/components/dwg-metraj/constants.ts` | 28 |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | 178 |
@@ -513,6 +513,8 @@ test:* scripti: 139
 | `frontend/components/dwg-metraj/types.ts` | 59 |
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | 118 |
 | `frontend/components/dwg-metraj/unit-detection.ts` | 79 |
+| `frontend/components/dwg-metraj/yukleme-hatasi.test.ts` | 96 |
+| `frontend/components/dwg-metraj/yukleme-hatasi.ts` | 53 |
 | `frontend/components/dwg-tagging/index.ts` | 14 |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | 110 |
 | `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | 1559 |
@@ -933,7 +935,7 @@ test:* scripti: 139
 | `backend/src/main.ts` | `@nestjs/core` `@nestjs/platform-express` `@nestjs/common` `express` `./app.module` `./altyapi/http/guvenlik-basliklari` `./altyapi/http/govde-siniri` `./altyapi/http/cors` |
 | `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | `@nestjs/platform-express` `express` `../../altyapi/auth/guards/jwt-auth.guard` `../../altyapi/http/istemci-koptu` `./dwg-engine.service` `./scale-param` `../../altyapi/auth/decorators/current-user.decorator` `../../altyapi/auth/kimlik` `./dwg-sahiplik.servisi` `./dwg-gecici-depo` `./dwg-yukleme-kapisi` `../../ozellik/odeme/abonelik/erisim.guard` `../../ozellik/odeme/abonelik/erisim.servisi` |
 | `backend/src/modules/dwg-engine/dwg-engine.module.ts` | `@nestjs/common` `./dwg-engine.controller` `./dwg-engine.service` `./dwg-sahiplik.servisi` `../../ozellik/odeme/odeme.module` |
-| `backend/src/modules/dwg-engine/dwg-engine.service.ts` | `node:stream` `node:stream/promises` `node:stream/web` `@nestjs/common` `node:crypto` `node:fs` `express` |
+| `backend/src/modules/dwg-engine/dwg-engine.service.ts` | `node:stream` `node:stream/promises` `node:stream/web` `@nestjs/common` `node:crypto` `node:fs` `express` `./dwg-yukleme-kapisi` |
 | `backend/src/modules/dwg-engine/dwg-gecici-depo.ts` | `@nestjs/common` `node:crypto` `node:fs` `node:fs/promises` `node:os` `node:path` `node:stream/promises` `express` `multer` `../../altyapi/http/istemci-koptu` |
 | `backend/src/modules/dwg-engine/dwg-sahiplik.servisi.ts` | `node:crypto` `../../altyapi/db/prisma.service` |
 | `backend/src/modules/dwg-engine/dwg-yukleme-kapisi.ts` | `express` `../../altyapi/auth/kimlik` |
@@ -1313,10 +1315,11 @@ test:* scripti: 139
 | `frontend/components/dwg-diameter-engine/useLayerCalc.ts` | `react` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/components/dwg-metraj` `@/components/dwg-workspace/types` `./types` |
 | `frontend/components/dwg-diameter-engine/useOriginalColorState.ts` | `react` |
 | `frontend/components/dwg-metraj/DwgSayfaCercevesi.tsx` | `react` `next/link` `lucide-react` |
-| `frontend/components/dwg-metraj/DwgUploader.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ortak/lib/api` `./types` `./unit-detection` `@/components/dwg-workspace` `./DwgSayfaCercevesi` |
+| `frontend/components/dwg-metraj/DwgUploader.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ortak/lib/api` `./types` `./unit-detection` `./yukleme-hatasi` `@/components/dwg-workspace` `./DwgSayfaCercevesi` |
 | `frontend/components/dwg-metraj/MetrajEditor.tsx` | `react` `lucide-react` `@/ortak/lib/utils` `@/ortak/hooks/use-toast` `@/ozellik/fiyat/sayi-alani` `./types` |
 | `frontend/components/dwg-metraj/diameter-colors.ts` | `./constants` |
 | `frontend/components/dwg-metraj/unit-detection.test.ts` | `vitest` |
+| `frontend/components/dwg-metraj/yukleme-hatasi.test.ts` | `vitest` `node:fs` `node:path` `./yukleme-hatasi` |
 | `frontend/components/dwg-tagging/useTaggingStore.ts` | `zustand` `zustand/middleware` `@/components/dwg-metraj/diameter-colors` |
 | `frontend/components/dwg-viewer/DxfCanvasViewer.tsx` | `rbush` `lucide-react` `@/ortak/lib/api` `./types` `@/components/dwg-metraj/types` `@/components/dwg-metraj/diameter-colors` `@/components/dwg-metraj/constants` `./segment-length` `./canli-cap` `./gorunum-kutusu` `./useViewport` `./aci-colors` |
 | `frontend/components/dwg-viewer/canli-cap.test.ts` | `node:fs` `node:path` `typescript` `vitest` `./canli-cap` `../dwg-metraj/constants` `../dwg-metraj/types` |

@@ -25,7 +25,9 @@ import { kimlikCoz } from '../../altyapi/auth/kimlik';
  *  Nest'te diske 250 MB'a kadar gecici dosya, motorda bir o kadar kaynak dosya ve
  *  bir donusum hatti isi demektir; tek firma paralel yuklemeyle ikisini de
  *  tuketebilirdi. Firma basina en cok 2 yukleme ayni anda suruyor; ucuncusu
- *  govdesi okunmadan 429 (on yuz 429'u gecici sayip bekleyip yeniden dener).
+ *  govdesi okunmadan 429 + `Retry-After`. ON YUZ 429'DA DOSYAYI YENIDEN GONDERMEZ
+ *  (28.09): otomatik deneme her seferinde dosyanin TAMAMINI tasirdi; kullaniciya
+ *  mesaj + "Tekrar dene" (`frontend/components/dwg-metraj/yukleme-hatasi.ts`).
  *  Yer, yanit kapaninca (`res` 'close': bitis, hata ya da istemci kopusu — hepsi)
  *  TAM BIR KEZ geri verilir. Surec ici sayac: backend tek surec.
  *  Motor tarafi (donusum hatti ve /parse ayri sinirli semaforlar, hat kuyrugu):
@@ -40,6 +42,12 @@ export const DWG_YUKLEME_AZAMI_BAYT = DWG_YUKLEME_AZAMI_MB * 1024 * 1024;
 /** Cok parcali zarf (sinirlar + parca basliklari + dosya adi) icin Content-Length payi. */
 export const DWG_YUKLEME_ZARF_PAYI_BAYT = 64 * 1024;
 export const FIRMA_BASINA_ES_ZAMANLI_YUKLEME = 2;
+/** Firma sinirina takilan yuklemeye onerilen bekleme (sn, `Retry-After`): suren
+ *  yuklemelerden biri genelde bu surede biter. On yuz otomatik yeniden GONDERMEZ. */
+export const DWG_YUKLEME_SURUYOR_TEKRAR_SN = 30;
+/** Motorun donusum hatti doluyken (motorun 429'u) onerilen bekleme (sn, `Retry-After`):
+ *  hat (kosan + sirada) buyuk dosyada dakikalar icinde bosalir. */
+export const DWG_MOTOR_YOGUN_TEKRAR_SN = 60;
 
 /** Anahtar basina es zamanli is sayaci (surec ici). */
 export class AnahtarliEsZamanlilik {
@@ -91,6 +99,7 @@ export class DwgYuklemeKapisi implements CanActivate {
     // Istemci kapidan once gittiyse 'close' coktan yayildi: yer alinirsa hic geri verilmez.
     if (res.destroyed) return false;
     if (!firmaYuklemeleri.al(firmaId)) {
+      res.setHeader('Retry-After', String(DWG_YUKLEME_SURUYOR_TEKRAR_SN));
       throw new HttpException(DWG_YUKLEME_SURUYOR_MESAJI, HttpStatus.TOO_MANY_REQUESTS);
     }
     // `once`: 'close' ikinci kez yayilsa da yer tek kez geri verilir.
