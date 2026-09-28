@@ -14,16 +14,18 @@ KARAR: bu surecin isleri `_ETKIN_YUKLEMELER` kumesinde (/upload "processing" yaz
 ekler, is son durumu yazdiktan SONRA cikarir). Tek iscide (WORKERS=1, canli) kumede olmayan
 "processing" kaydinin sahibi olmus bir surectir: /status, dedup ve /geometry onu "error"a
 cevirir, yarim ciktilari (`_yarim_ciktilari_sil`) ve ham kaynagi siler, dedup ona BAGLANMAZ.
-YAS SINIRI YOK: `asyncio.to_thread` havuzu doluyken sonraki yukleme SIRADA bekler;
-`started_at`'ten olculen sinir canli isi oldururdu (R3). Cok iscide kapatma yok (R2).
+YAS SINIRI YOK: yukleme hatti doluyken is hat semaforunda SIRADA bekler (kosan + sirada);
+`started_at`'ten olculen sinir siradaki canli isi oldururdu (R3). Cok iscide kapatma yok (R2).
 
 SOZLESME:
   R1 ⭐ GERCEK yeniden baslama: motor 1 AYRI SURECTE (gercek main.app + uvicorn, yarim cikti
-     yazip uyuyan taklit isci); uc yukleme "processing"deyken motor 1 ve isciler OLDURULUR.
+     yazip uyuyan taklit isci); dort yukleme "processing"deyken — ucunun iscisi calisirken,
+     dorduncusu hat semaforunda SIRADA (iscisi hic baslamadi) — motor 1 ve isciler OLDURULUR.
      Ayni onbellekte motor 2 (motor 1'den farkli surec: bu pytest sureci, bos is kumesi, bayrak
      `_TEK_ISCI` ZORLANMAZ — ortamdan turetilen gercek deger): (a) /status "error" + "yeniden yukleyin", kaynak ve
      yarim ciktilar silinir; (b) ayni icerik + kapsam yeniden yuklenince olu kimlige dedup
-     YAPILMAZ, yeni kimlik "ready" olur, olu kayit "error"; (c) /geometry "isleniyor" DEMEZ.
+     YAPILMAZ, yeni kimlik "ready" olur, olu kayit "error"; (c) /geometry "isleniyor" DEMEZ;
+     (d) sirada olen is de /status'ta "error", ham kaynagi silinir.
   R2 cok iscide (WORKERS>1) kume baska iscinin isini gormez → sahipsiz kayit KAPATILMAZ.
   R3 bu surecin SIRADA bekleyen eski (15 dk) isi canli kalir: /status "processing", dedup surer.
   R4 is son durumu kumeden CIKMADAN once yazar (aksi: denetim "processing" + kumede yok gorur,
@@ -175,14 +177,17 @@ def motor2(onbellek):
     th.join(30)
 
 
-def _motor1_ile_takili_kayitlar(onbellek, tmp_path, icerikler: list[bytes]) -> list[str]:
-    """Motor 1 (ayri surec) yuklemeleri baslatir, isciler calisirken motor 1 ve isciler OLDURULUR."""
+def _motor1_ile_takili_kayitlar(onbellek, tmp_path, icerikler: list[bytes], calisan: int) -> list[str]:
+    """Motor 1 (ayri surec) yuklemeleri baslatir, isciler calisirken motor 1 ve isciler OLDURULUR.
+
+    Yukleme hatti `calisan` isi AYNI ANDA kosturur (`DWG_YUKLEME_ES_ZAMANLI`); fazlasi hat
+    semaforunda SIRADA bekler — iscisi hic baslamadan olen is de "processing" kalir."""
     yavas = tmp_path / "yavas_isci.py"
     yavas.write_text(YAVAS_ISCI, encoding="utf-8")
     pid_dosyasi = tmp_path / "isci_pid.txt"
     port = _bos_port()
     ortam = {**os.environ, "YB_MOTOR": MOTOR_DIZINI, "YB_ONBELLEK": str(onbellek), "YB_ISCI": str(yavas),
-             "YB_PORT": str(port), "YB_ISCI_PID": str(pid_dosyasi)}
+             "YB_PORT": str(port), "YB_ISCI_PID": str(pid_dosyasi), "DWG_YUKLEME_ES_ZAMANLI": str(calisan)}
     hata_gunlugu = tmp_path / "motor1.stderr"
     with open(hata_gunlugu, "wb") as hata:
         motor1 = subprocess.Popen([sys.executable, "-c", MOTOR1], env=ortam,
@@ -205,7 +210,7 @@ def _motor1_ile_takili_kayitlar(onbellek, tmp_path, icerikler: list[bytes]) -> l
             d, y = _yukle(port, icerik)
             assert d == 200 and y["status"] == "processing" and not y.get("dedup"), y
             kimlikler.append(y["file_id"])
-        assert _bekle(lambda: len(iscilerin_pidleri()) == len(icerikler), 30), "OLCUT: isciler baslamadi"
+        assert _bekle(lambda: len(iscilerin_pidleri()) == calisan, 30), "OLCUT: isciler baslamadi"
     finally:
         motor1.kill()  # deploy: konteyner durur — arka plan isi durum YAZAMAZ
         motor1.wait(30)
@@ -218,8 +223,9 @@ def _motor1_ile_takili_kayitlar(onbellek, tmp_path, icerikler: list[bytes]) -> l
 
 
 def test_R1_gercek_yeniden_baslamada_takili_kayit_kapanir(onbellek, tmp_path):
-    icerikler = [_icerik("A"), _icerik("B"), _icerik("C")]
-    a, b, c = _motor1_ile_takili_kayitlar(onbellek, tmp_path, icerikler)
+    icerikler = [_icerik("A"), _icerik("B"), _icerik("C"), _icerik("D")]
+    # A, B, C'nin iscisi calisirken; D hat semaforunda SIRADA (iscisi hic baslamadi).
+    a, b, c, sirada = _motor1_ile_takili_kayitlar(onbellek, tmp_path, icerikler, calisan=3)
     # OLCUT: olum gercekten "takili" kayit birakti — durum "processing", ham kaynak, yarim DXF ve
     # yarim geometri diskte (yoksa asagidaki yesil bos kumeye bakar).
     for fid in (a, b, c):
@@ -227,6 +233,9 @@ def test_R1_gercek_yeniden_baslamada_takili_kayit_kapanir(onbellek, tmp_path):
         kalan = _kalanlar(fid)
         assert (any(main._SRC_INFIX in k for k in kalan) and main._CACHE_PREFIX + fid + main._CACHE_SUFFIX in kalan
                 and any(k.endswith(".tmp") for k in kalan)), kalan
+    # OLCUT: D gercekten sirada oldu — "processing", yalniz ham kaynak (isci hic yazmadi).
+    assert main._read_state(sirada)["status"] == "processing", main._read_state(sirada)
+    assert len(_kalanlar(sirada)) == 1 and main._SRC_INFIX in _kalanlar(sirada)[0], _kalanlar(sirada)
 
     port, srv, th = _motor2_baslat()
     sorunlar = []
@@ -251,6 +260,12 @@ def test_R1_gercek_yeniden_baslamada_takili_kayit_kapanir(onbellek, tmp_path):
             sorunlar.append(f"(c) /geometry olu kayitta: HTTP {d} {g} durum={main._read_state(c)['status']}")
         elif not (d == 404 and "yukleyin" in g.get("detail", "")):
             sorunlar.append(f"(c) /geometry yaniti: HTTP {d} {g}")
+        # (d) SIRADA olen is de kapanir: /status "error", ham kaynagi silinir.
+        d, st = _istek(port, "GET", f"/status/{sirada}")
+        if not (d == 200 and st.get("status") == "error" and "yeniden yukleyin" in st.get("error", "")):
+            sorunlar.append(f"(d) /status sirada olen kayitta: HTTP {d} {st}")
+        if _kalanlar(sirada):
+            sorunlar.append(f"(d) sirada olen kaydin dosyalari kaldi: {_kalanlar(sirada)}")
     finally:
         srv.should_exit = True
         th.join(30)

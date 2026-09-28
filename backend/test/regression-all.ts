@@ -533,6 +533,15 @@ const SUITES: Suite[] = [
   //    görmüyordu; denetleyici gövdeyi akıtır, 256 KiB'lık kopma da motoru keser.
   //    Motor tarafı: python `tests/test_olay_dongusu.py` (CI'da yok).
   { ad: 'DWG istemci koptu: saf sinyal · kopma motoru keser · büyük gövdede de · normal istek · önceden kopmuş · zaman aşımı · eski yollar kapalı (S/K/B/N/Y/Z/E)', script: 'test:dwg-istemci-koptu', zincir: 'Z0' },
+  // DWG YÜKLEME (26.09): `/dwg-engine/upload` gövdeyi bellekte tutuyordu (multer
+  //    memoryStorage 1 GB + motora Blob kopyası: istek başına ~2 GB); kenarda gövde
+  //    sınırı, DWG uçlarında eş zamanlılık sınırı yoktu. Şimdi diske akar, diskten
+  //    motora akar; tavan 250 MB (ölçülen en büyük gerçek DWG 98,8 MB), firma başına
+  //    2 eş zamanlı yükleme, Caddy 260 MiB / diğer /api 60 MiB. İlk koşu undici'nin
+  //    akış gövdesini `tee()`leyip tamamını bellekte biriktirdiğini yakaladı (S8).
+  //    Motor tarafı (döngü dışı kopya/özet, ayrı sınırlı semaforlar): python
+  //    `tests/test_olay_dongusu.py` D4 + Y1-Y3 (CI: regression-gate `dwg-engine` isi).
+  { ad: 'DWG yükleme: Caddy↔Nest tavan · kapı sırası · 200 MB bayt bayt ve bellek dışı · ön 413 · multer 413 · firma başına 429 · kopmada temizlik · motor hatası (C/M/G/S/O/L/E/A/H)', script: 'test:dwg-yukleme', zincir: 'Z0' },
   // 26.09: Nest geometriyi (17 MB) cozup yeniden yaziyordu — olay dongusu her proje
   // acilisinda ~0,7 sn duruyordu (canli imaj). Artik motorun baytlari AKITILIR.
   { ad: 'DWG geometri akışı: baytlar aynen · döngü serbest · hata eşlemesi · sahiplik önce · kopma · yarım akış · zaman aşımı (A/D/H/S/K/Y/Z)', script: 'test:dwg-geometri-akis', zincir: 'Z0' },

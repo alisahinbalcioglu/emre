@@ -10,11 +10,14 @@ Akis:
   4. POST /parse?file_id=  → secilen layer'larin metraji (parse_worker.py alt sureci)
 
 OLAY DONGUSU KURALI (26.09.2026): tek uvicorn iscisi (WORKERS=1) TUM kiracilara
-hizmet eder. `async def` uc icinde donusum, ezdxf okumasi ya da alt surec
-BEKLENMEZ — agir is alt surece gider, alt surec `asyncio.to_thread` icinde
-beklenir. Eski POST /layers, POST /convert ve dosya govdeli /parse donusumu
-dongude yapiyordu: tek istek motoru 120 sn'ye kadar dondurabiliyordu. Canlida
-kullanimlari SIFIR olculdu (ayni gun) ve kaldirildi. Kapi: tests/test_olay_dongusu.py.
+hizmet eder. `async def` uc icinde donusum, ezdxf okumasi, alt surec ya da
+boyutla orantili G/C (yuklenen govdenin ozeti/kopyasi) BEKLENMEZ — agir is alt
+surece gider, alt surec AYRI bir bekleme havuzunda beklenir; kisa G/C
+`asyncio.to_thread`e verilir. Eski POST /layers, POST /convert ve dosya govdeli
+/parse donusumu dongude yapiyordu: tek istek motoru 120 sn'ye kadar
+dondurabiliyordu. Canlida kullanimlari SIFIR olculdu (ayni gun) ve kaldirildi.
+Yukleme hatti ile /parse ayri sinirli semaforlarla kosar (bkz. ES ZAMANLILIK).
+Kapi: tests/test_olay_dongusu.py.
 
 `def` UC (IS PARCACIGI) DA KACIS DEGILDIR: surec ici ezdxf, buyuk `json.loads` /
 `json.dumps` GIL'i dongu ile paylasir. C duzeyindeki json GIL'i HIC birakmaz —
@@ -32,6 +35,7 @@ import time
 import uuid
 import logging
 import tempfile
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -53,7 +57,16 @@ if os.path.isfile(_ENV_PATH):
             _k, _v = _line.split("=", 1)
             os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
 
-app = FastAPI(title="MetaPrice DWG Engine", version="2.2.0")
+
+@asynccontextmanager
+async def _yasam_dongusu(_uygulama):
+    """Kapanista yukleme hatti isleri (sirada bekleyenler dahil) bitirilir, sonra
+    bekleme havuzu kapanir — bkz. `_es_zamanlilik_kapat`."""
+    yield
+    await _es_zamanlilik_kapat()
+
+
+app = FastAPI(title="MetaPrice DWG Engine", version="2.2.0", lifespan=_yasam_dongusu)
 
 app.add_middleware(
     CORSMiddleware,
@@ -809,7 +822,9 @@ async def get_geometry(file_id: str):
     try:
         bilgi = os.stat(yol)
     except FileNotFoundError:
-        if (_sahipsiz_islemeyi_kapat(file_id, _read_state(file_id)) or {}).get("status") == "processing":
+        # Sahipsiz kaydi kapatmak diske yazar: kisa G/C de dongude yapilmaz (D4).
+        durum = await asyncio.to_thread(_sahipsiz_islemeyi_kapat, file_id, _read_state(file_id))
+        if (durum or {}).get("status") == "processing":
             raise HTTPException(409, "Geometri henuz hazir degil — dosya isleniyor.")
         _get_cached_dxf(file_id)  # 404 bilinmiyor · 410 suresi doldu (anlamlar aynen)
         raise HTTPException(409, "Geometri onbellekte yok — dosyayi yeniden yukleyin.")
@@ -830,22 +845,106 @@ async def get_geometry(file_id: str):
 
 import asyncio
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
-# /upload dedup kritik bolgesi icin lock: ayni hash'li es zamanli iki istekten
-# yalniz biri yeni pipeline baslatir. (Process-ici lock; WORKERS=1'de tam
-# guvence, WORKERS>1'de pencere cok kucuk — state dosyasi yine tekilligi saglar.)
-_UPLOAD_LOCK = asyncio.Lock()
+# /upload dedup kritik bolgesi icin kilit: ayni hash'li es zamanli iki istekten
+# yalniz biri yeni pipeline baslatir. Kritik bolge (dedup taramasi + kaynak dosya +
+# durum yazimi) DISK G/C'sidir ve is parcacigi havuzunda kosar — kilit bu yuzden
+# `threading.Lock` (26.09'a dek dongude tutulan asyncio.Lock'tu). Surec ici kilit;
+# WORKERS=1'de tam guvence, WORKERS>1'de pencere cok kucuk — durum dosyasi yine
+# tekilligi saglar.
+_KAYIT_KILIDI = threading.Lock()
+
+
+def _ortam_tamsayi(ad: str, varsayilan: int, asgari: int = 1) -> int:
+    """Ortam degiskeninden tamsayi; yoksa, bozuksa ya da `asgari`nin altindaysa varsayilan."""
+    try:
+        deger = int(os.environ.get(ad) or varsayilan)
+    except ValueError:
+        return varsayilan
+    return deger if deger >= asgari else varsayilan
+
+
+# ═══════════════════════════════════════════════════════
+#  ES ZAMANLILIK (26.09.2026) — yukleme hatti ve /parse AYRI sinirli semaforlar
+# ═══════════════════════════════════════════════════════
+# ESKIDEN: yukleme hatti (alt sureci 600 sn'ye kadar bekleyen `asyncio.to_thread`)
+# ve /parse beklemeleri ayni VARSAYILAN havuzu (min(32, cpu+4) is parcacigi; canli
+# 4 cekirdek → 8) SINIRSIZ paylasiyordu: cpu+4 yavas yukleme her kiracinin
+# /parse'ini kuyruga sokabiliyordu, es zamanli alt surec (bellek) sayisi da sinirsizdi.
+# SIMDI: iki is kendi semaforuyla sinirli ve birbirini beklemez. Alt surec
+# beklemeleri AYRI havuzda: boyutu iki semaforun toplami → semaforu alan is hemen
+# is parcacigi bulur; varsayilan havuz kisa G/C'ye (yukleme kopyasi, kayit) kalir.
+# Hatta en cok ES_ZAMANLI + KUYRUK is durur (kosan + sirada); fazlasi 429 alir —
+# sirada bekleyen her is diskte 250 MB'a kadar kaynak dosya tutar. Dedup (ayni
+# icerik) hatta yer istemez, doluyken de kabul edilir. Kapi: test_olay_dongusu Y3.
+_YUKLEME_HATTI_ES_ZAMANLI = _ortam_tamsayi("DWG_YUKLEME_ES_ZAMANLI", 2)
+_YUKLEME_KUYRUK_AZAMI = _ortam_tamsayi("DWG_YUKLEME_KUYRUK", 8, asgari=0)
+_PARSE_ES_ZAMANLI = _ortam_tamsayi("DWG_PARSE_ES_ZAMANLI", 3)
+
+
+class _EsZamanlilik:
+    """Bir olay dongusunun semaforlari + bekleme havuzu. asyncio ilkelleri ilk
+    beklemede donguye baglanir; testlerde her sunucu yeni dongu kurar, bu yuzden
+    takim dongu basinadir (canlida tek dongu → tek takim)."""
+
+    def __init__(self, dongu: asyncio.AbstractEventLoop) -> None:
+        self.dongu = dongu
+        self.hat = asyncio.Semaphore(_YUKLEME_HATTI_ES_ZAMANLI)
+        self.parse = asyncio.Semaphore(_PARSE_ES_ZAMANLI)
+        self.hat_kapasitesi = _YUKLEME_HATTI_ES_ZAMANLI + _YUKLEME_KUYRUK_AZAMI
+        # Kosan + sirada bekleyen hat isi. YALNIZ dongu degistirir (kilitsiz).
+        self.hattaki = 0
+        self.gorevler: set[asyncio.Task] = set()
+        self.havuz = ThreadPoolExecutor(
+            max_workers=_YUKLEME_HATTI_ES_ZAMANLI + _PARSE_ES_ZAMANLI,
+            thread_name_prefix="dwg-alt-surec",
+        )
+
+
+_ES: _EsZamanlilik | None = None
+
+
+def _es_zamanlilik() -> _EsZamanlilik:
+    """Calisan donguye ait takim (yoksa kurulur)."""
+    global _ES
+    dongu = asyncio.get_running_loop()
+    if _ES is None or _ES.dongu is not dongu:
+        _ES = _EsZamanlilik(dongu)
+    return _ES
+
+
+async def _es_zamanlilik_kapat() -> None:
+    """Uygulama kapanirken: hattaki isler (sirada bekleyenler dahil) biter, sonra
+    havuz kapanir. Eski davranisin aynisi — varsayilan havuz da `asyncio.run`
+    sonunda bekleniyordu; yarim is durum dosyasina yazmadan kalmaz."""
+    es = _ES
+    if es is None or es.dongu is not asyncio.get_running_loop():
+        return
+    if es.gorevler:
+        await asyncio.gather(*list(es.gorevler), return_exceptions=True)
+    await asyncio.to_thread(es.havuz.shutdown, True)
+
+
+async def _hatti_calistir(es: _EsZamanlilik, file_id: str, src_path: str) -> None:
+    """Yukleme hatti isi: sirasini semaforda bekler, alt sureci bekleme havuzunda bekler."""
+    try:
+        async with es.hat:
+            await es.dongu.run_in_executor(es.havuz, _background_pipeline, file_id, src_path)
+    finally:
+        es.hattaki -= 1
+
 
 # SAHIPSIZ "processing" (26.09): kaydin sonucunu ("ready"/"error") arka plan isi
 # yazar. Motor sureci is surerken olurse (her deploy konteyneri yeniden olusturur)
 # yazacak kimse kalmaz: kayit sonsuza dek "processing" kalir, dedup ayni icerigi o
 # olu kimlige baglar, on yuz 10 dk yoklayip zaman asimina duser (TTL'e, 24 sa, dek).
-# Bu surecin isleri burada: /upload kaydi "processing" yazmadan ONCE ekler,
+# Bu surecin isleri burada: `_yuklemeyi_kaydet` kaydi "processing" yazmadan ONCE ekler,
 # `_background_pipeline` son durumu yazdiktan SONRA cikarir. Tek iscide (WORKERS=1,
 # canli) kumede olmayan "processing" kaydinin sahibi olmus bir surectir →
-# `_sahipsiz_islemeyi_kapat`. YAS SINIRI YOK (bilerek): `asyncio.to_thread` havuzu
-# (cpu+4 is parcacigi) doluyken sonraki yukleme SIRADA bekler — `started_at`'ten
-# olculen sinir canli isi oldururdu. Cok iscide (WORKERS>1) kume baska iscinin
+# `_sahipsiz_islemeyi_kapat`. YAS SINIRI YOK (bilerek): yukleme hatti doluyken is
+# hat semaforunda SIRADA bekler (kosan + sirada = ES_ZAMANLI + KUYRUK) — `started_at`'ten
+# olculen sinir siradaki canli isi oldururdu. Cok iscide (WORKERS>1) kume baska iscinin
 # isini gormez → kapatma YOK (eski davranis: TTL). Kapi: tests/test_yeniden_baslama.py.
 _ETKIN_YUKLEMELER: set[str] = set()
 # Isci sayisi TEK yerden okunur: kapatma karari ve uvicorn.run (dosya sonu) ayni degeri
@@ -1156,7 +1255,9 @@ def _sahipsiz_islemeyi_kapat(file_id: str, durum: dict | None) -> dict | None:
     Guncel durumu dondurur (kapatilmadiysa verilenin aynisi). SIRA: once kume, sonra
     disk — is son durumu yazip kumeden CIKMIS olabilir (once yazar, sonra cikar);
     kumede yoksa diskten YENIDEN okunan durum son hali gosterir, cagiranin elindeki
-    eski okuma hala "processing" der. Olay dongusunde cagrilir: yalniz kucuk dosya islemi.
+    eski okuma hala "processing" der. IS PARCACIGINDA cagrilir — kapatma diske yazar,
+    kisa G/C de dongude yapilmaz (test_olay_dongusu D4): /status ve /geometry
+    `asyncio.to_thread` ile, dedup taramasi `_yuklemeyi_kaydet` icinde (`_KAYIT_KILIDI`).
     """
     if (durum or {}).get("status") != "processing" or not _TEK_ISCI or file_id in _ETKIN_YUKLEMELER:
         return durum
@@ -1189,7 +1290,8 @@ def _sahipsiz_islemeyi_kapat(file_id: str, durum: dict | None) -> dict | None:
 
 
 def _background_pipeline(file_id: str, src_path: str) -> None:
-    """Background pipeline orkestratoru — sync function, asyncio.to_thread ile cagrilir.
+    """Background pipeline orkestratoru — sync function, hat semaforu alininca
+    bekleme havuzunda cagrilir (`_hatti_calistir`).
 
     AGIR ISIN TAMAMI (DWG→DXF donusumu + ezdxf parse + geometry cache)
     upload_worker.py SUBPROCESS'inde kosar; bu fonksiyon sadece subprocess'i
@@ -1274,6 +1376,131 @@ def _background_pipeline(file_id: str, src_path: str) -> None:
         _ETKIN_YUKLEMELER.discard(file_id)
 
 
+# Yuklenen govdenin kopyalama parcasi: bellekte ayni anda en cok bu kadari durur.
+_KOPYA_PARCA_BAYT = 1024 * 1024
+
+
+def _yuklemeyi_diske_al(kaynak) -> tuple[str, str, int, bytes]:
+    """Starlette'in diske biriktirdigi govdeyi (SpooledTemporaryFile) onbellek
+    dizininde gecici dosyaya PARCA PARCA kopyalar; sha256 akarken hesaplanir.
+    Is parcacigi havuzunda calisir — DONGUDE CAGRILMAZ (26.09'a dek govdenin
+    tamami `await file.read()` ile bellege aliniyor, ozeti ve yazimi dongude
+    yapiliyordu: canli imajda 200 MB → RSS +200 MB, dongu 0,32 sn bloklu; yerel 1 sn).
+    Hata olursa gecici dosya silinir. → (gecici_yol, ozet16, bayt, ilk_6_bayt)"""
+    ozet = hashlib.sha256()
+    boyut = 0
+    bas = b""
+    gecici = os.path.join(_CACHE_DIR, f"{_CACHE_PREFIX}yukleniyor_{uuid.uuid4().hex}")
+    try:
+        kaynak.seek(0)
+        with open(gecici, "wb") as hedef:
+            while parca := kaynak.read(_KOPYA_PARCA_BAYT):
+                if len(bas) < 6:
+                    bas = (bas + parca)[:6]
+                ozet.update(parca)
+                hedef.write(parca)
+                boyut += len(parca)
+    except BaseException:
+        try:
+            os.unlink(gecici)
+        except OSError:
+            pass
+        raise
+    return gecici, ozet.hexdigest()[:16], boyut, bas
+
+
+def _yuklemeyi_kaydet(gecici: str, file_hash: str, ext: str, dosya_adi: str, yer_var: bool,
+                      kapsam: str | None = None) -> dict:
+    """Dedup taramasi + yeni kaydin (kaynak dosya + durum) ATOMIK yazimi — ayni
+    dosyanin es zamanli iki yuklemesi cift hat baslatmasin. Is parcacigi havuzunda
+    `_KAYIT_KILIDI` altinda calisir (dizin taramasi + durum dosyalari disk G/C'sidir).
+
+    `yer_var`: dongu hatta yer ayirdi mi. Dedup yer istemez (hatta is eklemez); yer
+    yoksa ve dedup da yoksa {"yogun": True}. Kaydedilmeyen gecici dosya silinir.
+    `kapsam` (kiraci dedup, 26.09): tekillestirme YALNIZ ayni kapsamda; kapsamsiz
+    yukleme hic tekillestirilmez. Kayit kapsami tasir (bkz. upload_async).
+    """
+    kaydedildi = False
+    try:
+        with _KAYIT_KILIDI:
+            _cleanup_cache()
+
+            # ── DEDUP: ayni hash zaten islemde/hazir mi? ──
+            # DIKKAT: DEDUP BIRIM TESPITINI DE DONDURUR. Cache TTL 24 saat
+            # oldugu icin, tespit motoru degistikten sonra ayni dosya eski
+            # (yanlis) birimle geri gelebilirdi — kullanici yeniden yukledigini
+            # sanip bayat cevap alirdi. Bu yuzden state'e DETECTOR_VERSION
+            # yazilir ve surum uyusmuyorsa dedup ATLANIR (yeniden parse edilir).
+            # KAPSAM: yalniz ayni firmanin kaydina baglanir; kapsamsiz yukleme
+            # hic taranmaz (bkz. upload_async).
+            for fid, st in (_iter_states() if kapsam is not None else ()):
+                if st.get("hash") != file_hash or st.get("kapsam") != kapsam:
+                    continue
+                if st.get("detector_version") != DETECTOR_VERSION:
+                    logging.info("Dedup atlandi (birim tespit surumu eski: %s != %s)",
+                                 st.get("detector_version"), DETECTOR_VERSION)
+                    continue
+                # Olu surecin "processing" kaydi kapatilir, ona BAGLANILMAZ.
+                status = (_sahipsiz_islemeyi_kapat(fid, st) or {}).get("status")
+                # Geometri dosyasi da SART: yoksa (deploy oncesi eski bicim ya da
+                # silinmis) /geometry 409 verir — ayni file_id'ye dedup kullaniciyi
+                # 24 saat kilitlerdi; yeniden isleme dosyayi uretir.
+                if (status == "ready" and os.path.isfile(_cache_path(fid))
+                        and os.path.isfile(_geometry_cache_path(fid))):
+                    logging.info("Upload dedup (ready): %s → %s", dosya_adi, fid)
+                    return {"file_id": fid, "status": "ready", "dedup": True}
+                if status == "processing" and (
+                    os.path.isfile(_src_path(fid, ext)) or os.path.isfile(_cache_path(fid))
+                ):
+                    logging.info("Upload dedup (processing): %s → %s", dosya_adi, fid)
+                    return {"file_id": fid, "status": "processing", "dedup": True}
+                # status=error veya dosyalar kaybolmus → dedup etme, yeniden isle
+
+            if not yer_var:
+                return {"yogun": True}
+
+            # ── Yeni hat isi: gecici dosya kaynak yoluna (ayni dizin → atomik) + durum ──
+            file_id = uuid.uuid4().hex[:12]
+            # "processing" yazilmadan ONCE bu surecin isi: denetim onu hic sahipsiz
+            # gormez — hat semaforunda SIRADA beklerken de (yazim patlarsa kalan
+            # kimlik zararsiz — kaydi yok).
+            _ETKIN_YUKLEMELER.add(file_id)
+            src_path = _src_path(file_id, ext)
+            os.replace(gecici, src_path)
+            try:
+                _write_state(file_id, {
+                    "status": "processing",
+                    "hash": file_hash,
+                    "kapsam": kapsam,
+                    "started_at": time.time(),
+                    # Frontend "ready" gelene kadar bunlari kullanir; worker tespit
+                    # sonucunu okuyup state'e yazar (artik ezilmiyor).
+                    # DIKKAT: "processing" asamasinda HENUZ TESPIT YAPILMADI —
+                    # guven "yok" olarak isaretlenir ki frontend bu ara degeri
+                    # gercek bir tespit sanip kullaniciya "mm" gostermesin.
+                    "suggested_scale": 0.001,
+                    "suggested_unit_label": "mm",
+                    "suggested_confidence": "yok",
+                    "suggested_method": "beklemede",
+                    "suggested_evidence": [],
+                    "detector_version": DETECTOR_VERSION,
+                })
+            except BaseException:
+                try:
+                    os.unlink(src_path)
+                except OSError:
+                    pass
+                raise
+            kaydedildi = True
+            return {"file_id": file_id, "status": "processing", "src_path": src_path}
+    finally:
+        if not kaydedildi:
+            try:
+                os.unlink(gecici)
+            except OSError:
+                pass
+
+
 @app.post("/upload")
 async def upload_async(file: UploadFile = File(...), kapsam: str | None = Form(None)):
     """Async upload — dosyayi DISKE yazar, file_id ile HEMEN doner (~1-2sn).
@@ -1298,6 +1525,11 @@ async def upload_async(file: UploadFile = File(...), kapsam: str | None = Form(N
     yuklemeyi ayni hatayla reddeder — yalniz tekillestirilen dosya reddedilseydi
     "bu cizimi baskasi yuklemis" yine okunurdu. Kapi: tests/test_dedup_kapsam.py.
 
+    BOYUTLA ORANTILI IS DONGUDE DEGIL (26.09): govde bellege alinmaz; kopyasi,
+    ozeti, dedup taramasi ve kaydi is parcacigi havuzunda (`_yuklemeyi_diske_al`,
+    `_yuklemeyi_kaydet`). Hat doluysa (kosan + sirada = ES_ZAMANLI + KUYRUK) yeni
+    icerik 429 alir; ayni icerik (dedup) yine kabul edilir.
+
     Response: {file_id, status: "processing"|"ready", dedup?: true, kapsamli?: true}
     """
     if not file.filename:
@@ -1311,93 +1543,54 @@ async def upload_async(file: UploadFile = File(...), kapsam: str | None = Form(N
     kapsam = kapsam or None
     if kapsam is not None and not _KAPSAM_BICIMI.fullmatch(kapsam):
         raise HTTPException(400, "Gecersiz kapsam")
+    # Kapsam uygulandi isareti (Nest gormezse eski motor sayar ve reddeder).
+    kapsamli = {"kapsamli": True} if kapsam is not None else {}
 
-    content = await file.read()
-
-    # ── DWG VERSION LOG (sadece teshis amacli, reddetmiyoruz) ───────
-    # LibreDWG R2013'e (AC1027) kadar tam, R2018+ (AC1032) icin kismi destek.
-    if ext == 'dwg' and len(content) >= 6:
-        try:
-            ver = content[:6].decode('ascii', errors='replace')
-            logging.info("DWG version: %s (file=%s, size=%d)", ver, file.filename, len(content))
-        except Exception:
-            pass
-
-    file_hash = hashlib.sha256(content).hexdigest()[:16]
-
+    es = _es_zamanlilik()
     try:
-        # Kritik bolge: dedup taramasi + state yazimi atomik olsun ki ayni
-        # dosyanin es zamanli iki upload'i cift pipeline baslatmasin.
-        async with _UPLOAD_LOCK:
-            _cleanup_cache()
+        gecici, file_hash, boyut, bas = await asyncio.to_thread(_yuklemeyi_diske_al, file.file)
 
-            # ── DEDUP: ayni hash zaten islemde/hazir mi? ──
-            # DIKKAT: DEDUP BIRIM TESPITINI DE DONDURUR. Cache TTL 24 saat
-            # oldugu icin, tespit motoru degistikten sonra ayni dosya eski
-            # (yanlis) birimle geri gelebilirdi — kullanici yeniden yukledigini
-            # sanip bayat cevap alirdi. Bu yuzden state'e DETECTOR_VERSION
-            # yazilir ve surum uyusmuyorsa dedup ATLANIR (yeniden parse edilir).
-            # KAPSAM: yalniz ayni firmanin kaydina baglanir; kapsamsiz yukleme
-            # hic taranmaz (docstring).
-            adaylar = _iter_states() if kapsam is not None else []
-            for fid, st in adaylar:
-                if st.get("hash") != file_hash or st.get("kapsam") != kapsam:
-                    continue
-                if st.get("detector_version") != DETECTOR_VERSION:
-                    logging.info("Dedup atlandi (birim tespit surumu eski: %s != %s)",
-                                 st.get("detector_version"), DETECTOR_VERSION)
-                    continue
-                # Olu surecin "processing" kaydi kapatilir, ona BAGLANILMAZ.
-                status = (_sahipsiz_islemeyi_kapat(fid, st) or {}).get("status")
-                # Geometri dosyasi da SART: yoksa (deploy oncesi eski bicim ya da
-                # silinmis) /geometry 409 verir — ayni file_id'ye dedup kullaniciyi
-                # 24 saat kilitlerdi; yeniden isleme dosyayi uretir.
-                if (status == "ready" and os.path.isfile(_cache_path(fid))
-                        and os.path.isfile(_geometry_cache_path(fid))):
-                    logging.info("Upload dedup (ready): %s → %s", file.filename, fid)
-                    return {"file_id": fid, "status": "ready", "dedup": True, "kapsamli": True}
-                if status == "processing" and (
-                    os.path.isfile(_src_path(fid, ext)) or os.path.isfile(_cache_path(fid))
-                ):
-                    logging.info("Upload dedup (processing): %s → %s", file.filename, fid)
-                    return {"file_id": fid, "status": "processing", "dedup": True, "kapsamli": True}
-                # status=error veya dosyalar kaybolmus → dedup etme, yeniden isle
+        # ── DWG VERSION LOG (sadece teshis amacli, reddetmiyoruz) ───────
+        # LibreDWG R2013'e (AC1027) kadar tam, R2018+ (AC1032) icin kismi destek.
+        if ext == 'dwg' and len(bas) >= 6:
+            logging.info("DWG version: %s (file=%s, size=%d)",
+                         bas.decode('ascii', errors='replace'), file.filename, boyut)
 
-            # ── Yeni pipeline: ham dosyayi diske yaz + state + spawn ──
-            file_id = uuid.uuid4().hex[:12]
-            # "processing" yazilmadan ONCE bu surecin isi: denetim onu hic sahipsiz
-            # gormez (yazim patlarsa kalan kimlik zararsiz — kaydi yok).
-            _ETKIN_YUKLEMELER.add(file_id)
-            src_path = _src_path(file_id, ext)
-            with open(src_path, "wb") as sf:
-                sf.write(content)
+        # Hatta yer DONGUDE ayrilir (sayaci yalniz dongu degistirir); dedup ya da
+        # "yogun" donerse geri verilir.
+        yer_var = es.hattaki < es.hat_kapasitesi
+        if yer_var:
+            es.hattaki += 1
+        try:
+            sonuc = await asyncio.to_thread(
+                _yuklemeyi_kaydet, gecici, file_hash, ext, file.filename, yer_var, kapsam)
+        except BaseException:
+            if yer_var:
+                es.hattaki -= 1
+            raise
+        if yer_var and "src_path" not in sonuc:
+            es.hattaki -= 1
 
-            _write_state(file_id, {
-                "status": "processing",
-                "hash": file_hash,
-                "kapsam": kapsam,
-                "started_at": time.time(),
-                # Frontend "ready" gelene kadar bunlari kullanir; worker tespit
-                # sonucunu okuyup state'e yazar (artik ezilmiyor).
-                # DIKKAT: "processing" asamasinda HENUZ TESPIT YAPILMADI —
-                # guven "yok" olarak isaretlenir ki frontend bu ara degeri
-                # gercek bir tespit sanip kullaniciya "mm" gostermesin.
-                "suggested_scale": 0.001,
-                "suggested_unit_label": "mm",
-                "suggested_confidence": "yok",
-                "suggested_method": "beklemede",
-                "suggested_evidence": [],
-                "detector_version": DETECTOR_VERSION,
-            })
+        if sonuc.get("yogun"):
+            logging.warning("Upload reddedildi: hat dolu (%d is)", es.hattaki)
+            raise HTTPException(
+                429,
+                "DWG motoru su an cok sayida projeyi isliyor; birkac dakika sonra tekrar deneyin.",
+            )
+        if sonuc.get("dedup"):
+            return {"file_id": sonuc["file_id"], "status": sonuc["status"], "dedup": True, **kapsamli}
 
         # Agir is: izole subprocess (upload_worker.py) — event loop bloklanmaz,
-        # OOM olsa bile yalniz cocuk process olur.
-        asyncio.create_task(asyncio.to_thread(_background_pipeline, file_id, src_path))
+        # OOM olsa bile yalniz cocuk process olur. Sirasini hat semaforunda bekler.
+        gorev = asyncio.create_task(_hatti_calistir(es, sonuc["file_id"], sonuc["src_path"]))
+        es.gorevler.add(gorev)
+        gorev.add_done_callback(es.gorevler.discard)
 
-        yanit = {"file_id": file_id, "status": "processing"}
-        if kapsam is not None:
-            yanit["kapsamli"] = True  # Nest isareti gormezse reddeder (docstring)
-        return yanit
+        return {
+            "file_id": sonuc["file_id"],
+            "status": "processing",
+            **kapsamli,
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -1420,7 +1613,8 @@ async def get_upload_status(file_id: str):
     "error" field'inda.
     """
     try:
-        state = _sahipsiz_islemeyi_kapat(file_id, _read_state(file_id))
+        # Sahipsiz kaydi kapatmak diske yazar: kisa G/C de dongude yapilmaz (D4).
+        state = await asyncio.to_thread(_sahipsiz_islemeyi_kapat, file_id, _read_state(file_id))
         if state is None:
             raise HTTPException(404, "file_id bilinmiyor (cache TTL gecmis olabilir)")
 
@@ -1550,10 +1744,13 @@ async def parse_dwg(
     # ── Analiz et (SUBPROCESS IZOLASYON) ──
     # Render free tier 512MB'da bulk parse OOM kill yapiyor. Her parse'i
     # ayri Python subprocess'te calistir — OOM olursa parent worker SAGLAM.
-    # asyncio.to_thread sayesinde main event loop bloke olmaz.
+    # Alt surec bekleme havuzunda beklenir, main event loop bloke olmaz.
     # IPTAL (26.09): NestJS baglantiyi kapatirsa (tarayici istegi iptal etti —
     # DWG Analiz'de birim ayirma surerken degisti) alt surec oldurulur; yetim is
-    # yeniden baslayan istekle CPU paylasmaz.
+    # yeniden baslayan istekle CPU paylasmaz. Sirada beklerken kopan istemcinin isi
+    # sirasi gelince HIC baslamaz (`_run_parse_subprocess` once bayraga bakar).
+    # ES ZAMANLILIK (26.09): /parse kendi semaforuyla sinirli; yukleme hatti ne kadar
+    # dolu olursa olsun /parse onu BEKLEMEZ (eskiden ikisi varsayilan havuzu paylasiyordu).
     iptal = threading.Event()
     bekci = asyncio.create_task(_istemci_kopunca_iptal(request, iptal))
     try:
@@ -1565,12 +1762,14 @@ async def parse_dwg(
             "sprinkler_layers_manual": sprinkler_layers_manual,
             "split_mode": split_mode,
         }
-        # Subprocess'i async thread'de calistir, FastAPI event loop bloke olmasin.
+        # Alt surec /parse semaforunda sirasini bekler, AYRI bekleme havuzunda beklenir.
         # Donen baytlar yanitin ta kendisi (isci: _json_safe + katı JSON + UTF-8);
         # burada json.dumps YOK — eskiden 14 MB'de ~1 sn dongu isiydi (26.09).
-        govde = await asyncio.to_thread(
-            _run_parse_subprocess, dxf_path, params, 180, iptal
-        )
+        es = _es_zamanlilik()
+        async with es.parse:
+            govde = await es.dongu.run_in_executor(
+                es.havuz, _run_parse_subprocess, dxf_path, params, 180, iptal
+            )
         return Response(content=govde, media_type="application/json")
 
     except HTTPException:

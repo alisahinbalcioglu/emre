@@ -72,6 +72,22 @@ www.{$DOMAIN} {
 
     # NestJS API — global prefix zaten /api, path'i oldugu gibi iletiriz.
     handle /api/* {
+        # ── GOVDE TAVANI (26.09) ─────────────────────────────────────────
+        # Eskiden kenarda govde siniri YOKTU: sinirsiz multer ucuna (bellekte)
+        # 1 GB+ govde ulasabiliyordu. Asan govde okunurken kesilir (413).
+        # ⚠ BIRIM: Caddy'de "MB" SI'dir (10^6) — "260MB" Nest'in 250 MiB'inden
+        # KUCUK olurdu. Hep MiB yazin. Kapi: `test:dwg-yukleme` C blogu.
+        #  · DWG yukleme: Nest tavani 250 MiB (dwg-yukleme-kapisi.ts) + cok
+        #    parcali zarf payi → 260 MiB. Olculen en buyuk gercek DWG 98,8 MB.
+        #  · Diger /api: en buyuk mesru govde 50 MB JSON (main.ts) → 60 MiB.
+        @dwgYukleme path /api/dwg-engine/upload
+        request_body @dwgYukleme {
+            max_size 260MiB
+        }
+        @digerApi not path /api/dwg-engine/upload
+        request_body @digerApi {
+            max_size 60MiB
+        }
         reverse_proxy backend:3001 {
             # Buyuk DWG parse'lari 30-90sn surebilir — timeout'lari genis tut.
             transport http {

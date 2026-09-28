@@ -2,6 +2,8 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import type { Response as ExpressResponse } from 'express';
 
 /**
@@ -11,6 +13,22 @@ import type { Response as ExpressResponse } from 'express';
  * (`frontend/ortak/lib/api.ts` AGIR_ZAMAN_ASIMI_MS) ayni.
  */
 const GEOMETRI_GOVDE_TAVANI_MS = 300_000;
+
+/** Content-Disposition'da dosya adi: tirnak, ters bolu ve satir sonu basligi bozar/enjekte eder. */
+function baslikGuvenliAd(ad: string): string {
+  return ad.replace(/["\\\r\n]/g, '_');
+}
+
+/** Motor (FastAPI) hatasi `{"detail": "..."}` doner; kullaniciya yalniz metni gosterilir. */
+function motorHataMetni(govde: string): string {
+  try {
+    const detay = (JSON.parse(govde) as { detail?: unknown })?.detail;
+    if (typeof detay === 'string' && detay.trim()) return detay;
+  } catch {
+    // JSON degil (bos govde, vekil sayfasi): ham metin aynen gosterilir.
+  }
+  return govde;
+}
 
 @Injectable()
 export class DwgEngineService {
@@ -362,39 +380,78 @@ export class DwgEngineService {
    * (~1-2sn); DWG→DXF donusumu + parse izole subprocess'te arka planda.
    * Frontend /status ile poll eder.
    *
+   * DISKTEN AKARAK (26.09): dosya Nest'in gecici diskinden (`DwgGeciciDepo`)
+   * motora cok parcali govde olarak akar; bellekte yalniz 1 MB'lik okuma
+   * parcalari durur. Eskiden `Buffer` + `Blob` kopyasi (istek basina govdenin iki
+   * kati). Govde elle kurulur (FormData dosya yoluyla akitamaz), uzunluk bilinir:
+   * motor Content-Length'li istek alir. Yeniden denemede akis bastan kurulur.
+   *
    * kapsam (26.09): firmaya ozgu opak tekillestirme anahtari (`dedupKapsami`).
    * Motor ayni icerigi yalniz ayni kapsamda tekillestirir; kapsamsiz yukleme hic
-   * tekillestirilmez.
+   * tekillestirilmez. Govdede `file`dan once ayri `kapsam` parcasi (64 hex).
+   *
+   * istemciKoptu: tarayici iletim surerken giderse motor istegi kesilir, yeniden
+   * denenmez (bkz. fetchWithRetry); sessiz 499 + tek iz satiri — /parse ile ayni.
    */
-  async uploadAsync(fileBuffer: Buffer, fileName: string, kapsam: string) {
+  async uploadAsync(
+    dosyaYolu: string, boyut: number, dosyaAdi: string, kapsam: string, istemciKoptu?: AbortSignal,
+  ) {
+    const baslangic = Date.now();
     const factory = (timeoutMs: number): RequestInit => {
-      const formData = new FormData();
-      const blob = new Blob([fileBuffer as any]);
-      formData.append('file', blob, fileName);
-      formData.append('kapsam', kapsam);
+      const sinir = `----metaprice-dwg-${randomBytes(12).toString('hex')}`;
+      const bas = Buffer.from(
+        `--${sinir}\r\nContent-Disposition: form-data; name="kapsam"\r\n\r\n${kapsam}\r\n`
+          + `--${sinir}\r\nContent-Disposition: form-data; name="file"; filename="${baslikGuvenliAd(dosyaAdi)}"\r\n`
+          + 'Content-Type: application/octet-stream\r\n\r\n',
+        'utf8',
+      );
+      const son = Buffer.from(`\r\n--${sinir}--\r\n`, 'utf8');
+      async function* govde() {
+        yield bas;
+        yield* createReadStream(dosyaYolu, { highWaterMark: 1024 * 1024 });
+        yield son;
+      }
       return {
         method: 'POST',
-        body: formData,
-        headers: this.headers(),
+        // Async yineleyici DOGRUDAN (undici destekler; DOM tipinde yok): undici onu
+        // istek uzerine cekilen bir akisa cevirir; soket dolunca okuma durur.
+        body: govde() as unknown as BodyInit,
+        // Akis govdeli fetch icin zorunlu (undici).
+        duplex: 'half',
+        // ⚠ IKISI BIRLIKTE ZORUNLU: aksi hâlde undici istegi yonlendirmede yeniden
+        // gonderebilmek icin KLONLAR ve akisi `tee()` ile ikiye boler; okunmayan kol
+        // gonderilen HER parcayi bellekte biriktirir. Olculdu 26.09 (canli imaj Node
+        // 20.20.2 / undici 6.24.1 ve Node 24): 200 MB iletimde GC sonrasi +52..+192 MB,
+        // motorun aldigi baytla adim adim. Motor ic agdadir, yonlendirme yapmaz.
+        // Kapi: `test:dwg-yukleme` S8.
+        redirect: 'error',
+        window: null,
+        headers: {
+          ...this.headers(),
+          'content-type': `multipart/form-data; boundary=${sinir}`,
+          'content-length': String(bas.length + boyut + son.length),
+        },
         signal: AbortSignal.timeout(timeoutMs),
-      };
+      } as RequestInit;
     };
+
+    // PRD 2.4 — timeout hizalama: Python /upload LibreDWG donusumu YAPMIYOR
+    // (izole subprocess'te), yalniz disk yazimi + kayit. Ic agda 15 sn, 10 MB
+    // basina +1 sn (250 MB → 40 sn; canli imajda 200 MB'in alim + kaydi ~1,2 sn
+    // olculdu). Yeniden deneme iki kati. Frontend axios 120 sn.
+    const ilkZamanAsimi = 15_000 + Math.ceil(boyut / (10 * 1024 * 1024)) * 1_000;
 
     try {
       const response = await this.fetchWithRetry(
         `${this.pythonServiceUrl}/upload`,
         factory,
-        // PRD 2.4 — timeout hizalama: Python /upload artik LibreDWG donusumu
-        // YAPMIYOR (izole subprocess'e tasindi), sadece disk yazimi + spawn.
-        // 15sn ic-ag dosya transferi icin bol pay. Toplam en kotu senaryo
-        // 15+2+30=47sn < frontend axios 120sn — katmanlar artik CAKISMAZ,
-        // eski 30/60sn ile buyuk DWG'de olusan 503 zinciri kalkti.
-        15_000,
-        30_000,
+        ilkZamanAsimi,
+        2 * ilkZamanAsimi,
         'uploadAsync',
+        istemciKoptu,
       );
       if (!response.ok) {
-        const error = await response.text();
+        const error = motorHataMetni(await response.text());
         throw new HttpException(
           `Upload hatasi: ${error}`,
           response.status >= 500 || response.status === 429
@@ -404,6 +461,7 @@ export class DwgEngineService {
       }
       return await response.json();
     } catch (error) {
+      if (istemciKoptu?.aborted) this.istemciGitti('uploadAsync', baslangic);
       this.translateError(error);
     }
   }
