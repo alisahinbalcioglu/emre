@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 849
-Toplam satir: 233434
+Toplam satir: 233684
 Uc nokta: 238
 test:* scripti: 140
 
@@ -264,7 +264,7 @@ test:* scripti: 140
 | `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-islemi.ts` | 249 |
 | `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-paket-epostalari.ts` | 161 |
 | `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | 240 |
-| `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 770 |
+| `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 837 |
 | `backend/src/ozellik/odeme/dunning/kisit-gunu.ts` | 64 |
 | `backend/src/ozellik/odeme/dunning/tahsilat-kirasi.ts` | 109 |
 | `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 339 |
@@ -309,7 +309,7 @@ test:* scripti: 140
 | `backend/test/aile-oncelik-test.ts` | 182 |
 | `backend/test/aile-uyusmazligi-test.ts` | 357 |
 | `backend/test/alias-kelime-yutma-test.ts` | 181 |
-| `backend/test/aninda-tahsilat-test.ts` | 936 |
+| `backend/test/aninda-tahsilat-test.ts` | 1085 |
 | `backend/test/antet-test.ts` | 383 |
 | `backend/test/audit-canli-kosum.ts` | 317 |
 | `backend/test/audit-real-excel.ts` | 82 |
@@ -379,7 +379,7 @@ test:* scripti: 140
 | `backend/test/index-engine-test.ts` | 1775 |
 | `backend/test/iscilik-satir-silme-test.ts` | 128 |
 | `backend/test/iyzico-imza-basligi-test.ts` | 236 |
-| `backend/test/iyzico-zaman-asimi-test.ts` | 1063 |
+| `backend/test/iyzico-zaman-asimi-test.ts` | 1084 |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | 132 |
 | `backend/test/kart-guncelleme-test.ts` | 685 |
 | `backend/test/kaucuk-izolasyon-test.ts` | 244 |
@@ -407,7 +407,7 @@ test:* scripti: 140
 | `backend/test/mutabakat-deneme-test.ts` | 665 |
 | `backend/test/mutabakat-faturasiz-tahsilat-test.ts` | 1489 |
 | `backend/test/mutabakat-kayip-tahsilat-test.ts` | 1412 |
-| `backend/test/odeme-bekliyor-geri-sayim-test.ts` | 731 |
+| `backend/test/odeme-bekliyor-geri-sayim-test.ts` | 744 |
 | `backend/test/odeme-imha-test.ts` | 871 |
 | `backend/test/odeme-onyukleme-test.ts` | 425 |
 | `backend/test/olcu-anahtari-cakismasi-test.ts` | 450 |

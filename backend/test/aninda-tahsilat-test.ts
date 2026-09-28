@@ -31,6 +31,13 @@
  *   M  merdivenle AYNI kira: aktif kirada basamak yarına (ne çekim ne bildirim) ·
  *      merdiven kirayı alır · merdiven + anlık eşzamanlı → tek çekim · merdivenin
  *      reti kirayı kısaltır · zaman aşımı ertelemesi korunur
+ *   H  (28.09) merdivenin HEDEFİ iyzico'ya sorulur — anlık denemeyle TEK kural:
+ *      sahte bildirim atlanır · ödenmiş hedef çekilmez, bildirim gitmez, başarı
+ *      yolu kuyrukta (uçtan uca tek "alındı") · doğrulanamayan/okunamayan hedef
+ *      çekimsiz bir kez ertelenir, ikinci gün bildirim gider · erteleme hakkı
+ *      zaman aşımıyla ortak · bildirimsiz başarısızlıkta iyzico'ya gidilmez ·
+ *      hedef kiradan SONRA sorulur · iki merdiven ve ödenmiş hedefte merdiven +
+ *      müşteri eşzamanlı (İKİ sırada) → tek çekim / sıfır çekim
  *   E  uçtan uca başarı: anlık denemenin kuyruğa yazdığı olay GERÇEK işleyicide →
  *      AKTİF + tam BİR "ödemeniz alındı"; iyzico'nun kendi webhook'u da gelince
  *      yine TEK e-posta, TEK fatura satırı
@@ -91,6 +98,7 @@ const GUN = 24 * SAAT;
 const BASARILI = 'subscription.order.success';
 const BASARISIZ = 'subscription.order.failure';
 const KONU_ALINDI = DUNNING_METINLERI.toparlandi({ firmaAdi: '-', paketAdi: '-', tutar: '-' }).konu;
+const KONU_IKINCI = DUNNING_METINLERI.ikinci({ firmaAdi: '-', paketAdi: '-', tutar: '-' }).konu;
 
 type Gunluk = { kayitlar: string[]; uyarilar: string[]; hatalar: string[] };
 
@@ -841,6 +849,146 @@ async function mBlogu(): Promise<void> {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+//  H — MERDİVENİN HEDEFİ DOĞRULANIR (28.09): anlık denemeyle TEK kural
+// ═════════════════════════════════════════════════════════════════════════
+async function hBlogu(): Promise<void> {
+  console.log('\n── H · merdiven hedefi iyzico\'ya sorar: sahte · ödenmiş · doğrulanamadı · okunamadı · bildirimsiz · yarış ──');
+  const ucuncuGun = { durum: 'ODEME_BEKLIYOR', gunOnce: 3.5, denemeSayisi: 1 };
+  const merdiven = (d: ReturnType<typeof dunyaKur>) => gunluguTopla(() => d.dunning.merdiveniYurut());
+  /** Ret kanıtı YOK: abonelik ACTIVE, sipariş denemesiz WAITING (`tahsilatBasarisizligiKarari` kural 4). */
+  const kanitsiz = (d: ReturnType<typeof dunyaKur>, s: { kod: string; hedef: string }) => {
+    const det = d.iyz.detaylar.get(s.kod);
+    det.subscriptionStatus = 'ACTIVE';
+    det.orders[1] = siparis(s.hedef, Date.now(), Date.now() + 30 * GUN, [], 'WAITING');
+  };
+  /** Başarının webhook'u kaybolmuş: iyzico siparişi ZATEN ödenmiş gösteriyor. */
+  const odenmis = (d: ReturnType<typeof dunyaKur>, s: { kod: string; hedef: string }) => {
+    const det = d.iyz.detaylar.get(s.kod);
+    det.orders[1] = siparis(s.hedef, Date.now() - 3 * GUN, Date.now() + 27 * GUN, ['FAILURE', 'SUCCESS'], 'SUCCESS');
+    det.subscriptionStatus = 'ACTIVE';
+  };
+  {
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-H1', ucuncuGun);
+    d.olay(BASARISIZ, s.kod, 'sahte-siparis', Date.now() - DK, true); // EN YENİ bildirim sahte
+    await merdiven(d);
+    const ab = d.satir(s.ab.id);
+    check('H1 ⭐ en yeni bildirim SAHTE (listede yok) → merdiven atlar, çekim GERÇEK siparişe; basamak işlendi, e-posta yok',
+      JSON.stringify(d.iyz.tekrarlanan) === JSON.stringify([s.hedef]) && ab.denemeSayisi === 2 && d.giden.length === 0 &&
+        d.olaylar(s.ab.id, 'dunning.tekrar.denendi').length === 1,
+      `cekim=${JSON.stringify(d.iyz.tekrarlanan)} deneme=${ab.denemeSayisi} posta=${d.giden.length}`);
+  }
+  {
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-H2', ucuncuGun);
+    odenmis(d, s);
+    const t0 = Date.now();
+    const { g } = await merdiven(d);
+    const ab = d.satir(s.ab.id);
+    const k = d.kuyruk();
+    check('H2 ⭐⭐ hedef ZATEN ödenmiş → merdiven ÇEKMEZ, "alınamadı" GİTMEZ, basamak işlenmedi, kira uzun',
+      d.iyz.tekrarlanan.length === 0 && d.giden.length === 0 && ab.denemeSayisi === 1 && ab.durum === 'ODEME_BEKLIYOR' &&
+        yaklasik(ab.tahsilatKirasi, t0 + KIRA_SONUC_MS) && g.hatalar.length === 0,
+      `cekim=${d.iyz.tekrarlanan.length} posta=${d.giden.length} deneme=${ab.denemeSayisi} kira=${iso(ab.tahsilatKirasi)} hatalar=${JSON.stringify(g.hatalar)}`);
+    check('H2b başarı yolu kuyrukta (tek olay, sipariş, tekil anahtar) + iz dunning.tekrar.odenmis',
+      k.length === 1 && k[0].siparisKodu === s.hedef && k[0].tekilAnahtar === `${ANINDA_DENEME_KAYNAGI}:${BASARILI}:${s.hedef}` &&
+        d.olaylar(s.ab.id, 'dunning.tekrar.odenmis').length === 1,
+      JSON.stringify(k.map((x) => x.tekilAnahtar)));
+    await gunluguTopla(() => d.isleyici.bekleyenleriIsle());
+    const son = d.satir(s.ab.id);
+    check('H2c ⭐ uçtan uca: işleyici başarıyı uygular → AKTİF, dunning izi sıfır, tam BİR "ödemeniz alındı"',
+      son.durum === 'AKTIF' && son.ilkBasarisizlik === null && d.alindiPostasi().length === 1 && d.giden.length === 1,
+      `durum=${son.durum} ilk=${iso(son.ilkBasarisizlik)} giden=${JSON.stringify(d.giden)}`);
+  }
+  for (const [firma, ad, kur] of [
+    ['F-H3a', 'ret DOĞRULANAMADI (ACTIVE, denemesiz WAITING)', (d: ReturnType<typeof dunyaKur>, s: { kod: string; hedef: string }) => kanitsiz(d, s)],
+    ['F-H3b', 'iyzico OKUNAMADI', (d: ReturnType<typeof dunyaKur>) => { d.iyz.durum.getBozuk = true; }],
+  ] as const) {
+    const d = dunyaKur();
+    const s = d.dunningSatiri(firma, ucuncuGun);
+    kur(d, s);
+    await merdiven(d);
+    const bir = { ab: { ...d.satir(s.ab.id) }, posta: d.giden.length, sorulan: d.iyz.sorulan.length };
+    check(`H3 ⭐ ${ad} → 1. gün: çekim YOK, kira GERİ VERİLDİ, bildirim YOK, basamak işlenmedi, iz belirsiz`,
+      d.iyz.tekrarlanan.length === 0 && bir.ab.tahsilatKirasi === null && bir.posta === 0 && bir.ab.denemeSayisi === 1 &&
+        bir.sorulan === 1 && d.olaylar(s.ab.id, 'dunning.tekrar.belirsiz').length === 1,
+      `cekim=${d.iyz.tekrarlanan.length} kira=${iso(bir.ab.tahsilatKirasi)} posta=${bir.posta} deneme=${bir.ab.denemeSayisi} sorulan=${bir.sorulan}`);
+    await merdiven(d); // ertesi gün: aynı basamak, erteleme hakkı kullanılmış
+    const ab = d.satir(s.ab.id);
+    check(`H3b ⭐ ${ad} → 2. gün: bildirim GİDER (sınırsız erteleme yok), basamak işlendi — yine ÇEKİMSİZ, kira boş`,
+      d.iyz.tekrarlanan.length === 0 && d.giden.length === 1 && d.giden[0].konu === KONU_IKINCI && ab.denemeSayisi === 2 &&
+        ab.tahsilatKirasi === null && d.olaylar(s.ab.id, 'dunning.tekrar.belirsiz').length === 1,
+      `cekim=${d.iyz.tekrarlanan.length} posta=${JSON.stringify(d.giden)} deneme=${ab.denemeSayisi} kira=${iso(ab.tahsilatKirasi)}`);
+  }
+  {
+    // Erteleme hakkı zaman aşımıyla ORTAK: bugün yanıtsız, yarın hedef doğrulanamadı → bildirim.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-H4', ucuncuGun);
+    d.iyz.durum.kip = 'zaman-asimi';
+    await merdiven(d);
+    d.satir(s.ab.id).tahsilatKirasi = new Date(Date.now() - 1000); // ertesi 10:00: belirsiz denemenin kirası bitti
+    kanitsiz(d, s);
+    await merdiven(d);
+    const ab = d.satir(s.ab.id);
+    check('H4 erteleme hakkı zaman aşımıyla ORTAK: 1. gün yanıtsız (ertelendi), 2. gün hedef doğrulanamadı → bildirim, ikinci çekim YOK',
+      d.iyz.tekrarlanan.length === 1 && d.giden.length === 1 && ab.denemeSayisi === 2 && ab.tahsilatKirasi === null,
+      `cekim=${d.iyz.tekrarlanan.length} posta=${d.giden.length} deneme=${ab.denemeSayisi} kira=${iso(ab.tahsilatKirasi)}`);
+  }
+  {
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-H5', ucuncuGun);
+    d.db.tablo('webhookOlayi').length = 0; // başarısızlığı gece mutabakatı yazdı: bildirim yok
+    await merdiven(d);
+    const ab = d.satir(s.ab.id);
+    check('H5 bildirimsiz başarısızlık → iyzico\'ya SORULMAZ, kira alınmaz, çekim yok; bildirim eskisi gibi gider',
+      d.iyz.sorulan.length === 0 && d.iyz.tekrarlanan.length === 0 && ab.tahsilatKirasi === null &&
+        d.giden.length === 1 && d.giden[0].konu === KONU_IKINCI && ab.denemeSayisi === 2,
+      `sorulan=${d.iyz.sorulan.length} cekim=${d.iyz.tekrarlanan.length} kira=${iso(ab.tahsilatKirasi)} posta=${d.giden.length}`);
+  }
+  {
+    // Satır okunduktan SONRA ödeme işlendi: kira alınamaz → iyzico'ya HİÇ gidilmez (hedef kiradan SONRA sorulur).
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-H6', ucuncuGun);
+    d.db.kiraBariyeri(1, false, () => {
+      const ab = d.satir(s.ab.id);
+      ab.durum = 'AKTIF';
+      ab.ilkBasarisizlik = null;
+      ab.denemeSayisi = 0;
+    });
+    await merdiven(d);
+    check('H6-FIXTURE merdiven kiraya ulaştı ve satır o anda döngüden çıktı', d.db.kiraVaran() === 1 && d.satir(s.ab.id).ilkBasarisizlik === null);
+    check('H6 ⭐ okunduktan sonra ödenen satır: kira ALINMAZ, iyzico\'ya SORULMAZ, çekim ve bildirim YOK',
+      d.iyz.sorulan.length === 0 && d.iyz.tekrarlanan.length === 0 && d.giden.length === 0 && d.satir(s.ab.id).tahsilatKirasi === null,
+      `sorulan=${d.iyz.sorulan.length} cekim=${d.iyz.tekrarlanan.length} posta=${d.giden.length}`);
+  }
+  for (const ters of [false, true]) {
+    // İki merdiven koşumu aynı anda (çakışan zamanlayıcı / iki süreç).
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-H7', ucuncuGun);
+    d.db.kiraBariyeri(2, ters);
+    await Promise.all([merdiven(d), merdiven(d)]);
+    const ab = d.satir(s.ab.id);
+    check(`H7-FIXTURE (${ters ? 'ters' : 'düz'} sıra) iki merdiven koşumu kiraya AYNI anda ulaştı`, d.db.kiraVaran() === 2, `varan=${d.db.kiraVaran()}`);
+    check(`H7 ⭐⭐ iki merdiven eşzamanlı (${ters ? 'ters' : 'düz'} sıra): TEK çekim, TEK iz, bildirim yok, basamak bir kez işlendi`,
+      d.iyz.tekrarlanan.length === 1 && d.olaylar(s.ab.id, 'dunning.tekrar.denendi').length === 1 && d.giden.length === 0 && ab.denemeSayisi === 2,
+      `cekim=${d.iyz.tekrarlanan.length} iz=${d.olaylar(s.ab.id, 'dunning.tekrar.denendi').length} posta=${d.giden.length} deneme=${ab.denemeSayisi}`);
+  }
+  for (const ters of [false, true]) {
+    // Hedef ödenmiş; merdiven ve müşteri aynı anda: çekim YOK, başarı yolu TEK kez.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-H8', ucuncuGun);
+    odenmis(d, s);
+    d.db.kiraBariyeri(2, ters);
+    const [anlik] = await Promise.all([gunluguTopla(() => d.dunning.anindaDene('F-H8')), merdiven(d)]);
+    check(`H8-FIXTURE (${ters ? 'ters' : 'düz'} sıra) merdiven ve müşteri kiraya AYNI anda ulaştı`, d.db.kiraVaran() === 2, `varan=${d.db.kiraVaran()}`);
+    check(`H8 ⭐⭐ ödenmiş hedef + merdiven ve müşteri eşzamanlı (${ters ? 'ters' : 'düz'} sıra): ÇEKİM YOK, kuyrukta TEK başarı olayı, e-posta yok`,
+      d.iyz.tekrarlanan.length === 0 && d.kuyruk().length === 1 && d.giden.length === 0 && d.iyz.sorulan.length === 1 &&
+        ['alindi', 'zaten-deneniyor'].includes(anlik.sonuc.sonuc),
+      `cekim=${d.iyz.tekrarlanan.length} kuyruk=${d.kuyruk().length} sorulan=${d.iyz.sorulan.length} anlik=${JSON.stringify(anlik.sonuc)}`);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 //  E — UÇTAN UCA BAŞARI YOLU: tek "ödemeniz alındı"
 // ═════════════════════════════════════════════════════════════════════════
 async function eBlogu(): Promise<void> {
@@ -923,6 +1071,7 @@ async function main(): Promise<void> {
   await aBlogu();
   await tBlogu();
   await mBlogu();
+  await hBlogu();
   await eBlogu();
   await cBlogu();
   pBlogu();
