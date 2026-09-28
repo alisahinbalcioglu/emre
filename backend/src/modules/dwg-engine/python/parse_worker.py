@@ -62,9 +62,13 @@ def main():
             result_dict = dict(result)
 
         safe = _json_safe(result_dict)
-        # JSON'u ORIGINAL stdout'a yaz — devnull'a redirect edilmis sys.stdout DEGIL
-        json.dump(safe, _original_stdout, allow_nan=False, ensure_ascii=False)
-        _original_stdout.flush()
+        # JSON'u ORIGINAL stdout'a yaz — devnull'a redirect edilmis sys.stdout DEGIL.
+        # Bu baytlar /parse yanitinin TA KENDISIDIR: ana surec cozmeden aktarir
+        # (main._run_parse_subprocess, 26.09). UTF-8 ACIKCA: metin akisi yerel
+        # kodlamayi (Windows'ta cp1254) kullanirdi.
+        _original_stdout.buffer.write(
+            json.dumps(safe, allow_nan=False, ensure_ascii=False).encode("utf-8"))
+        _original_stdout.buffer.flush()
         # NOT: sys.exit(0) yerine return — SystemExit except Exception'a takilmaz
         # ama yine de cleaner.
         return

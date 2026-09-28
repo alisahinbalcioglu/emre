@@ -200,17 +200,24 @@ export class DwgEngineController {
   }
 
   /**
-   * Cache'teki DXF'ten koordinatlari dondur — SVG viewer (dwg-viewer) icin.
+   * Motor onbellegindeki hazir geometri yaniti — Canvas2D viewer (dwg-viewer) icin.
+   * Yanit COZULMEDEN akitilir (servis `geometriyiAkit`; `@Res()`: Nest serilestirmez).
+   * Eskiden 17 MB'lik yanit burada cozulup yeniden yaziliyordu: Nest'in olay
+   * dongusu her proje acilisinda ~0,7 sn duruyordu (26.09, canli imaj olcumu).
+   * Kopma sinyali ILK satirda: sahiplik sorgusu surerken kopan istemci motora gitmez.
+   * `layers` suzgeci YOK (26.09): motorda DXF'i her istekte surec icinde okutuyordu;
+   * on yuz 06.05'ten beri gondermiyor. Verilirse yok sayilir, tam geometri doner.
    */
   @Get('geometry/:fileId')
   @GerekliYetenek(Yetenek.DWG_YUKLE)
   async getGeometry(
     @CurrentUser() kullanici: unknown,
     @Param('fileId') fileId: string,
-    @Query('layers') layers?: string,
-  ) {
+    @Res() res: Response,
+  ): Promise<void> {
+    const istemciKoptu = istemciKopmaSinyali(res);
     // G2: cizim GEOMETRISI projenin ta kendisidir — capraz-tenant okuma burada durur.
     await this.sahiplik.dogrula(fileId, kimlikCoz(kullanici).firmaId);
-    return this.dwgEngine.getGeometry(fileId, layers ?? '');
+    await this.dwgEngine.geometriyiAkit(fileId, res, istemciKoptu);
   }
 }

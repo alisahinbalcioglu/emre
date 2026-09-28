@@ -540,8 +540,11 @@ const SUITES: Suite[] = [
   //    2 eş zamanlı yükleme, Caddy 260 MiB / diğer /api 60 MiB. İlk koşu undici'nin
   //    akış gövdesini `tee()`leyip tamamını bellekte biriktirdiğini yakaladı (S8).
   //    Motor tarafı (döngü dışı kopya/özet, ayrı sınırlı semaforlar): python
-  //    `tests/test_olay_dongusu.py` D4 + Y1-Y3 (CI'da yok).
+  //    `tests/test_olay_dongusu.py` D4 + Y1-Y3 (CI: regression-gate `dwg-engine` isi).
   { ad: 'DWG yükleme: Caddy↔Nest tavan · kapı sırası · 200 MB bayt bayt ve bellek dışı · ön 413 · multer 413 · firma başına 429 · kopmada temizlik · motor hatası (C/M/G/S/O/L/E/A/H)', script: 'test:dwg-yukleme', zincir: 'Z0' },
+  // 26.09: Nest geometriyi (17 MB) cozup yeniden yaziyordu — olay dongusu her proje
+  // acilisinda ~0,7 sn duruyordu (canli imaj). Artik motorun baytlari AKITILIR.
+  { ad: 'DWG geometri akışı: baytlar aynen · döngü serbest · hata eşlemesi · sahiplik önce · kopma · yarım akış · zaman aşımı (A/D/H/S/K/Y/Z)', script: 'test:dwg-geometri-akis', zincir: 'Z0' },
   // DWG kiracı dedup (26.09.2026): motor aynı içeriği TÜM kiracılar arasında
   //    tekilleştiriyordu; ikinci firma birincinin file_id'sini `dedup: true` ile
   //    alıp kendi yüklemesinde 403 yiyor, çizimi başkasının yüklediğini öğreniyordu
@@ -908,6 +911,10 @@ const SUITES: Suite[] = [
   // 10 dk dönüş işi + dunning kısıt günü). GERÇEK MutabakatJob + Abonelik +
   // SatinAlma + Havale + Dunning + Webhook + Erisim + MirasDonusuJob; yarışlar
   // okuma kancasıyla, TZ=UTC. DB/AĞ/iyzico GEREKTİRMEZ.
+  // 27.09: D9/D10 — saatlik süre dolumu işinin yazımı aday okumasına koşullu
+  // (miras DIŞI satırlar da: havale onayı / gecikmiş deneme tahsilatı yarışı).
+  // 27.09: H7/H8 — hak taşıyan firmaya BAŞKA miras paketiyle havale teklifi
+  // reddedilir (teklif + onay; güvenlik ORTA-1, Emre kararı b).
   { ad: 'Miras hakkı: saf kural · kart · iptal yolları · dönüş · havale · dunning · kapı · deneme · metinler · kapatma · bağlantı (S/K/İ/D/H/N/G/T/E/C/B/Z)', script: 'test:miras-hakki', zincir: 'Z0' },
   // 23.09 (Emre kararı): paketsiz YENİ hesap duvar görmez, uygulamayı GEZER
   // ("yalnızca gezsin"); Malzeme Havuzu'nda "fiyatlar paketle açılsın".

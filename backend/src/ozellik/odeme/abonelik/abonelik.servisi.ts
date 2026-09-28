@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { AbonelikDurumu, KapatmaNedeni, OdemeYontemi, Prisma } from '@prisma/client';
 import type { Abonelik } from '@prisma/client';
@@ -27,6 +27,8 @@ import {
   mirasaDonusVerisi,
   mirasiAyir,
   mirasiBitirVerisi,
+  mirasPaketiDegisimi,
+  mirasPaketiDegisimMesaji,
   mirastanCikisMi,
   odenenDonemTabani,
 } from './miras-hakki';
@@ -1425,6 +1427,22 @@ export class AbonelikServisi {
     // "miras yenilemesi" (teklif = satış dışı miras sürümü) de öyle.
     const hedef = p.hedefPaketSurumuId && p.hedefPaketSurumuId !== ab.paketSurumuId ? p.hedefPaketSurumuId : null;
     const kodlar = hedef ? await Promise.all([this.paketKodu(db, ab.paketSurumuId), this.paketKodu(db, hedef)]) : null;
+    // ⚠ 27.09 — ONAYDA DA miras paketi değişmez (güvenlik incelemesi ORTA-1,
+    // Emre kararı b): teklif kuralı (`HavaleServisi.teklifOlustur`) 27.09'dan
+    // ÖNCE verilmiş teklifi durduramaz. İlk yazımdan ÖNCE fırlar: havale işlemi
+    // geri alınır, satıra hiçbir şey yazılmaz (`test:miras-hakki` H7d).
+    if (hedef && mirasPaketiMi(kodlar?.[1])) {
+      const hakKodu =
+        ab.mirasPaketSurumuId && ab.mirasPaketSurumuId !== ab.paketSurumuId
+          ? await this.paketKodu(db, ab.mirasPaketSurumuId)
+          : null;
+      const degisim = mirasPaketiDegisimi(
+        { ...ab, paketSurumu: { paket: { kod: kodlar?.[0] ?? null } }, mirasPaketSurumu: { paket: { kod: hakKodu } } },
+        kodlar?.[1],
+        simdi,
+      );
+      if (degisim) throw new BadRequestException(mirasPaketiDegisimMesaji(degisim));
+    }
     const satir = { ...ab, paketSurumu: { paket: { kod: kodlar?.[0] ?? null } } };
     const hedefPaket = hedef ? { paketSurumuId: hedef, mirasPaketi: mirasPaketiMi(kodlar?.[1]) } : null;
     const mirastanCikis = !!hedefPaket && mirastanCikisMi(satir, hedefPaket);
