@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 849
-Toplam satir: 234069
+Toplam satir: 234214
 Uc nokta: 238
 test:* scripti: 140
 
@@ -397,7 +397,7 @@ test:* scripti: 140
 | `backend/test/labor-matching-test.ts` | 243 |
 | `backend/test/labor-sheet-test.ts` | 111 |
 | `backend/test/library-transfer-test.ts` | 96 |
-| `backend/test/manifest-kapisi.ts` | 79 |
+| `backend/test/manifest-kapisi.ts` | 224 |
 | `backend/test/matching-regression.ts` | 282 |
 | `backend/test/matching-unit-test.ts` | 714 |
 | `backend/test/migration-zinciri-test.ts` | 907 |
@@ -1213,7 +1213,7 @@ test:* scripti: 140
 | `backend/test/labor-matching-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/labor-matching/labor-matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/labor-sheet-test.ts` | `@prisma/client` `../src/ozellik/kutuphane/labor-firms/labor-firms.service` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/library-transfer-test.ts` | `../src/ozellik/kutuphane/library/library-sheet-builder` |
-| `backend/test/manifest-kapisi.ts` | `fs` `path` |
+| `backend/test/manifest-kapisi.ts` | `fs` `path` `typescript` |
 | `backend/test/matching-regression.ts` | `@prisma/client` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/tag-generator` `../src/ozellik/eslestirme/matching/normalizer` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/matching-unit-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/migration-zinciri-test.ts` | `@electric-sql/pglite` `node:fs` `node:path` `./yardimci/bitmezse-kirmizi` `../src/ozellik/kutuphane/library/library-sheet-builder` |
