@@ -8,14 +8,20 @@ stdout: {"layers": [...], "total_layers": N, "suggested_scale": f,
          "suggested_unit_label": s, "entity_count": N}
 Exit code:
   0  → BASARILI
-  1  → HATA (stderr'de mesaj)
-  -9 → SIGKILL (genelde OOM)
+  1  → HATA (stderr'de mesaj; dxf_out ve geom_out SILINMIS olur)
+  -9 → SIGKILL (genelde OOM; temizligi ana surec yapar: main._yarim_ciktilari_sil)
+
+geom_out (26.09.2026): /geometry YANITININ TA KENDISI — `_json_safe` + katı JSON
+(allow_nan=False) + UTF-8, ATOMIK (.tmp + os.replace). Ana surec dosyayi cozmeden
+akitir; buyuk JSON isi (17 MB'de ~1,4 sn, GIL'i birakmayan C json dahil) yalniz
+burada, motorun disinda yapilir.
 
 Bu izolasyon sayesinde (PRD 2.3):
   - LibreDWG donusumu + ezdxf parse ana motoru ASLA bloklamaz/oldurmez
   - Devasa dosyada OOM olursa yalniz bu process olur, state'e net hata yazilir
   - Her upload temiz process'te kosar, bellek birikimi olmaz
 """
+import gc
 import sys
 import json
 import os
@@ -28,7 +34,20 @@ _original_stdout = sys.stdout
 sys.stdout = open(os.devnull, "w")
 
 
+def _ciktilari_sil(*yollar: str) -> None:
+    """Hata yolunda yarim ciktilari siler — onbellekte DXF'i olup geometrisi
+    olmayan kayit kalmasin (bkz. main._yarim_ciktilari_sil; SIGKILL'i o kapsar)."""
+    for yol in yollar:
+        try:
+            os.unlink(yol)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            sys.stderr.write(f"upload_worker: yarim cikti silinemedi {yol}: {e!r}\n")
+
+
 def main():
+    dxf_out = geom_out = None
     try:
         params = json.loads(sys.stdin.read())
         src_path = params["src_path"]
@@ -68,14 +87,36 @@ def main():
         det = _detect_unit_from_dxf(doc)  # UnitDetection (eskiden (scale, label) tuple'iydi)
         layer_result = extract_layer_info_from_doc(doc)
         geom_result = extract_geometry_from_doc(doc, None)
+        # doc (en buyuk yapi) serilestirmeden ONCE birakilir: yanitin kopyasi + metni +
+        # baytlari doc'la ayni anda bellekte durmasin. Olculdu (26.09, canli imaj, gercek
+        # DXF'ler, tepe RSS): birakmadan 383/601 MB, birakinca 311/534 MB (eski akisli
+        # yazim 292/547 MB); gc.collect 0,5-1 sn. ezdxf varliklari doc'a dongusel bagli —
+        # `del` tek basina birakmaz, gc.collect SART. Sonuclar (det, layer_result,
+        # geom_result) yalniz duz deger tutar.
+        del doc
+        gc.collect()
 
-        # ── 3) Geometry JSON cache'i diske yaz ──
+        # ── 3) /geometry yanitini SON BICIMIYLE, atomik yaz ──
+        # Baytlar eski ucun her istekte urettigiyle ayni (json.load → _json_safe →
+        # json.dumps(allow_nan=False, ensure_ascii=False)); artik bir kez, burada.
+        # Ara kopyalar sirayla birakilir: ayni anda en cok iki bicim bellekte.
         try:
             geom_data = geom_result.model_dump(mode="json")
         except (AttributeError, TypeError):
             geom_data = geom_result.dict()  # Pydantic v1 fallback
-        with open(geom_out, "w", encoding="utf-8") as gf:
-            json.dump(geom_data, gf)
+        entity_count = getattr(geom_result, "entity_count", None)
+        del geom_result
+        guvenli = _json_safe(geom_data)
+        del geom_data
+        metin = json.dumps(guvenli, allow_nan=False, ensure_ascii=False)
+        del guvenli
+        govde = metin.encode("utf-8")
+        del metin
+        gecici = geom_out + ".tmp"
+        with open(gecici, "wb") as gf:
+            gf.write(govde)
+        del govde
+        os.replace(gecici, geom_out)  # yarim dosya asla geom_out adiyla gorunmez
 
         # ── 4) Sonuc JSON'u ORIGINAL stdout'a ──
         out = {
@@ -89,7 +130,7 @@ def main():
             "suggested_confidence": det.confidence,
             "suggested_method": det.method,
             "suggested_evidence": det.evidence[:5],
-            "entity_count": getattr(geom_result, "entity_count", None),
+            "entity_count": entity_count,
         }
         json.dump(_json_safe(out), _original_stdout, allow_nan=False, ensure_ascii=False)
         _original_stdout.flush()
@@ -98,6 +139,8 @@ def main():
     except Exception as e:
         tb = traceback.format_exc()
         sys.stderr.write(f"upload_worker FAIL ({type(e).__name__}): {str(e)[:500]}\n{tb[:2000]}\n")
+        if dxf_out and geom_out:
+            _ciktilari_sil(dxf_out, geom_out, geom_out + ".tmp")
         sys.stderr.flush()
         sys.exit(1)
 
