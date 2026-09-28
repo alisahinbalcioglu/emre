@@ -69,8 +69,10 @@
  *      vitrin + "Havale ödemeniz bekleniyor" · kart düğmesi ve `baslat`
  *      kapalı · iptalde "Paketinizi seçin" · kartla askıya düşen abone ve
  *      ödenmiş havale satırı vitrine DÜŞMEZ
- *   Ö  ÖLÇÜM (assert değil): onaydan sonra fatura satırı yazılamazsa
- *      (2. madde, Fatura oturumunun `kuyrugaAl`ı master'a girince)
+ *   FT (28.09) fatura satırı onayla AYNI işlemde: yazılamazsa onay geri
+ *      alınır, yeniden onay tek fatura + tek NES talebi · yazım onayın
+ *      işleminde, commit'ten önce · ödeme anı = onay anı, paket = etkin paket
+ *      · aynı tahsilat kodlu satır varken işlem bozulmaz
  *   K  kaynak: `relationMode`/`referentialIntegrity` "prisma" değil · Prisma 5.x
  * Her Y senaryosu fatura kuyruğunu GERÇEK `FaturaServisi.kuyrugaBak` +
  * `ElleMuhasebeAdaptoru` ile işler: NES kesim talebi e-postası da sayılır.
@@ -599,6 +601,29 @@ function bellekPrisma() {
             return yansit(model, satir, arg, w);
           }),
         ),
+      // 28.09 — `createMany({ skipDuplicates })` = INSERT … ON CONFLICT DO
+      // NOTHING: tekil çakışmada satır ATLANIR (sayılmaz), işlem BOZULMAZ;
+      // AÇIK başka işlemin yazısıyla çakışmada Postgres onu bekler, sonra
+      // karar verir (`tekilKapisi`). `skipDuplicates` yoksa P2002 fırlar.
+      createMany: (arg: any) =>
+        deyim(model, 'createMany', arg, ic, () =>
+          yazmaIslemi(ic, async (w) => {
+            let count = 0;
+            for (const veri of arg.data as Satir[]) {
+              const satir: Satir = { id: randomUUID(), ...(VARSAYILAN[model]?.() ?? {}) };
+              veriUygula(satir, veri);
+              try {
+                await tekilKapisi(model, satir, w);
+              } catch (e: any) {
+                if (arg.skipDuplicates && e?.code === 'P2002') continue;
+                throw e;
+              }
+              ozelYaz(w, model, satir, true);
+              count++;
+            }
+            return { count };
+          }),
+        ),
       // Prisma 5.22 motoru BOŞ `data`da yazmaz (kaynak okundu): `update` satırı
       // yalnız OKUR (`update_one_with_selection`), `updateMany` sorgu atmadan
       // 0 döner (`update_records`); `@updatedAt` de yalnız dolu veride eklenir.
@@ -788,9 +813,11 @@ function dunyaKur() {
   // tekilliği (`tahsilatKodu` @unique) ikinci kuyruğa almayı SESSİZCE yutar.
   const cagri = { faturaKuyrugu: 0, kartKapat: 0 };
   const asilKuyruk = fatura.kuyrugaAl.bind(fatura);
-  fatura.kuyrugaAl = async (t: Parameters<FaturaServisi['kuyrugaAl']>[0]) => {
+  // ⚠ İKİNCİ ARGÜMAN (28.09 `{ tx }`) AYNEN geçer: düşerse yazım işlem
+  // DIŞINA kayar ve "onayla aynı işlemde" ölçütü kör olurdu.
+  fatura.kuyrugaAl = async (...a: Parameters<FaturaServisi['kuyrugaAl']>) => {
     cagri.faturaKuyrugu++;
-    return asilKuyruk(t);
+    return asilKuyruk(...a);
   };
   const asilKapat = abonelik.havaleIcinKartAboneliginiKapat.bind(abonelik);
   abonelik.havaleIcinKartAboneliginiKapat = async (
@@ -1868,36 +1895,111 @@ async function fhBlogu(): Promise<void> {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
-//  Ö — ÖLÇÜM (assert DEĞİL): 2. madde — Fatura oturumunun `kuyrugaAl`ı
-//  master'a girince onay işleminin İÇİNE taşınır, burası assert olur
+//  FT — FATURA SATIRI ONAYLA AYNI İŞLEMDE (28.09, 2. madde)
 // ═════════════════════════════════════════════════════════════════════════
-async function oBlogu(): Promise<void> {
-  // ── Ö2: onay commit edildikten SONRA fatura kuyruğa alınamazsa.
-  console.log('\n── Ö2 · ÖLÇÜM (assert değil): onaydan sonra fatura satırı yazılamazsa ──');
+/**
+ * Eskiden `kuyrugaAl` onay commit edildikten SONRA, `.catch(log)` ile
+ * çağrılıyordu. Ölçüldü (Ö2, 27.09): fatura satırı yazılamayınca onay
+ * BAŞARILI, erişim +365, havale ONAYLANDI, Fatura 0, NES talebi 0, yeniden
+ * onay 400 "zaten onaylanmış" → talebi yeniden deneyen yol YOK (VUK 231/5).
+ * Artık satır onay işleminin İÇİNDE (`kuyrugaAl({ tx })`, `createMany
+ * skipDuplicates`); yazılamazsa onay geri alınır, yönetici yeniden onaylar.
+ */
+async function ftBlogu(): Promise<void> {
+  console.log('\n── FT · fatura satırı onayla aynı işlemde (yazılamazsa onay geri alınır) ──');
+  // FT1 — satır yazılamazsa: onay GERİ ALINIR; yeniden onay faturayı yazar.
   {
     const d = dunyaKur();
     const taban = tabanTarih();
-    const ab = d.kartliSatir('FO2', taban);
-    const h = await d.bekleyenHavale('FO2');
-    const g0 = gunluk.length;
+    const ab = d.kartliSatir('FT1', taban);
+    const h = await d.bekleyenHavale('FT1');
     let dusur = true;
     d.db.kancalar.deyimOncesi = async (o) => {
-      if (!dusur || o.model !== 'fatura' || o.ad !== 'create') return;
+      if (!dusur || o.model !== 'fatura' || o.ad !== 'createMany') return;
       dusur = false;
       throw Object.assign(new Error('ENJEKTE: fatura satırı yazılamadı (bağlantı koptu)'), { code: 'P1017' });
     };
     const a = await onayIstegi(d, 'A', h);
     d.db.kancalar.deyimOncesi = undefined;
-    const o = await olcNesli(d, ab.id, h);
-    const hata = hatalarSonra(g0).find((m) => /fatura/i.test(m)) ?? 'yok';
+    const sonraA = olc(d, ab.id, h);
+    check('FT1.0 FIXTURE: enjekte hata fatura yazımında tetiklendi', !dusur, 'kanca tetiklenmedi — fatura yazımı createMany değil mi?');
+    check('FT1.1 fatura yazılamayınca onay BAŞARISIZ (hata yutulmadı)', !a.tamam && /ENJEKTE/.test(a.hata?.mesaj ?? ''), hataOzeti(a));
+    check(
+      'FT1.2 havale GERİ ALINDI: hâlâ onaylanabilir (ODEME_BEKLENIYOR, onay anı boş)',
+      sonraA.havale.durum === 'ODEME_BEKLENIYOR' && sonraA.havale.onaylandi === null,
+      `${sonraA.havale.durum} / ${sonraA.havale.onaylandi}`,
+    );
+    check('FT1.3 erişim UZAMADI', sonraA.erisimSonu.getTime() === taban.getTime(), `+${gunFarki(sonraA.erisimSonu, taban)} gün`);
+    check('FT1.4 fatura satırı YOK, "ödemeniz alındı" YOK', sonraA.faturaSatiri === 0 && sonraA.musteriEpostasi === 0, `fatura ${sonraA.faturaSatiri} · e-posta ${sonraA.musteriEpostasi}`);
+    check('FT1.5 açık işlem ve kilit kalmadı', d.db.acikIslemSayisi() === 0 && d.db.kilitSayisi() === 0);
     const b = await onayIstegi(d, 'B', h);
-    olcum(
-      `Ö2 fatura yazılamadı: onay ${hataOzeti(a)} · erişim +${gunFarki(o.erisimSonu, taban)} gün · havale ${o.havale.durum} · ` +
-        `fatura satırı ${o.faturaSatiri} · NES talebi ${o.nesEpostasi} · günlük "${hata.slice(0, 90)}" · ` +
-        `yeniden onay ${hataOzeti(b)} → talebi yeniden deneyen yol ${d.db.tablo('fatura').length === 0 ? 'YOK' : 'var'}`,
+    const sonraB = await olcNesli(d, ab.id, h);
+    check('FT1.6 yöneticinin yeniden onayı BAŞARILI', b.tamam, hataOzeti(b));
+    check('FT1.7 yeniden onayda fatura satırı TAM BİR', sonraB.faturaSatiri === 1, `${sonraB.faturaSatiri}`);
+    check('FT1.8 NES kesim talebi TAM BİR (gerçek fatura taraması)', sonraB.nesEpostasi === 1, `${sonraB.nesEpostasi}`);
+    check(
+      'FT1.9 erişim TEK kez uzadı (+12 ay)',
+      sonraB.erisimSonu.getTime() === ayEkle(taban, 12).getTime(),
+      `erişim ${tarih(sonraB.erisimSonu)} · beklenen ${tarih(ayEkle(taban, 12))}`,
+    );
+    olcum(`FT1 fatura yazılamadı: onay ${hataOzeti(a)} · havale ${sonraA.havale.durum} · fatura ${sonraA.faturaSatiri} → yeniden onay ${hataOzeti(b)} · fatura ${sonraB.faturaSatiri} · NES ${sonraB.nesEpostasi}`);
+  }
+  // FT2 — satır onay İŞLEMİNİN İÇİNDE, commit'ten ÖNCE; alanlar onayın satırlarından.
+  {
+    const d = dunyaKur();
+    const ab = d.kartliSatir('FT2', tabanTarih(), 'S0'); // hesap Basic, teklif Pro
+    const h = await d.bekleyenHavale('FT2');
+    // Onay anı (sahiplenme) ile işlemdeki sonraki `new Date()`ler AYNI
+    // milisaniyeye düşebilir: 5 ms ayrılır ki "ödeme anı = onay anı" ölçütü
+    // "o anki saat" ile KARIŞMASIN (aşağıda FIXTURE KANITI).
+    d.db.kancalar.deyimSonrasi = async (o) => {
+      if (o.istek === 'A' && o.model === 'havaleOdemesi' && o.ad === 'updateMany') await new Promise((r) => setTimeout(r, 5));
+    };
+    const a = await onayIstegi(d, 'A', h);
+    d.db.kancalar.deyimSonrasi = undefined;
+    const yazim = ilkOlay(d.db, (o) => o.tur === 'deyim' && o.istek === 'A' && o.model === 'fatura');
+    const islem = islemBaslaOlayi(d.db, 'A');
+    const commit = commitOlayi(d.db, 'A');
+    check('FT2.1 onay başarılı', a.tamam, hataOzeti(a));
+    check(
+      'FT2.2 ⭐ fatura yazımı onayın İŞLEMİNDE (aynı işlem no) ve commit ÖNCESİ',
+      !!yazim && !!islem && !!commit && yazim.islem === islem.islem && yazim.sira < commit.sira,
+      `yazım ${yazim?.ad}@işlem ${yazim?.islem ?? 'yok'} sıra ${yazim?.sira ?? '-'} · onay işlemi ${islem?.islem ?? '-'} · commit sıra ${commit?.sira ?? '-'}`,
+    );
+    check('FT2.3 işlem içinde tekil-güvenli yazım (createMany)', yazim?.ad === 'createMany', `${yazim?.ad}`);
+    const fatura = d.db.tablo('fatura').find((f) => f.tahsilatKodu === `havale:${h}`);
+    const havale = d.havaleSatiri(h);
+    check(
+      'FT2.4-FIXTURE işlemdeki "şimdi" (dönem başı) onay anından ≥5 ms sonra — ölçüt ikisini ayırt eder',
+      fatura?.donemBasi instanceof Date && havale.onaylandi instanceof Date && fatura.donemBasi.getTime() - havale.onaylandi.getTime() >= 5,
+      `dönem başı ${fatura?.donemBasi?.toISOString?.()} · onay ${havale.onaylandi?.toISOString?.()}`,
+    );
+    check(
+      'FT2.4 ödeme anı = onay anı (havale.onaylandi)',
+      fatura?.tahsilatTarihi instanceof Date && havale.onaylandi instanceof Date && fatura.tahsilatTarihi.getTime() === havale.onaylandi.getTime(),
+      `fatura ${fatura?.tahsilatTarihi?.toISOString?.()} · onay ${havale.onaylandi?.toISOString?.()}`,
+    );
+    check(
+      'FT2.5 paket = onayın yazdığı etkin paket (teklif Pro), hesabın eski paketi (Basic) DEĞİL',
+      fatura?.paketAdi === 'Pro — Mekanik' && d.abonelikSatiri(ab.id).paketSurumuId === 'S1',
+      `paketAdi ${fatura?.paketAdi} · etkin ${d.abonelikSatiri(ab.id).paketSurumuId}`,
     );
   }
-
+  // FT3 — satır ZATEN varsa (elle/eski kayıt): işlem BOZULMAZ, onay geçer, ikinci satır yok.
+  {
+    const d = dunyaKur();
+    const ab = d.kartliSatir('FT3', tabanTarih());
+    const h = await d.bekleyenHavale('FT3');
+    d.db.ekle('fatura', {
+      abonelikId: ab.id, tahsilatKodu: `havale:${h}`, durum: 'KESILDI', tutar: new Prisma.Decimal(1),
+      kdvOrani: 20, kdvTutari: new Prisma.Decimal(0), toplamTutar: new Prisma.Decimal(1), paraBirimi: 'TRY',
+      donemBasi: new Date(), donemSonu: new Date(),
+    });
+    const a = await onayIstegi(d, 'A', h);
+    check('FT3.1 aynı tahsilat kodlu satır varken onay BAŞARILI (tekil ihlal işlemi bozmadı)', a.tamam, hataOzeti(a));
+    check('FT3.2 fatura satırı yine TEK', d.db.tablo('fatura').filter((f) => f.tahsilatKodu === `havale:${h}`).length === 1);
+    check('FT3.3 havale ONAYLANDI', d.havaleSatiri(h).durum === 'ONAYLANDI', d.havaleSatiri(h).durum);
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -1955,7 +2057,7 @@ function vitrinDunyasi() {
 }
 
 const kararOzeti = (k: ErisimKarari) =>
-  `vitrin=${k.vitrin === true} erisimVar=${k.erisimVar} durum=${k.durum} paket="${k.paketKodu}" ` +
+  `vitrin=${k.vitrin === true} neden=${k.vitrinNedeni ?? '-'} erisimVar=${k.erisimVar} durum=${k.durum} paket="${k.paketKodu}" ` +
   `şerit=${k.uyari?.seviye}:"${k.uyari?.baslik}" eylem=${k.uyari?.eylem ? `${k.uyari.eylem.etiket}→${k.uyari.eylem.yol}` : '-'}`;
 const dugmeOzeti = (y: unknown) => JSON.stringify(y ?? null);
 
@@ -1968,6 +2070,7 @@ async function vBlogu(): Promise<void> {
   const once = await v.karar('FYENI');
   check('V1.1 teklif öncesi (satır yok): vitrin, "Paketinizi seçin"', once.vitrin === true && once.uyari?.baslik === 'Paketinizi seçin', kararOzeti(once));
   check('V1.2 teklif öncesi: kart formu açılır (kapı yok)', (await v.kartFormu('FYENI')) === KAPIDAN_GECTI);
+  check('V1.3 teklif öncesi vitrin nedeni "paket-yok"', once.vitrinNedeni === 'paket-yok', kararOzeti(once));
 
   // V2 — teklif verildi (TEKLIF): satır ASKIDA + HAVALE açılır.
   const h = await v.d.bekleyenHavale('FYENI', { faturali: false });
@@ -1991,6 +2094,8 @@ async function vBlogu(): Promise<void> {
     kararOzeti(teklifte),
   );
   check('V2.5 ödenmemiş paket gösterilmez (paket kodu boş)', teklifte.paketKodu === '', kararOzeti(teklifte));
+  // 28.09 Emre kararı ("pencere + kilitli kart"): ön yüz bu nedenle ikinci kez paket seçtirmez.
+  check('V2.8 vitrin nedeni "havale-bekleniyor" (pencere + kilitli kart havale metni)', teklifte.vitrinNedeni === 'havale-bekleniyor', kararOzeti(teklifte));
   const dugme = await v.kartDugmesi('FYENI');
   check(
     'V2.6 paket kartı: kart yolu KAPALI (HAVALE_TEKLIFI_BEKLIYOR) + nedeni',
@@ -2020,6 +2125,7 @@ async function vBlogu(): Promise<void> {
     kararOzeti(iptalde),
   );
   check('V4.2 iptalden sonra paket kartı "satın al"', (await v.kartDugmesi('FYENI'))?.yol === 'satin-al');
+  check('V4.4 iptalden sonra vitrin nedeni yine "paket-yok"', iptalde.vitrinNedeni === 'paket-yok', kararOzeti(iptalde));
   check('V4.3 iptalden sonra kart formu açılır', (await v.kartFormu('FYENI')) === KAPIDAN_GECTI);
   olcum(`V teklif: ${kararOzeti(teklifte)} · kart düğmesi ${dugmeOzeti(dugme)} · form ${form} · iptalde ${kararOzeti(iptalde)}`);
 
@@ -2048,6 +2154,7 @@ async function vBlogu(): Promise<void> {
   const kartTeklif = await v.karar('FKART');
   check('V6.3 aynı aboneye havale teklifi: şerit DEĞİŞMEZ (vitrin yalnız havale satırı)', kartTeklif.vitrin !== true && kartTeklif.uyari?.seviye === 'kritik', kararOzeti(kartTeklif));
   check('V6.4 bekleyen teklifte kart formu AÇILMAZ (iki ödeme — geri dönen müşteride de)', (await v.kartFormu('FKART')) === 'HAVALE_TEKLIFI_BEKLIYOR');
+  check('V6.5 vitrin olmayan kararda neden alanı YOK', kartTeklif.vitrinNedeni === undefined && onayda.vitrinNedeni === undefined, `${kararOzeti(kartTeklif)} · ${kararOzeti(onayda)}`);
 
   // V7 — SAVUNMA: ASKIDA + HAVALE ama ÖDENMİŞ satır vitrine düşmez.
   const odenmis = (firmaId: string, havale: Satir) => {
@@ -2134,7 +2241,7 @@ async function main(): Promise<void> {
     await blok('D', dBlogu);
     await blok('FH', fhBlogu);
     await blok('V', vBlogu);
-    await blok('Ö', oBlogu);
+    await blok('FT', ftBlogu);
     await blok('K', kBlogu);
   } finally {
     if (oncekiYonetim === undefined) delete process.env.YONETIM_EPOSTA;

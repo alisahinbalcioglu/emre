@@ -46,6 +46,12 @@ export interface ErisimKarari {
    * DEĞİLDİR (eski sunucu → eski duvar; güvenli yön).
    */
   vitrin?: boolean;
+  /**
+   * 28.09 — vitrinin NEDENİ (sunucu yazar, `erisim.servisi.ts` `VitrinNedeni`):
+   * `havale-bekleniyor` = havale teklifi ödenmeyi bekleyen firma. Pencere ve
+   * kilitli kart onu ikinci kez paket seçmeye yollamaz (Emre kararı).
+   */
+  vitrinNedeni?: 'paket-yok' | 'havale-bekleniyor';
   durum: AbonelikDurumu;
   uyari: ErisimUyarisi | null;
   kalanGun: number | null;
@@ -211,6 +217,16 @@ const VITRINDE_GEZILEBILIR_ONEK_YOL = /^\/(materials|abonelik|profile|koltuk-dur
  */
 export function vitrinMi(karar: ErisimKarari | null | undefined): boolean {
   return karar?.vitrin === true && karar.erisimVar !== true;
+}
+
+/**
+ * 28.09 — Vitrin, havale teklifi ödenmeyi bekleyen firma için mi? Pencere ve
+ * kilitli kart bu firmaya "dekontunuz onaylanınca açılır" der, "Paketleri
+ * gör" göstermez (Emre kararı: ikinci kez paket seçtirilmez). Alan yoksa
+ * (eski sunucu) HAYIR — eski vitrin metni kalır.
+ */
+export function havaleBekleniyorMu(karar: ErisimKarari | null | undefined): boolean {
+  return vitrinMi(karar) && karar?.vitrinNedeni === 'havale-bekleniyor';
 }
 
 /** Vitrinde bu yolun sayfası gezilebilir mi? (liste yukarıda, gerekçesiyle) */

@@ -20,13 +20,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/ortak/ui/dialog';
-import { vitrinMi } from './erisim-durumu';
+import { havaleBekleniyorMu, vitrinMi } from './erisim-durumu';
 import type { Paket } from './paket-bicim';
 import {
-  VITRIN_BASLIGI,
   VITRIN_GEZINTI_METNI,
   vitrinDenemeSatiri,
-  vitrinIslemMetni,
+  vitrinPencereIcerigi,
   type VitrinDenemeBilgisi,
   type VitrinIslemi,
 } from './vitrin-metinleri';
@@ -70,6 +69,8 @@ const VitrinBaglami = createContext<VitrinDegeri>(BOS);
 export function VitrinSaglayici({ children }: { children: ReactNode }) {
   const { erisim } = useCapabilities();
   const vitrin = vitrinMi(erisim);
+  // 28.09 — havale teklifi ödenmeyi bekleyen firma: pencere paket seçtirmez.
+  const havale = havaleBekleniyorMu(erisim);
   const [deneme, setDeneme] = useState<VitrinDenemeBilgisi | null>(null);
   /** `null` = pencere KAPALI; değer = pencereyi açan iş. */
   const [islem, setIslem] = useState<VitrinIslemi | null>(null);
@@ -115,7 +116,7 @@ export function VitrinSaglayici({ children }: { children: ReactNode }) {
   return (
     <VitrinBaglami.Provider value={deger}>
       {children}
-      {vitrin && <VitrinPenceresi islem={islem} deneme={deneme} onKapat={kapat} />}
+      {vitrin && <VitrinPenceresi islem={islem} deneme={deneme} havale={havale} onKapat={kapat} />}
     </VitrinBaglami.Provider>
   );
 }
@@ -134,41 +135,57 @@ const TON_SINIFI: Record<VitrinDenemeBilgisi['ton'], string> = {
 function VitrinPenceresi({
   islem,
   deneme,
+  havale,
   onKapat,
 }: {
   islem: VitrinIslemi | null;
   deneme: VitrinDenemeBilgisi | null;
+  /** 28.09 — havale teklifi ödenmeyi bekliyor: "Tamam" yalnız, paket seçtirilmez. */
+  havale: boolean;
   onKapat: () => void;
 }) {
+  const icerik = vitrinPencereIcerigi(islem, havale);
   return (
     <Dialog open={islem !== null} onOpenChange={(acik) => { if (!acik) onKapat(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{VITRIN_BASLIGI}</DialogTitle>
-          <DialogDescription>{vitrinIslemMetni(islem)}</DialogDescription>
+          <DialogTitle>{icerik.baslik}</DialogTitle>
+          <DialogDescription>{icerik.metin}</DialogDescription>
         </DialogHeader>
-        {deneme && (
+        {icerik.denemeGoster && deneme && (
           <p className={`text-sm font-medium ${TON_SINIFI[deneme.ton]}`} data-deneme-tonu={deneme.ton}>
             {deneme.metin}
           </p>
         )}
         <p className="text-sm text-muted-foreground">{VITRIN_GEZINTI_METNI}</p>
-        <DialogFooter className="gap-2 sm:gap-0">
-          <button
-            type="button"
-            onClick={onKapat}
-            className="inline-flex h-9 items-center justify-center rounded-md border px-4 text-sm font-medium transition-colors hover:bg-accent"
-          >
-            Vazgeç
-          </button>
-          <Link
-            href="/abonelik"
-            onClick={onKapat}
-            className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Paketleri gör
-          </Link>
-        </DialogFooter>
+        {icerik.paketlereYonlendir ? (
+          <DialogFooter className="gap-2 sm:gap-0">
+            <button
+              type="button"
+              onClick={onKapat}
+              className="inline-flex h-9 items-center justify-center rounded-md border px-4 text-sm font-medium transition-colors hover:bg-accent"
+            >
+              Vazgeç
+            </button>
+            <Link
+              href="/abonelik"
+              onClick={onKapat}
+              className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Paketleri gör
+            </Link>
+          </DialogFooter>
+        ) : (
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={onKapat}
+              className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Tamam
+            </button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );
