@@ -92,8 +92,16 @@ export const KART_ABONELIGI_ACIK_MESAJI =
   'Yeni bir abonelik başlatmak kartınızdan iki kez çekim yapılmasına yol açabilir. ' +
   'Sorun sürerse bizimle iletişime geçin.';
 
+/**
+ * 28.09 — bekleyen havale teklifi varken kartla satin alma kapisinin
+ * musteriye gosterdigi metin (satin alma reddi + paket karti ayni metin).
+ */
+export const HAVALE_TEKLIFI_BEKLIYOR_MESAJI =
+  'Havale ile ödeme teklifiniz açık; dekontunuz onaylanınca hesabınız açılır. ' +
+  'Kartla ödemek isterseniz önce teklifin iptali için bizimle iletişime geçin.';
+
 /** Yeni kart aboneligini neden engelliyor? `null` = engel yok. */
-export type YeniAbonelikEngeli = 'ABONELIK_ZATEN_VAR' | 'KART_ABONELIGI_ACIK';
+export type YeniAbonelikEngeli = 'ABONELIK_ZATEN_VAR' | 'KART_ABONELIGI_ACIK' | 'HAVALE_TEKLIFI_BEKLIYOR';
 
 /**
  * Bu abonelik satiri YENI bir kart aboneligini engelliyor mu, NEDEN? SAF —
@@ -111,15 +119,41 @@ export type YeniAbonelikEngeli = 'ABONELIK_ZATEN_VAR' | 'KART_ABONELIGI_ACIK';
  * kart kodunu tasir; havalede kart kapatilamamissa (`iyzicoDurum` ACTIVE)
  * yeni kart aboneligi CIFT CEKIM olurdu. Goc satirinda `iyzicoDurum` NULL →
  * etkilenmez.
+ *
+ * ⚠ 28.09 — BEKLEYEN HAVALE TEKLIFI (Emre karari C): satin almaya ACIK satir
+ * (satirsiz degil — teklif satir acar; miras, SONA_ERDI, ASKIDA) onaylanabilir
+ * bir havale teklifi tasiyorsa kart yolu KAPALI (`HAVALE_TEKLIFI_BEKLIYOR`).
+ * Yoksa musteri kartla abone olur, dekont sonra onaylanir: iki odeme
+ * (olculdu: yeni firmanin teklif satiri ASKIDA, kapi acikti). Engelleyen daha
+ * ozel kodlar (`ABONELIK_ZATEN_VAR`, `KART_ABONELIGI_ACIK`) oldugu gibi kalir.
+ * `bekleyenHavaleVar` CAGIRANIN sorgusudur (`bekleyenHavaleVarMi`): `baslat`
+ * ve paket kartlari (`PaketDegisimiServisi.aboneligiGetir`) verir. Tamamlama
+ * kapisi (`ikinciAbonelikMi`) VERMEZ — o iyzico'da ikinci abonelik sorusudur.
+ * Form acildiktan SONRA verilen teklif (dar pencere, yonetici eylemi) bu
+ * kapiya takilmaz: onay kart aboneligini kapatir, tekliften sonraki kart
+ * cekimini yoneticiye bildirir (`havale-kart-penceresi.ts`). Alan yoksa
+ * (`undefined`) engel yok.
  */
 export function yeniAbonelikEngeli(
   mevcut: {
     durum: AbonelikDurumu | string;
     iyzicoDurum: string | null;
     paketSurumu: { paket: { kod: string } };
+    bekleyenHavaleVar?: boolean;
   } | null,
 ): YeniAbonelikEngeli | null {
   if (!mevcut) return null;
+  const engel = satinAlmaKuraliEngeli(mevcut);
+  if (engel === null && mevcut.bekleyenHavaleVar === true) return 'HAVALE_TEKLIFI_BEKLIYOR';
+  return engel;
+}
+
+/** `yeniAbonelikEngeli`nin havale ONCESI kurali (24.09/26.09) — degismedi. */
+function satinAlmaKuraliEngeli(mevcut: {
+  durum: AbonelikDurumu | string;
+  iyzicoDurum: string | null;
+  paketSurumu: { paket: { kod: string } };
+}): YeniAbonelikEngeli | null {
   if (mirasPaketiMi(mevcut.paketSurumu.paket.kod)) {
     return iyzicoAboneligiAcikMi(mevcut) ? 'KART_ABONELIGI_ACIK' : null;
   }
@@ -215,7 +249,8 @@ export type PaketDegisimRedKodu =
   | 'DEGISIM_BEKLIYOR'
   | 'PERIYOT_FARKLI'
   | 'URUN_FARKLI'
-  | 'KART_ABONELIGI_ACIK';
+  | 'KART_ABONELIGI_ACIK'
+  | 'HAVALE_TEKLIFI_BEKLIYOR';
 
 export type DegisimZamanlamasi = 'hemen' | 'donem-sonu';
 
@@ -246,6 +281,8 @@ export interface DegisimAboneligi {
   denemeSonu: Date | null;
   paketGecisTarihi: Date | null;
   paketSurumu: DegisimSurumu;
+  /** 28.09 — onaylanabilir havale teklifi var mı (`bekleyenHavaleVarMi`); satin alma kapisi okur. */
+  bekleyenHavaleVar?: boolean;
 }
 
 /**
@@ -310,6 +347,11 @@ export function paketDegisimYolu(
   // "neden" sorusunun cevabini gorur, genel "odeme sorunu" metnini degil.
   if (engel === 'KART_ABONELIGI_ACIK') {
     return yok('KART_ABONELIGI_ACIK', KART_ABONELIGI_ACIK_MESAJI);
+  }
+  // 28.09 — bekleyen havale teklifi: satin alma kapali, degisim de yok (satir
+  // AKTIF degil); kart dugmesi nedenini soyler.
+  if (engel === 'HAVALE_TEKLIFI_BEKLIYOR') {
+    return yok('HAVALE_TEKLIFI_BEKLIYOR', HAVALE_TEKLIFI_BEKLIYOR_MESAJI);
   }
   // Engel var ise satir VAR.
   const a = ab as DegisimAboneligi;

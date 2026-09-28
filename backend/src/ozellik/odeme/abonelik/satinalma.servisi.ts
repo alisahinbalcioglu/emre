@@ -23,10 +23,12 @@ import { DenemeKarari } from './deneme-hakki';
 import { DenemeHakkiServisi } from './deneme-hakki.servisi';
 import { mirasGecerliMi, mirasiAyir, mirastanCikisMi } from './miras-hakki';
 import {
+  HAVALE_TEKLIFI_BEKLIYOR_MESAJI,
   KART_ABONELIGI_ACIK_MESAJI,
   yeniAbonelikEngeli,
   yeniAbonelikEngelliMi,
 } from './paket-degisimi';
+import { bekleyenHavaleVarMi } from '../havale/havale-durumlari';
 import { EpostaServisi } from '../eposta/eposta.servisi';
 import { iptalOnayiEpostasi } from '../eposta/musteri-epostalari';
 import { HUKUKI_METIN_SURUMU } from '../../../altyapi/auth/hukuki-surum';
@@ -599,7 +601,18 @@ export class SatinAlmaServisi {
       where: { firmaId: p.firmaId },
       include: { paketSurumu: { include: { paket: true } } },
     });
-    const engel = yeniAbonelikEngeli(mevcut);
+    // 28.09 — bekleyen havale teklifi kart yolunu kapatir (iki odeme; kural
+    // `yeniAbonelikEngeli`). Sorgu yalniz satir varken: teklif satir acar.
+    const engel = yeniAbonelikEngeli(
+      mevcut && { ...mevcut, bekleyenHavaleVar: await bekleyenHavaleVarMi(this.prisma, mevcut.id) },
+    );
+    if (engel === 'HAVALE_TEKLIFI_BEKLIYOR') {
+      // Form ACILMADAN reddedilir; paket karti ayni metni gosterir.
+      throw new BadRequestException({
+        kod: 'HAVALE_TEKLIFI_BEKLIYOR',
+        message: HAVALE_TEKLIFI_BEKLIYOR_MESAJI,
+      });
+    }
     if (engel === 'KART_ABONELIGI_ACIK') {
       // ⚠ 24.09 — CIFT CEKIM KORUMASI: satir SONA_ERDI/ASKIDA ama iyzico'daki
       // kart aboneligi hala ACIK (bkz. paket-degisimi.ts →

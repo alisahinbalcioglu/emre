@@ -145,6 +145,8 @@ function redAciklamasi(kod: PaketDegisimRedKodu, ab: YoneticiAboneligi, simdi: D
         "Önceki kart aboneliği iyzico'da hâlâ açık görünüyor (son ödeme doğrulanıyor); " +
         'iki kez çekim riski yüzünden paket işlemi yapılmaz.'
       );
+    case 'HAVALE_TEKLIFI_BEKLIYOR':
+      return 'Firmanın ödenmeyi bekleyen bir havale teklifi var; teklif onaylanmadan ya da iptal edilmeden paket işlemi yapılmaz.';
     default: {
       // ⚠ KAPSAYICILIK: yeni bir red kodu eklenirse burasi DERLENMEZ. Backend
       // `strict` degil — eksik dal sessizce `undefined` donerdi (24.09'da

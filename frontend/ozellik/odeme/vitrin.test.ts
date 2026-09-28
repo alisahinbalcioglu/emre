@@ -181,6 +181,27 @@ describe('B · deneme satırı ve metinler', () => {
     expect(vitrinDenemeSatiri([paket(null)])).toBeNull();
   });
 
+  // 28.09 — havale teklifi bekleyen yeni firma: sunucu kart yolunu kapatır
+  // (`HAVALE_TEKLIFI_BEKLIYOR`); deneme vaadi "Havale ödemeniz bekleniyor"
+  // şeridinin metnini EZMEMELİ (görsel kontrolde yakalandı).
+  it('hiçbir paket satın alınamıyorsa (kart yolu kapalı) satır YOK — şerit sunucu metniyle kalır', () => {
+    const kapali = { yol: 'yok', kod: 'HAVALE_TEKLIFI_BEKLIYOR', mesaj: 'teklif açık' };
+    const hakli = { denemeGunu: 30, denemeHakki: true, denemeGerekcesi: 'var' };
+    expect(vitrinDenemeSatiri([{ ...paket(hakli), degisim: kapali }, { ...paket(hakli), degisim: kapali }])).toBeNull();
+  });
+
+  it('yalnız satın alınabilir paketler sayılır; `degisim` yoksa (eski sunucu) eskisi gibi', () => {
+    const hakli = { denemeGunu: 30, denemeHakki: true, denemeGerekcesi: 'var' };
+    expect(vitrinDenemeSatiri([{ ...paket(hakli), degisim: { yol: 'satin-al' } }])?.metin)
+      .toBe('30 gün ücretsiz, ilk ödeme 30. günün sonunda');
+    // Kapalı paketin FARKLI gün sayısı tek rakamı bozmaz (sayılmaz).
+    expect(vitrinDenemeSatiri([
+      { ...paket(hakli), degisim: { yol: 'satin-al' } },
+      { ...paket({ ...hakli, denemeGunu: 14 }), degisim: { yol: 'yok' } },
+    ])?.metin).toBe('30 gün ücretsiz, ilk ödeme 30. günün sonunda');
+    expect(vitrinDenemeSatiri([paket(hakli)])?.metin).toBe('30 gün ücretsiz, ilk ödeme 30. günün sonunda');
+  });
+
   it('işlem metinleri: DWG "Pro paket" der (Basic DWG vermez)', () => {
     expect(vitrinIslemMetni('dwg')).toMatch(/Pro paket/);
     expect(vitrinIslemMetni('excel')).toMatch(/paket seçin/);
