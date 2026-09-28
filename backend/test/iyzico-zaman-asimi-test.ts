@@ -741,8 +741,9 @@ function dunningDb(secenek: DunningSecenek = {}) {
       },
     },
     firma: { findUnique: async () => ({ ad: 'Firma A', faturaEposta: 'fatura@firma.test', yetkiliEposta: null }) },
-    // Basarisizlik webhook'unun siparis kodu: yeniden denenecek siparis.
-    webhookOlayi: { findFirst: async () => ({ siparisKodu: 'sip-1' }) },
+    // Basarisizlik webhook'unun siparis kodu: yeniden denemenin ADAYI (28.09:
+    // merdiven onu iyzico'nun listesinde dogrular — `DETAY`).
+    webhookOlayi: { findMany: async () => [{ siparisKodu: 'sip-1' }] },
     abonelikOlayi: {
       create: async ({ data }: any) => {
         if (data.tip === secenek.olayHatasi) throw new Error(`sahte DB: ${data.tip} yazilamadi`);
@@ -763,9 +764,38 @@ function dunningDb(secenek: DunningSecenek = {}) {
   return db;
 }
 
+/**
+ * 28.09 — merdiven para ceken istekten ONCE hedefi iyzico'ya sorar (anlik
+ * denemeyle tek kural, `yenidenDenemeHedefi`). Detay: abonelik UNPAID, sip-1
+ * reddedilmis — iyzico BELGESINDEKI bicim, OLCULMEDI (canlida basarisiz siparis
+ * yok). Kaynak: iyzico "Abonelik Islemleri" → Abonelik Detayi semasi
+ * (https://docs.iyzico.com/urunler/abonelik/abonelik-entegrasyonu/abonelik-islemleri,
+ * 28.09 okundu): `orderStatus` WAITING · SUCCESS · FAILED; deneme `paymentStatus`
+ * SUCCESS · FAILED, `errorCode`/`errorMessage` yalnizca FAILED'de; ornek JSON yok.
+ */
+const DETAY = 'GET /v2/subscription/subscriptions/uc-0';
+const REDDEDILMIS_DETAY: Davranis = {
+  tur: 'cevapla',
+  veri: {
+    referenceCode: 'uc-0',
+    subscriptionStatus: 'UNPAID',
+    orders: [
+      {
+        referenceCode: 'sip-1',
+        orderStatus: 'FAILED',
+        paymentAttempts: [{ paymentStatus: 'FAILED', errorCode: '10051', errorMessage: 'Kart limiti yetersiz' }],
+      },
+    ],
+  },
+};
+
 /** Gunluk taramayi GERCEK servisle kosar; iyzico'nun yeniden deneme ucu `davranis`i uygular. */
 async function dunningKos(davranis: Davranis, secenek: DunningSecenek = {}) {
-  const iyz = await sahteIyzico((metot, yol) => (`${metot} ${yol}` === YENIDEN_DENE ? davranis : { tur: 'kopar' }));
+  const iyz = await sahteIyzico((metot, yol) => {
+    const istek = `${metot} ${yol}`;
+    if (istek === YENIDEN_DENE) return davranis;
+    return istek === DETAY ? REDDEDILMIS_DETAY : { tur: 'kopar' };
+  });
   try {
     const db = dunningDb(secenek);
     const postalar: any[] = [];
@@ -787,7 +817,8 @@ async function dunningKos(davranis: Davranis, secenek: DunningSecenek = {}) {
       r = await sureli(() => dunning.merdiveniYurut());
       taramalar.push({ posta: postalar.length, denemeSayisi: db.satir.denemeSayisi });
     }
-    return { db, postalar, gelen: iyz.gelen.map((g) => `${g.metot} ${g.yol}`), r, taramalar };
+    const gelen = iyz.gelen.map((g) => `${g.metot} ${g.yol}`);
+    return { db, postalar, gelen, cekim: gelen.filter((g) => g === YENIDEN_DENE).length, r, taramalar };
   } finally {
     await iyz.kapat();
   }
@@ -800,8 +831,8 @@ async function z7(): Promise<void> {
   // Zaman asimi: iyzico yeniden denemeyi yapmis OLABILIR — sonuc webhook'la gelir.
   const za = await dunningKos({ tur: 'takil' });
   check(
-    'Z7-OLCUT fikstur 3. gun basamagini surdu: yeniden deneme istegi iyzico\'ya gitti, tarama bitti',
-    za.gelen.length === 1 && za.gelen[0] === YENIDEN_DENE && za.r.durum === 'deger',
+    'Z7-OLCUT fikstur 3. gun basamagini surdu: hedef iyzico\'da SORULDU, SONRA yeniden deneme istegi gitti, tarama bitti',
+    JSON.stringify(za.gelen) === JSON.stringify([DETAY, YENIDEN_DENE]) && za.r.durum === 'deger',
     `gelen=${JSON.stringify(za.gelen)} durum=${za.r.durum}`,
   );
   check('Z7a ⭐ zaman asiminda "odemeniz alinamadi" bildirimi GITMEDI', za.postalar.length === 0, `posta=${za.postalar.length}`);
@@ -866,8 +897,8 @@ async function z7(): Promise<void> {
   );
   check(
     'Z7h onceki basamagin ertelemesi bu basamagin hakkini yemedi (ilk zaman asimi yine ertelendi)',
-    onceki.gelen.length === 1 && onceki.postalar.length === 0 && onceki.db.satir.denemeSayisi === 1,
-    `gelen=${onceki.gelen.length} posta=${onceki.postalar.length} denemeSayisi=${onceki.db.satir.denemeSayisi}`,
+    onceki.cekim === 1 && onceki.postalar.length === 0 && onceki.db.satir.denemeSayisi === 1,
+    `cekim=${onceki.cekim} posta=${onceki.postalar.length} denemeSayisi=${onceki.db.satir.denemeSayisi}`,
   );
 
   // `try` yalniz iyzico cagrisini sarar: BASARILI denemeden sonra DB yazmasi
@@ -876,7 +907,7 @@ async function z7(): Promise<void> {
   const dbHata = await dunningKos({ tur: 'cevapla', veri: {} }, { olayHatasi: 'dunning.tekrar.denendi' });
   check(
     'Z7g-OLCUT yeniden deneme iyzico\'da basarili, ardindan olay yazmasi DUSTU',
-    dbHata.gelen.length === 1 && gunluk.slice(gunlukBasi).some((s) => s.includes('dunning.tekrar.denendi yazilamadi')),
+    dbHata.cekim === 1 && gunluk.slice(gunlukBasi).some((s) => s.includes('dunning.tekrar.denendi yazilamadi')),
     gunluk.slice(gunlukBasi).join(' | ').slice(0, 300) || '(gunluk bos)',
   );
   check(

@@ -262,10 +262,18 @@ function dunyaKur() {
     periyot: 'MONTHLY', periyotAdedi: 1,
   });
 
-  /** iyzico: mutabakat için abonelik durumu; yeniden deneme REDDEDİLİR. */
+  /**
+   * iyzico: mutabakat için abonelik durumu + sipariş listesi; yeniden deneme
+   * REDDEDİLİR. 28.09 — merdiven yeniden deneme hedefini iyzico'nun listesinde
+   * DOĞRULAR (`yenidenDenemeHedefi`): reddedilen sipariş listede olmalı.
+   */
   const iyzicoDurumu: Record<string, string> = {};
+  const iyzicoSiparisleri: Record<string, unknown[]> = {};
   const iyzico: any = {
-    abonelikGetir: async (kod: string) => ({ subscriptionStatus: iyzicoDurumu[kod] ?? 'ACTIVE', orders: [] }),
+    abonelikGetir: async (kod: string) => ({
+      subscriptionStatus: iyzicoDurumu[kod] ?? 'ACTIVE',
+      orders: iyzicoSiparisleri[kod] ?? [],
+    }),
     tahsilatiTekrarla: async () => {
       throw new Error('iyzico: kart reddedildi');
     },
@@ -297,7 +305,7 @@ function dunyaKur() {
     });
   }
   const oku = (firmaId: string) => db.tablo('abonelik').find((r) => r.firmaId === firmaId)!;
-  return { db, iyzicoDurumu, epostalar, abonelik, erisim, mutabakat, dunning, satir, oku };
+  return { db, iyzicoDurumu, iyzicoSiparisleri, epostalar, abonelik, erisim, mutabakat, dunning, satir, oku };
 }
 type Dunya = ReturnType<typeof dunyaKur>;
 
@@ -480,6 +488,16 @@ async function merdivenSenaryosu(ofsetSaat: number, gunSayisi = 12) {
     abonelikKodu: 'sub-F-Y', olayTipi: 'subscription.order.failure',
     siparisKodu: 'siparis-Y', alindi: ab.ilkBasarisizlik,
   });
+  // Reddedilen çekim iyzico'nun listesinde: merdiven hedefi doğrular, basamaklar
+  // ertelenmeden yürür. Biçim iyzico BELGESİNDEKİ, ÖLÇÜLMEDİ (canlıda başarısız
+  // sipariş yok) — kaynak: "Abonelik İşlemleri" → Abonelik Detayı şeması,
+  // https://docs.iyzico.com/urunler/abonelik/abonelik-entegrasyonu/abonelik-islemleri (28.09 okundu).
+  d.iyzicoSiparisleri['sub-F-Y'] = [
+    {
+      referenceCode: 'siparis-Y', orderStatus: 'FAILED',
+      paymentAttempts: [{ paymentStatus: 'FAILED', errorCode: '10051', errorMessage: 'Kart limiti yetersiz' }],
+    },
+  ];
   const kosumlar: Kosum[] = [];
   for (let gun = 0; gun <= gunSayisi; gun++) {
     const an = ab.ilkBasarisizlik.getTime() + gun * GUN + ofsetSaat * SAAT;

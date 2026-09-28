@@ -5,7 +5,7 @@ import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { AbonelikDurumu, OdemeYontemi, Prisma } from '@prisma/client';
 import { IyzicoAbonelikDetayi, IyzicoClient, IyzicoHatasi } from '../iyzico/iyzico.client';
 import { kullaniciyaMesaj } from '../iyzico/iyzico-hata.filter';
-import { odenmisSiparisMi, siparisiBul, yenidenDenemeHedefi } from '../iyzico/tahsilat-kaniti';
+import { type DenemeHedefi, odenmisSiparisMi, siparisiBul, yenidenDenemeHedefi } from '../iyzico/tahsilat-kaniti';
 import { AbonelikServisi } from '../abonelik/abonelik.servisi';
 import { kartGuncellenebilirMi } from '../abonelik/kart-kapatma';
 import { EpostaServisi } from '../eposta/eposta.servisi';
@@ -33,6 +33,15 @@ export const ANINDA_DENEME_KAYNAGI = 'aninda-deneme';
 function hataMetni(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
+
+/**
+ * `hedefiDogrula` sonucu: saf kural (`DenemeHedefi`) + iyzico okunamadı.
+ * `dene`/`odenmis` kararın dayandığı iyzico detayını taşır (başarı yolunun kanıtı).
+ */
+type DogrulananHedef =
+  | (Exclude<DenemeHedefi, { tur: 'yok' }> & { detay: IyzicoAbonelikDetayi })
+  | Extract<DenemeHedefi, { tur: 'yok' }>
+  | { tur: 'okunamadi'; gerekce: string };
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -225,75 +234,7 @@ export class DunningServisi {
 
     // ── Yeniden tahsilat denemesi ────────────────────────────────────────
     if (basamak.tekrarDene && ab.iyzicoAbonelikKodu) {
-      const sonSiparis = await this.sonBasarisizSiparis(ab.iyzicoAbonelikKodu);
-      if (sonSiparis) {
-        // KİRA (26.09): müşterinin anlık denemesiyle AYNI kira. Satır okunduktan
-        // sonra müşteri kazandıysa iyzico'ya GİDİLMEZ, basamak yarına kalır.
-        const kira = await this.kiraAl(abonelikId, new Date());
-        if (!kira) {
-          this.logger.log(`Abonelik ${abonelikId}: kira başka bir denemede — basamak ${basamakNo} yarına`);
-          return;
-        }
-        // ⚠ `try` YALNIZ iyzico cagrisini sarar (24.09): basarili denemeden
-        // sonra olay/DB yazmasi duserse bu RED DEGILDIR. Eskiden catch'e
-        // dusuyor ve odeme alinmisken "tekrar denedik, yine alinamadi"
-        // e-postasi gidiyordu.
-        let basarili = false;
-        let hata: unknown;
-        try {
-          await this.iyzico.tahsilatiTekrarla(sonSiparis);
-          basarili = true;
-        } catch (e) {
-          hata = e;
-        }
-        // Kira YALNIZ kesin retde kısalır (para çekilmedi); başarılı ya da
-        // belirsiz denemede UZUN kalır — müşteri 10 dk sonra ikinci çekimi
-        // tetikleyemesin. Merdivenin bildirim kararı aşağıda DEĞİŞMEDİ.
-        if (!basarili && denemeHatasiSinifi(hata) === 'reddedildi') {
-          await this.kiraKisalt(abonelikId, kira).catch((e) =>
-            this.logger.error(`Kira kısaltılamadı (${abonelikId}): ${e instanceof Error ? e.message : String(e)}`),
-          );
-        }
-        if (basarili) {
-          await this.abonelik.olayYaz(abonelikId, 'dunning.tekrar.denendi', {
-            aciklama: `Basamak ${basamakNo} — sipariş ${sonSiparis}`,
-            aktor: 'dunning',
-          });
-          // Sonucu webhook getirecek. Başarılıysa `tahsilatBasarili`
-          // sayaçları sıfırlar, `tahsilatToparlandi` "ödemeniz alındı"
-          // e-postasını gönderir. Burada bekleyip bildirim göndermiyoruz —
-          // 24 saat sonraki tarama devam ettirir.
-          await this.prisma.abonelik.update({
-            where: { id: abonelikId },
-            data: { denemeSayisi: basamakNo, sonDeneme: new Date() },
-          });
-          return;
-        }
-        // ⚠ ZAMAN ASIMI RED DEGILDIR (24.09): iyzico yeniden denemeyi yapmis
-        // olabilir, yalniz yaniti gelmedi. Basamak BIR KEZ ertelenir: bildirim
-        // gitmez, basamak islenmis sayilmaz, yarinki tarama taze bilgiyle
-        // bakar (basarili cekim o arada webhook/mutabakatla aboneligi
-        // listeden cikarir). Ayni basamakta IKINCI zaman asiminda bildirim
-        // GIDER: sinirsiz erteleme her gun yeni bir deneme ve hic gitmeyen on
-        // uyarilar demekti — musteri uyarisiz kisitlanirdi.
-        const zamanAsimi = hata instanceof IyzicoHatasi && hata.zamanAsimi;
-        if (zamanAsimi && !(await this.basamakErtelendiMi(abonelikId, ab.ilkBasarisizlik!, basamak.gun))) {
-          const mesaj = (hata as Error).message;
-          this.logger.warn(
-            `Yeniden deneme SONUCU BILINMIYOR (${abonelikId}): ${mesaj} — bildirim bir gun ertelendi`,
-          );
-          await this.abonelik.olayYaz(abonelikId, 'dunning.tekrar.belirsiz', {
-            aciklama: `Basamak ${basamakNo} — sipariş ${sonSiparis}: ${mesaj}`,
-            aktor: 'dunning',
-          });
-          return;
-        }
-        this.logger.warn(
-          zamanAsimi
-            ? `Yeniden deneme yine YANITSIZ (${abonelikId}): erteleme hakki kullanildi, bildirim gidiyor`
-            : `Yeniden deneme reddedildi (${abonelikId}): ${hata}`,
-        );
-      }
+      if ((await this.basamakDenemesi(ab, ab.iyzicoAbonelikKodu, basamak, basamakNo)) === 'dur') return;
     }
 
     // ── Durum düşürme ────────────────────────────────────────────────────
@@ -319,6 +260,137 @@ export class DunningServisi {
       where: { id: abonelikId },
       data: { denemeSayisi: basamakNo, sonDeneme: new Date() },
     });
+  }
+
+  /**
+   * Merdivenin yeniden deneme basamağı (3./7./20. gün). `'bildir'`: basamak
+   * durum düşürme + bildirimle SÜRER (kart reddetti, bildirimde sipariş yok ya
+   * da erteleme hakkı kullanılmış). `'dur'`: bugün başka iş yok (çekim iletildi,
+   * ödeme zaten alınmış, kira başka bir denemede ya da basamak BİR KEZ ertelendi).
+   *
+   * ⚠ 28.09 — HEDEF iyzico'ya SORULUR, anlık denemeyle TEK kural
+   * (`hedefiDogrula` → `yenidenDenemeHedefi`). Eskiden en yeni başarısızlık
+   * BİLDİRİMİ sorulmadan çekiliyordu (`sonBasarisizSiparis`). Bildirim kanıt
+   * değildir (uç açık, imza zorunlu değil): sahte, eskimiş ya da sonradan
+   * ödenmiş olabilir. Sıra anlık denemeyle AYNI: adaylar → KİRA → iyzico'ya
+   * sor → çek.
+   */
+  private async basamakDenemesi(
+    ab: { id: string; ilkBasarisizlik: Date | null },
+    abonelikKodu: string,
+    basamak: Basamak,
+    basamakNo: number,
+  ): Promise<'dur' | 'bildir'> {
+    const abonelikId = ab.id;
+    // Bildirim yok (ör. başarısızlığı gece mutabakatı yazdı): hedef bilinmiyor,
+    // çekim yok — bildirim eskisi gibi gider. Anlık deneme de burada durur.
+    const adaylar = await this.basarisizSiparisAdaylari(abonelikKodu);
+    if (adaylar.length === 0) return 'bildir';
+
+    // KİRA (26.09): müşterinin anlık denemesiyle AYNI kira. Satır okunduktan
+    // sonra müşteri kazandıysa iyzico'ya GİDİLMEZ, basamak yarına kalır.
+    const kira = await this.kiraAl(abonelikId, new Date());
+    if (!kira) {
+      this.logger.log(`Abonelik ${abonelikId}: kira başka bir denemede — basamak ${basamakNo} yarına`);
+      return 'dur';
+    }
+
+    const hedef = await this.hedefiDogrula(abonelikKodu, adaylar);
+    if (hedef.tur === 'odenmis') {
+      // Bekleyen ödeme YOK — başarının webhook'u gecikmiş ya da kaybolmuş.
+      // Yeniden ÇEKİLMEZ, "alınamadı" bildirimi GİTMEZ; başarı yolu kuyruğa
+      // (anlık denemeyle aynı), kira uzun kalır. Basamak işlenmiş SAYILMAZ:
+      // başarı uygulanınca satır merdivenden çıkar.
+      await this.basariYolunaYaz(abonelikKodu, hedef.kod, hedef.detay);
+      await this.abonelik.olayYaz(abonelikId, 'dunning.tekrar.odenmis', {
+        aciklama: `Basamak ${basamakNo} — ${hedef.gerekce}; yeniden çekilmedi, başarı yolu kuyrukta`,
+        aktor: 'dunning',
+      });
+      return 'dur';
+    }
+    if (hedef.tur !== 'dene') {
+      // Çekim GÖNDERİLMEDİ: kira geri verilir. Hedef doğrulanmadan para
+      // çekilmez; basamak BİR KEZ ertelenir (zaman aşımıyla AYNI hak ve iz).
+      // Aynı basamakta ikinci kez → bildirim gider, yine ÇEKİMSİZ (sınırsız
+      // erteleme yok: müşteri uyarısız kısıtlanmasın).
+      await this.kiraBirak(abonelikId, kira);
+      if (await this.basamakErtelendiMi(abonelikId, ab.ilkBasarisizlik!, basamak.gun)) {
+        this.logger.warn(
+          `Yeniden deneme hedefi yine doğrulanamadı (${abonelikId}): ${hedef.gerekce} — ` +
+            'erteleme hakkı kullanıldı, bildirim gidiyor (çekimsiz)',
+        );
+        return 'bildir';
+      }
+      this.logger.warn(
+        `Yeniden deneme hedefi DOĞRULANAMADI (${abonelikId}): ${hedef.gerekce} — bildirim bir gün ertelendi`,
+      );
+      await this.abonelik.olayYaz(abonelikId, 'dunning.tekrar.belirsiz', {
+        aciklama: `Basamak ${basamakNo} — hedef doğrulanamadı, çekim YOK: ${hedef.gerekce}`,
+        aktor: 'dunning',
+      });
+      return 'dur';
+    }
+
+    // ⚠ `try` YALNIZ iyzico cagrisini sarar (24.09): basarili denemeden
+    // sonra olay/DB yazmasi duserse bu RED DEGILDIR. Eskiden catch'e
+    // dusuyor ve odeme alinmisken "tekrar denedik, yine alinamadi"
+    // e-postasi gidiyordu.
+    let basarili = false;
+    let hata: unknown;
+    try {
+      await this.iyzico.tahsilatiTekrarla(hedef.kod);
+      basarili = true;
+    } catch (e) {
+      hata = e;
+    }
+    // Kira YALNIZ kesin retde kısalır (para çekilmedi); başarılı ya da
+    // belirsiz denemede UZUN kalır — müşteri 10 dk sonra ikinci çekimi
+    // tetikleyemesin. Merdivenin bildirim kararı aşağıda DEĞİŞMEDİ.
+    if (!basarili && denemeHatasiSinifi(hata) === 'reddedildi') {
+      await this.kiraKisalt(abonelikId, kira).catch((e) =>
+        this.logger.error(`Kira kısaltılamadı (${abonelikId}): ${hataMetni(e)}`),
+      );
+    }
+    if (basarili) {
+      await this.abonelik.olayYaz(abonelikId, 'dunning.tekrar.denendi', {
+        aciklama: `Basamak ${basamakNo} — sipariş ${hedef.kod} (${hedef.gerekce})`,
+        aktor: 'dunning',
+      });
+      // Sonucu webhook getirecek. Başarılıysa `tahsilatBasarili`
+      // sayaçları sıfırlar, `tahsilatToparlandi` "ödemeniz alındı"
+      // e-postasını gönderir. Burada bekleyip bildirim göndermiyoruz —
+      // 24 saat sonraki tarama devam ettirir.
+      await this.prisma.abonelik.update({
+        where: { id: abonelikId },
+        data: { denemeSayisi: basamakNo, sonDeneme: new Date() },
+      });
+      return 'dur';
+    }
+    // ⚠ ZAMAN ASIMI RED DEGILDIR (24.09): iyzico yeniden denemeyi yapmis
+    // olabilir, yalniz yaniti gelmedi. Basamak BIR KEZ ertelenir: bildirim
+    // gitmez, basamak islenmis sayilmaz, yarinki tarama taze bilgiyle
+    // bakar (basarili cekim o arada webhook/mutabakatla aboneligi
+    // listeden cikarir). Ayni basamakta IKINCI zaman asiminda bildirim
+    // GIDER: sinirsiz erteleme her gun yeni bir deneme ve hic gitmeyen on
+    // uyarilar demekti — musteri uyarisiz kisitlanirdi.
+    const zamanAsimi = hata instanceof IyzicoHatasi && hata.zamanAsimi;
+    if (zamanAsimi && !(await this.basamakErtelendiMi(abonelikId, ab.ilkBasarisizlik!, basamak.gun))) {
+      const mesaj = (hata as Error).message;
+      this.logger.warn(
+        `Yeniden deneme SONUCU BILINMIYOR (${abonelikId}): ${mesaj} — bildirim bir gun ertelendi`,
+      );
+      await this.abonelik.olayYaz(abonelikId, 'dunning.tekrar.belirsiz', {
+        aciklama: `Basamak ${basamakNo} — sipariş ${hedef.kod}: ${mesaj}`,
+        aktor: 'dunning',
+      });
+      return 'dur';
+    }
+    this.logger.warn(
+      zamanAsimi
+        ? `Yeniden deneme yine YANITSIZ (${abonelikId}): erteleme hakki kullanildi, bildirim gidiyor`
+        : `Yeniden deneme reddedildi (${abonelikId}): ${hata}`,
+    );
+    return 'bildir';
   }
 
   /** Merdivenin KISITLI basamağının günü (ortam ayarıyla aynı sayı). */
@@ -462,24 +534,16 @@ export class DunningServisi {
       return { sonuc: 'gerekmiyor' };
     }
 
-    // Hedef iyzico'ya SORULUR (GET: kopan bağlantıda kendiliğinden yeniden denenir).
-    let detay: IyzicoAbonelikDetayi;
-    try {
-      detay = await this.iyzico.abonelikGetir(abonelikKodu);
-    } catch (e) {
-      await this.kiraBirak(ab.id, kira);
-      await this.anindaIz(ab.id, 'dunning.aninda.yapilamadi', `iyzico okunamadı: ${hataMetni(e)}`);
-      return { sonuc: 'yapilamadi' };
-    }
-    const hedef = yenidenDenemeHedefi(detay, adaylar);
+    // Hedef iyzico'ya SORULUR — merdivenle TEK kural (`hedefiDogrula`).
+    const hedef = await this.hedefiDogrula(abonelikKodu, adaylar);
     if (hedef.tur === 'odenmis') {
       // Bekleyen ödeme YOK: başarının webhook'u gecikmiş ya da kaybolmuş.
       // Yeniden ÇEKİLMEZ; başarı yolu kuyruğa yazılır, kira uzun kalır.
-      await this.basariYolunaYaz(abonelikKodu, hedef.kod, detay);
+      await this.basariYolunaYaz(abonelikKodu, hedef.kod, hedef.detay);
       await this.anindaIz(ab.id, 'dunning.aninda.odenmis', hedef.gerekce, { siparisKodu: hedef.kod });
       return { sonuc: 'alindi' };
     }
-    if (hedef.tur === 'yok') {
+    if (hedef.tur !== 'dene') {
       await this.kiraBirak(ab.id, kira);
       await this.anindaIz(ab.id, 'dunning.aninda.yapilamadi', hedef.gerekce);
       return { sonuc: 'yapilamadi' };
@@ -564,7 +628,24 @@ export class DunningServisi {
       .catch((e) => this.logger.error(`Kira bırakılamadı (${abonelikId}): ${hataMetni(e)}`));
   }
 
-  /** Başarısızlık bildirimlerindeki sipariş kodları — yeniden eskiye, tekil. Anlık denemenin ADAYLARI (kanıt değil). */
+  /**
+   * Yeniden denemenin HEDEFİ — anlık deneme ve merdiven için TEK kural (28.09).
+   * Kiradan SONRA çağrılır: karar, kirayı tutan sürecin gördüğü güncel iyzico
+   * listesine dayanır. GET kopan bağlantıda kendiliğinden yeniden denenir (para
+   * çekmez). `okunamadi` ve `yok`ta çekim GÖNDERİLMEZ; çağıran kirayı bırakır.
+   */
+  private async hedefiDogrula(abonelikKodu: string, adaylar: readonly string[]): Promise<DogrulananHedef> {
+    let detay: IyzicoAbonelikDetayi;
+    try {
+      detay = await this.iyzico.abonelikGetir(abonelikKodu);
+    } catch (e) {
+      return { tur: 'okunamadi', gerekce: `iyzico okunamadı: ${hataMetni(e)}` };
+    }
+    const hedef = yenidenDenemeHedefi(detay, adaylar);
+    return hedef.tur === 'yok' ? hedef : { ...hedef, detay };
+  }
+
+  /** Başarısızlık bildirimlerindeki sipariş kodları — yeniden eskiye, tekil. Yeniden denemenin ADAYLARI (kanıt değil). */
   private async basarisizSiparisAdaylari(abonelikKodu: string): Promise<string[]> {
     const olaylar = await this.prisma.webhookOlayi.findMany({
       where: { abonelikKodu, olayTipi: 'subscription.order.failure' },
@@ -637,26 +718,12 @@ export class DunningServisi {
     return { abonelik, firma };
   }
 
-  /** Başarısızlık webhook'undan gelen en güncel orderReferenceCode. */
-  private async sonBasarisizSiparis(
-    abonelikKodu: string,
-  ): Promise<string | null> {
-    const olay = await this.prisma.webhookOlayi.findFirst({
-      where: {
-        abonelikKodu,
-        olayTipi: 'subscription.order.failure',
-      },
-      orderBy: { alindi: 'desc' },
-      select: { siparisKodu: true },
-    });
-    return olay?.siparisKodu ?? null;
-  }
-
   /**
-   * Bu basamak bir zaman asimi yuzunden ZATEN ertelendi mi? Basamak basi =
-   * ilk basarisizlik + basamak gunu; o andan sonra yazilmis
-   * `dunning.tekrar.belirsiz` olayi varsa erteleme hakki kullanilmistir.
-   * (Onceki basamagin ertelemesi bu basamagin hakkini YEMEZ.)
+   * Bu basamak ZATEN ertelendi mi (zaman asimi ya da 28.09'dan beri hedef
+   * dogrulanamadi — AYNI hak)? Basamak basi = ilk basarisizlik + basamak
+   * gunu; o andan sonra yazilmis `dunning.tekrar.belirsiz` olayi varsa
+   * erteleme hakki kullanilmistir. (Onceki basamagin ertelemesi bu
+   * basamagin hakkini YEMEZ.)
    */
   private async basamakErtelendiMi(
     abonelikId: string,

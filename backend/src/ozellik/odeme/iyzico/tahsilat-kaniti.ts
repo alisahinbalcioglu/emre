@@ -15,8 +15,8 @@
  *     kurucu tip bilgisi `undefined` kalır). Mutabakat yeniden dışa verir.
  *   · `siparisiBul` — gövdedeki kodun iyzico listesindeki BİREBİR karşılığı.
  *   · `tahsilatBasarisizligiKarari` — REDDEDİLDİ Mİ (`tahsilatBasarisiz`).
- *   · `yenidenDenemeHedefi` — ANLIK yeniden denemenin (26.09) hedef siparişi:
- *     bildirimlerdeki adaylardan iyzico'nun listesinde doğrulanan.
+ *   · `yenidenDenemeHedefi` — yeniden denemenin (anlık 26.09, merdiven 28.09)
+ *     hedef siparişi: bildirimlerdeki adaylardan iyzico'nun listesinde doğrulanan.
  *   · `tahsilEdilenTutar` · `odemeAni` — FATURANIN iki gerçeği (28.09):
  *     çekilen tutar + para birimi ve ödeme anı (aşağıdaki not).
  *   · `sonrakiDonemIslenmisMi` — ESKİ DÖNEM (28.09): ödenmiş sipariş bugünkü
@@ -28,8 +28,13 @@
  *     (TEST 2-dogrulama) — ACTIVE, ödemenin kanıtı DEĞİLDİR;
  *   · iyzico sonraki dönemin siparişini ÖNCEDEN açar (UPGRADED abonelikte
  *     `SUBSCRIPTION_UPGRADED`, deneme yok — TEST 2-dogrulama-2).
- *  ÖLÇÜLMEDİ: reddedilmiş denemenin değeri ('FAILURE'? 'FAILED'?), FAILED
- *  siparişin biçimi, bildirimin iyzico listesinden ÖNCE gelip gelmediği.
+ *  BELGEDE ama ÖLÇÜLMEDİ (canlıda başarısız sipariş yok, 28.09): iyzico
+ *  "Abonelik İşlemleri" → Abonelik Detayı şeması (docs.iyzico.com/urunler/
+ *  abonelik/abonelik-entegrasyonu/abonelik-islemleri, 28.09 okundu) —
+ *  `orderStatus` WAITING · SUCCESS · FAILED; deneme `paymentStatus` SUCCESS ·
+ *  FAILED, `errorCode`/`errorMessage` yalnız FAILED'de; yeniden denemenin
+ *  `referenceCode`u = başarısızlık webhook'unun `orderReferenceCode`u. Örnek
+ *  JSON yok. ÖLÇÜLMEDİ: bildirimin iyzico listesinden ÖNCE gelip gelmediği.
  *
  *  Kapılar: `test:webhook-tahsilat-dogrulama` (S + webhook/mutabakat bağlantısı),
  *  `test:mutabakat-kayip-tahsilat` S, `test:fatura-dogrulugu` S.
@@ -227,7 +232,7 @@ export function tahsilatBasarisizligiKarari(
   return { karar: 'KANITSIZ', gerekce: `sipariş ${siparisDurumu}, reddedilmiş çekim yok; abonelik ${abonelik}` };
 }
 
-/** Anlık yeniden denemenin hedefi: dene / zaten ödenmiş / doğrulanamadı. */
+/** Yeniden denemenin (anlık + merdiven) hedefi: dene / zaten ödenmiş / doğrulanamadı. */
 export type DenemeHedefi =
   | { tur: 'dene'; kod: string; gerekce: string }
   | { tur: 'odenmis'; kod: string; gerekce: string }
@@ -239,9 +244,9 @@ export type DenemeHedefi =
  * ═══════════════════════════════════════════════════════════════════════════
  *  Adaylar: bu aboneliğin başarısızlık BİLDİRİMLERİNDEKİ sipariş kodları,
  *  YENİDEN ESKİYE. Bildirim kanıt DEĞİLDİR (uç açık, imza zorunlu değil):
- *  sahte, eskimiş ya da sonradan ödenmiş olabilir — merdivenin
- *  `sonBasarisizSiparis`i en yeni bildirimi SORMADAN çeker. Para çeken anlık
- *  deneme karar vermeden iyzico'nun KENDİ listesine bakar:
+ *  sahte, eskimiş ya da sonradan ödenmiş olabilir. Para çeken İKİ yol —
+ *  anlık deneme ve (28.09'dan beri) dunning merdiveni, ikisi de
+ *  `DunningServisi.hedefiDogrula` — karar vermeden iyzico'nun KENDİ listesine bakar:
  *   · listede OLMAYAN aday atlanır (sahte ya da başka aboneliğin kodu);
  *   · listede olan İLK (en yeni) aday karar verir:
  *       ödenmiş               → `odenmis` (bekleyen ödeme yok; başarı yolu

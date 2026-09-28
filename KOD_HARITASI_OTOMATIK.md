@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 853
-Toplam satir: 236422
+Toplam satir: 236870
 Uc nokta: 238
 test:* scripti: 141
 
@@ -267,7 +267,7 @@ test:* scripti: 141
 | `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-islemi.ts` | 249 |
 | `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-paket-epostalari.ts` | 161 |
 | `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | 240 |
-| `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 770 |
+| `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 837 |
 | `backend/src/ozellik/odeme/dunning/kisit-gunu.ts` | 64 |
 | `backend/src/ozellik/odeme/dunning/tahsilat-kirasi.ts` | 109 |
 | `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 339 |
@@ -284,7 +284,7 @@ test:* scripti: 141
 | `backend/src/ozellik/odeme/iyzico/iyzico-hata.filter.ts` | 108 |
 | `backend/src/ozellik/odeme/iyzico/iyzico-tarihi.ts` | 46 |
 | `backend/src/ozellik/odeme/iyzico/iyzico.client.ts` | 598 |
-| `backend/src/ozellik/odeme/iyzico/tahsilat-kaniti.ts` | 345 |
+| `backend/src/ozellik/odeme/iyzico/tahsilat-kaniti.ts` | 350 |
 | `backend/src/ozellik/odeme/odeme.module.ts` | 133 |
 | `backend/src/ozellik/odeme/webhook/webhook.controller.ts` | 243 |
 | `backend/src/ozellik/odeme/webhook/webhook.isleyici.ts` | 420 |
@@ -312,7 +312,7 @@ test:* scripti: 141
 | `backend/test/aile-oncelik-test.ts` | 182 |
 | `backend/test/aile-uyusmazligi-test.ts` | 357 |
 | `backend/test/alias-kelime-yutma-test.ts` | 181 |
-| `backend/test/aninda-tahsilat-test.ts` | 936 |
+| `backend/test/aninda-tahsilat-test.ts` | 1118 |
 | `backend/test/antet-test.ts` | 383 |
 | `backend/test/audit-canli-kosum.ts` | 317 |
 | `backend/test/audit-real-excel.ts` | 82 |
@@ -383,7 +383,7 @@ test:* scripti: 141
 | `backend/test/iscilik-satir-silme-test.ts` | 128 |
 | `backend/test/iyzico-canli-gecis-test.ts` | 677 |
 | `backend/test/iyzico-imza-basligi-test.ts` | 236 |
-| `backend/test/iyzico-zaman-asimi-test.ts` | 1063 |
+| `backend/test/iyzico-zaman-asimi-test.ts` | 1094 |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | 132 |
 | `backend/test/kart-guncelleme-test.ts` | 685 |
 | `backend/test/kaucuk-izolasyon-test.ts` | 244 |
@@ -401,7 +401,7 @@ test:* scripti: 141
 | `backend/test/labor-matching-test.ts` | 243 |
 | `backend/test/labor-sheet-test.ts` | 111 |
 | `backend/test/library-transfer-test.ts` | 96 |
-| `backend/test/manifest-kapisi.ts` | 79 |
+| `backend/test/manifest-kapisi.ts` | 224 |
 | `backend/test/matching-regression.ts` | 282 |
 | `backend/test/matching-unit-test.ts` | 714 |
 | `backend/test/migration-zinciri-test.ts` | 907 |
@@ -411,7 +411,7 @@ test:* scripti: 141
 | `backend/test/mutabakat-deneme-test.ts` | 665 |
 | `backend/test/mutabakat-faturasiz-tahsilat-test.ts` | 1489 |
 | `backend/test/mutabakat-kayip-tahsilat-test.ts` | 1412 |
-| `backend/test/odeme-bekliyor-geri-sayim-test.ts` | 731 |
+| `backend/test/odeme-bekliyor-geri-sayim-test.ts` | 749 |
 | `backend/test/odeme-imha-test.ts` | 875 |
 | `backend/test/odeme-onyukleme-test.ts` | 425 |
 | `backend/test/olcu-anahtari-cakismasi-test.ts` | 450 |
@@ -1220,7 +1220,7 @@ test:* scripti: 141
 | `backend/test/labor-matching-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/labor-matching/labor-matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/labor-sheet-test.ts` | `@prisma/client` `../src/ozellik/kutuphane/labor-firms/labor-firms.service` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/library-transfer-test.ts` | `../src/ozellik/kutuphane/library/library-sheet-builder` |
-| `backend/test/manifest-kapisi.ts` | `fs` `path` |
+| `backend/test/manifest-kapisi.ts` | `fs` `path` `typescript` |
 | `backend/test/matching-regression.ts` | `@prisma/client` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/tag-generator` `../src/ozellik/eslestirme/matching/normalizer` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/matching-unit-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/migration-zinciri-test.ts` | `@electric-sql/pglite` `node:fs` `node:path` `./yardimci/bitmezse-kirmizi` `../src/ozellik/kutuphane/library/library-sheet-builder` |
