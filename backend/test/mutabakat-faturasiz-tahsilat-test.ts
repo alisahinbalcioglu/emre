@@ -51,7 +51,8 @@
  *
  * ── BLOKLAR ───────────────────────────────────────────────────────────────
  *   S  saf kural `kayipTahsilatKarari` (sınırlar, deneme, köprü, üç dönem,
- *      kanıt kuralı, bozuk girdi, kural 7e engelleri) · `odenmisSiparisler`
+ *      kanıt kuralı, bozuk girdi, kural 7e engelleri; 28.09 kural 7f —
+ *      tutarı okunamayan sipariş oynatılmaz) · `odenmisSiparisler`
  *   Ö  ÖLÇÜT: webhook ALINIRSA aynı dünyalar faturayı kuyruğa alır; miras
  *      erişimi DEĞİŞMEZ, köprü iyzico dönemine düzelir (tasarlanmış), dunning
  *      toparlanır — kapı kör değil
@@ -70,8 +71,9 @@
  *   G  gece taraması (cron giriş noktası): karışık satırlar, TAM özet satırı;
  *      kural 7d (faturası BAŞKA satıra kesilmiş sipariş faturalıdır)
  *   V  NES talebi (elle, GERÇEK fatura kesim turu): oynatılan faturanın "ödeme
- *      tarihi" yakalama anı DEĞİL (VUK 231/5 son günü ertelenmez); BİLİNEN
- *      SINIR: toparlanan tahsilatta tarih = dönem başı (ödeme anı satırda yok)
+ *      tarihi" yakalama anı DEĞİL, iyzico'nun başarılı denemesinin anı (VUK
+ *      231/5 son günü ertelenmez); toparlanan tahsilatta da (28.09'dan beri
+ *      satır `tahsilatTarihi` taşır — 26.09'daki bilinen sınır KAPANDI)
  *
  * ESKİ HÂL (kural 7 yokken, 26.09 ölçüldü): 23 PASS / 52 FAIL. Ölçüt (Ö1-Ö5)
  * ve fikstürler eski kodda da yeşil (kırmızılar kuraldan; İ3/V fikstürleri
@@ -672,6 +674,8 @@ function sBlogu(): void {
     kayipTahsilatKarari(liste, {
       erisimSonu: new Date(T0 + MIRAS_GUN * GUN),
       faturali: new Set<string>(),
+      // Varsayılan: hiçbir başarı olayı işlenmemiş (webhook kayboldu — kural 7'nin konusu).
+      islenmis: new Set<string>(),
       simdi: new Date(T0 + 10 * GUN),
       denemeSuruyor: false,
       paketGecisTarihi: null,
@@ -801,9 +805,36 @@ function sBlogu(): void {
     sip('a1', T0, T0 + AY, 'SUCCESS', ['FAILURE', 'SUCCESS']),
     { ...m1, referenceCode: 'a2', paymentAttempts: [{ paymentStatus: 'SUCCESS' }] },
     { ...m1, referenceCode: 'a3', startPeriod: null, paymentAttempts: [{ paymentStatus: 'SUCCESS' }] },
+    // 28.09: ödendiği an BAŞARILI denemedir — ondan sonraki ret sayılmaz
+    // (eskiden her durumdaki son deneme; faturanın `odemeAni`yla tek kural).
+    sip('a4', T0, T0 + AY, 'SUCCESS', ['SUCCESS', 'FAILURE']),
   ]).map((o) => `${o.siparisKodu}:${o.donemBasi?.getTime() ?? '-'}:${o.sonDeneme?.getTime() ?? '-'}`).join(' ');
-  check('S20 odenmisSiparisler: dönem başı ve SON deneme anı (en büyük createdDate); deneme anı yoksa dönem başı; ikisi de yoksa boş',
-    ayr === `a1:${T0}:${T0 + GUN + DK} a2:${T0}:${T0} a3:-:-`, ayr);
+  check('S20 odenmisSiparisler: dönem başı ve ÖDENDİĞİ an (başarılı deneme; sonraki ret sayılmaz); deneme anı yoksa dönem başı; ikisi de yoksa boş',
+    ayr === `a1:${T0}:${T0 + GUN + DK} a2:${T0}:${T0} a3:-:- a4:${T0}:${T0 + DK}`, ayr);
+  // Kural 7f (28.09, fatura doğruluğu): tutarı OKUNAMAYAN sipariş, başarı olayı
+  // ZATEN İŞLENMİŞSE oynatılmaz — webhook yolu tutarı uydurmaz, oynatma
+  // faturalayamaz — "elle fatura"; erişimi uzatan yine oynatılır (kural 2),
+  // yoldaki o gece bekletilir.
+  const tutarsiz = { ...m1, price: undefined };
+  const islendi = { islenmis: new Set(['m1']) };
+  const s21 = [
+    kararYaz(karar([tutarsiz], islendi)),
+    kararYaz(karar([tutarsiz], { ...islendi, erisimSonu: kisa })),
+    kararYaz(karar([{ ...m1, paidPrice: 0 }], islendi)),
+    kararYaz(karar([tutarsiz], { ...islendi, simdi: new Date(T0 + DK + SAAT) })),
+  ].join(' | ');
+  check('S21 ⭐ kural 7f: tutarı OKUNAMAYAN, başarı olayı İŞLENMİŞ süren faturasız sipariş OYNATILMAZ → elle fatura (price yok · paidPrice okunamaz); erişimi uzatan yine oynatılır; yoldaysa o gece ne oynatma ne uyarı',
+    s21 === 'oynat=- elle=m1 | oynat=m1/erisim elle=- | oynat=- elle=m1 | oynat=- elle=-', s21);
+  // Kod incelemesi 28.09 (ölçüldü): webhook'u HİÇ işlenmemiş (kaybolmuş)
+  // tutarsız sipariş koşulsuz 7f ile oynatılmıyordu — dunning'deki ödemiş
+  // satır ODEME_BEKLIYOR'da kalıyordu. İşlenmemişse BİR KEZ oynatılır; tutarlı
+  // sipariş işlenmiş olsa da (fatura yoksa) eskisi gibi oynatılır.
+  const s22 = [
+    kararYaz(karar([tutarsiz])),
+    kararYaz(karar([m1], islendi)),
+  ].join(' | ');
+  check('S22 ⭐ kural 7f yalnız İŞLENMİŞ olayda: webhook\'u kaybolmuş tutarsız sipariş BİR KEZ oynatılır (dunning toparlansın); tutarlı faturasız sipariş işlenmiş olsa da oynatılır',
+    s22 === 'oynat=m1/fatura elle=- | oynat=m1/fatura elle=-', s22);
 }
 
 /** Miras satırı + işlenmiş ilk dönem + başarısız yenileme → merdivenin 3. gün yeniden denemesi TUTTU. */
@@ -1392,9 +1423,8 @@ async function vBlogu(): Promise<void> {
   const { ab: ab2 } = await d.mirasSatinAlmasi('F-V2', 'sub-v2');
   const bas = Date.now() - 20 * SAAT;
   const bas2 = Date.now() - 4 * GUN;
-  d.iyz.detaylar.set('sub-v', iyzicoDetayi('sub-v', 'ACTIVE', [
-    siparis({ kod: 'ord-v1', durum: 'SUCCESS', bas, son: bas + 31 * GUN, denemeler: ['SUCCESS'] }),
-  ]));
+  const v1 = siparis({ kod: 'ord-v1', durum: 'SUCCESS', bas, son: bas + 31 * GUN, denemeler: ['SUCCESS'] });
+  d.iyz.detaylar.set('sub-v', iyzicoDetayi('sub-v', 'ACTIVE', [v1]));
   const v2 = siparis({
     kod: 'ord-v2', durum: 'SUCCESS', bas: bas2, son: bas2 + 31 * GUN, denemeler: ['FAILURE', 'FAILURE', 'FAILURE', 'SUCCESS'],
   });
@@ -1407,22 +1437,25 @@ async function vBlogu(): Promise<void> {
     !!f && f.olusturuldu.getTime() - bas > 19 * SAAT && nes.talepler.length === 2 && k.hatalar.length === 0 &&
       d.faturalar(ab2.id).length === 1,
     `olusturuldu-bas=${f ? ((f.olusturuldu.getTime() - bas) / SAAT).toFixed(1) : '-'} saat talep=${nes.talepler.length} ${gunlukYaz(k)}`);
-  check('V1 ⭐ NES talebinin ödeme tarihi = çekim anı (siparişin dönem başı), YAKALAMA anı DEĞİL — oynatma son günü ertelemez',
-    t?.tahsilat?.tarih instanceof Date && t.tahsilat.tarih.getTime() === bas,
-    `tarih=${iso(t?.tahsilat?.tarih)} beklenen=${iso(new Date(bas))}`);
+  // Beklenen ödeme anı FİKSTÜRÜN ham iyzico kaydından (başarılı denemenin
+  // `createdDate`i) — kodun hesabından türetilmez.
+  const odeme1 = v1.paymentAttempts.find((a) => a.paymentStatus === 'SUCCESS')?.createdDate ?? NaN;
+  check('V1 ⭐ NES talebinin ödeme tarihi = iyzico\'nun BAŞARILI denemesinin anı, YAKALAMA anı DEĞİL — oynatma son günü ertelemez',
+    t?.tahsilat?.tarih instanceof Date && t.tahsilat.tarih.getTime() === odeme1 && f?.tahsilatTarihi?.getTime() === odeme1,
+    `tarih=${iso(t?.tahsilat?.tarih)} satir=${iso(f?.tahsilatTarihi)} beklenen=${iso(new Date(odeme1))}`);
   const e = t ? faturaKesimTalebiEpostasi(t, { iyzicoTestOrtami: false }) : null;
-  check('V2 NES e-postası son düzenleme gününü çekim + 7 gün yazar (VUK md. 231/5)',
-    !!e && e.paragraflar.some((p) => p.startsWith(`Son düzenleme günü: ${tarihYaz(new Date(bas + 7 * GUN))} `)),
+  check('V2 NES e-postası son düzenleme gününü ödeme + 7 gün yazar (VUK md. 231/5), süre GEÇMEDİ',
+    !!e && e.paragraflar.some((p) => p.startsWith(`Son düzenleme günü: ${tarihYaz(new Date(odeme1 + 7 * GUN))} `)) &&
+      !e.paragraflar.some((p) => p.includes('SÜRE GEÇTİ')),
     JSON.stringify(e?.paragraflar.filter((p) => p.startsWith('Ödeme tarihi') || p.startsWith('Son düzenleme'))));
-  // BİLİNEN SINIR (ayrı iş, koordinatör notu 26.09): `Fatura` satırı ödeme
-  // anını TAŞIMAZ; "ödeme tarihi" = min(kuyruğa alınma, dönem başı). Yeniden
-  // denemeyle toparlanan tahsilatta bu, GERÇEK ödemeden (başarılı deneme)
-  // ÖNCEDİR: son gün erken yazılır; ödeme dönem başından 7+ gün sonraysa
-  // e-posta GEÇMİŞ bir son gün yazar ve "süre geçti" demez.
+  // 28.09 — KAPANDI (26.09'da BİLİNEN SINIR olarak sabitlenmişti): `Fatura`
+  // satırı artık ödeme anını taşır (`tahsilatTarihi`). Yeniden denemeyle
+  // toparlanan tahsilatta "ödeme tarihi" dönem başı DEĞİL, başarılı denemenin
+  // anıdır (`test:fatura-dogrulugu`).
   const t2 = nes.talepler.find((x) => x.harciAnahtar === 'ord-v2');
   const basariliDeneme = v2.paymentAttempts.find((a) => a.paymentStatus === 'SUCCESS')?.createdDate ?? NaN;
-  check('V3 BİLİNEN SINIR: toparlanan tahsilatta NES "ödeme tarihi" = dönem başı, başarılı denemeden 3 gün ÖNCE',
-    t2?.tahsilat?.tarih?.getTime() === bas2 && basariliDeneme - bas2 === 3 * GUN + DK,
+  check('V3 ⭐ toparlanan tahsilatta NES "ödeme tarihi" = BAŞARILI denemenin anı (dönem başından 3 gün sonra), dönem başı DEĞİL',
+    t2?.tahsilat?.tarih?.getTime() === basariliDeneme && basariliDeneme - bas2 === 3 * GUN + DK,
     `tarih=${iso(t2?.tahsilat?.tarih)} basariliDeneme=${iso(new Date(basariliDeneme))}`);
 }
 

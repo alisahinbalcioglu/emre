@@ -185,7 +185,11 @@ export const DUNNING_METINLERI: Record<
     konu: 'MetaPriceX — ödemeniz alındı',
     baslik: 'Her şey yolunda',
     govde: [
-      `${b.tutar} tutarındaki ödemeniz alındı ve hesabınız tam erişime döndü.`,
+      // 28.09: tutar iyzico'nun ÇEKTİĞİ (`tahsilEdilenTutar`, faturayla aynı);
+      // boşsa okunamadı — paket fiyatı UYDURULMAZ, cümle tutarsız kurulur.
+      b.tutar
+        ? `${b.tutar} tutarındaki ödemeniz alındı ve hesabınız tam erişime döndü.`
+        : 'Ödemeniz alındı ve hesabınız tam erişime döndü.',
       'Faturanız e-posta ile ayrıca iletilecek.',
       'İyi çalışmalar.',
     ],
@@ -217,4 +221,19 @@ export function tarihYaz(t: Date): string {
     year: 'numeric',
     timeZone: 'Europe/Istanbul',
   });
+}
+
+const GUN_MS = 24 * 60 * 60 * 1000;
+/** İstanbul UTC+3 — 2016'dan beri yaz saati uygulaması YOK. */
+const ISTANBUL_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * `t`nin İstanbul takvim gününün SON anı — `tarihYaz`ın yazdığı GÜNÜN sonu.
+ * Gün sayan kurallar (deneme hatırlatmasının "3 gün kala"sı, NES faturasının
+ * son düzenleme günü) bu TEK tanımı okur (28.09'da deneme-hatirlatmasi.
+ * servisi.ts'ten taşındı; orada yeniden dışa verilir).
+ */
+export function istanbulGunSonu(t: Date): Date {
+  const gunBasi = Math.floor((t.getTime() + ISTANBUL_MS) / GUN_MS) * GUN_MS;
+  return new Date(gunBasi + GUN_MS - 1 - ISTANBUL_MS);
 }

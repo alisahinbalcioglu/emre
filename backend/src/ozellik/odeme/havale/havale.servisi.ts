@@ -462,6 +462,11 @@ export class HavaleServisi {
           paraBirimi: mevcut.paraBirimi,
           donemBasi,
           donemSonu: sonuc.abonelik.erisimSonu,
+          // 28.09 — ödeme anı = ONAY anı (havalenin banka tarihi kayıtlı
+          // değil); paket = onayın yazdığı etkin paket (teklifin paketi) —
+          // fatura kesim anındaki paketi DEĞİL bunu yazar.
+          tahsilatTarihi: sonuc.havale.onaylandi ?? donemBasi,
+          paketSurumuId: sonuc.abonelik.paketSurumuId,
         })
         .catch((e) => this.logger.error(`Havale faturası kuyruğa alınamadı: ${e}`));
     }

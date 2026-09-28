@@ -341,7 +341,8 @@ async function rBlogu(): Promise<void> {
   check('R2 ⭐ "ödemeniz alınamadı" düğmesi (Kartımı güncelle) sayfaya gider ve ?a= aboneliğin kimliğini taşır',
     ilkYol === '/abonelik/kart' && sayfaVarMi(ilkYol) && new URL(ilk.dugme!.url).searchParams.get('a') === 'ab-d',
     `giden=${JSON.stringify(giden)}`);
-  await dunning.tahsilatToparlandi('ab-d', true);
+  // 28.09: çekilen tutar çağırandan gelir (webhook, `tahsilEdilenTutar`).
+  await dunning.tahsilatToparlandi('ab-d', true, { tutar: 1649, paraBirimi: 'TRY' });
   const alindi = giden[1];
   const alindiYol = alindi?.dugme ? uygulamaYolu(alindi.dugme.url) : null;
   // E-postayı metin kaynağından tanı: metin değişirse kapı sahte kırmızı vermesin.
