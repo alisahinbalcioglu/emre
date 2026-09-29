@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 855
-Toplam satir: 238250
+Toplam satir: 238555
 Uc nokta: 238
 test:* scripti: 141
 
@@ -266,8 +266,8 @@ test:* scripti: 141
 | `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-dusurme.servisi.ts` | 345 |
 | `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-islemi.ts` | 249 |
 | `backend/src/ozellik/odeme/abonelik/yonetici/yonetici-paket-epostalari.ts` | 161 |
-| `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | 240 |
-| `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 844 |
+| `backend/src/ozellik/odeme/dunning/dunning.metinleri.ts` | 284 |
+| `backend/src/ozellik/odeme/dunning/dunning.servisi.ts` | 897 |
 | `backend/src/ozellik/odeme/dunning/kisit-gunu.ts` | 64 |
 | `backend/src/ozellik/odeme/dunning/tahsilat-kirasi.ts` | 109 |
 | `backend/src/ozellik/odeme/eposta/eposta.servisi.ts` | 339 |
@@ -312,7 +312,7 @@ test:* scripti: 141
 | `backend/test/aile-oncelik-test.ts` | 182 |
 | `backend/test/aile-uyusmazligi-test.ts` | 357 |
 | `backend/test/alias-kelime-yutma-test.ts` | 181 |
-| `backend/test/aninda-tahsilat-test.ts` | 1167 |
+| `backend/test/aninda-tahsilat-test.ts` | 1375 |
 | `backend/test/antet-test.ts` | 383 |
 | `backend/test/audit-canli-kosum.ts` | 317 |
 | `backend/test/audit-real-excel.ts` | 82 |

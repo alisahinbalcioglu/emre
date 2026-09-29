@@ -11,6 +11,7 @@ import { kartGuncellenebilirMi } from '../abonelik/kart-kapatma';
 import { EpostaServisi } from '../eposta/eposta.servisi';
 import {
   DUNNING_METINLERI,
+  type DenemeSonucu,
   type MetinBaglami,
   tarihYaz,
   tutarYaz,
@@ -233,8 +234,17 @@ export class DunningServisi {
     }
 
     // ── Yeniden tahsilat denemesi ────────────────────────────────────────
-    if (basamak.tekrarDene && ab.iyzicoAbonelikKodu) {
-      if ((await this.basamakDenemesi(ab, ab.iyzicoAbonelikKodu, basamak, basamakNo)) === 'dur') return;
+    // 29.09: bildirim giderse metin çekimin GERÇEĞİNİ söyler (`deneme`) —
+    // merdiven davranışı aynı, yalnız 3./7. gün ilk cümlesi seçilir.
+    let deneme: DenemeSonucu | undefined;
+    if (basamak.tekrarDene) {
+      if (ab.iyzicoAbonelikKodu) {
+        const sonuc = await this.basamakDenemesi(ab, ab.iyzicoAbonelikKodu, basamak, basamakNo);
+        if (sonuc === 'dur') return;
+        deneme = sonuc;
+      } else {
+        deneme = 'denenmedi'; // iyzico kodu yok: çekime hiç girilmez
+      }
     }
 
     // ── Durum düşürme ────────────────────────────────────────────────────
@@ -253,7 +263,7 @@ export class DunningServisi {
 
     // ── Bildirim ─────────────────────────────────────────────────────────
     if (basamak.metinAnahtari) {
-      await this.gonder(abonelikId, basamak.metinAnahtari);
+      await this.gonder(abonelikId, basamak.metinAnahtari, undefined, deneme ? { deneme } : {});
     }
 
     await this.prisma.abonelik.update({
@@ -263,10 +273,13 @@ export class DunningServisi {
   }
 
   /**
-   * Merdivenin yeniden deneme basamağı (3./7./20. gün). `'bildir'`: basamak
-   * durum düşürme + bildirimle SÜRER (kart reddetti, bildirimde sipariş yok ya
-   * da erteleme hakkı kullanılmış). `'dur'`: bugün başka iş yok (çekim iletildi,
-   * ödeme zaten alınmış, kira başka bir denemede ya da basamak BİR KEZ ertelendi).
+   * Merdivenin yeniden deneme basamağı (3./7./20. gün). `DenemeSonucu`: basamak
+   * durum düşürme + bildirimle SÜRER ve bildirim çekimin gerçeğini söyler —
+   * `reddedildi` (kart bugün reddetti), `denenmedi` (bildirimde sipariş yok ya
+   * da hedef doğrulanamadı, erteleme hakkı kullanılmış; bu basamakta HİÇ çekim
+   * gönderilmedi), `belirsiz` (bu basamakta gönderilen çekimin yanıtı gelmedi).
+   * `'dur'`: bugün başka iş yok (çekim iletildi, ödeme zaten alınmış, kira
+   * başka bir denemede ya da basamak BİR KEZ ertelendi).
    *
    * ⚠ 28.09 — HEDEF iyzico'ya SORULUR, anlık denemeyle TEK kural
    * (`hedefiDogrula` → `yenidenDenemeHedefi`). Eskiden en yeni başarısızlık
@@ -280,12 +293,12 @@ export class DunningServisi {
     abonelikKodu: string,
     basamak: Basamak,
     basamakNo: number,
-  ): Promise<'dur' | 'bildir'> {
+  ): Promise<'dur' | DenemeSonucu> {
     const abonelikId = ab.id;
     // Bildirim yok (ör. başarısızlığı gece mutabakatı yazdı): hedef bilinmiyor,
     // çekim yok — bildirim eskisi gibi gider. Anlık deneme de burada durur.
     const adaylar = await this.basarisizSiparisAdaylari(abonelikKodu);
-    if (adaylar.length === 0) return 'bildir';
+    if (adaylar.length === 0) return 'denenmedi';
 
     // KİRA (26.09): müşterinin anlık denemesiyle AYNI kira. Satır okunduktan
     // sonra müşteri kazandıysa iyzico'ya GİDİLMEZ, basamak yarına kalır.
@@ -320,13 +333,17 @@ export class DunningServisi {
           `Yeniden deneme hedefi yine doğrulanamadı (${abonelikId}): ${hedef.gerekce} — ` +
             'erteleme hakkı kullanıldı, bildirim gidiyor (çekimsiz)',
         );
-        return 'bildir';
+        // Bugün çekim yok; ertelenen gün yanıtsız bir çekim GÖNDERİLDİYSE sonuç bilinmiyor.
+        return (await this.basamaktaCekimGonderildiMi(abonelikId, ab.ilkBasarisizlik!, basamak.gun))
+          ? 'belirsiz'
+          : 'denenmedi';
       }
       this.logger.warn(
         `Yeniden deneme hedefi DOĞRULANAMADI (${abonelikId}): ${hedef.gerekce} — bildirim bir gün ertelendi`,
       );
       await this.abonelik.olayYaz(abonelikId, 'dunning.tekrar.belirsiz', {
         aciklama: `Basamak ${basamakNo} — hedef doğrulanamadı, çekim YOK: ${hedef.gerekce}`,
+        veri: { cekimGonderildi: false },
         aktor: 'dunning',
       });
       return 'dur';
@@ -382,6 +399,7 @@ export class DunningServisi {
       );
       await this.abonelik.olayYaz(abonelikId, 'dunning.tekrar.belirsiz', {
         aciklama: `Basamak ${basamakNo} — sipariş ${hedef.kod}: ${mesaj}`,
+        veri: { cekimGonderildi: true, siparisKodu: hedef.kod },
         aktor: 'dunning',
       });
       return 'dur';
@@ -391,7 +409,10 @@ export class DunningServisi {
         ? `Yeniden deneme yine YANITSIZ (${abonelikId}): erteleme hakki kullanildi, bildirim gidiyor`
         : `Yeniden deneme reddedildi (${abonelikId}): ${hata}`,
     );
-    return 'bildir';
+    // Bildirim kararı DEĞİŞMEDİ (yalnız ilk zaman aşımı ertelenir); metin ise
+    // kiranın sınıflandırmasıyla AYNI gerçeği söyler: kodlu ret "yine
+    // alınamadı", zaman aşımı / kodsuz hata / kopan bağlantı "sonuç yok".
+    return denemeHatasiSinifi(hata) === 'reddedildi' ? 'reddedildi' : 'belirsiz';
   }
 
   /** Merdivenin KISITLI basamağının günü (ortam ayarıyla aynı sayı). */
@@ -745,6 +766,33 @@ export class DunningServisi {
   }
 
   /**
+   * 29.09 — bu basamakta (erteleme günü dahil) yanıtsız bir çekim GÖNDERİLDİ
+   * mi? YALNIZ bildirim metnini seçer ("tekrar denedik, sonuç alamadık" mı,
+   * "tekrar çekim denemedik" mi); merdivenin kararı buna BAKMAZ. Kaynak:
+   * erteleme izinin `veri.cekimGonderildi` alanı (zaman aşımı `true`,
+   * doğrulanamayan hedef `false`). Kapsam `basamakErtelendiMi` ile AYNI
+   * (bu abonelik, bu basamağın başından beri) — önceki basamağın denemesi
+   * sayılmaz. BİLİNEN SINIR: 29.09 öncesi izde alan yok → gönderilmedi
+   * sayılır; deploy'dan hemen önce ZAMAN AŞIMIYLA ertelenmiş basamağın ertesi
+   * günü hedef doğrulanamazsa metin "bu kez tekrar çekim denemedik" der (çekim
+   * gönderilmişti). Deploy öncesi salt okuma sayımı: son 3 günün
+   * `dunning.tekrar.belirsiz` izleri. Müşterinin kendi anlık denemesi
+   * (`dunning.aninda.*`) burada sayılmaz.
+   */
+  private async basamaktaCekimGonderildiMi(
+    abonelikId: string,
+    ilkBasarisizlik: Date,
+    gun: number,
+  ): Promise<boolean> {
+    const basamakBasi = new Date(ilkBasarisizlik.getTime() + gun * 86_400_000);
+    const izler = await this.prisma.abonelikOlayi.findMany({
+      where: { abonelikId, tip: 'dunning.tekrar.belirsiz', olusturuldu: { gte: basamakBasi } },
+      select: { veri: true },
+    });
+    return izler.some((o) => (o.veri as { cekimGonderildi?: unknown } | null)?.cekimGonderildi === true);
+  }
+
+  /**
    * 26.09 — metnin MİRAS bağlamı. Dönüş bildiriminde satır ARTIK mirasta:
    * geçiş paketi etkin paketin kendisi. Öncesinde yalnız hak KISIT TARİHİNDE
    * hâlâ geçerliyse (o gün dönülecek) doldurulur — miras kısıt gününden önce
@@ -836,7 +884,12 @@ export class DunningServisi {
 
     await this.abonelik.olayYaz(abonelikId, `dunning.eposta.${anahtar}`, {
       aciklama: metin.konu,
-      veri: { siparisKodu, kime: firma.faturaEposta ?? firma.yetkiliEposta },
+      veri: {
+        siparisKodu,
+        kime: firma.faturaEposta ?? firma.yetkiliEposta,
+        // 29.09: basamakta çekimin gerçeği (3./7. günde ilk cümleyi seçer; 20. günde yalnız kayıt).
+        ...(ek.deneme ? { deneme: ek.deneme } : {}),
+      },
       aktor: 'dunning',
     });
   }

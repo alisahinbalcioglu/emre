@@ -39,9 +39,20 @@ gzip -dc yedek.sql.gz | psql -U metaprice -d metaprice
 ```
 
 Hetzner web konsolu TR klavyede `|` karakterini **yazamıyor** (aynı şekilde
-`"` `(` `)` `?` `_` `$` `>` `%` `~` `` ` `` ). Yani prosedürün en kritik komutu
+`"` `(` `)` `?` `_` `$` `>` `%` `~` `` ` `` `:` `@` `&`). Yani prosedürün en kritik komutu
 konsola elle yazılamaz. Bu yüzden bütün özel karakterler `scripts/geri-yukle.sh`
 içinde durur; konsola yazdığınız satırlarda **hiçbir yasak karakter yoktur.**
+
+Son üçü sonradan ölçüldü (29.09'da listeye eklendi):
+- `:` noktalı virgüle ya da boşluğa döner (17.08, 28.08; 01.09'da `seed:paketler` →
+  `seed;paketler`). Noktalı virgül kabukta komut ayırıcıdır, satır ikiye bölünür.
+  `https://…` yazmayın: şemasız adres (`metapricex.com/…`) aynı işi görür.
+- `@` `2` olur (18.08: `root@…` → `root2…`).
+- `&` `7` olur (22.09: `2>&1 &` → `2.71 7`).
+
+Aynı küme **parola** için de geçerlidir: bu karakterlerden birini içeren parola web
+konsoluna doğru yazılamaz, "parola yanlış" sanılır. Web konsolu yalnız SSH yokken
+kaçış yoludur; olağan iş kendi terminalinizden `ssh` ile yapılır.
 
 Bu belgedeki **her komut** bu kısıta göre seçilmiştir. Kopyalamadan, olduğu gibi
 yazabilirsiniz.
