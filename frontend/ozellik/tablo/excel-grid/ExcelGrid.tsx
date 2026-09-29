@@ -433,7 +433,16 @@ function BrandDropdown(props: ICellRendererParams & {
     // isareti HIC gorunmedi. En pahali hali de odur — fiyati 0 kalan satir
     // siradan gorunur ve teklif eksik fiyatla gider (KUR-01).
     if (!kolonaYazildi) {
-      try { api?.refreshCells({ rowNodes: [targetNode], force: true }); } catch { /* grid gitti */ }
+      // ⚠ YALNIZ ISARETIN GORUNDUGU KOLON: `isaret.ts` rengi fiyat kolonunun
+      // `cellStyle`inde uygular; tum satiri tazelemek gereksiz ve PAHALI.
+      // Olculdu: kolonsuz tazeleme 8 satirlik surukle-doldurda grid.spec'i
+      // 22 sn'den 1.4 dk'ya cikariyor ve K15-K17/D9 zaman asimina ugruyordu
+      // (her satirda 4 isaret alani = 32 tam tazeleme).
+      try {
+        if (materialUnitPriceField) {
+          api?.refreshCells({ rowNodes: [targetNode], columns: [materialUnitPriceField], force: true });
+        }
+      } catch { /* grid gitti */ }
     }
   };
 
