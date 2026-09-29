@@ -217,6 +217,13 @@ export default function GridTestPage() {
         libraryPriceField="materialUnitPriceField"
         currencySymbol="₺"
         conversionRate={1}
+        // ⚠ GERCEK TEKLIF GRIDIYLE HIZA (29.09): `quotes/new` bu prop'u veriyor
+        // ve FITTING kapsam kipi buna baglidir (`fittingDuzenlenebilir =
+        // enableStructureEdit`). Harness onu vermedigi icin fitting kipi
+        // burada HIC acilmiyordu — yani "fitting ile cakisma" sinifi
+        // olculemiyordu. Sag tik menusunu de acar; hicbir E2E sag tik
+        // kullanmiyor (olculdu), mevcut senaryolar etkilenmez.
+        enableStructureEdit
       />
       <div style={{ marginTop: 10, fontSize: 11, color: '#64748b' }}>
         Olay logu: konsolda <code>[GridTest]</code> ve <code>window.__olay</code> içinde.

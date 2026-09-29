@@ -438,3 +438,66 @@ test('KP7 ★ Shift+Ok ODAGI TASIMAZ — anchor sabit kalir (Excel davranisi)', 
   expect(odak).toEqual({ satir: '2', kolon: NET });
   await expect.poll(() => tulSayisi(page), { timeout: 10_000 }).toBe(3);
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// KP2 × FITTING — CAKISMA KURALLARI (29.09.2026, KP2'nin guncel master'a
+// uyarlanmasi sirasinda kondu ve TARAYICIDA gozle dogrulandi)
+//
+// Fitting kapsam kipi 02.09'da geldi: kullanici fitting satirinin kapsamini
+// Ctrl+tik ile secer (CLAUDE.md "Fitting Satiri"). KP2 ise fareyle SURUKLEYEREK
+// kopya secimi getiriyor. Ikisi ayni fare olaylarini dinledigi icin kural
+// ACIKCA yazilmali, yoksa iki tul (mavi kopya / sari kapsam) yarisir ve
+// kullanicinin "ne secili?" sorusu belirsizlesir.
+//
+// ⚠ Harness bu turda `enableStructureEdit` ile GERCEK teklif gridine hizalandi
+// (`quotes/new` onu veriyor); fitting kipi `fittingDuzenlenebilir =
+// enableStructureEdit` oldugu icin oncesinde harness'te HIC acilamiyordu —
+// yani bu cakisma sinifi olculemiyordu.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Satir 10'un birim hucresine "%" yazarak fitting kapsam kipini acar. */
+async function fittingKipiniAc(page: Page) {
+  await moduAyarla(page, 'quote');
+  const birim = page.locator('[row-index="10"] [col-id="col3"]');
+  await birim.dblclick();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('%');
+  await page.keyboard.press('Enter');
+  // Kip acildi: ad hucresinde "Σ satır seç" rozeti ve ustte kapsam seridi
+  await expect(page.getByText(/Fitting kapsamı/i).first()).toBeVisible({ timeout: 10_000 });
+}
+
+test('KP30 ★ FITTING kipi acikken fareyle SURUKLEME secim kurmaz', async ({ page }) => {
+  // Kapsam secme kipinde kullanicinin tek isi satir isaretlemektir; surukleme
+  // tulu `fittingTulu`nun uzerine biner. Kip `Tamam`/Esc ile kapaninca geri gelir.
+  await fittingKipiniAc(page);
+  await surukleSec(page, '_matBirim', 2, 5);
+  await expect.poll(() => tulSayisi(page), { timeout: 5_000 }).toBe(0);
+  // Kip DE bozulmadi
+  await expect(page.getByText(/Fitting kapsamı/i).first()).toBeVisible();
+});
+
+test('KP31 ★ CTRL+TIK fitting kapsamina gider, kopya secimi KURMAZ', async ({ page }) => {
+  // Ctrl/Meta basiliyken surukleme secimi HIC baslamaz — o tus fitting'e aittir.
+  // Anchor kosulsuz kurulsaydi mousedown, Ctrl+tik'in kapsam degisiminden ONCE
+  // kopya secimini sifirlar ve iki tul yarisirdi.
+  await fittingKipiniAc(page);
+  await page.locator('[row-index="2"] [col-id="col1"]').click({ modifiers: ['Control'] });
+
+  // Kapsam SARI tulle isaretlendi (fitting kuralinin kendi rengi)
+  await expect.poll(async () => page.evaluate(() =>
+    Array.from(document.querySelectorAll('style')).map((s) => s.textContent).join('').includes('245,158,11'),
+  ), { timeout: 5_000 }).toBe(true);
+  // ...ve kopya secimi HIC kurulmadi
+  expect(await tulSayisi(page)).toBe(0);
+});
+
+test('KP32 ★ Kip KAPANINCA fare secimi geri gelir (kural gecici)', async ({ page }) => {
+  // Kural "surekli kapali" degil: kip bitince normal secim calismali.
+  await fittingKipiniAc(page);
+  await page.keyboard.press('Escape');
+  await expect(page.getByText(/Fitting kapsamı/i)).toHaveCount(0, { timeout: 10_000 });
+
+  await surukleSec(page, '_matBirim', 2, 4);
+  await expect.poll(() => tulSayisi(page), { timeout: 10_000 }).toBe(3);
+});

@@ -4610,18 +4610,20 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           // kuran taraf click dalidir; surukleme de baslatilmaz (istenmez).
           if (me.shiftKey) return;
           if (e.node?.rowPinned || typeof e.rowIndex !== 'number') return;
-          // ── CAKISMA KURALI 1 — FITTING KIPI HER ZAMAN ONCELIKLI (29.09) ──
+          // ── CAKISMA KURALI (29.09) — FITTING KIPINDE SURUKLEME KAPALI ────
           // Fitting kapsami Ctrl+tik ile secilir (CLAUDE.md "Fitting Satiri").
-          // Surukleme seciminin anchor'i burada KOSULSUZ kurulsaydi, Ctrl+tik'in
-          // `click` dali kapsami degistirmeden ONCE mousedown kopya secimini
-          // sifirlar (`secimUygula(null, null)`) ve iki tul (mavi/sari fitting,
-          // mavi kopya) ayni anda yarisirdi. Ctrl/Meta basiliyken surukleme
-          // secimi HIC baslamaz — o tus fitting'e aittir.
-          if (me.ctrlKey || me.metaKey) return;
-          // ── CAKISMA KURALI 2 — KIP ACIKKEN SURUKLEME KAPALI ──────────────
           // Kapsam secme kipinde kullanicinin tek isi satir isaretlemektir;
-          // surukleme tulu `fittingTulu`nun uzerine biner ve "ne secili?"
-          // sorusunu belirsizlestirir. Kip `Tamam`/Esc ile kapaninca geri gelir.
+          // surukleme anchor'i burada kurulsaydi Ctrl+tik'in `click` dali
+          // kapsami degistirmeden ONCE kopya secimini sifirlar ve iki tul
+          // (sari kapsam / mavi kopya) ayni anda yarisirdi. Kip `Tamam`/Esc
+          // ile kapaninca surukleme geri gelir (KP32).
+          //
+          // ⚠ AYRICA BIR `ctrlKey` KAPISI KONMADI — olculdu, GEREKSIZDI:
+          // Ctrl+tik gridde YALNIZ fitting kipi acikken bir ise bagli
+          // (`onCellClicked`: `(ctrlKey||metaKey) && fittingModuRef.current`),
+          // kip kapaliyken hicbir sey yapmaz. Ayri bir Ctrl kapisi eklenince
+          // mutasyon HAYATTA KALDI (kaldirildiginda 3/3 test yine yesil) —
+          // yani gozlemlenebilir bir fark uretmeyen olu savunmaydi.
           if (fittingModuRef.current) return;
           if (tutamakBolgesiMi(me)) return;                // ONCELIK TUTAMAKTA
           if (e.api.getEditingCells().length > 0) return;  // editor kendi metnini secer

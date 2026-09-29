@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 853
-Toplam satir: 237205
+Kod dosyasi: 854
+Toplam satir: 238056
 Uc nokta: 238
 test:* scripti: 141
 
@@ -489,7 +489,7 @@ test:* scripti: 141
 | `frontend/app/admin/users/page.tsx` | 647 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
 | `frontend/app/davet-kabul/page.tsx` | 483 |
-| `frontend/app/dev/grid-test/page.tsx` | 227 |
+| `frontend/app/dev/grid-test/page.tsx` | 234 |
 | `frontend/app/fiyatlar/page.tsx` | 174 |
 | `frontend/app/forgot-password/page.tsx` | 92 |
 | `frontend/app/gizlilik/page.tsx` | 13 |
@@ -771,7 +771,7 @@ test:* scripti: 141
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4536 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4801 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -797,8 +797,8 @@ test:* scripti: 141
 | `frontend/ozellik/tablo/excel-grid/satir-terfi.ts` | 72 |
 | `frontend/ozellik/tablo/excel-grid/types.ts` | 177 |
 | `frontend/ozellik/tablo/excel-grid/useFillHandle.tsx` | 286 |
-| `frontend/ozellik/tablo/excel-grid/yapistir.test.ts` | 178 |
-| `frontend/ozellik/tablo/excel-grid/yapistir.ts` | 156 |
+| `frontend/ozellik/tablo/excel-grid/yapistir.test.ts` | 222 |
+| `frontend/ozellik/tablo/excel-grid/yapistir.ts` | 185 |
 | `frontend/ozellik/tablo/merge-multisheet.ts` | 195 |
 | `frontend/ozellik/tablo/parse-material-text.ts` | 69 |
 | `frontend/ozellik/tablo/quotes/ColumnManagerPanel.tsx` | 146 |
@@ -843,7 +843,8 @@ test:* scripti: 141
 | `frontend/test/e2e-golden/surum-kapisi.cjs` | 135 |
 | `frontend/test/e2e-golden/verify.mjs` | 836 |
 | `frontend/test/e2e/grid.spec.ts` | 206 |
-| `frontend/test/e2e/kopyala-yapistir.spec.ts` | 364 |
+| `frontend/test/e2e/kopyala-yapistir.spec.ts` | 366 |
+| `frontend/test/e2e/secim-duzenleme.spec.ts` | 504 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
 | `scripts/backup.sh` | 125 |
@@ -1601,6 +1602,7 @@ test:* scripti: 141
 | `frontend/test/e2e-golden/verify.mjs` | `node:fs` `node:path` `node:url` `node:module` `./sayi-ayristirma.mjs` `./artefakt-dizini.cjs` |
 | `frontend/test/e2e/grid.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/secim-duzenleme.spec.ts` | `@playwright/test` |
 | `frontend/vitest.config.ts` | `vitest/config` |
 | `scripts/deploy-olcum.cjs` | `fs` |
 | `scripts/harita-denetle.mjs` | `node:child_process` `node:fs` `node:path` `node:url` `./harita-uret.mjs` |
