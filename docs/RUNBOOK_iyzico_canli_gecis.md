@@ -180,7 +180,7 @@ Zorunluyken davranış (kapı `test:webhook-tahsilat-dogrulama` I):
 - Beklenen imza günlüğe yazılmaz.
 - Biçimsiz gövde her durumda 400 alır ve kaydedilmez: zorunlu üç kod (abonelik · sipariş · iyzico olay) eksik ya da harf/rakam/tire dışı, olay tipi biçimsiz ya da müşteri kodu VARKEN biçimsiz.
 - Müşteri kodu ve olay zamanı yoksa bildirim geçer: belge (docs.iyzico.com/ek-servisler/webhook) altı alanı listeler, ama canlıdaki tek kayıt (06.09) dört alanlıydı (28.09 ölçümü).
-- Uçta 16 KB gövde tavanı var.
+- Uçta 16 KB gövde tavanı var. Aşan gövde 413 alır; günlüğe yığın değil tek WARN satırı düşer (`Gövde reddedildi (413, entity.too.large): POST /api/webhook/iyzico/abonelik — <bayt> bayt`).
 
 ⚠ Müşteri kodu imza girdisindedir. Gövdede müşteri kodu yokken iyzico'nun imzaya ne koyduğu ÖLÇÜLMEDİ. Açma şartı (gerçek imzalı bildirimde `imzaGecerli = true`) bunu da yakalar: böyle bir bildirimde imza tutmuyorsa zorunluluğu AÇMAYIN, iyzico'ya sorun.
 

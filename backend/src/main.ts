@@ -4,7 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { guvenlikBasliklariniKur } from './altyapi/http/guvenlik-basliklari';
-import { govdeSinirlariniKur } from './altyapi/http/govde-siniri';
+import { govdeHatalariniKur, govdeSinirlariniKur } from './altyapi/http/govde-siniri';
 import { corsSecenekleri } from './altyapi/http/cors';
 
 async function bootstrap() {
@@ -37,6 +37,10 @@ async function bootstrap() {
   govdeSinirlariniKur(app);
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ extended: true, limit: '50mb' }));
+  // 29.09: ayrıştırıcının istemci hataları (413/415/…) aynı yanıt + tek WARN
+  // satırı; Nest'in ExceptionsHandler'ı her birini ERROR + yığınla basıyordu.
+  // Express hata ara katmanı yalnız KENDİNDEN ÖNCEKİLERİ görür: SONRA kurulur.
+  govdeHatalariniKur(app);
 
   app.useGlobalPipes(
     new ValidationPipe({

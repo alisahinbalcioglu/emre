@@ -49,7 +49,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import { PrismaService } from '../src/altyapi/db/prisma.service';
-import { govdeSinirlariniKur } from '../src/altyapi/http/govde-siniri';
+import { govdeHatalariniKur, govdeSinirlariniKur } from '../src/altyapi/http/govde-siniri';
 import { AbonelikServisi } from '../src/ozellik/odeme/abonelik/abonelik.servisi';
 import { ErisimServisi } from '../src/ozellik/odeme/abonelik/erisim.servisi';
 import {
@@ -2097,10 +2097,12 @@ async function iBlogu(): Promise<void> {
     })
     class TavanModulu {}
     const app = await NestFactory.create<NestExpressApplication>(TavanModulu, { logger: false });
-    // main.ts SIRASI: yol başı tavan ÖNCE, global ayrıştırıcılar SONRA.
+    // main.ts SIRASI: yol başı tavan ÖNCE, global ayrıştırıcılar SONRA, hata
+    // katmanı EN SONDA (`test:ceviri-duzeltme` E3/E3b kaynaktan ölçer).
     govdeSinirlariniKur(app);
     app.use(json({ limit: '50mb' }));
     app.use(urlencoded({ extended: true, limit: '50mb' }));
+    govdeHatalariniKur(app);
     app.setGlobalPrefix('api');
     await app.listen(0);
     const port = (app.getHttpServer().address() as { port: number }).port;
@@ -2114,12 +2116,19 @@ async function iBlogu(): Promise<void> {
         method: 'POST', headers: { 'content-type': tur }, body: b,
       })).status;
     try {
-      const kucuk = await gonder(govde(100));
-      const buyuk = await gonder(govde(20_000));
-      const form = await gonder(`a=${'x'.repeat(20_000)}`, 'application/x-www-form-urlencoded');
-      check('I9 ⭐ gövde tavanı: 1 KB bildirim 200 (kaydedildi); 20 KB JSON ve 20 KB form 413 (global 50 MB değil)',
-        kucuk === 200 && buyuk === 413 && form === 413 && db.tablo('webhookOlayi').length === 1,
-        `kucuk=${kucuk} buyuk=${buyuk} form=${form} satir=${db.tablo('webhookOlayi').length}`);
+      let kucuk = 0;
+      let buyuk = 0;
+      let form = 0;
+      const g = await gunluguTopla(async () => {
+        kucuk = await gonder(govde(100));
+        buyuk = await gonder(govde(20_000));
+        form = await gonder(`a=${'x'.repeat(20_000)}`, 'application/x-www-form-urlencoded');
+      });
+      const reddedildi = g.uyarilar.filter((u) => u.startsWith('Gövde reddedildi (413, entity.too.large): POST /api/webhook/iyzico/abonelik'));
+      check('I9 ⭐ gövde tavanı: 1 KB bildirim 200 (kaydedildi); 20 KB JSON ve 20 KB form 413 (global 50 MB değil); iki 413 günlükte TEK WARN satırı, ERROR/yığın YOK (29.09)',
+        kucuk === 200 && buyuk === 413 && form === 413 && db.tablo('webhookOlayi').length === 1 &&
+          reddedildi.length === 2 && g.hatalar.length === 0,
+        `kucuk=${kucuk} buyuk=${buyuk} form=${form} satir=${db.tablo('webhookOlayi').length} ${gunlukYaz(g)}`);
     } finally {
       await app.close();
     }

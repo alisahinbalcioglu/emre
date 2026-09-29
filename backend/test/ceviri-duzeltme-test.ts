@@ -17,7 +17,7 @@
  */
 import 'reflect-metadata';
 import * as http from 'http';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Reflector, NestFactory } from '@nestjs/core';
 import { Controller, Module, Post, Put } from '@nestjs/common';
@@ -42,7 +42,11 @@ import { CeviriKotaServisi } from '../src/ozellik/odeme/abonelik/ceviri-kota.ser
 import { ErisimGuard, YETENEK_KEY } from '../src/ozellik/odeme/abonelik/erisim.guard';
 import { ErisimServisi, Yetenek, type ErisimKarari } from '../src/ozellik/odeme/abonelik/erisim.servisi';
 import { KullaniciHizSiniriGuard } from '../src/altyapi/auth/guards/kullanici-hiz-siniri.guard';
-import { govdeSinirlariniKur } from '../src/altyapi/http/govde-siniri';
+import {
+  ayristiriciIstemciHatasiMi,
+  govdeHatalariniKur,
+  govdeSinirlariniKur,
+} from '../src/altyapi/http/govde-siniri';
 import { HesapServisi } from '../src/altyapi/auth/hesap.servisi';
 /** PLAN 5.8 §3.4: `HesapServisi` artik kapatma bildirimi de gonderiyor.
  *  Bu paketlerin konusu e-posta DEGIL — sessiz, yutmayan bir gonderici
@@ -741,13 +745,20 @@ class KuklaBaskaController {
 @Module({ controllers: [KuklaDuzeltmeController, KuklaBaskaController] })
 class KuklaModulu {}
 
-function iste(port: number, yol: string, govde: string, tur: string, metot: string): Promise<{ durum: number }> {
+function iste(
+  port: number,
+  yol: string,
+  govde: string,
+  tur: string,
+  metot: string,
+): Promise<{ durum: number; yanit: string }> {
   return new Promise((coz, at) => {
     const r = http.request(
       { host: '127.0.0.1', port, path: yol, method: metot, headers: { 'content-type': tur, 'content-length': Buffer.byteLength(govde) } },
       (y) => {
-        y.resume();
-        y.on('end', () => coz({ durum: y.statusCode ?? 0 }));
+        const parcalar: Buffer[] = [];
+        y.on('data', (p: Buffer) => parcalar.push(p));
+        y.on('end', () => coz({ durum: y.statusCode ?? 0, yanit: Buffer.concat(parcalar).toString('utf8') }));
       },
     );
     r.on('error', at);
@@ -771,13 +782,24 @@ async function eBlogu(): Promise<void> {
   }
   {
     const app = await NestFactory.create<NestExpressApplication>(KuklaModulu, { logger: false });
-    // main.ts SIRASI: yol başı tavan ÖNCE, global ayrıştırıcılar SONRA.
+    // main.ts SIRASI: yol başı tavan ÖNCE, global ayrıştırıcılar SONRA, hata
+    // katmanı EN SONDA (E3/E3b kaynaktan ölçer).
     govdeSinirlariniKur(app);
     app.use(json({ limit: '50mb' }));
     app.use(urlencoded({ extended: true, limit: '50mb' }));
+    govdeHatalariniKur(app);
     app.setGlobalPrefix('api');
     await app.listen(0);
     const port = (app.getHttpServer().address() as any).port;
+    // Günlük: Nest'in ExceptionsHandler'ı da (yığınlı ERROR) aynı yoldan yazar.
+    const uyarilar: string[] = [];
+    const hatalar: string[] = [];
+    const bos = () => undefined;
+    Logger.overrideLogger({
+      log: bos, debug: bos, verbose: bos, fatal: bos,
+      warn: (m: unknown) => { uyarilar.push(String(m)); },
+      error: (m: unknown) => { hatalar.push(String(m)); },
+    });
     try {
       const buyuk = JSON.stringify({ kaynak: 'A'.repeat(33 * 1024) });
       const d1 = await iste(port, '/api/ai/translate/duzeltmeler', buyuk, 'application/json', 'PUT');
@@ -791,7 +813,63 @@ async function eBlogu(): Promise<void> {
       const u3 = await iste(port, '/api/baska', form, 'application/x-www-form-urlencoded', 'POST');
       check('E2b ★ aynı uygulamada 33 KB urlencoded gövde de 413 (yalnız json sınırlansaydı bu yoldan geçerdi)',
         u1.durum === 413 && u3.durum !== 413, JSON.stringify({ u1, u3 }));
+
+      // 29.09 — ayrıştırıcı istemci hatası: yanıt AYNI, günlükte tek WARN.
+      // ÖNCE (ölçüldü): her 413/415 Nest'in ExceptionsHandler'ında ERROR +
+      // 11 satır yığın (~1,6 KB).
+      uyarilar.length = 0;
+      hatalar.length = 0;
+      const buyukJson = JSON.stringify({ kaynak: 'A'.repeat(33 * 1024) });
+      // Sorgu dizesi jeton taşıyabilir: günlüğe YOL yazılır, sorgu yazılmaz.
+      const j413 = await iste(port, '/api/ai/translate/correct?anahtar=GIZLI-JETON', buyukJson, 'application/json', 'POST');
+      const f413 = await iste(port, '/api/ai/translate/duzeltmeler', `kaynak=${'A'.repeat(33 * 1024)}`,
+        'application/x-www-form-urlencoded', 'PUT');
+      const c415 = await iste(port, '/api/baska', '{"x":1}', 'application/json; charset=koi8-z', 'POST');
+      const tavanYaniti = '{"statusCode":413,"message":"request entity too large"}';
+      const bizim = uyarilar.filter((u) => u.startsWith('Gövde reddedildi'));
+      check('E4 ★ ayrıştırıcı istemci hatası: 413 (JSON, form) ve 415 yanıtı BUGÜNKÜYLE aynı ({statusCode, message}); günlükte istek başına TEK WARN (yöntem, yol, tip), ERROR/yığın YOK, istemcinin karakter kümesi günlüğe YAZILMADI',
+        j413.durum === 413 && j413.yanit === tavanYaniti && f413.durum === 413 && f413.yanit === tavanYaniti &&
+          c415.durum === 415 && c415.yanit === '{"statusCode":415,"message":"unsupported charset \\"KOI8-Z\\""}' &&
+          hatalar.length === 0 && uyarilar.length === 3 && bizim.length === 3 &&
+          bizim[0].startsWith('Gövde reddedildi (413, entity.too.large): POST /api/ai/translate/correct — ') &&
+          bizim[1].startsWith('Gövde reddedildi (413, entity.too.large): PUT /api/ai/translate/duzeltmeler — ') &&
+          bizim[2].startsWith('Gövde reddedildi (415, charset.unsupported): POST /api/baska — ') &&
+          bizim.every((u) => !/koi8/i.test(u) && !u.includes('GIZLI-JETON')),
+        JSON.stringify({ j413, f413, c415, hatalar, uyarilar }));
+
+      // 29.09 inceleme (W1): bozuk SIKIŞTIRMA — body-parser zlib hatasına TİP
+      // EKLEMEZ ({code: Z_DATA_ERROR, status 400, expose}); 15 baytlık gövde
+      // tavanı aşmadan ERROR + yığın bastırıyordu. Yanıt Nest'inkiyle aynı kalmalı.
+      uyarilar.length = 0;
+      hatalar.length = 0;
+      const gzipBozuk = await new Promise<{ durum: number; yanit: string }>((coz, at) => {
+        const govde = 'bu-gzip-degil';
+        const r = http.request({
+          host: '127.0.0.1', port, path: '/api/webhook-benzeri', method: 'POST',
+          headers: { 'content-type': 'application/json', 'content-encoding': 'gzip', 'content-length': Buffer.byteLength(govde) },
+        }, (y) => {
+          const parcalar: Buffer[] = [];
+          y.on('data', (p: Buffer) => parcalar.push(p));
+          y.on('end', () => coz({ durum: y.statusCode ?? 0, yanit: Buffer.concat(parcalar).toString('utf8') }));
+        });
+        r.on('error', at);
+        r.end(govde);
+      });
+      check('E4c ★ bozuk gzip gövdesi (tipsiz zlib hatası): 400 yanıtı Nest\'inkiyle AYNI, günlükte TEK WARN, ERROR/yığın YOK',
+        gzipBozuk.durum === 400 && gzipBozuk.yanit === '{"statusCode":400,"message":"incorrect header check"}' &&
+          hatalar.length === 0 && uyarilar.length === 1 &&
+          uyarilar[0].startsWith('Gövde reddedildi (400, Z_DATA_ERROR): POST /api/webhook-benzeri — '),
+        JSON.stringify({ gzipBozuk, uyarilar, hatalar }));
+
+      uyarilar.length = 0;
+      hatalar.length = 0;
+      const bozuk = await iste(port, '/api/baska', '{"x":', 'application/json', 'POST');
+      check('E4b bozuk JSON Nest\'te KALDI: 400, yanıtında `error: "Bad Request"` (Nest biçimi), WARN/ERROR yok',
+        bozuk.durum === 400 && JSON.parse(bozuk.yanit).error === 'Bad Request' &&
+          uyarilar.length === 0 && hatalar.length === 0,
+        JSON.stringify({ bozuk, uyarilar, hatalar }));
     } finally {
+      Logger.overrideLogger(false);
       await app.close();
     }
   }
@@ -802,6 +880,34 @@ async function eBlogu(): Promise<void> {
     const k = ana.indexOf('urlencoded({ extended: true');
     check('E3 BAĞLANTI: `main.ts`\'te yol başı tavan, global json VE urlencoded ayrıştırıcılarından ÖNCE',
       i > 0 && j > i && k > i, JSON.stringify({ i, j, k }));
+    const l = ana.indexOf('govdeHatalariniKur(app)');
+    const m = ana.indexOf('app.listen(');
+    check('E3b BAĞLANTI: `main.ts`\'te ayrıştırıcı hata katmanı iki global ayrıştırıcıdan SONRA (önce kurulsaydı hatalarını görmezdi) ve `app.listen`den ÖNCE (Nest kendi hata katmanını init\'te sona ekler; ondan sonra kurulan katman ölüdür)',
+      l > 0 && l > j && l > k && j > 0 && k > 0 && m > l, JSON.stringify({ j, k, l, m }));
+  }
+  {
+    const ayristiriciHatasi = (ozellik: Record<string, unknown>) => Object.assign(new Error('x'), ozellik);
+    const tablo: Array<[string, unknown, boolean]> = [
+      ['413 tavan', ayristiriciHatasi({ type: 'entity.too.large', status: 413, expose: true }), true],
+      ['415 karakter kümesi', ayristiriciHatasi({ type: 'charset.unsupported', status: 415, expose: true }), true],
+      ['400 yarıda kesilen gövde', ayristiriciHatasi({ type: 'request.aborted', status: 400, expose: true }), true],
+      ['bozuk JSON (SyntaxError) Nest\'e kalır',
+        Object.assign(new SyntaxError('x'), { type: 'entity.parse.failed', status: 400, expose: true }), false],
+      ['5xx Nest\'e kalır', ayristiriciHatasi({ type: 'stream.not.readable', status: 500, expose: false }), false],
+      ['5xx expose=true da Nest\'e kalır', ayristiriciHatasi({ type: 'x', status: 500, expose: true }), false],
+      ['expose olmayan 4xx', ayristiriciHatasi({ type: 'x', status: 400, expose: false }), false],
+      ['bozuk sıkıştırma (tipsiz — body-parser zlib hatasına tip eklemez)',
+        ayristiriciHatasi({ code: 'Z_DATA_ERROR', status: 400, expose: true }), true],
+      ['istemci soketi koptu (tipsiz ECONNRESET)', ayristiriciHatasi({ code: 'ECONNRESET', status: 400, expose: true }), true],
+      ['URIError Nest\'e kalır (Nest onu BadRequestException\'a çevirir)',
+        Object.assign(new URIError('x'), { status: 400, expose: true }), false],
+      ['durum dize', ayristiriciHatasi({ type: 'x', status: '413', expose: true }), false],
+      ['null', null, false],
+      ['dize', 'hata', false],
+    ];
+    const sapan = tablo.filter(([, e, beklenen]) => ayristiriciIstemciHatasiMi(e) !== beklenen).map(([ad]) => ad);
+    check(`E5 ayrıştırıcı istemci hatası doğruluk tablosu (${tablo.length} satır): 4xx + expose; SyntaxError ve URIError Nest'e; tip ŞART DEĞİL (zlib ve soket hataları tipsiz gelir)`,
+      sapan.length === 0 && tablo.length === 13, sapan.join(' | '));
   }
 }
 
