@@ -34,6 +34,50 @@ export interface MetinBaglami {
    */
   mirasPaketAdi?: string;
   mirasBitisi?: string; // "1 Eylül 2027"
+  /**
+   * 29.09 — o basamakta ÇEKİMİN gerçeği (merdiven verir; 3. ve 7. gün ilk
+   * cümlesi buna göre). Eskiden her yolda "tekrar denedik, yine alınamadı" /
+   * "birkaç denemeye rağmen" yazılıyordu — kart hiç çekilmeden de (hedef
+   * doğrulanamadı, bildirim yok, iyzico kodu yok). Yoksa çekim İDDİA EDİLMEZ.
+   */
+  deneme?: DenemeSonucu;
+}
+
+/**
+ * Merdiven basamağında çekimin sonucu: `reddedildi` kart bugün yeniden
+ * çekildi ve reddetti · `denenmedi` bu basamakta hiç çekim gönderilmedi ·
+ * `belirsiz` çekim gönderildi ama yanıt gelmedi (sonuç bilinmiyor).
+ */
+export type DenemeSonucu = 'reddedildi' | 'denenmedi' | 'belirsiz';
+
+// "bu kez" (Emre, 29.09 inceleme): 3. gün gerçekten çekilip reddedilen müşteriye
+// 7. gün "tekrar çekim denemedik" gitmesi önceki e-postayla çelişir gibi okunurdu.
+const DENENMEDI_EKI = 'kayıtlı kartınızdan bu kez tekrar çekim denemedik.';
+const belirsizCumlesi = (b: MetinBaglami) =>
+  `${b.tutar} tutarındaki ödemeyi tekrar denedik ancak bankadan sonuç alamadık; ödeme henüz bize ulaşmadı.`;
+
+/** 3. gün ilk cümlesi — çekimin gerçeğine göre (Emre onayı 29.09, metin birebir). */
+function ikinciIlkCumle(b: MetinBaglami): string {
+  switch (b.deneme) {
+    case 'reddedildi':
+      return `${b.tutar} tutarındaki ödemeyi tekrar denedik, yine alınamadı.`;
+    case 'belirsiz':
+      return belirsizCumlesi(b);
+    default:
+      return `${b.tutar} tutarındaki ödemeniz hâlâ alınamadı; ${DENENMEDI_EKI}`;
+  }
+}
+
+/** 7. gün ilk cümlesi (normal ve miras) — çekimin gerçeğine göre. */
+function ucuncuIlkCumle(b: MetinBaglami): string {
+  switch (b.deneme) {
+    case 'reddedildi':
+      return `${b.tutar} tutarındaki ödeme birkaç denemeye rağmen alınamadı.`;
+    case 'belirsiz':
+      return belirsizCumlesi(b);
+    default:
+      return `${b.tutar} tutarındaki ödeme hâlâ alınamadı; ${DENENMEDI_EKI}`;
+  }
 }
 
 const HAVALE_NOTU =
@@ -71,7 +115,7 @@ export const DUNNING_METINLERI: Record<
     konu: 'MetaPriceX — ödeme hatırlatması',
     baslik: 'Ödemeniz hâlâ bekliyor',
     govde: [
-      `${b.tutar} tutarındaki ödemeyi tekrar denedik, yine alınamadı.`,
+      ikinciIlkCumle(b),
       b.mirasPaketAdi
         ? `Hesabınız ${b.kisitTarihi} tarihine kadar normal çalışmaya devam edecek. O tarihe kadar ` +
           mirasaDonusCumlesi(b)
@@ -91,7 +135,7 @@ export const DUNNING_METINLERI: Record<
           konu: `MetaPriceX — ${b.kalanGun} gün sonra geçiş paketinize dönüyorsunuz`,
           baslik: `${b.kalanGun} gün sonra ${b.paketAdi} aboneliğiniz sona erecek`,
           govde: [
-            `${b.tutar} tutarındaki ödeme birkaç denemeye rağmen alınamadı.`,
+            ucuncuIlkCumle(b),
             `${b.kisitTarihi} tarihine kadar ${mirasaDonusCumlesi(b)}`,
             'Verilerinizin hiçbiri silinmez. Kartınızı güncellediğinizde bekleyen ödeme hemen ' +
               'yeniden denenir; ödeme alınırsa aboneliğiniz kesintisiz sürer.',
@@ -103,7 +147,7 @@ export const DUNNING_METINLERI: Record<
     konu: `MetaPriceX — hesabınız ${b.kalanGun} gün sonra kısıtlanacak`,
     baslik: `${b.kalanGun} gün sonra yeni teklif oluşturamayacaksınız`,
     govde: [
-      `${b.tutar} tutarındaki ödeme birkaç denemeye rağmen alınamadı.`,
+      ucuncuIlkCumle(b),
       `${b.kisitTarihi} tarihinde hesabınız salt-okunur moda geçecek: ` +
         'tekliflerinizi görüntülemeye devam edersiniz ama yeni teklif ' +
         'oluşturamaz, Excel ya da teklif formatında indiremezsiniz.',

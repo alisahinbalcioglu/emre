@@ -476,13 +476,17 @@ function belgedekiBasarisizSiparis(kod: string, bas: number, son: number) {
 
 const MUHASEBE_YASAK = { faturaKes: async () => { throw new Error('bu kapida fatura KESILMEZ'); } } as any;
 
-interface Giden { kime: string; konu: string }
+interface Giden { kime: string; konu: string; ilkParagraf?: string }
 
 function dunyaKur() {
   const db = bellekPrisma();
   const iyz = sahteIyzico();
   const giden: Giden[] = [];
-  const posta = { gonder: async (t: Giden) => { giden.push({ kime: t.kime, konu: t.konu }); } } as any;
+  const posta = {
+    gonder: async (t: Giden & { paragraflar?: string[] }) => {
+      giden.push({ kime: t.kime, konu: t.konu, ilkParagraf: t.paragraflar?.[0] });
+    },
+  } as any;
   db.ekle('paket', { id: 'P1', kod: 'pro-mek', ad: 'Pro Mekanik', kullaniciHakki: 2, dwgAktif: true });
   db.ekle('paketSurumu', {
     id: 'S30', paketId: 'P1', surumNo: 1, periyot: 'MONTHLY', periyotAdedi: 1, denemeGunu: 30,
@@ -1138,6 +1142,209 @@ function pBlogu(): void {
     eksik.length === 0, `eksik=${eksik.join(',')}`);
   const abarti = anahtarlar.filter((k) => /birkaç saniye|gerisini biz hallederiz/.test(govde(k)));
   check('P2 abartılı söz yok ("birkaç saniye içinde açılır", "gerisini biz hallederiz")', abarti.length === 0, `abarti=${abarti.join(',')}`);
+
+  // 29.09 — ilk cümle o basamakta ÇEKİMİN gerçeğini söyler (Emre onayı, metin
+  // birebir). Varsayılan (bağlamda deneme yok) çekim İDDİA ETMEZ.
+  const ilk = (k: 'ikinci' | 'ucuncu', deneme?: string, miras = false) =>
+    DUNNING_METINLERI[k]({
+      ...b, ...(deneme ? { deneme } : {}),
+      ...(miras ? { mirasPaketAdi: 'Geçiş Core', mirasBitisi: '1 Eylül 2027' } : {}),
+    } as any).govde[0];
+  const tablo: Array<[string, string]> = [
+    [ilk('ikinci', 'reddedildi'), '₺1.649,00 tutarındaki ödemeyi tekrar denedik, yine alınamadı.'],
+    [ilk('ikinci', 'denenmedi'), '₺1.649,00 tutarındaki ödemeniz hâlâ alınamadı; kayıtlı kartınızdan bu kez tekrar çekim denemedik.'],
+    [ilk('ikinci', 'belirsiz'), '₺1.649,00 tutarındaki ödemeyi tekrar denedik ancak bankadan sonuç alamadık; ödeme henüz bize ulaşmadı.'],
+    [ilk('ikinci'), '₺1.649,00 tutarındaki ödemeniz hâlâ alınamadı; kayıtlı kartınızdan bu kez tekrar çekim denemedik.'],
+    [ilk('ucuncu', 'reddedildi'), '₺1.649,00 tutarındaki ödeme birkaç denemeye rağmen alınamadı.'],
+    [ilk('ucuncu', 'denenmedi'), '₺1.649,00 tutarındaki ödeme hâlâ alınamadı; kayıtlı kartınızdan bu kez tekrar çekim denemedik.'],
+    [ilk('ucuncu', 'belirsiz'), '₺1.649,00 tutarındaki ödemeyi tekrar denedik ancak bankadan sonuç alamadık; ödeme henüz bize ulaşmadı.'],
+    [ilk('ucuncu'), '₺1.649,00 tutarındaki ödeme hâlâ alınamadı; kayıtlı kartınızdan bu kez tekrar çekim denemedik.'],
+    [ilk('ucuncu', 'reddedildi', true), '₺1.649,00 tutarındaki ödeme birkaç denemeye rağmen alınamadı.'],
+    [ilk('ucuncu', 'denenmedi', true), '₺1.649,00 tutarındaki ödeme hâlâ alınamadı; kayıtlı kartınızdan bu kez tekrar çekim denemedik.'],
+    [ilk('ucuncu', 'belirsiz', true), '₺1.649,00 tutarındaki ödemeyi tekrar denedik ancak bankadan sonuç alamadık; ödeme henüz bize ulaşmadı.'],
+  ];
+  const sapan = tablo.map(([gercek, beklenen], i) => (gercek === beklenen ? null : `${i}: «${gercek}»`)).filter(Boolean);
+  check(`P3 ⭐ 3. ve 7. gün e-postasının ilk cümlesi çekimin gerçeğine göre (${tablo.length} satır: reddedildi · denenmedi · belirsiz · varsayılan; 7. gün normal + miras)`,
+    sapan.length === 0 && tablo.length === 11, sapan.join(' | '));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  D — DUNNING E-POSTASI ÇEKİMİN GERÇEĞİNİ SÖYLER (29.09, Emre onayı)
+// ═════════════════════════════════════════════════════════════════════════
+//  Eskiden 3. gün e-postası her yolda "tekrar denedik, yine alınamadı", 7. gün
+//  "birkaç denemeye rağmen alınamadı" diyordu — kart hiç çekilmeden de: hedef
+//  iki gün doğrulanamadı, başarısızlık bildirimi yok (gece mutabakatı yazdı),
+//  satırda iyzico kodu yok. Yanıtsız denemede "yine alınamadı" bilinmiyordu.
+//  Merdiven, zamanlama ve tahsilat DEĞİŞMEDİ (mevcut H/M blokları); yalnız metin.
+async function dBlogu(): Promise<void> {
+  console.log('\n── D · dunning e-postası çekimin gerçeğini söyler: reddedildi · denenmedi · belirsiz ──');
+  const UCUNCU_GUN = { durum: 'ODEME_BEKLIYOR', gunOnce: 3.5, denemeSayisi: 1 };
+  const YEDINCI_GUN = { durum: 'ODEME_BEKLIYOR', gunOnce: 7.5, denemeSayisi: 2 };
+  const REDDEDILDI_3 = '₺1.649,00 tutarındaki ödemeyi tekrar denedik, yine alınamadı.';
+  const DENENMEDI_3 = '₺1.649,00 tutarındaki ödemeniz hâlâ alınamadı; kayıtlı kartınızdan bu kez tekrar çekim denemedik.';
+  const BELIRSIZ = '₺1.649,00 tutarındaki ödemeyi tekrar denedik ancak bankadan sonuç alamadık; ödeme henüz bize ulaşmadı.';
+  const REDDEDILDI_7 = '₺1.649,00 tutarındaki ödeme birkaç denemeye rağmen alınamadı.';
+  const DENENMEDI_7 = '₺1.649,00 tutarındaki ödeme hâlâ alınamadı; kayıtlı kartınızdan bu kez tekrar çekim denemedik.';
+  const merdiven = (d: ReturnType<typeof dunyaKur>) => gunluguTopla(() => d.dunning.merdiveniYurut());
+  /** Ertesi gün: belirsiz denemenin kirası bitti (10:00 taraması 20 sa sonra). */
+  const ertesiGun = (d: ReturnType<typeof dunyaKur>, id: string) => { d.satir(id).tahsilatKirasi = new Date(Date.now() - 1000); };
+  const kanitsiz = (d: ReturnType<typeof dunyaKur>, s: { kod: string; hedef: string }) => {
+    const det = d.iyz.detaylar.get(s.kod);
+    det.subscriptionStatus = 'ACTIVE';
+    det.orders[1] = siparis(s.hedef, Date.now(), Date.now() + 30 * GUN, [], 'WAITING');
+  };
+  const sonuc = (d: ReturnType<typeof dunyaKur>, id: string, anahtar: string) => {
+    const e = d.olaylar(id, `dunning.eposta.${anahtar}`);
+    return {
+      posta: d.giden.length, ilk: d.giden[0]?.ilkParagraf, cekim: d.iyz.tekrarlanan.length,
+      deneme: e.length === 1 ? (e[0].veri as any)?.deneme : `olay=${e.length}`,
+    };
+  };
+  const ayni = (x: object, y: object) => JSON.stringify(x) === JSON.stringify(y);
+
+  const vakalar: Array<[string, string, object]> = [];
+  {
+    // Başarısızlığı gece mutabakatı yazdı: bildirim yok → hedef bilinmiyor → çekim yok.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D1', UCUNCU_GUN);
+    d.db.tablo('webhookOlayi').length = 0;
+    await merdiven(d);
+    vakalar.push(['D1 bildirimsiz başarısızlık (çekim YOK)', 'ikinci', { g: sonuc(d, s.ab.id, 'ikinci'),
+      b: { posta: 1, ilk: DENENMEDI_3, cekim: 0, deneme: 'denenmedi' } }]);
+  }
+  {
+    // Hedef iki gün üst üste doğrulanamadı: erteleme hakkı kullanıldı → çekimsiz bildirim.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D2', UCUNCU_GUN);
+    kanitsiz(d, s);
+    await merdiven(d);
+    await merdiven(d);
+    vakalar.push(['D2 hedef iki gün doğrulanamadı (çekim YOK)', 'ikinci', { g: sonuc(d, s.ab.id, 'ikinci'),
+      b: { posta: 1, ilk: DENENMEDI_3, cekim: 0, deneme: 'denenmedi' } }]);
+  }
+  {
+    // Satırda iyzico abonelik kodu yok: deneme basamağı çekime hiç girmez.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D3', { ...UCUNCU_GUN, alanlar: { iyzicoAbonelikKodu: null } });
+    await merdiven(d);
+    vakalar.push(['D3 iyzico kodu yok (çekim YOK)', 'ikinci', { g: sonuc(d, s.ab.id, 'ikinci'),
+      b: { posta: 1, ilk: DENENMEDI_3, cekim: 0, deneme: 'denenmedi' } }]);
+  }
+  {
+    // Merdivenin denemesi kart tarafından REDDEDİLDİ: "tekrar denedik, yine alınamadı" doğru.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D4', UCUNCU_GUN);
+    d.iyz.durum.kip = 'ret';
+    await merdiven(d);
+    vakalar.push(['D4 deneme reddedildi', 'ikinci', { g: sonuc(d, s.ab.id, 'ikinci'),
+      b: { posta: 1, ilk: REDDEDILDI_3, cekim: 1, deneme: 'reddedildi' } }]);
+  }
+  {
+    // İki gün üst üste yanıtsız: çekim gönderildi, sonucu BİLİNMİYOR.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D5', UCUNCU_GUN);
+    d.iyz.durum.kip = 'zaman-asimi';
+    await merdiven(d);
+    ertesiGun(d, s.ab.id);
+    await merdiven(d);
+    vakalar.push(['D5 iki gün yanıtsız (sonuç bilinmiyor)', 'ikinci', { g: sonuc(d, s.ab.id, 'ikinci'),
+      b: { posta: 1, ilk: BELIRSIZ, cekim: 2, deneme: 'belirsiz' } }]);
+  }
+  {
+    // 1. gün yanıtsız (çekim GÖNDERİLDİ), 2. gün hedef doğrulanamadı: bugün çekim yok ama basamakta denendi.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D6', UCUNCU_GUN);
+    d.iyz.durum.kip = 'zaman-asimi';
+    await merdiven(d);
+    ertesiGun(d, s.ab.id);
+    kanitsiz(d, s);
+    await merdiven(d);
+    vakalar.push(['D6 dün yanıtsız, bugün doğrulanamadı (basamakta denendi, sonuç bilinmiyor)', 'ikinci', { g: sonuc(d, s.ab.id, 'ikinci'),
+      b: { posta: 1, ilk: BELIRSIZ, cekim: 1, deneme: 'belirsiz' } }]);
+  }
+  {
+    // 7. gün, bildirimsiz: "birkaç denemeye rağmen" DENMEZ.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D7', YEDINCI_GUN);
+    d.db.tablo('webhookOlayi').length = 0;
+    await merdiven(d);
+    vakalar.push(['D7 7. gün bildirimsiz (çekim YOK)', 'ucuncu', { g: sonuc(d, s.ab.id, 'ucuncu'),
+      b: { posta: 1, ilk: DENENMEDI_7, cekim: 0, deneme: 'denenmedi' } }]);
+  }
+  {
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D8', YEDINCI_GUN);
+    d.iyz.durum.kip = 'ret';
+    await merdiven(d);
+    vakalar.push(['D8 7. gün deneme reddedildi', 'ucuncu', { g: sonuc(d, s.ab.id, 'ucuncu'),
+      b: { posta: 1, ilk: REDDEDILDI_7, cekim: 1, deneme: 'reddedildi' } }]);
+  }
+  {
+    // Kopan bağlantı (kodsuz hata): merdiven bildirimi eskisi gibi AYNI GÜN gönderir,
+    // ama iyzico isteği işlemiş olabilir — "yine alınamadı" DENMEZ (kira sınıfıyla aynı).
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D9', UCUNCU_GUN);
+    d.iyz.durum.kip = 'kopuk';
+    await merdiven(d);
+    vakalar.push(['D9 kopan bağlantı (kodsuz hata, sonuç bilinmiyor)', 'ikinci', { g: sonuc(d, s.ab.id, 'ikinci'),
+      b: { posta: 1, ilk: BELIRSIZ, cekim: 1, deneme: 'belirsiz' } }]);
+  }
+  // 29.09 inceleme (W1): "bu basamakta çekim gönderildi mi" sorgusunun KAPSAMI —
+  // önceki basamağın ve BAŞKA aboneliğin çekim izi sayılmaz.
+  const belirsizIzi = (d: ReturnType<typeof dunyaKur>, abonelikId: string, gunOnce: number, veri: unknown) =>
+    d.db.ekle('abonelikOlayi', {
+      abonelikId, tip: 'dunning.tekrar.belirsiz', aciklama: 'fikstür', aktor: 'dunning', veri,
+      olusturuldu: new Date(Date.now() - gunOnce * GUN),
+    });
+  {
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D10', YEDINCI_GUN); // 7. gün basamağı yarım gün önce başladı
+    belirsizIzi(d, s.ab.id, 4, { cekimGonderildi: true }); // 3. gün basamağında (bu basamaktan ÖNCE)
+    belirsizIzi(d, 'baska-abonelik', 0, { cekimGonderildi: true }); // pencerede ama BAŞKA abonelik
+    kanitsiz(d, s);
+    await merdiven(d);
+    await merdiven(d);
+    vakalar.push(['D10 önceki basamağın ve başka aboneliğin çekim izi SAYILMAZ (çekim YOK)', 'ucuncu', { g: sonuc(d, s.ab.id, 'ucuncu'),
+      b: { posta: 1, ilk: DENENMEDI_7, cekim: 0, deneme: 'denenmedi' } }]);
+  }
+  {
+    // 29.09 öncesi erteleme izi: `veri` yok — çökmez, "gönderilmedi" sayılır.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D11', UCUNCU_GUN);
+    belirsizIzi(d, s.ab.id, 0.2, null); // bu basamakta, alanı olmayan eski iz → erteleme hakkı kullanılmış
+    kanitsiz(d, s);
+    await merdiven(d);
+    vakalar.push(['D11 alanı olmayan eski erteleme izi: çökmez, çekim YOK sayılır', 'ikinci', { g: sonuc(d, s.ab.id, 'ikinci'),
+      b: { posta: 1, ilk: DENENMEDI_3, cekim: 0, deneme: 'denenmedi' } }]);
+  }
+  {
+    // Dün yanıtsız (ertelendi), bugün yeniden çekildi ve REDDEDİLDİ: bugünün kesin sonucu kazanır.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D12', UCUNCU_GUN);
+    d.iyz.durum.kip = 'zaman-asimi';
+    await merdiven(d);
+    ertesiGun(d, s.ab.id);
+    d.iyz.durum.kip = 'ret';
+    await merdiven(d);
+    vakalar.push(['D12 dün yanıtsız, bugün reddedildi', 'ikinci', { g: sonuc(d, s.ab.id, 'ikinci'),
+      b: { posta: 1, ilk: REDDEDILDI_3, cekim: 2, deneme: 'reddedildi' } }]);
+  }
+  {
+    // Dün iyzico okunamadı (çekim YOK, ertelendi), bugün çekildi ve yine yanıtsız.
+    const d = dunyaKur();
+    const s = d.dunningSatiri('F-D13', UCUNCU_GUN);
+    d.iyz.durum.getBozuk = true;
+    await merdiven(d);
+    d.iyz.durum.getBozuk = false;
+    d.iyz.durum.kip = 'zaman-asimi';
+    await merdiven(d);
+    vakalar.push(['D13 dün okunamadı, bugün yanıtsız', 'ikinci', { g: sonuc(d, s.ab.id, 'ikinci'),
+      b: { posta: 1, ilk: BELIRSIZ, cekim: 1, deneme: 'belirsiz' } }]);
+  }
+  for (const [ad, , v] of vakalar) {
+    const { g, b } = v as { g: object; b: object };
+    check(`${ad}: ilk cümle + olayın deneme bilgisi doğru`, ayni(g, b), `gercek=${JSON.stringify(g)} beklenen=${JSON.stringify(b)}`);
+  }
 }
 
 function son(): void {
@@ -1157,6 +1364,7 @@ async function main(): Promise<void> {
   await eBlogu();
   await cBlogu();
   pBlogu();
+  await dBlogu();
   son();
 }
 
