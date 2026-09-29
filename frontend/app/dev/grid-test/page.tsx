@@ -98,6 +98,12 @@ export default function GridTestPage() {
         satir(9, '8', "8'' Siyah Boru", '22'),
         // D14 (denetim): sorgusu AG HATASI firlatan satir
         satir(10, '9', "HATALI 7'' Boru", '5'),
+        // KUR-01 (29.09): doviz kuru ALINAMAYAN satir — motor `kurAlinamadi`
+        // dondurur, satir 'hata' isareti alir ve TURUNCU boyanir. Urun VAR,
+        // eksik olan yalniz kur; 'yok' YAZILMAZ (taslak geri yuklemesi 'yok'u
+        // cevaplanmis sayar, kur donunce satiri yeniden fiyatlamazdi).
+        // ⚠ SONA eklendi: mevcut satir indeksleri KAYMASIN (tum e2e onlara bagli).
+        satir(11, '10', "KURSUZ 10'' Boru", '7'),
       ],
       columnRoles: {
         nameField: 'col1', noField: 'col0', quantityField: 'col2', unitField: 'col3',
@@ -116,6 +122,12 @@ export default function GridTestPage() {
 
     // D14 (denetim): ag hatasi simulasyonu — sorgu FIRLATIR (fetch reject esdegeri)
     if (materialName.includes('HATALI')) { log('AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
+
+    // KUR-01 (29.09): urun VAR ama doviz kuru alinamadi → 'hata' (turuncu)
+    if (materialName.includes('KURSUZ')) {
+      log('KUR ALINAMADI dondu');
+      return { netPrice: 0, confidence: 'none', kurAlinamadi: true, reason: 'Döviz kuru alınamadı.' } as any;
+    }
 
     // K16: 2'' bu markada YOK
     if (materialName.includes("2''")) return { netPrice: 0, confidence: 'none', reason: 'Bu üründe 2" yok.' };

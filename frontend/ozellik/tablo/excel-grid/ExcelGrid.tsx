@@ -419,7 +419,22 @@ function BrandDropdown(props: ICellRendererParams & {
   // yayinladigi icin round-trip guvenli).
   const yazVeri = (targetNode: any, alan: string, deger: any) => {
     if (targetNode?.data) targetNode.data[alan] = deger;
-    try { targetNode?.setDataValue?.(alan, deger); } catch { /* kolon yok — veri yazimi yeterli */ }
+    let kolonaYazildi = false;
+    try { kolonaYazildi = targetNode?.setDataValue?.(alan, deger) !== false; } catch { /* kolon yok */ }
+    // ⚠ KOLONSUZ ALANDA ACIK TAZELEME SART — TARAYICIDA OLCULDU (29.09).
+    // AG Grid kolon bulamayinca cagriyi dusurur ve hucreyi YENIDEN CIZMEZ;
+    // isaret renkleri (`isaret.ts` → fiyat kolonunun `cellStyle`i) satir
+    // VERISINDEN okunur. Veri degisip cizim gelmezse satir NOTR gorunur.
+    //
+    // ⚠ BU SATIR BIR KEZ "olculemiyor" diye KALDIRILDI, sonra GERI KONDU:
+    // ilk mutasyon turunda hayatta kalmisti cunku o senaryoda (eslesmeyen
+    // satir) ekranda baska bir islem zaten yeniden cizim tetikliyordu.
+    // TEK BASINA yapilan `kurAlinamadi` secimi kanit oldu: turuncu 'hata'
+    // isareti HIC gorunmedi. En pahali hali de odur — fiyati 0 kalan satir
+    // siradan gorunur ve teklif eksik fiyatla gider (KUR-01).
+    if (!kolonaYazildi) {
+      try { api?.refreshCells({ rowNodes: [targetNode], force: true }); } catch { /* grid gitti */ }
+    }
   };
 
   const writePriceToNode = (targetNode: any, netPrice: number, isSuggestion = false, kaynakKur?: any) => {
@@ -436,8 +451,8 @@ function BrandDropdown(props: ICellRendererParams & {
     // birlikte KAYDEDILIR (sheets JSON'a aynen girer). TRY'de null.
     // Kolon degil veri alani — dogrudan mutasyon yeterli (emitRows tasir).
     d._matKurBilgi = kaynakKur ?? null;
-    targetNode.setDataValue('_matSuggestion', isSuggestion);
-    targetNode.setDataValue('_matStatus', ''); // eslesme geldi — bekleme isareti kalkar
+    yazVeri(targetNode, '_matSuggestion', isSuggestion);
+    yazVeri(targetNode, '_matStatus', ''); // eslesme geldi — bekleme isareti kalkar
     if (materialUnitPriceField) targetNode.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
     if (materialTotalField) targetNode.setDataValue(materialTotalField, total.toFixed(1));
 
@@ -507,7 +522,7 @@ function BrandDropdown(props: ICellRendererParams & {
     // F1/B3: popupPos HER KOSULDA set edilir — eylemsiz uyari YASAK.
     if (result && result.candidates && result.candidates.length > 0) {
       setPopupPos(computePopupPos());
-      node.setDataValue('_matStatus', 'belirsiz'); // secim bekleniyor (V4.5 dahil)
+      yazVeri(node, '_matStatus', 'belirsiz'); // secim bekleniyor (V4.5 dahil)
       setShowAllCandidates(false); // V7: yeni popup 8 adayla baslar
       setStage2(null); // K6: zincir bastan
       setFilterText(''); // F3: arama sifirlanir
@@ -542,8 +557,8 @@ function BrandDropdown(props: ICellRendererParams & {
       }
       // V4.1/V4.6: grup varyantiyla otomatik dolduysa rozeti isle
       if (result.autoVariant && useVariant) {
-        node.setDataValue('_matAutoVariant', gv!.label);
-        node.setDataValue('_matVariantMode', 'auto');
+        yazVeri(node, '_matAutoVariant', gv!.label);
+        yazVeri(node, '_matVariantMode', 'auto');
         node.data._matVariantTags = gv!.tags;
         node.data._matVariantLabel = gv!.label;
       }
@@ -552,8 +567,8 @@ function BrandDropdown(props: ICellRendererParams & {
       // marka menusu yeniden acilinca oto-kacis TAM LISTE sunar (tek tikla
       // cozulur, secim manuel olur) — sessiz/izsiz otomatik yazim YOK.
       if (result.hafizaOtoyaz) {
-        node.setDataValue('_matAutoVariant', 'Geçmiş seçiminizden atandı');
-        node.setDataValue('_matVariantMode', 'auto');
+        yazVeri(node, '_matAutoVariant', 'Geçmiş seçiminizden atandı');
+        yazVeri(node, '_matVariantMode', 'auto');
         // CANLI BULGU (18.07): otoyaz "SON SECIM" zincirini BESLEMIYORDU —
         // ilk satir hafizadan doluyor, ayni gruptaki sonraki satirlar grup
         // sorusuna dusuyordu ("otomatik atamiyor"). Varyant kimligi artik
@@ -578,7 +593,7 @@ function BrandDropdown(props: ICellRendererParams & {
     if (result && result.alternatives && result.alternatives.length > 0) {
       const marked = isaretleOneriler(result.alternatives);
       setPopupPos(computePopupPos());
-      node.setDataValue('_matStatus', 'belirsiz');
+      yazVeri(node, '_matStatus', 'belirsiz');
       setAlternatives(marked);
       return;
     }
@@ -590,8 +605,8 @@ function BrandDropdown(props: ICellRendererParams & {
     // cevaplanmis sayar ve kur donunce satiri YENIDEN FIYATLAMAZDI.
     yazVeri(node, '_matNetPrice', 0);
     node.data._matKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
-    node.setDataValue('_matSuggestion', false);
-    node.setDataValue('_matStatus', result?.notProduct ? 'urun_degil' : (result?.kurAlinamadi ? 'hata' : 'yok'));
+    yazVeri(node, '_matSuggestion', false);
+    yazVeri(node, '_matStatus', result?.notProduct ? 'urun_degil' : (result?.kurAlinamadi ? 'hata' : 'yok'));
     // K3-FE (27.08): SEBEP hucreye de yazilir (SD6 — isaret EYLEMLI olmali).
     // Etkilesimli yol bugune kadar sebebi yalniz TOAST'ta gosteriyordu; toast
     // kaybolunca hucrede jenerik "Kütüphanede eşleşme yok" kaliyordu.
@@ -632,15 +647,15 @@ function BrandDropdown(props: ICellRendererParams & {
         const r = await onBrandChange(d._rowIdx, d._marka, det.name || nm, { variantTags: variant.tags, silent: true });
         if (r && r.autoVariant && r.netPrice > 0) {
           writePriceToNode(n, r.netPrice, true, (r as any).kaynakKur);
-          n.setDataValue('_matAutoVariant', variant.label); // V4.1 rozeti
-          n.setDataValue('_matVariantMode', 'auto');
+          yazVeri(n, '_matAutoVariant', variant.label); // V4.1 rozeti
+          yazVeri(n, '_matVariantMode', 'auto');
           // Fill-handle kaynagi olabilsin diye varyant kimligi satirda tasinir
           n.data._matVariantTags = variant.tags;
           n.data._matVariantLabel = variant.label;
           applied++;
         } else if (r && r.variantMissing) {
           // V4.5: varyant bu capta yok — secim bekliyor, neden tooltip'te
-          n.setDataValue('_matStatus', 'belirsiz');
+          yazVeri(n, '_matStatus', 'belirsiz');
           waiting++;
         }
       } catch { /* satir atlanir */ }
@@ -655,8 +670,8 @@ function BrandDropdown(props: ICellRendererParams & {
     // Kullanici popup'tan bilincli sectiginde 'oneri' degil kesin sayilir.
     // V4.2: popup'tan secim = MANUEL — grup degisse bile uzerine yazilmaz.
     writePrice(c.netPrice, false, (c as any).kaynakKur);
-    node.setDataValue('_matVariantMode', 'manual');
-    node.setDataValue('_matAutoVariant', null);
+    yazVeri(node, '_matVariantMode', 'manual');
+    yazVeri(node, '_matAutoVariant', null);
     // Duzeltme Talebi §4.2: SECIMIN KIMLIGI SATIRDA TASINIR — fill-handle
     // kaynak satirin marka+cins'ini buradan okur (anahtar KAPALI secilmis
     // olsa bile). Grid kolonu yok → dogrudan data'ya yazilir (render disi).
@@ -730,8 +745,8 @@ function BrandDropdown(props: ICellRendererParams & {
   const handleAlternativeSelect = (a: BrandAlternative) => {
     node.setDataValue('_marka', a.brandId);
     writePrice(a.netPrice, false, (a as any).kaynakKur);
-    node.setDataValue('_matVariantMode', 'manual');
-    node.setDataValue('_matAutoVariant', null);
+    yazVeri(node, '_matVariantMode', 'manual');
+    yazVeri(node, '_matAutoVariant', null);
     setAlternatives(null);
     setPopupPos(null);
     console.log(`[BrandDropdown] M3 alternatif secildi: ${a.brandName} → "${a.materialName}" = ${a.netPrice}`);
@@ -741,7 +756,7 @@ function BrandDropdown(props: ICellRendererParams & {
     // Kullanici uyumsuz markada kalmayi secti — fiyat yok, hucre 'yok' isaretli
     setAlternatives(null);
     setPopupPos(null);
-    node.setDataValue('_matStatus', 'yok');
+    yazVeri(node, '_matStatus', 'yok');
   };
 
   // ── PU4c: POPUP TASINABILIR (kullanici istegi 31.07) ────────────────────

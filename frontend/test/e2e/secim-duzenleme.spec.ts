@@ -360,11 +360,21 @@ test('KP27 ★ COK KOLONLU secimde deger TUM secili kolonlara dagilir (tul yalan
   // sey zaten dagitimin KOLON boyutunu tasiyip tasimadigi — bunun dogrudan
   // kaniti, ikinci kolonun "duzenlenemez" diye ozete girmesidir. Tulun kendisi
   // KP13/KP20'de olculuyor.
-  await tekFiyatiPanoyaAlVeTeklifeGec(page);
+  // ⚠ MOD DEGISIMI YOK (29.09): pano onceden kutuphaneden aliniyordu ve test
+  // quote→library→quote yapiyordu; iki REMOUNT yuklu makinede zaman asimina
+  // ugruyor ve test %50 kararsiz kaliyordu. Bu testin konusu DAGITIM, panonun
+  // KAYNAGI degil — deger quote modunda elle yazilip kopyalanir. (Kutuphane
+  // kaynakli zincir KP3/KP4'te zaten olculuyor.)
+  await moduAyarla(page, 'quote');
   const kaynak = page.locator('[row-index="2"] [col-id="_matBirim"]');
+  await kaynak.dblclick();
+  await page.keyboard.type('600');
+  await page.keyboard.press('Enter');
+  await expect(kaynak).toHaveText(/600/, { timeout: 15_000 });
   await kaynak.click();
-  // Mod degisimi gridi REMOUNT eder; odak kurulmadan basilan Shift yutulur.
   await expect(kaynak).toHaveClass(/ag-cell-focus/);
+  await page.keyboard.press('Control+c');
+  await expect(page.getByText(/hücre kopyalandı/).first()).toBeVisible();
   await page.keyboard.press('Shift+ArrowDown');
   await page.keyboard.press('Shift+ArrowRight');     // _matBirim + _matToplam
   await page.keyboard.press('Control+v');
@@ -414,7 +424,10 @@ test('KP29 ★ EDITORDE son veri satirinda ↓ — rakamlar AYNI hucrede birlesm
   // Sinirda editor acik birakilsaydi kullanici ↓ basip yazmaya devam edince
   // yeni rakamlar eski degerin ucuna eklenirdi (300 ↓ 400 → "300400").
   await moduAyarla(page, 'quote');
-  const son = page.locator('[row-index="10"] [col-id="_matBirim"]');
+  // ⚠ SON VERI SATIRI = 11 (29.09): harness'e KUR-01 senaryosu icin
+  // "KURSUZ 10'' Boru" satiri SONA eklendi. Bu test "altta gidilecek satir
+  // YOK" halini olcer; indeks sabit yazilirsa sessizce YANLIS dali surer.
+  const son = page.locator('[row-index="11"] [col-id="_matBirim"]');
   await son.dblclick();
   await page.keyboard.type('300');
   await page.keyboard.press('ArrowDown');            // altta VERI satiri yok

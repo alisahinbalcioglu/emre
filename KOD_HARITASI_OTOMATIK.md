@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 854
-Toplam satir: 238056
+Kod dosyasi: 855
+Toplam satir: 238250
 Uc nokta: 238
 test:* scripti: 141
 
@@ -489,7 +489,7 @@ test:* scripti: 141
 | `frontend/app/admin/users/page.tsx` | 647 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
 | `frontend/app/davet-kabul/page.tsx` | 483 |
-| `frontend/app/dev/grid-test/page.tsx` | 234 |
+| `frontend/app/dev/grid-test/page.tsx` | 246 |
 | `frontend/app/fiyatlar/page.tsx` | 174 |
 | `frontend/app/forgot-password/page.tsx` | 92 |
 | `frontend/app/gizlilik/page.tsx` | 13 |
@@ -664,9 +664,9 @@ test:* scripti: 141
 | `frontend/ozellik/fiyat/fitting-hesap.test.ts` | 354 |
 | `frontend/ozellik/fiyat/gosterim-dili.test.ts` | 301 |
 | `frontend/ozellik/fiyat/hesap-sinirlari.test.ts` | 242 |
-| `frontend/ozellik/fiyat/ikiz-suzgec-kapilari.test.ts` | 109 |
+| `frontend/ozellik/fiyat/ikiz-suzgec-kapilari.test.ts` | 130 |
 | `frontend/ozellik/fiyat/kar-tek-suzgec.test.ts` | 189 |
-| `frontend/ozellik/fiyat/kur-geri-dusus.test.ts` | 97 |
+| `frontend/ozellik/fiyat/kur-geri-dusus.test.ts` | 104 |
 | `frontend/ozellik/fiyat/para-gosterim.ts` | 44 |
 | `frontend/ozellik/fiyat/para-sutun-genisligi.ts` | 243 |
 | `frontend/ozellik/fiyat/pricing.ts` | 698 |
@@ -771,7 +771,7 @@ test:* scripti: 141
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4801 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4816 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -843,8 +843,9 @@ test:* scripti: 141
 | `frontend/test/e2e-golden/surum-kapisi.cjs` | 135 |
 | `frontend/test/e2e-golden/verify.mjs` | 836 |
 | `frontend/test/e2e/grid.spec.ts` | 206 |
+| `frontend/test/e2e/isaret-yazimi.spec.ts` | 126 |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | 366 |
-| `frontend/test/e2e/secim-duzenleme.spec.ts` | 504 |
+| `frontend/test/e2e/secim-duzenleme.spec.ts` | 517 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
 | `scripts/backup.sh` | 125 |
@@ -1601,6 +1602,7 @@ test:* scripti: 141
 | `frontend/test/e2e-golden/surum-kapisi.cjs` | `node:fs` `node:path` `node:child_process` |
 | `frontend/test/e2e-golden/verify.mjs` | `node:fs` `node:path` `node:url` `node:module` `./sayi-ayristirma.mjs` `./artefakt-dizini.cjs` |
 | `frontend/test/e2e/grid.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/isaret-yazimi.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | `@playwright/test` |
 | `frontend/vitest.config.ts` | `vitest/config` |

@@ -44,17 +44,38 @@ describe('K1 — isaret temizleme ikizi (elle/yapistirilan fiyat kirmiziyi kaldi
     expect(src).toContain("yazVeriHucre(e.node, '_labStatus', '')");
   });
 
-  it('★ ELLE GIRIS dalinda `setDataValue` ile isaret yazilmaz (sessizce duserdi)', () => {
-    // Kapsam BILEREK dar: yalniz hucre-edit dalindaki `e.node` cagrilari.
-    // ⚠ AYRI BORC (bu turun kapsami disi): marka/firma secim yolunda ayni
-    // sinifin ALTI kopyasi daha var (`targetNode.setDataValue('_matStatus'…)`,
-    // `node.setDataValue('_matStatus', 'belirsiz'|'yok'…)`). Kodun kendi
-    // yorumu bunu zaten belgeliyor: "_matStatus grid KOLONU OLMADIGI icin
-    // AG-Grid cagriyi sessizce yok sayiyordu (141 satirin 131'i isaretsiz
-    // bos kaldi)". Onlar isareti YAZAN cagrilar; duzeltmek ekranda yeni
-    // kirmizilar dogurur ve kendi olcumunu ister — ayri bir tur.
-    expect(src).not.toContain("e.node.setDataValue('_matStatus'");
-    expect(src).not.toContain("e.node.setDataValue('_labStatus'");
+  it('★ KOLONSUZ ISARET ALANLARI `setDataValue` ile YAZILMAZ (tum yollar)', () => {
+    // ⚠ AG Grid `setDataValue` cagriyi KOLON bulamayinca sessizce dusurur.
+    // Gercek kolon listesi olculdu (backend/.../standart-sema.ts + ExcelGrid'in
+    // ekledigi `_draftDiscount`/`_draftNetPrice`); asagidaki dordu KOLON DEGIL,
+    // yalniz satir verisinde yasar ve `isaret.ts` uzerinden EKRANI boyar.
+    //
+    // 29.09'da marka/firma secim yolundaki 18 cagri `yazVeri`ye cevrildi.
+    // Oncesinde e2e ile OLCULDU: eslesmeyen satir isaret ALMIYOR, notr
+    // goruntuyle bos kaliyordu (isaret-yazimi.spec.ts IY1 kirmiziydi).
+    // En pahali hali `kurAlinamadi` → 'hata' (turuncu): isaret dususe fiyati
+    // 0 kalan satir siradan gorunur, teklif eksik fiyatla gider.
+    const KOLONSUZ = ['_matStatus', '_matSuggestion', '_matAutoVariant', '_matVariantMode'];
+    for (const alan of KOLONSUZ) {
+      // ⚠ REGEX DEGIL DUZ METIN: template literal icinde `\.` kacisi ERIYOR
+      // (`.` olur, `\(` grup acar) — ilk yazimda "Unterminated group" ile
+      // kapi yanlis sebepten kirmizi dondu. Sayim kacissiz yapilir.
+      const kacakSayisi = src.split(`.setDataValue('${alan}'`).length - 1;
+      expect(kacakSayisi, `${alan}: kolonsuz alan setDataValue ile yazilamaz`).toBe(0);
+    }
+    // ISCILIK ikizi: `_lab*` alanlari zaten `yazVeriLab` kullaniyor
+    expect(src).not.toContain("setDataValue('_labStatus'");
+    expect(src).not.toContain("setDataValue('_labSebep'");
+  });
+
+  it('★ GERCEK KOLONLAR setDataValue ile yazilmaya DEVAM eder', () => {
+    // Kural "setDataValue kotu" DEGIL: kolon olan alanda dogru aractir
+    // (valueParser + cellValueChanged zinciri ona bagli). Toptan cevirmek
+    // elle-giris zincirini kirardi.
+    for (const kolon of ['_marka', '_firma']) {
+      expect(src, `${kolon} gercek kolondur, setDataValue korunmali`)
+        .toContain(`setDataValue('${kolon}'`);
+    }
   });
 
   it('temizlemenin ardindan hucre TAZELENIR (dogrudan veri yazimi boyamaz)', () => {

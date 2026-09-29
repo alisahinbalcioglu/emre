@@ -65,7 +65,14 @@ describe('KUR-01 bağlantı: bayrak motordan satır işaretine kadar taşınır'
   const kanca = kodOnly(oku('ozellik/fiyat/use-currency.ts'));
 
   it('ExcelGrid malzeme dalı: kurAlinamadi → _matStatus "hata"', () => {
-    expect(excelGrid).toMatch(/setDataValue\('_matStatus',[^\n]*kurAlinamadi \? 'hata' : 'yok'/);
+    // ⚠ ARAÇ DEĞİŞTİ (29.09), BAĞLANTI AYNI: işaret artık `yazVeri` ile
+    // yazılır. Eski `setDataValue`, grid KOLONU olmayan `_matStatus` için
+    // çağrıyı SESSİZCE düşürüyordu — turuncu 'hata' işareti ekrana hiç
+    // gelmiyordu (e2e `isaret-yazimi.spec.ts` IY1 ile ölçüldü; düzeltmeden
+    // önce kırmızıydı). İşçilik ikizi (aşağıda) zaten `yazVeriLab`
+    // kullanıyordu; geride kalan malzeme dalıydı. Kapının ölçtüğü şey
+    // KURALIN TAŞINMASI: motordan gelen bayrak → satırda 'hata'.
+    expect(excelGrid).toMatch(/yazVeri\(node, '_matStatus',[^\n]*kurAlinamadi \? 'hata' : 'yok'/);
   });
 
   it('ExcelGrid işçilik dalı (ikiz): kurAlinamadi → _labStatus "hata"', () => {
@@ -90,7 +97,7 @@ describe('KUR-01 bağlantı: bayrak motordan satır işaretine kadar taşınır'
   });
 
   it('ÖLÇÜTÜN KENDİSİ: desen yalnız YORUMDA geçerse kapı yakalar (yorum kanıt değildir)', () => {
-    const sahte = "// node.setDataValue('_matStatus', r?.kurAlinamadi ? 'hata' : 'yok')\nnode.setDataValue('_matStatus', 'yok');";
+    const sahte = "// yazVeri(node, '_matStatus', r?.kurAlinamadi ? 'hata' : 'yok')\nyazVeri(node, '_matStatus', 'yok');";
     expect(kodOnly(sahte)).not.toMatch(/kurAlinamadi \? 'hata' : 'yok'/);
   });
 });
