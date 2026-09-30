@@ -56,6 +56,8 @@ import { ceviriUygula, ceviriGeriAl, cevrilmisSatirVarMi } from '@/ozellik/tekli
 import { ceviriAnahtari, duzeltmeyiSatirlaraUygula, satirKaynagi } from '@/ozellik/teklif/ceviri';
 import { duzeltmeHataMetni, duzeltmeKaldir, duzeltmeKaydet, duzeltmeleriGetir, type DuzeltmeGorunumu } from '@/ozellik/teklif/ceviri-duzeltme';
 import { CeviriDuzeltmeDialog, type CeviriDuzeltmeHedefi } from '@/ozellik/teklif/CeviriDuzeltmeDialog';
+import { FittingIpucu } from '@/ozellik/teklif/FittingIpucu';
+import { teklifteFittingVarMi } from '@/ozellik/teklif/fitting-ipucu';
 import { teklifGorunumuAl, teklifIngilizcesiniAl } from '@/ozellik/teklif/ceviri-akisi';
 import { bosSonucBildirimi, goruntulemeBildirimi, sonucBildirimi } from '@/ozellik/teklif/ceviri-kota';
 import { sayiAlani, sayiOku, makineMetni } from '@/ozellik/fiyat/sayi-alani';
@@ -1922,6 +1924,11 @@ export default function NewQuotePage() {
               Blok seçmek için Shift+ok / Shift+tık · toplamlar her iki yolda da yeniden hesaplanır
             </span>
           </div>
+        )}
+        {/* FITTING KESFI (30.09): sag tik komutunu duyurur; × ya da teklifte
+            fitting satiri varsa kalici kapanir (ozellik/teklif/fitting-ipucu.ts) */}
+        {(multiSheet || excelGridData) && (
+          <FittingIpucu kullanildi={teklifteFittingVarMi(liveRowDataBySheet)} />
         )}
         {/* PRD v3.0 Bolum A1: "Sutunlar" paneli + gizli-sutun cipleri */}
         {managedColumns.length > 0 && (

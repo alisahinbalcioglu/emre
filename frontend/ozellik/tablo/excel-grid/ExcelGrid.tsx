@@ -25,7 +25,7 @@ import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuva
 import {
   FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
   oranMetniniNormalize, fittingRozetMetni, kilitliEditable, yapistirmaHedefiMi, fittingHucreleri,
-  fittingOncekiAl, fittingOncekiFiyatVarMi, fittingParaAlanlari, FITTING_ONCEKI_SISTEM_ALANLARI,
+  fittingOncekiAl, fittingOncekiFiyatVarMi, fittingParaAlanlari, FITTING_ONCEKI_SISTEM_ALANLARI, fittingSatiriHazirla,
 } from './fitting';
 // Satir siniflandirma terfisi (03.09): dosyadan gelen bos satira elle yazilinca
 // satir VERI SATIRI olur — yoksa asagidaki kapi her seyi susturur.
@@ -2821,6 +2821,32 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     setTimeout(emitRows, 0);
   }, [makeBlankRow, emitRows, fittingTulu]);
 
+  /** FITTING KESIF KOMUTU (30.09): "%" yazma yolu kisayol olarak kalir ama
+   *  TEK yol degil — onu bilmeyen kullanici ozelligi hic bulamiyordu. Satir
+   *  "Fitting bedeli" + "%" ile eklenir, bag + kapsam secim modu HEMEN acilir
+   *  ve oran (miktar) hucresi duzenlemeye acilir. */
+  const fittingSatiriEkle = useCallback((atIndex: number) => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+    setCtxMenu(null);
+    const roller = data.columnRoles as Record<string, string | undefined>;
+    const satir = fittingSatiriHazirla(makeBlankRow(), roller);
+    api.applyTransaction({ add: [satir], addIndex: Math.max(0, atIndex) });
+    fittingModunuAc(satir._rowIdx); // bag kurar + emitRows + serit + tul
+    // Duzenleme bir tik SONRA acilir: ayni tikte menu portali kalkar ve
+    // bag kurulumunun hucre tazelemesi acik editoru kapatiyordu (olculdu).
+    const q = roller.quantityField;
+    if (!q) return;
+    setTimeout(() => {
+      const a = gridRef.current?.api;
+      const i = a?.getRowNode(String(satir._rowIdx))?.rowIndex;
+      if (!a || i == null) return;
+      a.ensureIndexVisible(i);
+      a.setFocusedCell(i, q);
+      a.startEditingCell({ rowIndex: i, colKey: q });
+    }, 0);
+  }, [data.columnRoles, makeBlankRow, fittingModunuAc]);
+
   // Ref: deleteRow'un kimligi sabit kalsin (context menu her render'da yeniden
   // baglanmasin) ama parent'in guncel kancasini okusun — onRowDataChangeRef
   // ile ayni desen.
@@ -4717,7 +4743,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           <div className="fixed inset-0 z-[9998]" onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }} />
           <div
             className="fixed z-[9999] min-w-[200px] rounded-lg border border-slate-200 bg-white py-1 text-sm shadow-xl"
-            style={{ top: Math.min(ctxMenu.y, window.innerHeight - 230), left: Math.min(ctxMenu.x, window.innerWidth - 210) }}
+            style={{ top: Math.min(ctxMenu.y, window.innerHeight - 300), left: Math.min(ctxMenu.x, window.innerWidth - 210) }}
           >
             <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-slate-100"
               onClick={() => insertRow(ctxMenu.rowIndex ?? 0)}>
@@ -4727,6 +4753,19 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
               onClick={() => insertRow((ctxMenu.rowIndex ?? 0) + 1)}>
               ↧ Alta satır ekle
             </button>
+            {/* FITTING KESIF KOMUTU (30.09): "%" yazma yolunu bilmeyen de bulsun */}
+            {mode === 'quote' && fittingDuzenlenebilir && !ctxMenu.rowData?._isPinnedTotal && (
+              <>
+                <div className="my-1 border-t border-slate-100" />
+                <button type="button" data-testid="fitting-menu-ekle"
+                  className="block w-full px-3 py-1.5 text-left hover:bg-amber-50"
+                  onClick={() => fittingSatiriEkle((ctxMenu.rowIndex ?? 0) + 1)}>
+                  <span className="font-semibold text-amber-600">Σ</span> Fitting bedeli satırı ekle…
+                  <span className="block text-[11px] text-slate-400">Seçtiğiniz satırların yüzdesi kadar kalem ekler</span>
+                </button>
+                <div className="my-1 border-t border-slate-100" />
+              </>
+            )}
             <button type="button"
               className="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"
               disabled={!ctxMenu.rowData || ctxMenu.rowData._isPinnedTotal}

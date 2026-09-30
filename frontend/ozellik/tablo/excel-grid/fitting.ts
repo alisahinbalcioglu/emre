@@ -63,6 +63,25 @@ export function oranMetniniNormalize(v: unknown): string | null {
   return s.replace(/%/g, '').replace(/\s+/g, '');
 }
 
+/** Sag tik → "Fitting bedeli satırı ekle" komutunun onerdigi ad. */
+export const FITTING_VARSAYILAN_AD = 'Fitting bedeli';
+
+/**
+ * KESIF KOMUTU (30.09): bos satiri fitting satiri adayina cevirir — ad
+ * "Fitting bedeli", birim "%". Bag (`_fitting`) burada KURULMAZ: onu
+ * `fittingModunuAc` kurar (C1 eski-deger saklama, oran normalizasyonu tek
+ * yerde kalsin). Rol alani yoksa o hucreye dokunulmaz. Yeni nesne doner.
+ */
+export function fittingSatiriHazirla<T extends Record<string, any>>(
+  bos: T,
+  roller: { nameField?: string; unitField?: string },
+): T {
+  const satir: Record<string, any> = { ...bos };
+  if (roller.nameField) satir[roller.nameField] = FITTING_VARSAYILAN_AD;
+  if (roller.unitField) satir[roller.unitField] = FITTING_BIRIMI;
+  return satir as T;
+}
+
 export function fittingRozetMetni(kapsamSayisi: number): string {
   return kapsamSayisi > 0 ? `Σ ${kapsamSayisi} satır` : 'Σ satır seç';
 }
