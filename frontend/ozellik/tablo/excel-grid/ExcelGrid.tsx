@@ -469,15 +469,48 @@ function BrandDropdown(props: ICellRendererParams & {
   };
   const writePrice = (netPrice: number, isSuggestion = false, kaynakKur?: any) => writePriceToNode(node, netPrice, isSuggestion, kaynakKur);
 
+  /**
+   * D1 (30.09, P0) — FIYAT YAZMAYAN DAL ESKI FIYATI SILER (writePriceToNode'un tersi).
+   *
+   * Canli senaryo: satir marka A ile fiyatlanmis; kullanici marka B'yi secer,
+   * B'de urun yoktur (ya da coklu aday / alternatif marka doner, ya da secimi
+   * iptal eder). Eski hal: 'belirsiz'/'yok' isareti yazilir ama HUCREDE A'NIN
+   * FIYATI DURURDU — satir `brandId=B` + A'nin parasiyla KAYDEDILIYOR ve
+   * fiyatsiz-kalem uyarisi onu YAKALAMIYORDU (fiyat dolu gorunuyor).
+   *
+   * Ikinci kusur GORSEL: `_matAutoVariant` hala A'nin varyant etiketini
+   * tasidigi icin `isaretStili` MAVI ("⚡ otomatik") dondurup kirmizi 'yok'
+   * isaretini MASKELIYORDU (isaret.ts sirasi: otoVaryant > yok).
+   *
+   * Surukleme yolunun ikizi: fill-down.ts `fiyatiTemizle`. Genel toplam burada
+   * ELLE tazelenmez — `setDataValue(materialTotalField, ...)` zaten
+   * handleCellValueChanged'in recalcGrand dalini atesler.
+   *
+   * ⚠ DURUM/SEBEP YAZILMAZ: onlari cagiran dal kendi anlamiyla yazar.
+   */
+  const fiyatiTemizle = () => {
+    yazVeri(node, '_matNetPrice', 0);
+    node.data._matKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+    yazVeri(node, '_matSuggestion', false);
+    yazVeri(node, '_matAutoVariant', null);
+    node.data._matVariantLabel = null;
+    if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
+    if (materialTotalField) node.setDataValue(materialTotalField, '');
+  };
+
   const handleChange = async (brandId: string) => {
     node.setDataValue('_marka', brandId || null);
     setCandidates(null);
     setAlternatives(null);
     if (!brandId) {
-      yazVeri(node, '_matNetPrice', 0);
-      node.data._matKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
-      if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
-      if (materialTotalField) node.setDataValue(materialTotalField, '');
+      // D12 (30.09): "Seçimi kaldır" fiyati siliyordu ama ISARETI birakiyordu —
+      // markasiz satir kirmizi 'yok' / pembe 'belirsiz' boyali kaliyor, ust
+      // sayacta "N satır seçim bekliyor" olarak sayilmaya DEVAM ediyordu.
+      // Marka yoksa eslestirme sonucu da yoktur: isaret de gider.
+      fiyatiTemizle();
+      yazVeri(node, '_matStatus', '');
+      yazVeri(node, '_matSebep', null);
+      yazVeri(node, '_matAdaySayisi', null);
       return;
     }
 
@@ -531,6 +564,7 @@ function BrandDropdown(props: ICellRendererParams & {
     // F1/B3: popupPos HER KOSULDA set edilir — eylemsiz uyari YASAK.
     if (result && result.candidates && result.candidates.length > 0) {
       setPopupPos(computePopupPos());
+      fiyatiTemizle(); // D1: onceki markanin fiyati secim beklerken DURAMAZ
       yazVeri(node, '_matStatus', 'belirsiz'); // secim bekleniyor (V4.5 dahil)
       setShowAllCandidates(false); // V7: yeni popup 8 adayla baslar
       setStage2(null); // K6: zincir bastan
@@ -602,6 +636,7 @@ function BrandDropdown(props: ICellRendererParams & {
     if (result && result.alternatives && result.alternatives.length > 0) {
       const marked = isaretleOneriler(result.alternatives);
       setPopupPos(computePopupPos());
+      fiyatiTemizle(); // D1: bu markada urun YOK — onceki markanin fiyati kalmaz
       yazVeri(node, '_matStatus', 'belirsiz');
       setAlternatives(marked);
       return;
@@ -612,16 +647,15 @@ function BrandDropdown(props: ICellRendererParams & {
     // KUR-01 (14.09): kur alinamadiysa 'hata' (turuncu, "tekrar deneyin") —
     // urun VAR, eksik olan kur. 'yok' YAZILMAZ: taslak geri yuklemesi 'yok'u
     // cevaplanmis sayar ve kur donunce satiri YENIDEN FIYATLAMAZDI.
-    yazVeri(node, '_matNetPrice', 0);
-    node.data._matKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
-    yazVeri(node, '_matSuggestion', false);
+    // D1 (30.09): eskiden burada net/kur/oneri elle sifirlaniyor ama
+    // `_matAutoVariant` BIRAKILIYORDU → onceki markanin mavi "⚡ otomatik"
+    // rozeti kirmizi 'yok' isaretini MASKELIYORDU (isaret.ts sirasi).
+    fiyatiTemizle();
     yazVeri(node, '_matStatus', result?.notProduct ? 'urun_degil' : (result?.kurAlinamadi ? 'hata' : 'yok'));
     // K3-FE (27.08): SEBEP hucreye de yazilir (SD6 — isaret EYLEMLI olmali).
     // Etkilesimli yol bugune kadar sebebi yalniz TOAST'ta gosteriyordu; toast
     // kaybolunca hucrede jenerik "Kütüphanede eşleşme yok" kaliyordu.
     yazVeri(node, '_matSebep', (result as any)?.reason ?? null);
-    if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
-    if (materialTotalField) node.setDataValue(materialTotalField, '');
   };
 
   // ── V4 (PRD v1.3): GRUP ICI OTOMATIK VARYANT ATAMA — SORULMAZ ──────
@@ -748,6 +782,17 @@ function BrandDropdown(props: ICellRendererParams & {
     setPopupPos(null);
     setStage2(null);
     node.setDataValue('_marka', null);
+    // D1 (30.09): iptal marka'yi bosaltiyor ama ISARETI birakiyordu — satir
+    // MARKASIZ kalip 'belirsiz' (pembe) boyali duruyor ve ust sayacta
+    // "N satır seçim bekliyor" olarak sayilmaya devam ediyordu. Marka yoksa
+    // eslestirme sonucu da yoktur.
+    //
+    // ⚠ Burada `fiyatiTemizle()` YOK — olculdu (EG-M3 mutanti YASADI): bu
+    // popup yalnizca aday dalindan acilir, o dal fiyati ZATEN silmis olur.
+    // Ikinci cagri hicbir dali surmuyordu; olculemeyen savunma birakilmadi.
+    yazVeri(node, '_matStatus', '');
+    yazVeri(node, '_matSebep', null);
+    yazVeri(node, '_matAdaySayisi', null);
   };
 
   // M3: alternatif marka secimi — marka + fiyat BIRLIKTE atanir, satir manuel
@@ -765,6 +810,7 @@ function BrandDropdown(props: ICellRendererParams & {
     // Kullanici uyumsuz markada kalmayi secti — fiyat yok, hucre 'yok' isaretli
     setAlternatives(null);
     setPopupPos(null);
+    fiyatiTemizle(); // D1: "fiyat yok" demek eski fiyatin da gitmesi demektir
     yazVeri(node, '_matStatus', 'yok');
   };
 
@@ -1187,20 +1233,27 @@ function FirmaDropdown(props: ICellRendererParams & {
     console.log(`[FirmaDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice}, qty=${qty}`);
   };
 
+  /** D1 IKIZI — fiyat yazmayan iscilik dali eski fiyati siler (writeLaborPrice'in tersi).
+   *  Malzeme ikizi: BrandDropdown `fiyatiTemizle`. Durum/sebep/aday YAZILMAZ —
+   *  onlari cagiran dal kendi anlamiyla yazar. Genel toplam recalcGrand'dan gelir. */
+  const fiyatiTemizleLab = () => {
+    yazVeriLab(node, '_labNetPrice', 0);
+    node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+    if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
+    if (laborTotalField) node.setDataValue(laborTotalField, '');
+  };
+
   const handleChange = async (firmaId: string) => {
     node.setDataValue('_firma', firmaId || null);
     setCandidates(null);
     setAlternatives(null);
     if (!firmaId) {
-      yazVeriLab(node, '_labNetPrice', 0);
-      node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+      fiyatiTemizleLab();
       // Firma kaldirildi: satir artik "secim bekleyen" degil — isaret de kalkar,
       // yoksa firmasiz satir kirmizi kalir ve guven sayacini sisirir.
       yazVeriLab(node, '_labStatus', '');
       yazVeriLab(node, '_labSebep', null);
       yazVeriLab(node, '_labAdaySayisi', null);
-      if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
-      if (laborTotalField) node.setDataValue(laborTotalField, '');
       return;
     }
 
@@ -1218,6 +1271,7 @@ function FirmaDropdown(props: ICellRendererParams & {
 
     if (result && result.candidates && result.candidates.length > 0) {
       setPopupPos(computePopupPos()); // her kosulda acilir (F1)
+      fiyatiTemizleLab(); // D1: onceki firmanin fiyati secim beklerken DURAMAZ
       // SD6 ikizi: isaret EYLEMLI — sebep + kac aday oldugu satirda tasinir,
       // popup kapatilsa bile hucre kirmizi kalir ve tooltip ne yapilacagini der.
       yazVeriLab(node, '_labStatus', 'belirsiz');
@@ -1247,6 +1301,7 @@ function FirmaDropdown(props: ICellRendererParams & {
     // L5: bu firmada yok — kalemi sunan diger firmalar (fiyatli secenek)
     if (result && result.alternatives && result.alternatives.length > 0) {
       setPopupPos(computePopupPos());
+      fiyatiTemizleLab(); // D1: bu firmada kalem YOK — onceki firmanin fiyati kalmaz
       yazVeriLab(node, '_labStatus', 'belirsiz'); // malzeme ikizi: ExcelGrid.tsx:448
       yazVeriLab(node, '_labSebep', (result as any).reason ?? null);
       setAlternatives(result.alternatives);
@@ -1255,14 +1310,11 @@ function FirmaDropdown(props: ICellRendererParams & {
 
     // ALTIN KURAL: fiyat uretilmez — hucre bos + ISARETLI (malzeme ikizi).
     // 'urun_degil' (oran/hizmet, gri) vs 'yok' (eslesme yok, kirmizi).
-    yazVeriLab(node, '_labNetPrice', 0);
-    node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+    fiyatiTemizleLab();
     // KUR-01 ikizi: kur alinamadiysa 'hata' — kur donunce yeniden fiyatlanabilsin.
     yazVeriLab(node, '_labStatus', (result as any)?.notProduct ? 'urun_degil' : ((result as any)?.kurAlinamadi ? 'hata' : 'yok'));
     yazVeriLab(node, '_labSebep', (result as any)?.reason ?? null);
     yazVeriLab(node, '_labAdaySayisi', null);
-    if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
-    if (laborTotalField) node.setDataValue(laborTotalField, '');
   };
 
   const handleCandidateSelect = async (c: MatchCandidate) => {
@@ -1293,8 +1345,14 @@ function FirmaDropdown(props: ICellRendererParams & {
     console.log(`[FirmaDropdown] L5 alternatif firma secildi: ${a.brandName} → "${a.materialName}" = ${a.netPrice}`);
   };
   const handleAlternativeCancel = () => {
+    // D1 IKIZI: kullanici uyumsuz firmada kalmayi secti — fiyat yok, hucre
+    // 'yok' isaretli. Malzeme ikizi bunu yapiyordu, iscilik dali HICBIR SEY
+    // yapmiyordu: popup kapaniyor, satir onceki firmanin fiyatiyla ISARETSIZ
+    // kaliyordu (SD2'nin "sessiz bos" yasaginin tersi — sessiz DOLU).
     setAlternatives(null);
     setPopupPos(null);
+    fiyatiTemizleLab();
+    yazVeriLab(node, '_labStatus', 'yok');
   };
 
   const firmaOptions = filteredFirms.map((f) => ({ value: f.id, label: f.name }));

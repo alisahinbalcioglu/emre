@@ -118,6 +118,55 @@ function genelToplamiTazele(
   yaz(node, genelAlan, kalemToplami(mat, lab).toFixed(PARA_ONDALIK));
 }
 
+/** `fiyatiTemizle` icin dal alanlari — fillDown icinde bir kez turetilir. */
+interface TemizAlanlar {
+  birimFiyat?: string;
+  toplam?: string;
+  net: string;
+  kur: string;
+  iscilikMi: boolean;
+}
+
+/**
+ * D1 (30.09, P0) — FIYAT YAZMAYAN DAL ESKI FIYATI SILER.
+ *
+ * Canli senaryo: kullanici bir grubu marka A ile fiyatlar, sonra ayni grubu
+ * marka B ile YENIDEN surukler; B'de o urun yoktur. Eski hal: satirin markasi
+ * B olur, isaret 'yok' yazilir — ama HUCREDE A'NIN FIYATI DURUR. Satir
+ * `brandId=B` + `100 ₺` olarak KAYDEDILIR ve fiyatsiz-kalem uyarisi onu
+ * YAKALAMAZ (fiyat dolu gorunuyor): musteriye, B'de var OLMAYAN bir urun
+ * A'nin fiyatiyla teklif edilir. Ikinci kusur GORSEL: `_matAutoVariant` hala
+ * A'nin etiketini tasidigi icin `isaretStili` MAVI ("⚡ otomatik") dondurup
+ * kirmizi 'yok' isaretini MASKELIYORDU.
+ *
+ * KURAL: fiyat yazan dal ne yaziyorsa (net · kur · birim · toplam · genel
+ * toplam · rozetler) fiyat YAZMAYAN dal onu geri alir. Durum/sebep/aday
+ * alanlarina DOKUNULMAZ — onlari cagiran dal kendi anlamiyla yazar.
+ *
+ * ⚠ "Satiri sifirla" DEGILDIR: yalnizca DOLDURULAN dal temizlenir. Genel
+ * toplam `genelToplamiTazele` ile YENIDEN HESAPLANIR, sifirlanmaz — karsi
+ * dalda (iscilik/malzeme) fiyat varsa satir onunla dolu kalir.
+ */
+function fiyatiTemizle(
+  node: FillNode,
+  roller: FillRoller,
+  alanlar: TemizAlanlar,
+  yaz: (n: FillNode, alan: string, deger: unknown) => void,
+): void {
+  yaz(node, alanlar.net, 0);
+  // Kolon degil veri alani — fiyat yazan dal da dogrudan yaziyor (KUR DONMASI).
+  node.data[alanlar.kur] = null;
+  if (alanlar.birimFiyat) yaz(node, alanlar.birimFiyat, '');
+  if (alanlar.toplam) yaz(node, alanlar.toplam, '');
+  if (!alanlar.iscilikMi) {
+    // Malzemeye OZGU rozetler (iscilik dalinda dolduran yol bunlari yazmaz).
+    yaz(node, '_matSuggestion', false);
+    yaz(node, '_matAutoVariant', null);
+    node.data._matVariantLabel = null;
+  }
+  genelToplamiTazele(node, roller, yaz);
+}
+
 /**
  * KAR% SURUKLE-DOLDUR — satis birim + satir toplami (P2-1a).
  *
@@ -219,6 +268,10 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
   const sebepAlan = iscilikMi ? '_labSebep' : '_matSebep';
   const adayAlan = iscilikMi ? '_labAdaySayisi' : '_matAdaySayisi';
   const kurAlan = iscilikMi ? '_labKurBilgi' : '_matKurBilgi';
+  // D1: fiyat YAZMAYAN her dalin kullandigi ortak "eski fiyati sil" kumesi.
+  const temizAlanlar: TemizAlanlar = {
+    birimFiyat: bfAlan, toplam: totAlan, net: netAlan, kur: kurAlan, iscilikMi,
+  };
 
   const sonuc: FillSonuc = {
     satirlar: [],
@@ -271,6 +324,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
 
     if (!ad) {
       // SD2c: sessiz atlama YASAK — isaretlenir
+      fiyatiTemizle(node, roller, temizAlanlar, yaz); // D1
       yaz(node, statusAlan, 'ad-yok');
       sonuc.satirlar.push({ rowIdx, durum: 'ad-yok' });
       sonuc.ozet.adYok++;
@@ -290,6 +344,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
 
     if (hataMesaji) {
       // SD2b: motor hatasi SESSIZCE yutulmaz
+      fiyatiTemizle(node, roller, temizAlanlar, yaz); // D1
       yaz(node, statusAlan, 'hata');
       sonuc.satirlar.push({ rowIdx, durum: 'hata', hata: hataMesaji });
       sonuc.ozet.hata++;
@@ -360,6 +415,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     // taslak geri yuklemesi 'yok'u cevaplanmis sayar, kur donunce satiri
     // yeniden FIYATLAMAZDI (donmus fiyatsiz satir).
     if (r?.kurAlinamadi) {
+      fiyatiTemizle(node, roller, temizAlanlar, yaz); // D1
       yaz(node, statusAlan, 'hata');
       sonuc.satirlar.push({ rowIdx, durum: 'hata', hata: r.reason ?? 'Kur alınamadı' });
       sonuc.ozet.hata++;
@@ -376,6 +432,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     // Fiyat YAZILMAZ (netPrice 0) — degisen yalniz isaret ve sebep metni.
     const adaylar = r?.candidates?.length ? r.candidates : (r?.alternatives?.length ? r.alternatives : null);
     if (adaylar) {
+      fiyatiTemizle(node, roller, temizAlanlar, yaz); // D1
       yaz(node, statusAlan, 'belirsiz');
       yaz(node, adayAlan, adaylar.length);
       sonuc.satirlar.push({ rowIdx, durum: 'aday', adaySayisi: adaylar.length, sebep: r?.reason });
@@ -384,6 +441,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     }
 
     const durum: FillDurum = r?.notProduct ? 'urun_degil' : 'yok';
+    fiyatiTemizle(node, roller, temizAlanlar, yaz); // D1
     yaz(node, statusAlan, durum === 'urun_degil' ? 'urun_degil' : 'yok');
     sonuc.satirlar.push({ rowIdx, durum, sebep: r?.reason });
     if (durum === 'urun_degil') sonuc.ozet.urunDegil++; else sonuc.ozet.yok++;

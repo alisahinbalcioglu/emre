@@ -129,6 +129,16 @@ export default function GridTestPage() {
       return { netPrice: 0, confidence: 'none', kurAlinamadi: true, reason: 'Döviz kuru alınamadı.' } as any;
     }
 
+    // D1 (30.09): MARKAYA GORE AYRISAN cevap. "Satir A ile fiyatlandi, sonra
+    // B secildi ve B'de urun YOK" senaryosu ancak boyle uretilebilir — mock
+    // bugune kadar yalnizca ADA bakiyordu, marka degistirmek cevabi
+    // degistirmiyordu. SARDOGAN'da 6'' yoktur; diger caplarda normal davranir
+    // (1'' hala aday sorar), boylece 'yok' ve 'belirsiz' dallari ayri olculur.
+    if (brandId === 'b-sardogan' && materialName.includes("6''")) {
+      log('SARDOGAN: bu markada 6\'\' YOK');
+      return { netPrice: 0, confidence: 'none', reason: 'Bu markada 6" yok.' } as any;
+    }
+
     // K16: 2'' bu markada YOK
     if (materialName.includes("2''")) return { netPrice: 0, confidence: 'none', reason: 'Bu üründe 2" yok.' };
 
