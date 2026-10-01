@@ -624,3 +624,93 @@ describe('D2 — restore geç cevabı kullanıcının yeni durumunu ezmez', () =
     expect(n).toBe(1);
   });
 });
+
+/**
+ * D7 (30.09, P1) — RESTORE FITTING SATIRINI "FİYATI KAYIP" SANIYOR
+ *
+ * Fitting satırı (CLAUDE.md "Fitting Satiri"): kullanıcı adı yazar, MİKTAR
+ * hücresine ORANI (35), birim hücresine "%" yazar; satırın para hücreleri
+ * KAPSAMDAN türetilir (`fittingHucreleri` birim fiyat hücresini bilerek
+ * BOŞALTIR, tutarı Σkapsam × oran / 100 yazar).
+ *
+ * `restoreRematch` o boş birim fiyat hücresini "kayıp fiyat" sanıyor ve satırı
+ * kütüphaneye soruyor. Cevap gelirse ORANI (35) MİKTAR sanıp çarpıyor:
+ * ölçüldü → Birim Fiyat '' → '110.0', Tutar '1050.0' → '3850.0'.
+ * Satır başına +2.800 ₺, SESSİZCE, sayfa yenilenince.
+ *
+ * KURAL: türetilmiş hücre yan etkiye bırakılmaz ve "boş" ≠ "kayıp".
+ * Fitting satırı restore'a HİÇ sorulmaz.
+ */
+describe('restoreRematch — fitting satırı sorguya GİRMEZ (türetilmiş hücre)', () => {
+  /** Fitting satırı: satırı fitting yapan TEK alan `_fitting` (fitting.ts:26). */
+  const fittingSatiri = (p: Partial<ExcelRowData> = {}): ExcelRowData => satir({
+    _rowIdx: 9,
+    'Malzeme Cinsi': 'Dişli fitting oranı', 'Çapı': '',
+    'Birim': '%', 'Miktar': '35',
+    'Birim Fiyat': '', 'Tutar': '1050.0', _labBirim: '', _labToplam: '', _toplam: '1050.00',
+    _fitting: { kapsam: [1, 2] },
+    ...p,
+  });
+
+  const CEVAP = { 'Dişli fitting oranı': { netPrice: 100, confidence: 'high' } };
+
+  it('R1 malzeme: markası dolu fitting satırı için kütüphaneye SORULMAZ', async () => {
+    const row = fittingSatiri({ _marka: 'marka-1' });
+    const { poster, cagrilar } = posterKur({ '/matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(cagrilar).toHaveLength(0);
+  });
+
+  it('R2 malzeme: birim fiyat hücresi BOŞ kalır (türetilmiş hücre)', async () => {
+    const row = fittingSatiri({ _marka: 'marka-1' });
+    const { poster } = posterKur({ '/matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(row['Birim Fiyat']).toBe('');
+  });
+
+  it('★ R3 malzeme PARA: tutar bozulmaz — oran MİKTAR sanılıp çarpılmaz', async () => {
+    // Kusurlu hâlde ölçülen: '3850.0' (110 × 35). Doğrusu kapsamın yazdığı 1050,0.
+    const row = fittingSatiri({ _marka: 'marka-1' });
+    const { poster } = posterKur({ '/matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(row['Tutar']).toBe('1050.0');
+  });
+
+  it('R4 malzeme: yazılan satır sayısına girmez', async () => {
+    const row = fittingSatiri({ _marka: 'marka-1' });
+    const { poster } = posterKur({ '/matching/bulk-match': CEVAP });
+    expect(await restoreRematch([sayfa([row])], { 0: [row] }, poster)).toBe(0);
+  });
+
+  it('R5 İKİZ işçilik: firması dolu fitting satırı için de SORULMAZ', async () => {
+    const row = fittingSatiri({ _firma: 'firma-1' });
+    const { poster, cagrilar } = posterKur({ '/labor-matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(cagrilar).toHaveLength(0);
+  });
+
+  it('R6 İKİZ işçilik: işçilik para hücreleri bozulmaz', async () => {
+    const row = fittingSatiri({ _firma: 'firma-1', _labToplam: '400.0' });
+    const { poster } = posterKur({ '/labor-matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(row._labBirim).toBe('');
+    expect(row._labToplam).toBe('400.0');
+  });
+
+  it('R7 GENEL TOPLAM fitting satırında tazelenmez (türetilmiş)', async () => {
+    const row = fittingSatiri({ _marka: 'marka-1' });
+    const { poster } = posterKur({ '/matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(row._toplam).toBe('1050.00');
+  });
+
+  it('★ R8 KONTROL GRUBU: fitting OLMAYAN satır hâlâ tamamlanır (kapı fazla kapatmıyor)', async () => {
+    // `_fitting` alanı olmayan, birimi de "%" olan ESKİ satırlar fitting DEĞİLDİR
+    // (CLAUDE.md: "yalniz bu alani tasiyan satir fitting sayilir").
+    const row = fittingSatiri({ _marka: 'marka-1', _fitting: undefined, 'Tutar': '' });
+    const { poster, cagrilar } = posterKur({ '/matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(cagrilar).toHaveLength(1);
+    expect(row['Birim Fiyat']).toBe('110.0'); // 100 × (1 + %10) — LİTERAL
+  });
+});

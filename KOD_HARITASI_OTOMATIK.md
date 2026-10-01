@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 859
-Toplam satir: 239559
+Toplam satir: 239667
 Uc nokta: 238
 test:* scripti: 141
 
@@ -819,8 +819,8 @@ test:* scripti: 141
 | `frontend/ozellik/teklif/fitting-ipucu.ts` | 49 |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.test.ts` | 254 |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | 195 |
-| `frontend/ozellik/teklif/restore-rematch.test.ts` | 627 |
-| `frontend/ozellik/teklif/restore-rematch.ts` | 249 |
+| `frontend/ozellik/teklif/restore-rematch.test.ts` | 717 |
+| `frontend/ozellik/teklif/restore-rematch.ts` | 267 |
 | `frontend/ozellik/teklif/taslak.test.ts` | 89 |
 | `frontend/ozellik/teklif/taslak.ts` | 98 |
 | `frontend/ozellik/teklif/teklif-dil-karari.test.ts` | 117 |
@@ -1585,7 +1585,7 @@ test:* scripti: 141
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.test.ts` | `vitest` `./teklif-kalem` |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | `./teklif-kalem` |
 | `frontend/ozellik/teklif/restore-rematch.test.ts` | `vitest` `./restore-rematch` `../tablo/excel-grid/types` |
-| `frontend/ozellik/teklif/restore-rematch.ts` | `../tablo/excel-grid/types` `../fiyat/sayi-alani` |
+| `frontend/ozellik/teklif/restore-rematch.ts` | `../tablo/excel-grid/types` `../fiyat/sayi-alani` `../tablo/excel-grid/fitting` |
 | `frontend/ozellik/teklif/taslak.test.ts` | `vitest` `./taslak` |
 | `frontend/ozellik/teklif/teklif-dil-karari.test.ts` | `vitest` `./ceviri-kota` |
 | `frontend/ozellik/teklif/teklif-dil-karari.ts` | `./ceviri` `./ceviri-kota` |

@@ -65,6 +65,8 @@ import {
   PARA_ONDALIK,
 } from '../fiyat/pricing';
 import { sayiAlani, sayiOku } from '../fiyat/sayi-alani';
+// D7: fitting olcutu TEK YERDE — surukle-doldur yolu da ayni fonksiyonu kullanir.
+import { fittingSatiriMi } from '../tablo/excel-grid/fitting';
 
 /** Draft'taki sheet'in bu modulun ihtiyac duydugu kesiti (SheetData uyumlu). */
 export interface RematchSheet {
@@ -233,6 +235,22 @@ export async function restoreRematch(
     if (!roles.nameField) continue;
     for (const row of rows) {
       if (!row?._isDataRow) continue;
+      // ── D7 (30.09): FITTING SATIRI SORULMAZ ────────────────────────────
+      // Fitting satirinin para hucreleri KAPSAMDAN turetilir: `fittingHucreleri`
+      // birim fiyat hucresini BILEREK bosaltir, tutari Σkapsam × oran / 100
+      // yazar (CLAUDE.md "Fitting Satiri"). Restore o bos hucreyi "kayip fiyat"
+      // sanip kutuphaneye soruyordu — ve cevap gelince MIKTAR hucresindeki
+      // ORANI (35) adet sanip carpiyordu.
+      //
+      // Olculdu: Birim Fiyat '' → '110.0', Tutar '1050.0' → '3850.0'. Satir
+      // basina +2.800 ₺, SESSIZCE, yalnizca sayfa yenilendiginde. Fitting
+      // gecisi bunu bir sonraki tetiklenmesinde duzeltir ama arada kullanici
+      // sisirilmis toplami gorur ve o haliyle KAYDEDEBILIR.
+      //
+      // "Bos hucre" ≠ "kayip fiyat": turetilmis hucre yan etkiye birakilmaz.
+      // Ana donguye konuldu, `tarafEslestir` icine DEGIL — kusur iki tarafta da
+      // ayni (TARAFLAR dizisinin ikisi de), kapi da tek yerde olmali.
+      if (fittingSatiriMi(row)) continue;
       let satirdaYazim = 0;
       for (const taraf of TARAFLAR) {
         satirdaYazim += await tarafEslestir(row, roles, taraf, poster);
