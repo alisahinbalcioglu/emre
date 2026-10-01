@@ -152,6 +152,19 @@ async function tarafEslestir(
     if (birim) govde.units = { [ad]: birim };
 
     const sonuc = await poster(taraf.url, govde);
+
+    // ── D2 (30.09): GEC CEVAP KULLANICININ YENI DURUMUNU EZMEZ ──────────
+    // Marka ve "fiyat kayip mi" kontrolu `await`ten ONCE yapilmisti; donusta
+    // KOSULSUZ yaziliyordu. Restore aga cikarken kullanici bos durmuyor:
+    // satirin markasini degistirebilir ya da fiyati ELLE yazabilir. Gec gelen
+    // cevap ikisini de sessizce uzerine yaziyordu — kullanici yazdigi fiyatin
+    // birkac saniye sonra degistigini fark etmez.
+    //
+    // Kontroller ayni yerde TEKRAR edilir (KUR-01 isareti dahil: yeni marka
+    // eski markanin kur hatasiyla TURUNCU boyanmamali).
+    if (row[taraf.atamaAlani] !== atanan) return 0;
+    if (!fiyatKayip(String(row[birimAlan] ?? '').trim())) return 0;
+
     const match = sonuc?.[ad];
     // KUR-01 (14.09): kur hala alinamiyorsa satir GORUNUR sekilde isaretlenir
     // ('hata' + sebep) — sessizce fiyatsiz birakilmaz. 'hata' CEVAPLANMIS

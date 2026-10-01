@@ -56,7 +56,9 @@ export interface MotorSonucu {
   reason?: string;
 }
 
-export type FillDurum = 'fiyat' | 'aday' | 'yok' | 'urun_degil' | 'hata' | 'ad-yok';
+export type FillDurum = 'fiyat' | 'aday' | 'yok' | 'urun_degil' | 'hata' | 'ad-yok'
+  /** D2: cevap donerken satir baska bir marka/firmaya gecmis — yazilmadi. */
+  | 'devredildi';
 
 export interface FillSatirSonucu {
   rowIdx: number;
@@ -70,7 +72,9 @@ export interface FillSatirSonucu {
 
 export interface FillSonuc {
   satirlar: FillSatirSonucu[];
-  ozet: { fiyatli: number; aday: number; yok: number; urunDegil: number; hata: number; adYok: number; atlanan: number };
+  ozet: { fiyatli: number; aday: number; yok: number; urunDegil: number; hata: number; adYok: number; atlanan: number;
+    /** D2: gec gelip dusurulen cevap sayisi (satir baska secime gecmisti). */
+    devredilen: number };
   /** SD7: doldurmanin TAMAMI tek Ctrl+Z ile geri alinsin diye anlik. */
   geriAl: Array<{ rowIdx: number; oncekiDegerler: Record<string, any> }>;
 }
@@ -275,7 +279,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
 
   const sonuc: FillSonuc = {
     satirlar: [],
-    ozet: { fiyatli: 0, aday: 0, yok: 0, urunDegil: 0, hata: 0, adYok: 0, atlanan: 0 },
+    ozet: { fiyatli: 0, aday: 0, yok: 0, urunDegil: 0, hata: 0, adYok: 0, atlanan: 0, devredilen: 0 },
     geriAl: [],
   };
 
@@ -340,6 +344,24 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
       r = await motor(rowIdx, markaId, ad, opts);
     } catch (e: any) {
       hataMesaji = String(e?.message ?? e ?? 'bilinmeyen hata');
+    }
+
+    // ── D2 (30.09): GEC GELEN CEVAP YENI SECIMI EZMEZ ────────────────────
+    // `await` sirasinda kullanici baska bir marka/firma secmis (ya da secimi
+    // kaldirmis) olabilir: yavas A + hizli B'de B once biter, sonra A'nin gec
+    // cevabi gelip UZERINE yazardi — ekranda marka B, hucrede A'nin fiyati.
+    // Kullanici B yazdigini gordugu icin farki yakalayamaz.
+    //
+    // Satir hala BIZIM sordugumuz secimdeyse yazariz; degilse cevap DUSER.
+    // Hata dali da buraya tabidir: gec gelen ag hatasi, B'nin az once yazdigi
+    // fiyatli satiri 'hata' diye TURUNCU boyardi.
+    //
+    // ⚠ Fiyat temizleme (D1) de bu kapinin ARKASINDA kalmali — yoksa gec
+    // gelen 'yok' cevabi B'nin fiyatini siler ve D1'in kendisi silaha doner.
+    if (node.data[secimAlan] !== markaId) {
+      sonuc.satirlar.push({ rowIdx, durum: 'devredildi' });
+      sonuc.ozet.devredilen++;
+      continue;
     }
 
     if (hataMesaji) {

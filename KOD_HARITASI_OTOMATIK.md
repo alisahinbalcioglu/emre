@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 859
-Toplam satir: 239250
+Toplam satir: 239559
 Uc nokta: 238
 test:* scripti: 141
 
@@ -489,7 +489,7 @@ test:* scripti: 141
 | `frontend/app/admin/users/page.tsx` | 647 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
 | `frontend/app/davet-kabul/page.tsx` | 483 |
-| `frontend/app/dev/grid-test/page.tsx` | 256 |
+| `frontend/app/dev/grid-test/page.tsx` | 275 |
 | `frontend/app/fiyatlar/page.tsx` | 174 |
 | `frontend/app/forgot-password/page.tsx` | 92 |
 | `frontend/app/gizlilik/page.tsx` | 13 |
@@ -771,7 +771,7 @@ test:* scripti: 141
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4922 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4930 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -780,8 +780,8 @@ test:* scripti: 141
 | `frontend/ozellik/tablo/excel-grid/cap-sorguda.test.ts` | 130 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.test.ts` | 65 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 66 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 740 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 457 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 864 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 479 |
 | `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | 234 |
 | `frontend/ozellik/tablo/excel-grid/fitting.ts` | 184 |
 | `frontend/ozellik/tablo/excel-grid/gosterim-baglantisi.test.ts` | 274 |
@@ -819,8 +819,8 @@ test:* scripti: 141
 | `frontend/ozellik/teklif/fitting-ipucu.ts` | 49 |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.test.ts` | 254 |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | 195 |
-| `frontend/ozellik/teklif/restore-rematch.test.ts` | 555 |
-| `frontend/ozellik/teklif/restore-rematch.ts` | 236 |
+| `frontend/ozellik/teklif/restore-rematch.test.ts` | 627 |
+| `frontend/ozellik/teklif/restore-rematch.ts` | 249 |
 | `frontend/ozellik/teklif/taslak.test.ts` | 89 |
 | `frontend/ozellik/teklif/taslak.ts` | 98 |
 | `frontend/ozellik/teklif/teklif-dil-karari.test.ts` | 117 |
@@ -845,11 +845,11 @@ test:* scripti: 141
 | `frontend/test/e2e-golden/sayi-ayristirma.mjs` | 46 |
 | `frontend/test/e2e-golden/surum-kapisi.cjs` | 135 |
 | `frontend/test/e2e-golden/verify.mjs` | 836 |
-| `frontend/test/e2e/eslestirme-temizlik.spec.ts` | 119 |
+| `frontend/test/e2e/eslestirme-temizlik.spec.ts` | 154 |
 | `frontend/test/e2e/grid.spec.ts` | 206 |
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | 126 |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | 366 |
-| `frontend/test/e2e/secim-duzenleme.spec.ts` | 517 |
+| `frontend/test/e2e/secim-duzenleme.spec.ts` | 533 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
 | `scripts/backup.sh` | 125 |

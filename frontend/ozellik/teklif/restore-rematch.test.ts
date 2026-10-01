@@ -552,3 +552,75 @@ describe('restoreRematch — KUR-01 kur alinamadi', () => {
     expect(cagrilar).toHaveLength(0);
   });
 });
+
+/**
+ * D2 (30.09, P1) — RESTORE'UN GEÇ CEVABI KULLANICININ EMEĞİNİ EZMEZ
+ *
+ * `tarafEslestir` marka ve "fiyat kayıp mı" kontrolünü `await`ten ÖNCE yapar,
+ * dönüşte KOŞULSUZ yazar. Sayfa yenilendikten sonra restore ağa çıkarken
+ * kullanıcı boş durmuyor: satırın markasını değiştirebilir ya da fiyatı ELLE
+ * yazabilir. Geç gelen cevap ikisini de sessizce üzerine yazıyordu —
+ * kullanıcı yazdığı fiyatın birkaç saniye sonra değiştiğini fark etmez.
+ *
+ * KURAL: `await`ten dönen cevap, satır HÂLÂ aynı markadaysa VE fiyat HÂLÂ
+ * kayıpsa yazılır. Restore "kayıp fiyatı tamamlar", var olanı değiştirmez.
+ */
+describe('D2 — restore geç cevabı kullanıcının yeni durumunu ezmez', () => {
+  /** Poster ağa çıkarken satırı DEĞİŞTİREN taklit (gerçek gecikmeli). */
+  function gecPoster(cevap: Record<string, any>, aradaOlan: () => void) {
+    const poster: RematchPoster = async () => {
+      await new Promise((r) => setTimeout(r, 40));
+      aradaOlan(); // kullanıcı bu sırada satıra dokunur
+      await new Promise((r) => setTimeout(r, 10));
+      return cevap;
+    };
+    return poster;
+  }
+
+  it('★ MARKA değişti: eski markanın fiyatı yeni markanın satırına yazılmaz', async () => {
+    const r = satir({ _marka: 'marka-A' });
+    const poster = gecPoster({ [AD]: { netPrice: 100, confidence: 'high' } }, () => {
+      r._marka = 'marka-B'; // kullanıcı restore sürerken markayı değiştirdi
+    });
+    const n = await restoreRematch([sayfa([r])], { 0: [r] }, poster);
+    expect(r['Birim Fiyat'], 'A\'nın fiyatı B\'nin satırına yazılmaz').toBe('');
+    expect(r._matNetPrice).toBe(0);
+    expect(n, 'yazılan satır sayısı').toBe(0);
+  });
+
+  it('★ ELLE FİYAT: kullanıcı beklerken fiyat yazdıysa restore üzerine yazmaz', async () => {
+    const r = satir({ _marka: 'marka-A' });
+    const poster = gecPoster({ [AD]: { netPrice: 100, confidence: 'high' } }, () => {
+      r['Birim Fiyat'] = '999.0'; // kullanıcı elle yazdı
+    });
+    await restoreRematch([sayfa([r])], { 0: [r] }, poster);
+    expect(r['Birim Fiyat'], 'kullanıcının emeği DURUR').toBe('999.0');
+  });
+
+  it('★ İKİZ işçilik: firma değiştiyse geç cevap yazılmaz', async () => {
+    const r = satir({ _firma: 'firma-A' });
+    const poster = gecPoster({ [AD]: { netPrice: 100, confidence: 'high' } }, () => {
+      r._firma = 'firma-B';
+    });
+    await restoreRematch([sayfa([r])], { 0: [r] }, poster);
+    expect(r._labBirim).toBe('');
+    expect(r._labNetPrice).toBe(0);
+  });
+
+  it('★ KUR-01 işareti de ezmez: marka değiştiyse "hata" damgası basılmaz', async () => {
+    const r = satir({ _marka: 'marka-A' });
+    const poster = gecPoster({ [AD]: { kurAlinamadi: true, reason: 'Kur alınamadı' } }, () => {
+      r._marka = 'marka-B';
+    });
+    await restoreRematch([sayfa([r])], { 0: [r] }, poster);
+    expect(String(r._matStatus ?? ''), 'yeni marka turuncuya boyanmaz').toBe('');
+  });
+
+  it('DEĞİŞMEYEN satır bozulmadı: restore hâlâ kayıp fiyatı tamamlar', async () => {
+    const r = satir({ _marka: 'marka-A' });
+    const poster = gecPoster({ [AD]: { netPrice: 100, confidence: 'high' } }, () => { /* kullanıcı dokunmadı */ });
+    const n = await restoreRematch([sayfa([r])], { 0: [r] }, poster);
+    expect(r['Birim Fiyat']).toBe('110.0'); // 100 × (1 + %10) — LİTERAL
+    expect(n).toBe(1);
+  });
+});

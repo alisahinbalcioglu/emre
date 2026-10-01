@@ -558,6 +558,12 @@ function BrandDropdown(props: ICellRendererParams & {
 
     console.log(`[BrandDropdown] row=${data._rowIdx}, sorgu="${queryName}"${useVariant ? ` varyant=[${gv!.tags.join(',')}]` : ''}${escapeAuto ? ' (oto-kacis: tam liste)' : ''}`);
     const result = await onBrandChange(data._rowIdx, brandId, queryName, opts);
+    // D2 (30.09): GEC GELEN CEVAP YENI SECIMI EZMEZ. Kullanici yavas bir
+    // markayi secip beklemeden baskasina gecerse ikinci sorgu ONCE biter,
+    // sonra birincinin gec cevabi gelip UZERINE yazardi — ekranda marka B,
+    // hucrede A'nin fiyati. Satir artik bizim sordugumuz markada degilse
+    // cevap DUSER (surukleme yolunun ikizi: fill-down.ts 'devredildi').
+    if (data._marka !== brandId) return;
     lookupNameRef.current = queryName; // ogrenme imzasi bu adla uretilir
 
     // Multi case — kullaniciya secenek sun (Portal ile body'e render).
@@ -1266,8 +1272,10 @@ function FirmaDropdown(props: ICellRendererParams & {
     // M1/M4: TEK SORGU — baslik+satir birlesimi (aile bilgisiz fallback yasak)
     const fullName = buildMaterialContext(api, node.rowIndex ?? 0, nameField, noField, brandField, quantityField, diameterField);
     const queryName = fullName || currentName;
-    lookupNameRef.current = queryName; // L4 ogrenme imzasi bu adla uretilir
     const result = await onFirmaChange(data._rowIdx, firmaId, queryName);
+    // D2 IKIZI: gec gelen firma cevabi satirin YENI firmasini ezmez.
+    if (data._firma !== firmaId) return;
+    lookupNameRef.current = queryName; // L4 ogrenme imzasi bu adla uretilir
 
     if (result && result.candidates && result.candidates.length > 0) {
       setPopupPos(computePopupPos()); // her kosulda acilir (F1)

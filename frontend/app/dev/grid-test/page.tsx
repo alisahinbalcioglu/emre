@@ -135,7 +135,13 @@ export default function GridTestPage() {
     // degistirmiyordu. SARDOGAN'da 6'' yoktur; diger caplarda normal davranir
     // (1'' hala aday sorar), boylece 'yok' ve 'belirsiz' dallari ayri olculur.
     if (brandId === 'b-sardogan' && materialName.includes("6''")) {
-      log('SARDOGAN: bu markada 6\'\' YOK');
+      // D2 (30.09): SARDOGAN bu sorguda YAVAS. Yaris ancak cevaplar FARKLI
+      // HIZDA donerse kurulur — kullanici yavas markayi secip beklemeden
+      // baskasina gecer, hizli olan once biter, sonra yavasin gec cevabi
+      // gelip UZERINE yazar. Sifir gecikmeli taklit iki async adimi tek tike
+      // toplar ve bu sinifi hic uretmez.
+      await new Promise((r) => setTimeout(r, 500));
+      log('SARDOGAN (gec): bu markada 6\'\' YOK');
       return { netPrice: 0, confidence: 'none', reason: 'Bu markada 6" yok.' } as any;
     }
 
@@ -181,6 +187,19 @@ export default function GridTestPage() {
     const vt = opts?.variantTags?.join(',') ?? '-';
     log(`#${cagriSayisi.current} ISC sorgu: satir=${rowIdx} "${laborName.slice(0, 30)}" varyant=[${vt}]`);
     if (laborName.includes('HATALI')) { log('ISC AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
+
+    // D2 IKIZI (30.09): HAKAN USTA bu sorguda YAVAS ve FARKLI fiyat doner.
+    // Malzeme tarafindaki SARDOGAN gecikmesinin iscilik karsiligi — yaris
+    // ancak cevaplar hem FARKLI HIZDA hem FARKLI DEGERDE donerse olculebilir
+    // (iki firma ayni fiyati verseydi gec cevabin ezip ezmedigi gorulmezdi).
+    // ⚠ YAVAS FIRMA HAKAN SECILDI, YASİN DEGIL: grid.spec.ts DL testi kaynak
+    // satirda (satir 2 = 6'') YASİN USTA secip 60 bekliyor — yavasligi oraya
+    // koymak o testi kirmizi yapti (olculdu, tam e2e kosumunda yakalandi).
+    if (firmaId === 'f-hakan' && laborName.includes("6''")) {
+      await new Promise((r) => setTimeout(r, 500));
+      log('HAKAN (gec): 6\'\' icin 999');
+      return { netPrice: 999, confidence: 'high', matchedName: 'Kaynak işçiliği · 6"' } as any;
+    }
     if (laborName.includes("2''")) return { netPrice: 0, confidence: 'none', reason: 'Bu firmada 2" yok.' } as any;
     if (laborName.includes("1''")) {
       return {
