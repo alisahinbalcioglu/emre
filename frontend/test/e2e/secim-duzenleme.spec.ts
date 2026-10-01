@@ -424,10 +424,26 @@ test('KP29 ★ EDITORDE son veri satirinda ↓ — rakamlar AYNI hucrede birlesm
   // Sinirda editor acik birakilsaydi kullanici ↓ basip yazmaya devam edince
   // yeni rakamlar eski degerin ucuna eklenirdi (300 ↓ 400 → "300400").
   await moduAyarla(page, 'quote');
-  // ⚠ SON VERI SATIRI = 11 (29.09): harness'e KUR-01 senaryosu icin
-  // "KURSUZ 10'' Boru" satiri SONA eklendi. Bu test "altta gidilecek satir
-  // YOK" halini olcer; indeks sabit yazilirsa sessizce YANLIS dali surer.
-  const son = page.locator('[row-index="11"] [col-id="_matBirim"]');
+  // ── SON VERI SATIRI KIMLIKLE BULUNUR (30.09) ──────────────────────────
+  // Bu test "altta gidilecek satir YOK" halini olcer. Eskiden indeks SABIT
+  // yazilmisti (`row-index="11"`); harness'e satir eklendigi gun test sessizce
+  // ORTADAKI bir satiri olcmeye baslar, altinda satir OLDUGU icin ↓ normal
+  // calisir ve assert gecer — yani kapi KIRMIZI YANMADAN curur. (Satir 29.09'da
+  // zaten bir kez eklendi: "KURSUZ 10'' Boru".)
+  //
+  // Simdi: en buyuk row-index DOM'dan okunur + FIKSTUR KANITI olarak o satirin
+  // gercekten harness'in son satiri oldugu dogrulanir. Harness buyurse once
+  // kimlik assert'i kirmizi yanar, sessiz kayma olmaz.
+  const sonIndeks = await page.evaluate(() => Math.max(
+    ...Array.from(document.querySelectorAll('.ag-row[row-index]'))
+      .map((r) => Number(r.getAttribute('row-index')))
+      .filter((n) => Number.isFinite(n)),
+  ));
+  await expect(
+    page.locator(`[row-index="${sonIndeks}"] [col-id="col1"]`),
+    'FIKSTUR KANITI: olculen satir harness\'in SON veri satiri olmali',
+  ).toHaveText(/KURSUZ/);
+  const son = page.locator(`[row-index="${sonIndeks}"] [col-id="_matBirim"]`);
   await son.dblclick();
   await page.keyboard.type('300');
   await page.keyboard.press('ArrowDown');            // altta VERI satiri yok

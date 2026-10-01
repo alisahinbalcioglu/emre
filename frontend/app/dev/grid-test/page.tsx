@@ -45,6 +45,23 @@ export default function GridTestPage() {
   // orada AYRI cellClassRules ile bagli oldugu icin elle/e2e ancak boyle
   // olculebiliyor.
   const [mod, setMod] = useState<'quote' | 'library'>('quote');
+  // D9 + Y1 (30.09): SALT OKUNUR SECICI bayragi. `quotes/[id]` goruntuleme
+  // sayfasinin gectigi `seciciSaltOkunur` burada `?salt=1` ile surulur —
+  // tiklanamayan hucrenin gercekten secim URETMEDIGI ancak gercek tarayicida
+  // olculebilir (ExcelGrid jsdom'suz kosmuyor). Bayragin KENDI sayfada
+  // gecirildigini olcen ayri bir kaynak kapisi var:
+  // ozellik/teklif/salt-okunur-secici.test.ts ("mekanizma var, baglanti yok").
+  // Varsayilan KAPALI — mevcut tum e2e paketleri etkilenmez.
+  //
+  // ⚠ RENDER SIRASINDA `window` OKUNMAZ: ilk hali boyle yazilmisti ve SSR'de
+  // false / istemcide true vererek HYDRATION UYUSMAZLIGI uretiyordu; React
+  // grid altagacini yeniden kuruyor ve KP17'nin ok-tusu ritmi tam e2e
+  // kosumunda duzenli olarak DUSUYORDU (olculdu). Bayrak mount'tan SONRA
+  // yazilir — sunucu ve istemci ilk cizimde ayni seyi gorur.
+  const [saltOkunurSecici, setSaltOkunurSecici] = useState(false);
+  React.useEffect(() => {
+    setSaltOkunurSecici(new URLSearchParams(window.location.search).get('salt') === '1');
+  }, []);
   const cagriSayisi = useRef(0);
   const log = kaydet;
 
@@ -129,6 +146,22 @@ export default function GridTestPage() {
       return { netPrice: 0, confidence: 'none', kurAlinamadi: true, reason: 'Döviz kuru alınamadı.' } as any;
     }
 
+    // D1 (30.09): MARKAYA GORE AYRISAN cevap. "Satir A ile fiyatlandi, sonra
+    // B secildi ve B'de urun YOK" senaryosu ancak boyle uretilebilir — mock
+    // bugune kadar yalnizca ADA bakiyordu, marka degistirmek cevabi
+    // degistirmiyordu. SARDOGAN'da 6'' yoktur; diger caplarda normal davranir
+    // (1'' hala aday sorar), boylece 'yok' ve 'belirsiz' dallari ayri olculur.
+    if (brandId === 'b-sardogan' && materialName.includes("6''")) {
+      // D2 (30.09): SARDOGAN bu sorguda YAVAS. Yaris ancak cevaplar FARKLI
+      // HIZDA donerse kurulur — kullanici yavas markayi secip beklemeden
+      // baskasina gecer, hizli olan once biter, sonra yavasin gec cevabi
+      // gelip UZERINE yazar. Sifir gecikmeli taklit iki async adimi tek tike
+      // toplar ve bu sinifi hic uretmez.
+      await new Promise((r) => setTimeout(r, 500));
+      log('SARDOGAN (gec): bu markada 6\'\' YOK');
+      return { netPrice: 0, confidence: 'none', reason: 'Bu markada 6" yok.' } as any;
+    }
+
     // K16: 2'' bu markada YOK
     if (materialName.includes("2''")) return { netPrice: 0, confidence: 'none', reason: 'Bu üründe 2" yok.' };
 
@@ -171,6 +204,19 @@ export default function GridTestPage() {
     const vt = opts?.variantTags?.join(',') ?? '-';
     log(`#${cagriSayisi.current} ISC sorgu: satir=${rowIdx} "${laborName.slice(0, 30)}" varyant=[${vt}]`);
     if (laborName.includes('HATALI')) { log('ISC AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
+
+    // D2 IKIZI (30.09): HAKAN USTA bu sorguda YAVAS ve FARKLI fiyat doner.
+    // Malzeme tarafindaki SARDOGAN gecikmesinin iscilik karsiligi — yaris
+    // ancak cevaplar hem FARKLI HIZDA hem FARKLI DEGERDE donerse olculebilir
+    // (iki firma ayni fiyati verseydi gec cevabin ezip ezmedigi gorulmezdi).
+    // ⚠ YAVAS FIRMA HAKAN SECILDI, YASİN DEGIL: grid.spec.ts DL testi kaynak
+    // satirda (satir 2 = 6'') YASİN USTA secip 60 bekliyor — yavasligi oraya
+    // koymak o testi kirmizi yapti (olculdu, tam e2e kosumunda yakalandi).
+    if (firmaId === 'f-hakan' && laborName.includes("6''")) {
+      await new Promise((r) => setTimeout(r, 500));
+      log('HAKAN (gec): 6\'\' icin 999');
+      return { netPrice: 999, confidence: 'high', matchedName: 'Kaynak işçiliği · 6"' } as any;
+    }
     if (laborName.includes("2''")) return { netPrice: 0, confidence: 'none', reason: 'Bu firmada 2" yok.' } as any;
     if (laborName.includes("1''")) {
       return {
@@ -217,6 +263,7 @@ export default function GridTestPage() {
         data={data}
         brands={useMemo(() => [{ id: 'b-ayvaz', name: 'AYVAZ' }, { id: 'b-sardogan', name: 'SARDOĞAN' }], [])}
         onBrandChange={onBrandChange as any}
+        seciciSaltOkunur={saltOkunurSecici}
         autoVariantEnabled={autoVariant}
         onAutoVariantChange={onAutoVariantChange}
         onAutoVariantApplied={onAutoVariantApplied}

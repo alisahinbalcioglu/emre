@@ -13,6 +13,8 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { fillDown, FillSonuc, MotorSonucu } from './fill-down';
+// D1: silinen rozetin EKRANDA kırmızıyı maskelemediği aynı tanımdan ölçülür.
+import { isaretStili } from './isaret';
 
 /** Test cift'i: grid node taklidi (AG-Grid API yuzeyinin kullanilan kismi). */
 function node(rowIdx: number, ad: string, miktar: number, extra: Record<string, any> = {}) {
@@ -548,5 +550,314 @@ describe('KUR-01 kur alınamadı — sürükle-doldur', () => {
     const h = node(507, 'Kompansatör DN25', 2, { _matKurBilgi: eski });
     const sonuc = await fillDown({ hedefler: [h] as any, markaId: 'b1', roller: ROLLER, motor: async () => ({ netPrice: 850, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '' });
     expect(sonuc.geriAl[0].oncekiDegerler._matKurBilgi).toEqual(eski);
+  });
+});
+
+/**
+ * D1 (30.09, P0) — FİYAT YAZMAYAN DAL ESKİ FİYATI SİLER
+ *
+ * Canlı senaryo: kullanıcı bir grubu marka A ile doldurup fiyatlar, sonra
+ * aynı grubu marka B ile YENİDEN sürükler. B'de o ürün yoktur. Bugünkü hâl:
+ * satırın markası B olur, işaret 'yok' yazılır — ama HÜCREDE A'NIN FİYATI
+ * DURUR ve `_matAutoVariant` hâlâ A'nın varyant etiketini taşıdığı için
+ * `isaretStili` MAVİ ("⚡ otomatik") döner ve kırmızıyı MASKELER.
+ *
+ * Kullanıcıya giden sonuç: satır `brandId=B` + `100 ₺` olarak KAYDEDİLİR ve
+ * fiyatsız-kalem uyarısı bu satırı YAKALAMAZ (fiyat dolu görünüyor). Yani
+ * müşteriye, B markasında var OLMAYAN bir ürün A'nın fiyatıyla teklif edilir.
+ *
+ * KURAL: fiyat YAZMAYAN her dal, fiyat yazan dalın yazdığı HER ŞEYİ geri alır —
+ * birim fiyat, satır toplamı, genel toplam, net, kur ve ROZETLER. Elle 'yok'
+ * dalı (ExcelGrid) para hücrelerini zaten boşaltıyordu; sürükleme yolu hiç
+ * boşaltmıyordu, elle yol da rozetleri bırakıyordu.
+ */
+describe('D1 — fiyat yazmayan dal ESKİ fiyatı siler', () => {
+  const ROLLER_TAM = { ...ROLLER, laborTotalField: '_labToplam', grandTotalField: '_toplam' };
+
+  /** Marka A ile fiyatlanmış satır: hücrede A'nın parası, rozetinde A'nın varyantı. */
+  const aIleFiyatli = (rowIdx = 1, ad = 'KÜRESEL VANA DN25') => node(rowIdx, ad, 10, {
+    _marka: 'A', _malzKar: 0,
+    _matNetPrice: 100, _matStatus: '',
+    _matKurBilgi: { currency: 'EUR', kur: 30, tarih: '2026-01-01' },
+    _matAutoVariant: 'Galvaniz dişli', _matVariantMode: 'auto', _matVariantLabel: 'Galvaniz dişli',
+    _matSuggestion: true,
+    col5: '100.0', col6: '1000.0', _toplam: '1000.00',
+  });
+
+  /** Fiyatsız kalan satırda para hücrelerinin TAMAMI boşalmış olmalı. */
+  const parasiz = (d: Record<string, any>) => {
+    expect(String(d.col5 ?? ''), 'birim fiyat').toBe('');
+    expect(String(d.col6 ?? ''), 'malz. toplam').toBe('');
+    // recalcGrand ile AYNI kural: "boş değil sıfır" (ExcelGrid.tsx recalcGrand notu)
+    expect(d._toplam, 'genel toplam').toBe('0.00');
+    expect(d._matNetPrice, 'net').toBe(0);
+    expect(d._matKurBilgi, 'kur bilgisi').toBeNull();
+  };
+
+  const DALLAR: Array<[string, any]> = [
+    ['yok', { netPrice: 0, confidence: 'none', reason: 'Bu markada yok' }],
+    ['aday', { netPrice: 0, confidence: 'multi', candidates: [{ label: 'X' }, { label: 'Y' }] }],
+    ['alternatif', { netPrice: 0, confidence: 'none', alternatives: [{ brandName: 'C' }] }],
+    ['kur-hatası', { netPrice: 0, confidence: 'none', kurAlinamadi: true, reason: 'Kur alınamadı' }],
+    ['ürün-değil', { netPrice: 0, confidence: 'none', notProduct: true }],
+  ];
+
+  for (const [ad, cevap] of DALLAR) {
+    it(`★ ${ad}: B'de fiyat yok — A'nın parası hücrede KALMAZ`, async () => {
+      const h = aIleFiyatli();
+      await fillDown({
+        hedefler: [h] as any, markaId: 'B', roller: ROLLER_TAM,
+        motor: async () => cevap, kaynakVaryantTags: null, kaynakLabel: 'B seçimi',
+      });
+      expect(h.data._marka).toBe('B'); // marka her koşulda atanır (açık niyet)
+      parasiz(h.data);
+    });
+  }
+
+  it('★ motor HATA atarsa da eski fiyat kalmaz (yarım kalan satır fiyatlı görünmez)', async () => {
+    const h = aIleFiyatli();
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_TAM,
+      motor: async () => { throw new Error('ağ hatası'); }, kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(h.data._matStatus).toBe('hata');
+    parasiz(h.data);
+  });
+
+  it("★ ad-yok: sorgulanamayan satırda da A'nın fiyatı kalmaz", async () => {
+    const h = aIleFiyatli(2, '');
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_TAM,
+      motor: async () => { throw new Error('motor ÇAĞRILMAMALIYDI'); },
+      kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(h.data._matStatus).toBe('ad-yok');
+    parasiz(h.data);
+  });
+
+  it('★ D1b MAVİ MASKE: önceki otomatik-varyant rozeti kırmızıyı gizlemez', async () => {
+    const h = aIleFiyatli();
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_TAM,
+      motor: async () => ({ netPrice: 0, confidence: 'none', reason: 'Bu markada yok' }),
+      kaynakVaryantTags: null, kaynakLabel: 'B seçimi',
+    });
+    expect(h.data._matAutoVariant, 'oto-varyant rozeti').toBeNull();
+    expect(h.data._matVariantLabel, 'varyant etiketi').toBeNull();
+    expect(h.data._matSuggestion, 'öneri rozeti').toBe(false);
+    // Ekranda gerçekten KIRMIZI görünür (isaretStili sırası: otoVaryant > yok)
+    expect(isaretStili({
+      dal: 'malzeme', durum: h.data._matStatus,
+      otoVaryant: h.data._matAutoVariant, oneri: h.data._matSuggestion,
+    })).toEqual({ backgroundColor: '#fee2e2' });
+  });
+
+  it('★ İKİZ işçilik: firmada kalem yoksa eski işçilik fiyatı da silinir', async () => {
+    const h = node(3, 'Montaj bedeli', 10, {
+      _firma: 'A', _iscKar: 0, _labNetPrice: 100, _labStatus: '',
+      _labKurBilgi: { currency: 'USD', kur: 40 },
+      _labBirim: '100.0', _labToplam: '1000.0', _toplam: '1000.00',
+    });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_TAM,
+      motor: async () => ({ netPrice: 0, confidence: 'none', reason: 'Bu firmada yok' }),
+      kaynakVaryantTags: null, kaynakLabel: '',
+      hedefAlanlar: {
+        birimFiyat: '_labBirim', toplam: '_labToplam', status: '_labStatus',
+        kaynakRozeti: '_labKaynak', dal: 'iscilik',
+      },
+    });
+    expect(h.data._labStatus).toBe('yok');
+    expect(String(h.data._labBirim ?? ''), 'işç. birim').toBe('');
+    expect(String(h.data._labToplam ?? ''), 'işç. toplam').toBe('');
+    expect(h.data._toplam, 'genel toplam').toBe('0.00');
+    expect(h.data._labNetPrice, 'işç. net').toBe(0);
+    expect(h.data._labKurBilgi, 'işç. kur').toBeNull();
+  });
+
+  it('★ TEK TARAF: malzeme silinir, DOLU işçilik toplamı genel toplamda KALIR', async () => {
+    // Silme "satırı sıfırla" DEĞİLDİR — yalnız doldurulan dalı geri alır.
+    const h = aIleFiyatli(4);
+    h.data._labToplam = '250.0';
+    h.data._toplam = '1250.00';
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_TAM,
+      motor: async () => ({ netPrice: 0, confidence: 'none' }), kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(String(h.data.col6 ?? '')).toBe('');
+    expect(h.data._labToplam, 'işçiliğe DOKUNULMAZ').toBe('250.0');
+    expect(h.data._toplam, 'genel toplam yalnız işçilik').toBe('250.00');
+  });
+
+  it('★ ÇAPRAZ BULAŞMA: işçilik silmesi MALZEMENİN rozetine dokunmaz', async () => {
+    // Satırın malzemesi marka A ile fiyatlı (mavi "⚡ otomatik" rozeti var).
+    // Kullanıcı üstüne bir FİRMA sürükler, o firmada kalem yok. Silme dal
+    // ayrımı yapmazsa malzemenin rozeti ve öneri işareti sessizce KAYBOLUR —
+    // ekranda mavi hücre düz beyaza döner, kullanıcı "rozet niye gitti" der.
+    const h = aIleFiyatli(7);
+    await fillDown({
+      hedefler: [h] as any, markaId: 'FIRMA-B', roller: ROLLER_TAM,
+      motor: async () => ({ netPrice: 0, confidence: 'none' }), kaynakVaryantTags: null, kaynakLabel: '',
+      hedefAlanlar: {
+        birimFiyat: '_labBirim', toplam: '_labToplam', status: '_labStatus',
+        kaynakRozeti: '_labKaynak', dal: 'iscilik',
+      },
+    });
+    expect(h.data._labStatus).toBe('yok');
+    expect(h.data._matAutoVariant, 'malzeme rozeti DURUR').toBe('Galvaniz dişli');
+    expect(h.data._matVariantLabel, 'malzeme varyant etiketi DURUR').toBe('Galvaniz dişli');
+    expect(h.data._matSuggestion, 'malzeme öneri işareti DURUR').toBe(true);
+    expect(h.data.col5, 'malzeme birim fiyatı DURUR').toBe('100.0');
+  });
+
+  it('★ SD7: silinen alanlar geri-alma anlığında — Ctrl+Z eski fiyatı geri getirir', async () => {
+    const h = aIleFiyatli(5);
+    const sonuc = await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_TAM,
+      motor: async () => ({ netPrice: 0, confidence: 'none' }), kaynakVaryantTags: null, kaynakLabel: 'B seçimi',
+    });
+    const onceki = sonuc.geriAl[0].oncekiDegerler;
+    expect(onceki.col5).toBe('100.0');
+    expect(onceki.col6).toBe('1000.0');
+    expect(onceki._toplam).toBe('1000.00');
+    expect(onceki._matNetPrice).toBe(100);
+    expect(onceki._matAutoVariant).toBe('Galvaniz dişli');
+  });
+
+  it('FİYATLI dal bozulmadı: fiyat gelen satır normal yazılır (silme yolu ona karışmaz)', async () => {
+    const h = aIleFiyatli(6);
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_TAM,
+      motor: async () => ({ netPrice: 250, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: 'B seçimi',
+    });
+    expect(h.data.col5).toBe('250.0');
+    expect(h.data.col6).toBe('2500.0');
+    expect(h.data._toplam).toBe('2500.00');
+    expect(h.data._matNetPrice).toBe(250);
+    expect(h.data._matAutoVariant).toBe('B seçimi');
+  });
+});
+
+/**
+ * D2 (30.09, P1) — GEÇ GELEN CEVAP SATIRIN YENİ SEÇİMİNİ EZMEZ
+ *
+ * Eşleştirme `await motor(...)` ile ağa çıkar; dönüşte satıra KOŞULSUZ yazar.
+ * Kullanıcı yavaş bir markayı seçip beklemeden başka markaya geçerse (ya da
+ * aynı gruba iki kez sürüklerse) ikinci sorgu ÖNCE biter, sonra birincinin
+ * geç cevabı gelip üstüne yazar. Satırda görünen marka B, hücredeki fiyat
+ * A'nınkidir — kullanıcının HİÇ seçmediği bir fiyat teklife girer.
+ *
+ * Ölçüldü (bu paket, sabit gecikmelerle): yavaş A (300 ms) + hızlı B (50 ms)
+ * → `_marka=B` ama `_matNetPrice=100` (A'nın fiyatı). Kullanıcı ekranda B
+ * yazdığını gördüğü için farkı yakalayamaz.
+ *
+ * KURAL: `await`ten dönen cevap, satır HÂLÂ o marka/firmadaysa yazılır.
+ * Seçim değiştiyse cevap DÜŞÜRÜLÜR ('devredildi') — satırı o anki sahibi
+ * (sonraki çağrı) sürer. SD2 bozulmaz: satır yine bir sonuç alır.
+ *
+ * ⚠ Gecikmeler GERÇEK: sıfır gecikmeli taklit iki async adımı tek tike
+ * toplar ve yarışı hiç kurmaz (mutant yaşatır).
+ */
+describe('D2 — geç gelen cevap yeni seçimi ezmez', () => {
+  const ROLLER_TAM = { ...ROLLER, laborTotalField: '_labToplam', grandTotalField: '_toplam' };
+  const gecikme = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const yavas = (ms: number, net: number) => async () => { await gecikme(ms); return { netPrice: net, confidence: 'high' } as MotorSonucu; };
+
+  it('★ yavaş A + hızlı B: satırda B kalır, A\'nın fiyatı YAZILMAZ', async () => {
+    const h = node(7, 'KÜRESEL VANA DN25', 10, { _malzKar: 0 });
+    const ortak = { hedefler: [h] as any, roller: ROLLER_TAM, kaynakVaryantTags: null, kaynakLabel: '' };
+    const pA = fillDown({ ...ortak, markaId: 'A', motor: yavas(300, 100) });
+    await gecikme(20); // kullanıcı beklemeden B'ye geçer
+    const pB = fillDown({ ...ortak, markaId: 'B', motor: yavas(50, 250) });
+    const [sA] = await Promise.all([pA, pB]);
+
+    expect(h.data._marka, 'satırın markası').toBe('B');
+    expect(h.data._matNetPrice, 'net fiyat B\'nin').toBe(250);
+    expect(h.data.col5, 'birim fiyat B\'nin').toBe('250.0');
+    expect(h.data.col6, 'satır toplamı B\'nin').toBe('2500.0');
+    // SD2 bozulmaz: A'nın turu da satır başına BİR sonuç üretir.
+    expect(sA.satirlar.map((s) => s.durum)).toEqual(['devredildi']);
+    expect(sA.ozet.devredilen).toBe(1);
+  });
+
+  it('★ TERS SIRA: hızlı A + yavaş B → B kazanır (yarış tek sırayla ölçülmez)', async () => {
+    const h = node(8, 'KÜRESEL VANA DN25', 10, { _malzKar: 0 });
+    const ortak = { hedefler: [h] as any, roller: ROLLER_TAM, kaynakVaryantTags: null, kaynakLabel: '' };
+    const pA = fillDown({ ...ortak, markaId: 'A', motor: yavas(40, 100) });
+    await gecikme(20);
+    const pB = fillDown({ ...ortak, markaId: 'B', motor: yavas(200, 250) });
+    await Promise.all([pA, pB]);
+    expect(h.data._marka).toBe('B');
+    expect(h.data._matNetPrice).toBe(250);
+  });
+
+  it('★ FİYATSIZ dal da ezmez: geç gelen "yok", B\'nin fiyatını SİLMEZ', async () => {
+    // D1 silme yolu ile D2 kapısı birlikte çalışmalı — yoksa geç gelen 'yok'
+    // B'nin az önce yazdığı fiyatı temizler (D1'in kendisi silah olur).
+    const h = node(9, 'KÜRESEL VANA DN25', 10, { _malzKar: 0 });
+    const ortak = { hedefler: [h] as any, roller: ROLLER_TAM, kaynakVaryantTags: null, kaynakLabel: '' };
+    const pA = fillDown({
+      ...ortak, markaId: 'A',
+      motor: async () => { await gecikme(300); return { netPrice: 0, confidence: 'none', reason: 'yok' } as MotorSonucu; },
+    });
+    await gecikme(20);
+    const pB = fillDown({ ...ortak, markaId: 'B', motor: yavas(50, 250) });
+    await Promise.all([pA, pB]);
+    expect(h.data._marka).toBe('B');
+    expect(h.data.col5, 'B\'nin fiyatı DURUR').toBe('250.0');
+    expect(String(h.data._matStatus ?? ''), 'B fiyatlı: işaret yok').toBe('');
+  });
+
+  it('★ motor HATASI da geç gelirse yeni seçimi işaretlemez', async () => {
+    const h = node(10, 'KÜRESEL VANA DN25', 10, { _malzKar: 0 });
+    const ortak = { hedefler: [h] as any, roller: ROLLER_TAM, kaynakVaryantTags: null, kaynakLabel: '' };
+    const pA = fillDown({
+      ...ortak, markaId: 'A',
+      motor: async () => { await gecikme(300); throw new Error('ağ hatası'); },
+    });
+    await gecikme(20);
+    const pB = fillDown({ ...ortak, markaId: 'B', motor: yavas(50, 250) });
+    await Promise.all([pA, pB]);
+    expect(String(h.data._matStatus ?? ''), 'B fiyatlı: hata işareti YOK').toBe('');
+    expect(h.data.col5).toBe('250.0');
+  });
+
+  it('★ SEÇİM KALDIRILDI: fill sürerken marka boşaltılırsa cevap düşer', async () => {
+    const h = node(11, 'KÜRESEL VANA DN25', 10, { _malzKar: 0 });
+    const p = fillDown({
+      hedefler: [h] as any, markaId: 'A', roller: ROLLER_TAM,
+      motor: yavas(120, 100), kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    await gecikme(30);
+    h.data._marka = null; // kullanıcı "Seçimi kaldır" dedi
+    await p;
+    expect(String(h.data.col5 ?? ''), 'markasız satıra fiyat yazılmaz').toBe('');
+    expect(h.data._marka).toBeNull();
+  });
+
+  it('★ İKİZ işçilik: geç gelen firma cevabı da ezmez', async () => {
+    const h = node(12, 'Montaj bedeli', 10, { _iscKar: 0 });
+    const ISC = {
+      birimFiyat: '_labBirim', toplam: '_labToplam', status: '_labStatus',
+      kaynakRozeti: '_labKaynak', dal: 'iscilik' as const,
+    };
+    const ortak = { hedefler: [h] as any, roller: ROLLER_TAM, kaynakVaryantTags: null, kaynakLabel: '', hedefAlanlar: ISC };
+    const pA = fillDown({ ...ortak, markaId: 'FA', motor: yavas(300, 100) });
+    await gecikme(20);
+    const pB = fillDown({ ...ortak, markaId: 'FB', motor: yavas(50, 250) });
+    await Promise.all([pA, pB]);
+    expect(h.data._firma).toBe('FB');
+    expect(h.data._labBirim).toBe('250.0');
+  });
+
+  it('TEK ÇAĞRI bozulmadı: yarış yokken cevap normal yazılır', async () => {
+    const h = node(13, 'KÜRESEL VANA DN25', 10, { _malzKar: 0 });
+    const s = await fillDown({
+      hedefler: [h] as any, markaId: 'A', roller: ROLLER_TAM,
+      motor: yavas(30, 100), kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(h.data.col5).toBe('100.0');
+    expect(s.ozet.fiyatli).toBe(1);
+    expect(s.ozet.devredilen).toBe(0);
   });
 });

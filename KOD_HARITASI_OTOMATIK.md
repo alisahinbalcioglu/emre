@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 863
-Toplam satir: 241661
+Kod dosyasi: 866
+Toplam satir: 242789
 Uc nokta: 239
 test:* scripti: 142
 
@@ -480,7 +480,7 @@ test:* scripti: 142
 | `frontend/app/(protected)/materials/page.tsx` | 23 |
 | `frontend/app/(protected)/profile/page.tsx` | 379 |
 | `frontend/app/(protected)/quote-formats/page.tsx` | 396 |
-| `frontend/app/(protected)/quotes/[id]/page.tsx` | 771 |
+| `frontend/app/(protected)/quotes/[id]/page.tsx` | 780 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
 | `frontend/app/(protected)/quotes/new/page.tsx` | 2337 |
 | `frontend/app/(protected)/quotes/page.tsx` | 330 |
@@ -492,7 +492,7 @@ test:* scripti: 142
 | `frontend/app/admin/users/page.tsx` | 647 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
 | `frontend/app/davet-kabul/page.tsx` | 483 |
-| `frontend/app/dev/grid-test/page.tsx` | 246 |
+| `frontend/app/dev/grid-test/page.tsx` | 293 |
 | `frontend/app/fiyatlar/page.tsx` | 174 |
 | `frontend/app/forgot-password/page.tsx` | 92 |
 | `frontend/app/gizlilik/page.tsx` | 13 |
@@ -776,7 +776,7 @@ test:* scripti: 142
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4864 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4972 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -785,8 +785,8 @@ test:* scripti: 142
 | `frontend/ozellik/tablo/excel-grid/cap-sorguda.test.ts` | 130 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.test.ts` | 65 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 66 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 553 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 399 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 864 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 479 |
 | `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | 234 |
 | `frontend/ozellik/tablo/excel-grid/fitting.ts` | 184 |
 | `frontend/ozellik/tablo/excel-grid/gosterim-baglantisi.test.ts` | 274 |
@@ -824,8 +824,9 @@ test:* scripti: 142
 | `frontend/ozellik/teklif/fitting-ipucu.ts` | 49 |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.test.ts` | 254 |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | 195 |
-| `frontend/ozellik/teklif/restore-rematch.test.ts` | 555 |
-| `frontend/ozellik/teklif/restore-rematch.ts` | 236 |
+| `frontend/ozellik/teklif/restore-rematch.test.ts` | 717 |
+| `frontend/ozellik/teklif/restore-rematch.ts` | 267 |
+| `frontend/ozellik/teklif/salt-okunur-secici.test.ts` | 113 |
 | `frontend/ozellik/teklif/taslak.test.ts` | 89 |
 | `frontend/ozellik/teklif/taslak.ts` | 98 |
 | `frontend/ozellik/teklif/teklif-dil-karari.test.ts` | 117 |
@@ -850,10 +851,12 @@ test:* scripti: 142
 | `frontend/test/e2e-golden/sayi-ayristirma.mjs` | 46 |
 | `frontend/test/e2e-golden/surum-kapisi.cjs` | 135 |
 | `frontend/test/e2e-golden/verify.mjs` | 836 |
+| `frontend/test/e2e/eslestirme-temizlik.spec.ts` | 154 |
 | `frontend/test/e2e/grid.spec.ts` | 206 |
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | 126 |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | 366 |
-| `frontend/test/e2e/secim-duzenleme.spec.ts` | 517 |
+| `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
+| `frontend/test/e2e/secim-duzenleme.spec.ts` | 533 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
 | `scripts/backup.sh` | 125 |
@@ -1560,7 +1563,7 @@ test:* scripti: 142
 | `frontend/ozellik/tablo/excel-grid/cap-sorguda.test.ts` | `vitest` `fs` `path` |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.test.ts` | `vitest` `./discount-utils` |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | `../../fiyat/sayi-alani` |
-| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | `vitest` `./fill-down` |
+| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | `vitest` `./fill-down` `./isaret` |
 | `frontend/ozellik/tablo/excel-grid/fill-down.ts` | `../../fiyat/pricing` `../../fiyat/sayi-alani` |
 | `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | `vitest` `./yapistir` |
 | `frontend/ozellik/tablo/excel-grid/fitting.ts` | `../../fiyat/pricing` |
@@ -1593,7 +1596,8 @@ test:* scripti: 142
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.test.ts` | `vitest` `./teklif-kalem` |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | `./teklif-kalem` |
 | `frontend/ozellik/teklif/restore-rematch.test.ts` | `vitest` `./restore-rematch` `../tablo/excel-grid/types` |
-| `frontend/ozellik/teklif/restore-rematch.ts` | `../tablo/excel-grid/types` `../fiyat/sayi-alani` |
+| `frontend/ozellik/teklif/restore-rematch.ts` | `../tablo/excel-grid/types` `../fiyat/sayi-alani` `../tablo/excel-grid/fitting` |
+| `frontend/ozellik/teklif/salt-okunur-secici.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/teklif/taslak.test.ts` | `vitest` `./taslak` |
 | `frontend/ozellik/teklif/teklif-dil-karari.test.ts` | `vitest` `./ceviri-kota` |
 | `frontend/ozellik/teklif/teklif-dil-karari.ts` | `./ceviri` `./ceviri-kota` |
@@ -1615,9 +1619,11 @@ test:* scripti: 142
 | `frontend/test/e2e-golden/run.mjs` | `node:child_process` `node:path` `node:url` `./artefakt-dizini.cjs` `./surum-kapisi.cjs` |
 | `frontend/test/e2e-golden/surum-kapisi.cjs` | `node:fs` `node:path` `node:child_process` |
 | `frontend/test/e2e-golden/verify.mjs` | `node:fs` `node:path` `node:url` `node:module` `./sayi-ayristirma.mjs` `./artefakt-dizini.cjs` |
+| `frontend/test/e2e/eslestirme-temizlik.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/grid.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/salt-okunur-secici.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | `@playwright/test` |
 | `frontend/vitest.config.ts` | `vitest/config` |
 | `scripts/deploy-olcum.cjs` | `fs` |

@@ -716,6 +716,15 @@ export default function QuoteDetailPage() {
               currencySymbol={paraSimgesi(gosterimCurrency)}
               conversionRate={conversionRate}
               onBrandChange={SALT_OKUNUR_MARKA}
+              // D9 + Y1 (30.09): BU SAYFA GORUNTULEME SAYFASIDIR. Marka ve
+              // Isc. Firma hucreleri gercek acilir listeydi ve secim satir
+              // nesnesini DEGISTIRIYORDU: malzemede `SALT_OKUNUR_MARKA` null
+              // donunce "bu markada yok" dalina dusup fiyat SILINIYOR, satir
+              // kirmiziya boyaniyordu; iscilikte (`onFirmaChange` hic
+              // gecilmiyor) firma degisip ESKI firmanin fiyati KALIYORDU —
+              // ekranda firma B, para A'nin, hicbir isaret yok.
+              // Artik iki hucre de ADI gosteren DUZ ETIKET.
+              seciciSaltOkunur
               sheetDiscipline={activeSheet?.discipline ?? adDisiplinTahmini(activeSheet?.name)}
               ceviriKalemi={ceviriKalemi}
               laborEnabled={(() => {
