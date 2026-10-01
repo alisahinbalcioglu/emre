@@ -252,6 +252,22 @@ interface Props {
   onRowDelete?: (row: ExcelRowData) => Promise<boolean>;
   // Mod: 'quote' (teklif — brand/firma dropdown + kar %) veya 'library' (iskonto + net fiyat)
   mode?: 'quote' | 'library';
+  /**
+   * D9 + Y1 (30.09): SALT OKUNUR SECICI. Kaydedilmis teklifi GORUNTULEME
+   * sayfasi (`quotes/[id]`) acikca bunu gecer; satirin Marka / Isc. Firma
+   * hucreleri acilir liste yerine DUZ ETIKET cizilir.
+   *
+   * ⚠ Adi `saltOkunur` DEGIL: detay sayfasi o adi "kapatilmis hesap"
+   * anlaminda kullaniyor, karisirdi.
+   *
+   * NEDEN GEREKLI: sayfa `onBrandChange` olarak null donen bir stub veriyor ve
+   * `onFirmaChange`i HIC vermiyordu. Iki `handleChange` da satiri motora
+   * SORMADAN ONCE degistirdigi icin secim her iki dalda da satira sizardi:
+   * malzemede fiyat silinip satir kirmiziya boyanirdi (yikici ama gorunur),
+   * iscilikte firma degisip ESKI firmanin fiyati kalirdi (sessiz DOLU).
+   * Tiklanamayan hucre secim URETMEZ — en guvenli kaldirac budur.
+   */
+  seciciSaltOkunur?: boolean;
   // library mode'da hangi fiyat alanini kullanir? (material veya labor)
   libraryPriceField?: 'materialUnitPriceField' | 'laborUnitPriceField';
   currencySymbol: string;
@@ -288,8 +304,9 @@ function BrandDropdown(props: ICellRendererParams & {
   groupVariants: React.MutableRefObject<GroupVariantMap>;
   autoVariantEnabled: boolean;
   onAutoVariantApplied?: Props['onAutoVariantApplied'];
+  seciciSaltOkunur?: boolean;
 }) {
-  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, unitField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, onAutoVariantApplied, api, node } = props;
+  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, unitField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, onAutoVariantApplied, seciciSaltOkunur, api, node } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
   const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null);
   // HATA RAPORU FIX: popup konumu WRAPPER div'den alinir — onceki triggerRef
@@ -499,6 +516,11 @@ function BrandDropdown(props: ICellRendererParams & {
   };
 
   const handleChange = async (brandId: string) => {
+    // D9 SAVUNMA KATMANI: satira DOKUNMADAN once. Bayrak aciksa hucre zaten
+    // duz etiket cizilir ve buraya hic gelinmez; bu satir o cizimin yanlislikla
+    // geri alinmasina karsi ikinci kapidir (tek kaldirac yeterli degil —
+    // "kaynak kapisi KULLANIMI olcer" dersi).
+    if (seciciSaltOkunur) return;
     node.setDataValue('_marka', brandId || null);
     setCandidates(null);
     setAlternatives(null);
@@ -1157,11 +1179,12 @@ function FirmaDropdown(props: ICellRendererParams & {
   laborUnitPriceField?: string;
   laborTotalField?: string;
   diameterField?: string;
+  seciciSaltOkunur?: boolean;
 }) {
   const {
     data, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange,
     nameField, noField, brandField, quantityField, unitField, laborUnitPriceField, laborTotalField,
-    diameterField,
+    diameterField, seciciSaltOkunur,
     api, node,
   } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
@@ -1250,6 +1273,11 @@ function FirmaDropdown(props: ICellRendererParams & {
   };
 
   const handleChange = async (firmaId: string) => {
+    // Y1 SAVUNMA KATMANI (malzeme ikizi): satira DOKUNMADAN once. Bu dal
+    // malzemeden DAHA tehlikeliydi — `onFirmaChange` yokken asagidaki
+    // `if (!currentName || !onFirmaChange) return;` kapisina FIRMA YAZILDIKTAN
+    // SONRA geliniyordu: firma B gorunup fiyat A'nin kaliyordu (sessiz DOLU).
+    if (seciciSaltOkunur) return;
     node.setDataValue('_firma', firmaId || null);
     setCandidates(null);
     setAlternatives(null);
@@ -1733,6 +1761,7 @@ export interface ExcelGridHandle {
 export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   data, brands, onBrandChange,
   laborFirms = [], sheetDiscipline = null, laborEnabled = false, onFirmaChange,
+  seciciSaltOkunur = false, // D9 + Y1: salt okunur sayfada secici tiklanamaz
   onRowDataChange,
   onColumnWidthsChange,
   columnWidths,
@@ -3685,11 +3714,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         base.cellRenderer = (params: ICellRendererParams) => (
           // Ozet satiri fiyatlandirilmaz — marka secimi gosterilmez
           params.data?._ozet || params.data?._fitting
-            ? <span style={{ color: '#94a3b8', fontSize: 11 }}>{params.data?._fitting ? 'fitting' : 'özet'}</span> : (
+            ? <span style={{ color: '#94a3b8', fontSize: 11 }}>{params.data?._fitting ? 'fitting' : 'özet'}</span>
+          // D9: SALT OKUNUR — kaydedilmis teklifi goruntuleme sayfasinda marka
+          // ADI gorunur ama tiklanamaz. Tiklanamayan hucre secim URETMEZ.
+          // Metin `valueFormatter` ile AYNI kaynaktan: iki yol ayrisamaz.
+          : seciciSaltOkunur
+            ? <span>{params.value ? (brands.find((b) => b.id === params.value)?.name ?? String(params.value)) : ''}</span> : (
           <BrandDropdown
             {...params}
             brands={brands}
             onBrandChange={onBrandChange}
+            seciciSaltOkunur={seciciSaltOkunur}
             nameField={data.columnRoles.nameField}
             noField={data.columnRoles.noField}
             brandField={data.columnRoles.brandField}
@@ -3715,9 +3750,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         base.cellRenderer = (params: ICellRendererParams) => (
           // Ozet satiri isciliklendirilmez
           params.data?._ozet || params.data?._fitting
-            ? <span style={{ color: '#94a3b8', fontSize: 11 }}>{params.data?._fitting ? 'fitting' : 'özet'}</span> : (
+            ? <span style={{ color: '#94a3b8', fontSize: 11 }}>{params.data?._fitting ? 'fitting' : 'özet'}</span>
+          // Y1 IKIZI: salt okunur sayfada firma ADI gorunur, secilemez.
+          : seciciSaltOkunur
+            ? <span>{params.value ? (laborFirms.find((f) => f.id === params.value)?.name ?? String(params.value)) : ''}</span> : (
           <FirmaDropdown
             {...params}
+            seciciSaltOkunur={seciciSaltOkunur}
             laborFirms={laborFirms}
             sheetDiscipline={sheetDiscipline}
             laborEnabled={laborEnabled}
@@ -4149,7 +4188,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // gelebilecegini soyluyor; kelepcesiz `data.columnDefs` o durumda
     // BAGIMLILIK DIZISINDE patlardi (govde hic kosmadan).
   }, [data?.columnDefs, data?.columnRoles, brands, onBrandChange, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange, mode, libraryPriceField, currencySymbol, conversionRate,
-      fittingDuzenlenebilir]);
+      fittingDuzenlenebilir,
+      // D9 + I1: bayrak burada OLMAZSA kolonlar yeniden kurulmaz ve salt okunur
+      // cizim HIC uygulanmaz (sessiz olu kod).
+      seciciSaltOkunur]);
 
   // Ceviri kalemi gorunurlugu degisince ad kolonu yeniden cizilir: renderer
   // ref okuyor, AG Grid kendiliginden tazelemez (fitting tazelemesiyle ayni desen).

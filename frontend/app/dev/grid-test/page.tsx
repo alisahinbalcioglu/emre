@@ -45,6 +45,23 @@ export default function GridTestPage() {
   // orada AYRI cellClassRules ile bagli oldugu icin elle/e2e ancak boyle
   // olculebiliyor.
   const [mod, setMod] = useState<'quote' | 'library'>('quote');
+  // D9 + Y1 (30.09): SALT OKUNUR SECICI bayragi. `quotes/[id]` goruntuleme
+  // sayfasinin gectigi `seciciSaltOkunur` burada `?salt=1` ile surulur —
+  // tiklanamayan hucrenin gercekten secim URETMEDIGI ancak gercek tarayicida
+  // olculebilir (ExcelGrid jsdom'suz kosmuyor). Bayragin KENDI sayfada
+  // gecirildigini olcen ayri bir kaynak kapisi var:
+  // ozellik/teklif/salt-okunur-secici.test.ts ("mekanizma var, baglanti yok").
+  // Varsayilan KAPALI — mevcut tum e2e paketleri etkilenmez.
+  //
+  // ⚠ RENDER SIRASINDA `window` OKUNMAZ: ilk hali boyle yazilmisti ve SSR'de
+  // false / istemcide true vererek HYDRATION UYUSMAZLIGI uretiyordu; React
+  // grid altagacini yeniden kuruyor ve KP17'nin ok-tusu ritmi tam e2e
+  // kosumunda duzenli olarak DUSUYORDU (olculdu). Bayrak mount'tan SONRA
+  // yazilir — sunucu ve istemci ilk cizimde ayni seyi gorur.
+  const [saltOkunurSecici, setSaltOkunurSecici] = useState(false);
+  React.useEffect(() => {
+    setSaltOkunurSecici(new URLSearchParams(window.location.search).get('salt') === '1');
+  }, []);
   const cagriSayisi = useRef(0);
   const log = kaydet;
 
@@ -246,6 +263,7 @@ export default function GridTestPage() {
         data={data}
         brands={useMemo(() => [{ id: 'b-ayvaz', name: 'AYVAZ' }, { id: 'b-sardogan', name: 'SARDOĞAN' }], [])}
         onBrandChange={onBrandChange as any}
+        seciciSaltOkunur={saltOkunurSecici}
         autoVariantEnabled={autoVariant}
         onAutoVariantChange={onAutoVariantChange}
         onAutoVariantApplied={onAutoVariantApplied}
