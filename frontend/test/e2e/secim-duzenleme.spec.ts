@@ -434,6 +434,11 @@ test('KP29 ★ EDITORDE son veri satirinda ↓ — rakamlar AYNI hucrede birlesm
   // Simdi: en buyuk row-index DOM'dan okunur + FIKSTUR KANITI olarak o satirin
   // gercekten harness'in son satiri oldugu dogrulanir. Harness buyurse once
   // kimlik assert'i kirmizi yanar, sessiz kayma olmaz.
+  //
+  // ⚠ BU KAPI ZATEN BIR KEZ IS GORDU (30.09): D3 icin harness'e uc satir
+  // eklendi (baslik + "DN 100" + "DN 150") ve bu assert KIRMIZI yandi —
+  // "Expected /KURSUZ/, Received 'DN 150'". Eski sabit-indeks hali ayni
+  // degisiklikte SESSIZCE ortadaki bir satiri olcmeye baslayacakti.
   const sonIndeks = await page.evaluate(() => Math.max(
     ...Array.from(document.querySelectorAll('.ag-row[row-index]'))
       .map((r) => Number(r.getAttribute('row-index')))
@@ -442,7 +447,7 @@ test('KP29 ★ EDITORDE son veri satirinda ↓ — rakamlar AYNI hucrede birlesm
   await expect(
     page.locator(`[row-index="${sonIndeks}"] [col-id="col1"]`),
     'FIKSTUR KANITI: olculen satir harness\'in SON veri satiri olmali',
-  ).toHaveText(/KURSUZ/);
+  ).toHaveText(/DN 150/);
   const son = page.locator(`[row-index="${sonIndeks}"] [col-id="_matBirim"]`);
   await son.dblclick();
   await page.keyboard.type('300');
