@@ -236,6 +236,20 @@ export const SILINECEKLER: readonly SilmeKurali[] = [
     mirasFirmasizDaAl: true,
     neden: 'Firmanin tanimladigi iscilik firmalari. §5.2 "iscilik firmalari".',
   },
+  {
+    // LaborPrice'tan SONRA (yaprak → kok): kalemin CASCADE cocugu fiyat
+    // satiridir, once silinseydi fiyat sayilari yaniltici olurdu.
+    model: 'LaborItem',
+    erisimci: 'laborItem',
+    kolon: 'ownerFirmaId',
+    eksen: 'firma',
+    neden:
+      'Firmanin yuklemesinin actigi iscilik kalemleri (ad + ilk birim fiyati; ' +
+      '30.09 sahiplik kolonu). ⚠ TUZAK 3: `ownerFirmaId` null = YONETICI ' +
+      'KATALOGU — `{ equals }` null eslemez, katalog KORUNUR. Kiracinin kalemine ' +
+      'yalniz kendi fiyat satirlari baglanir (baska kiraci o kalemi bulamaz). ' +
+      '`mirasFirmasizDaAl` YOK: kisi kolonu yok.',
+  },
 
   // ── Eslestirme hafizasi / sozluk (kullanici ekseni) ──────────────────────
   {
@@ -505,11 +519,6 @@ export const SILINMEZLER: readonly KorumaKurali[] = [
     neden:
       'Havuz fiyati. Firmaya ait `PriceList` silinince `priceListId` CASCADE ' +
       'ile zaten gider; havuz listelerininki KALIR.',
-  },
-  {
-    model: 'LaborItem',
-    neden:
-      'GLOBAL iscilik kalemi katalogu (`isGlobal`), firma/kullanici kolonu YOK.',
   },
   {
     model: 'Paket',

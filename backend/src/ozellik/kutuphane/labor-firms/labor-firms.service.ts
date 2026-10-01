@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, HttpException, Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 // A2 (tur 3): insan sinirinin tek sayi kurali (dosya metni fiyat hucresi)
 import { insanSayiOku } from '../utils/import-fidelity';
@@ -8,6 +10,58 @@ import { MatchingService } from '../../eslestirme/matching/matching.service';
 import { INDEX_VERSION } from '../../eslestirme/matching/index/product-index';
 import { Kimlik } from '../../../altyapi/auth/kimlik';
 import { paraBirimleriniDogrula, satirAdi } from '../../fiyat/exchange-rates/exchange-rates.service';
+import type { Discipline, Prisma } from '@prisma/client';
+import {
+  KENDI_KALEMI_ONCE, adEsit, kiraciKalemiAlanlari, kiraciKapsaminda, kiracininKalemiMi,
+} from '../labor/iscilik-kalemi-kapsami';
+
+const AYNI_AD_LISTEDE = 'Bu listede aynı adlı işçilik kalemi zaten var — önce o satırı düzenleyin ya da silin.';
+const SATIR_KAYDEDILEMEDI = 'Satır kaydedilemedi (beklenmeyen hata) — tekrar deneyin.';
+const GECERSIZ_SATIR_KIMLIGI = 'Geçersiz satır kimliği.';
+
+/**
+ * Istek govdesindeki fiyat satiri kimligi (uuid) — DB'ye gitmeden once bicim
+ * denetlenir (inceleme 3. tur): gercek Prisma'da dize olmayan kimlik
+ * dogrulama hatasi atar, o da beklenmeyen hata olarak gunluge duserdi.
+ */
+function satirKimligiGecerli(id: unknown): id is string {
+  return typeof id === 'string' && id.length > 0 && id.length <= 64;
+}
+
+/**
+ * Kayitli sayfanin `_laborPriceId`li satirlarini SIRAYLA veren alici. Ayni
+ * kimlik iki satirda gecebilir (yeni satir var olan kaleme baglanmissa):
+ * her cagri bir sonrakini alir, gorunumler birbirine karismaz.
+ */
+function kayitliSatirAlici(rowData: unknown): (laborPriceId: string) => any | undefined {
+  const sira = new Map<string, any[]>();
+  for (const r of Array.isArray(rowData) ? rowData : []) {
+    if (!r?._laborPriceId) continue;
+    sira.set(r._laborPriceId, [...(sira.get(r._laborPriceId) ?? []), r]);
+  }
+  return (laborPriceId) => sira.get(laborPriceId)?.shift();
+}
+
+/**
+ * Sayfa JSON'unda temsili olmayan fiyat satirinin DB'den kurulan hali: okuma
+ * 3. gecisi (sona eklenen satir) ve W1'in kayitli hali olmayan satiri (yerinde).
+ * Ad sutununa kalemin TAM adi (cins/cap ayrilamaz), birim/fiyat/iskonto DB'den.
+ */
+function sayfaDisiSatir(
+  roles: Record<string, string | undefined>,
+  p: { id: string; unit: string | null; unitPrice: number; discountRate: number | null; laborItem: { name: string } },
+  rowIdx: unknown,
+  no: unknown,
+): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    _rowIdx: rowIdx, _isDataRow: true, _isHeaderRow: false, _laborPriceId: p.id, _laborDiscountRate: p.discountRate || 0,
+  };
+  if (roles.noField) row[roles.noField] = no;
+  if (roles.nameField) row[roles.nameField] = p.laborItem.name;
+  if (roles.unitField) row[roles.unitField] = p.unit || 'Adet';
+  if (roles.laborUnitPriceField) row[roles.laborUnitPriceField] = p.unitPrice;
+  return row;
+}
 
 export interface SheetInput {
   name: string;
@@ -25,6 +79,8 @@ export interface CreateLaborFirmDto {
 
 @Injectable()
 export class LaborFirmsService {
+  private readonly logger = new Logger(LaborFirmsService.name);
+
   constructor(
     private prisma: PrismaService,
     private matching: MatchingService,
@@ -134,6 +190,110 @@ export class LaborFirmsService {
     return price;
   }
 
+  /**
+   * YUKLENEN SATIRIN KALEMI (C2, 30.09.2026): KENDI kalemi ya da katalog
+   * (ayni ad + disiplin, buyuk-kucuk harf duyarsiz; ikisi de varsa KENDI
+   * kalemi). Yoksa KIRACININ kalemi acilir. Eskiden arama tum tabloda
+   * yapiliyor, yeni kalem `isGlobal: true` aciliyordu: ayni adi yukleyen
+   * ikinci kiraci birincinin kalemine baglaniyor, kalem (ad + ilk kiracinin
+   * fiyati) GET /labor'da herkese donuyordu. Kural yeri:
+   * `labor/iscilik-kalemi-kapsami.ts`.
+   */
+  private async kalemBulVeyaAc(
+    k: Kimlik,
+    discipline: Discipline,
+    ad: string,
+    yeniVeri: () => Omit<Prisma.LaborItemUncheckedCreateInput, 'ownerFirmaId' | 'isGlobal'>,
+  ) {
+    const mevcut = await this.prisma.laborItem.findFirst({
+      where: kiraciKapsaminda(k, { name: adEsit(ad), discipline }),
+      orderBy: KENDI_KALEMI_ONCE,
+    });
+    if (mevcut) return mevcut;
+    return this.prisma.laborItem.create({ data: { ...yeniVeri(), ...kiraciKalemiAlanlari(k) } });
+  }
+
+  /**
+   * AD DEGISIKLIGI HEDEFI (C1, 30.09.2026; sira 01.10) — ad KALEMIN degil bu
+   * FIYAT SATIRININ degisir. Dort durum, sirayla:
+   *   1. Kalem bu kiracinin VE ona bagli tek satir bu → kalem YERINDE adlanir
+   *      (kimseyi etkilemez). Listede o ad zaten olsa da: ayni kayitta iki
+   *      adin TAKASI ve yalniz harf degisikligi boyle calisir (eski davranis).
+   *   2. Baska bir kalem (kendi ya da katalog) BIREBIR bu yazimi tasiyor →
+   *      satir ONA baglanir.
+   *   3. Yalniz harf degisikligi DEGILSE (mevcut kalem yeni adla duyarsiz
+   *      eslesmiyorsa) duyarsiz eslesen baska kaleme baglanir. Harf
+   *      degisikliginde bu adim ATLANIR: yoksa satir eski yazimli baska bir
+   *      kaleme kayar, kullanicinin yazimi kaybolurdu (inceleme L1). Harf
+   *      denkligine DB karar verir (`İ` gibi harflerde JS kucultmesi PG'den
+   *      ayrisir).
+   *   4. Aksi halde (katalog kalemi, ya da kiracinin baska satiri / diger
+   *      iscilik firmasi da bagli) → yeni adla KENDI kalemi acilir, yalniz bu
+   *      satir tasinir.
+   * 2. ve 3. adim AYNI LISTEDE satiri olan kalemi ATLAR (inceleme 2. tur):
+   * tekillik anahtari (kalem, iscilik firmasi, liste) o tasimayi reddederdi —
+   * listede var olan bir ada adlandirma ve ayni kayitta katalog adlarinin
+   * takasi 409 aliyordu. Atlanan aday yerine 4. adim kendi kalemini acar (ad
+   * tekrari kalemlerde serbest; 1. adimin yerinde adlandirmasiyla ayni sonuc).
+   * Liste satirsiz (NULL) satirda suzgec yok — o satirlar tekillik
+   * guvencesinin disinda (bilinen acik L3). 409 yalniz yarista kalir (es
+   * zamanli istek ayni kalemi listeye ekler); tek yazim oldugu icin hicbir
+   * alan degismez. Ad aramalari `adEsit` ile (ILIKE jokerleri kacislanir).
+   * Eskiden ortak kalemin adi dogrudan degisiyordu: ayni kaleme bagli BASKA
+   * kiracinin satiri, ayni firmanin DIGER iscilik firmasindaki satir ve
+   * yonetici katalogu kalemi de yeni adi aliyordu.
+   */
+  private async adDegisikligiHedefi(
+    k: Kimlik,
+    satir: {
+      laborItemId: string;
+      firmaId: string;
+      priceListId: string | null;
+      laborItem: { discipline: Discipline; category: string | null; ownerFirmaId: string | null };
+    },
+    yeniAd: string,
+    yeni: { birim: string; fiyat: number },
+  ): Promise<{ tur: 'yerinde' } | { tur: 'tasi'; laborItemId: string }> {
+    if (kiracininKalemiMi(k, satir.laborItem)) {
+      const bagliSatir = await this.prisma.laborPrice.count({ where: { laborItemId: satir.laborItemId } });
+      if (bagliSatir === 1) return { tur: 'yerinde' };
+    }
+    const discipline = satir.laborItem.discipline;
+    const ayniListedeSatiriYok = satir.priceListId
+      ? { laborPrices: { none: { firmaId: satir.firmaId, priceListId: satir.priceListId } } }
+      : {};
+    const baskasi = { id: { not: satir.laborItemId }, ...ayniListedeSatiriYok };
+    const birebir = await this.prisma.laborItem.findFirst({
+      where: kiraciKapsaminda(k, { name: yeniAd, discipline, ...baskasi }),
+      orderBy: KENDI_KALEMI_ONCE,
+    });
+    if (birebir) return { tur: 'tasi', laborItemId: birebir.id };
+    const harfDegisimi = (await this.prisma.laborItem.count({ where: { id: satir.laborItemId, name: adEsit(yeniAd) } })) > 0;
+    if (!harfDegisimi) {
+      const duyarsiz = await this.prisma.laborItem.findFirst({
+        where: kiraciKapsaminda(k, { name: adEsit(yeniAd), discipline, ...baskasi }),
+        orderBy: KENDI_KALEMI_ONCE,
+      });
+      if (duyarsiz) return { tur: 'tasi', laborItemId: duyarsiz.id };
+    }
+    const { generateTags } = require('../../eslestirme/matching/tag-generator');
+    const tagged = generateTags(yeniAd);
+    const kalem = await this.prisma.laborItem.create({
+      data: {
+        name: yeniAd,
+        unit: yeni.birim,
+        unitPrice: yeni.fiyat,
+        discipline: satir.laborItem.discipline,
+        category: satir.laborItem.category,
+        tags: tagged.tags,
+        normalizedName: tagged.normalizedName,
+        ...this.matching.laborItemIndexData(yeniAd, yeni.birim),
+        ...kiraciKalemiAlanlari(k),
+      },
+    });
+    return { tur: 'tasi', laborItemId: kalem.id };
+  }
+
   async updatePriceItem(
     k: Kimlik,
     priceItemId: string,
@@ -151,29 +311,49 @@ export class LaborFirmsService {
     }
     if (data.unit !== undefined) updateData.unit = data.unit.trim() || 'Adet';
 
-    const updated = await this.prisma.laborPrice.update({
-      where: { id: priceItemId },
-      data: updateData,
-    });
-
-    // LaborItem name update (kullanici ismi degistirmek istediyse)
+    // AD DEGISIKLIGI (C1, 30.09.2026): hedef ONCE cozulur, bag degisikligi
+    // fiyat/iskonto/birimle AYNI tek yazimda gider — tekillik yarisi 409
+    // verir ve hicbir alan degismez. Ortak kalem yerinde adlanmaz; gerekirse
+    // yalniz BU satirin bagi tasinir.
+    let yerindeAd: string | null = null;
     if (data.laborItemName && data.laborItemName.trim().length >= 2) {
       const newName = data.laborItemName.trim();
       if (newName !== existing.laborItem.name) {
-        const { generateTags } = require('../../eslestirme/matching/tag-generator');
-        const tagged = generateTags(newName);
-        await this.prisma.laborItem.update({
-          where: { id: existing.laborItemId },
-          data: {
-            name: newName,
-            tags: tagged.tags,
-            normalizedName: tagged.normalizedName,
-            // L2: ad degisti → YENIDEN indekslenir; BEKLEYEN kalem adi
-            // duzeltilince eslesmeye otomatik acilir (belirsiz=false olur).
-            ...this.matching.laborItemIndexData(newName, updated.unit),
-          },
+        const hedef = await this.adDegisikligiHedefi(k, existing, newName, {
+          birim: updateData.unit ?? existing.unit,
+          fiyat: updateData.unitPrice ?? existing.unitPrice,
         });
+        if (hedef.tur === 'yerinde') yerindeAd = newName;
+        else updateData.laborItemId = hedef.laborItemId;
       }
+    }
+
+    let updated;
+    try {
+      updated = await this.prisma.laborPrice.update({
+        where: { id: priceItemId },
+        data: updateData,
+      });
+    } catch (e: any) {
+      // Tekillik (kalem, iscilik firmasi, liste): bu listede o adli satir var.
+      if (e?.code === 'P2002') throw new ConflictException(AYNI_AD_LISTEDE);
+      throw e;
+    }
+
+    if (yerindeAd) {
+      const { generateTags } = require('../../eslestirme/matching/tag-generator');
+      const tagged = generateTags(yerindeAd);
+      await this.prisma.laborItem.update({
+        where: { id: existing.laborItemId },
+        data: {
+          name: yerindeAd,
+          tags: tagged.tags,
+          normalizedName: tagged.normalizedName,
+          // L2: ad degisti → YENIDEN indekslenir; BEKLEYEN kalem adi
+          // duzeltilince eslesmeye otomatik acilir (belirsiz=false olur).
+          ...this.matching.laborItemIndexData(yerindeAd, updated.unit),
+        },
+      });
     }
 
     const discount = updated.discountRate || 0;
@@ -186,21 +366,77 @@ export class LaborFirmsService {
     };
   }
 
+  /**
+   * Toplu kayitta satir hatalari (inceleme 2-3. tur). YANITA: kendi HTTP
+   * hatalarimizin metni (409, 404, 403 — kullaniciya yazildi) aynen; gerisi
+   * (Prisma/DB, programlama hatasi) genel metin — eskiden `e.message` aynen
+   * donuyor, Prisma sorgu ayrintisini tarayiciya tasiyordu. GUNLUGE:
+   * beklenmeyenler istek sonunda TEK satirda (sayi + ilk 3 ornek + ilkinin
+   * cagri yigini), JSON — istekten gelen kimlik/mesajdaki satir sonu gunlugu
+   * bolemez; satir basina gunluk sinirsiz satir sayisiyla diski
+   * doldurabilirdi (guvenlik incelemesi LOW).
+   */
+  private satirHatalari(nerede: string) {
+    // Yalniz ilk 3 ornek tutulur, her mesaj 500 karakterde kirpilir: Prisma
+    // dogrulama hatasi cagrinin argumanlarini (istek govdesinden gelen
+    // degerleri) metne katar — kirpilmazsa tek satir govde boyuna yaklasirdi
+    // (inceleme 3. tur LOW-B / guvenlik INFO).
+    const ornek: Array<{ id: unknown; hata: string }> = [];
+    let yigin: string[] = [];
+    let sayi = 0;
+    return {
+      ekle: (id: unknown, e: unknown): { id: unknown; error: string } => {
+        if (e instanceof HttpException) return { id, error: e.message };
+        sayi++;
+        if (ornek.length < 3) {
+          ornek.push({ id, hata: (e instanceof Error ? e.message : String(e)).slice(0, 500) });
+          if (ornek.length === 1 && e instanceof Error) {
+            yigin = (e.stack ?? '').split('\n').filter((s) => /^\s+at /.test(s)).slice(0, 6).map((s) => s.trim());
+          }
+        }
+        return { id, error: SATIR_KAYDEDILEMEDI };
+      },
+      gunlukle: (): void => {
+        if (sayi === 0) return;
+        this.logger.error(
+          `${nerede}: ${sayi} işçilik fiyat satırı beklenmeyen hatayla kaydedilemedi; ilk ${ornek.length}: ${JSON.stringify({ ornek, yigin })}`,
+        );
+      },
+    };
+  }
+
   async bulkUpdatePriceItems(
     k: Kimlik,
     items: Array<{ id: string; unitPrice?: number; discountRate?: number; unit?: string; laborItemName?: string }>,
   ) {
     let updated = 0;
-    const errors: Array<{ id: string; error: string }> = [];
+    const errors: Array<{ id: unknown; error: string }> = [];
+    const hatalar = this.satirHatalari('bulk-update');
     for (const it of items) {
+      if (!satirKimligiGecerli(it?.id)) {
+        errors.push({ id: it?.id, error: GECERSIZ_SATIR_KIMLIGI });
+        continue;
+      }
       try {
         await this.updatePriceItem(k, it.id, it);
         updated++;
-      } catch (e: any) {
-        errors.push({ id: it.id, error: e?.message ?? 'Bilinmeyen' });
+      } catch (e: unknown) {
+        errors.push(hatalar.ekle(it.id, e));
       }
     }
+    hatalar.gunlukle();
     return { updated, errors };
+  }
+
+  /** Bu LISTENIN fiyat satirlari (kalemiyle), kimlige gore — listeye ait olmayan kimlik donmez. */
+  private async listedekiFiyatSatirlari(priceListId: string, kimlikler: unknown[]) {
+    const gecerli = Array.from(new Set(kimlikler.filter(satirKimligiGecerli)));
+    if (gecerli.length === 0) return new Map<string, Prisma.LaborPriceGetPayload<{ include: { laborItem: true } }>>();
+    const satirlar = await this.prisma.laborPrice.findMany({
+      where: { priceListId, id: { in: gecerli } },
+      include: { laborItem: true },
+    });
+    return new Map(satirlar.map((p) => [p.id, p]));
   }
 
   /**
@@ -365,12 +601,8 @@ export class LaborFirmsService {
     if (leftover.length > 0 && roles.nameField) {
       let maxIdx = enhanced.reduce((m: number, r: any) => Math.max(m, r?._rowIdx ?? 0), 0);
       for (const p of leftover) {
-        const row: any = { _rowIdx: ++maxIdx, _isDataRow: true, _isHeaderRow: false, _laborPriceId: p.id, _laborDiscountRate: p.discountRate || 0 };
-        if (roles.noField) row[roles.noField] = String(maxIdx);
-        row[roles.nameField] = p.laborItem.name;
-        if (roles.unitField) row[roles.unitField] = p.unit || 'Adet';
-        if (roles.laborUnitPriceField) row[roles.laborUnitPriceField] = p.unitPrice;
-        enhanced.push(row);
+        maxIdx++;
+        enhanced.push(sayfaDisiSatir(roles, p, maxIdx, String(maxIdx)));
       }
       console.log(`[getPriceListSheets] ${leftover.length} sheet-disi kalem sona eklendi`);
     }
@@ -489,8 +721,13 @@ export class LaborFirmsService {
     }
 
     let updated = 0;
-    const errors: Array<{ id: string; error: string }> = [];
+    const errors: Array<{ id: unknown; error: string }> = [];
+    const hatalar = this.satirHatalari('save-sheets');
     for (const row of dirtyRows ?? []) {
+      if (!satirKimligiGecerli(row?.laborPriceId)) {
+        errors.push({ id: row?.laborPriceId, error: GECERSIZ_SATIR_KIMLIGI });
+        continue;
+      }
       try {
         await this.updatePriceItem(k, row.laborPriceId, {
           unitPrice: row.listPrice,
@@ -499,15 +736,41 @@ export class LaborFirmsService {
           laborItemName: row.laborItemName,
         });
         updated++;
-      } catch (e: any) {
-        errors.push({ id: row.laborPriceId, error: e?.message ?? 'Bilinmeyen' });
+      } catch (e: unknown) {
+        errors.push(hatalar.ekle(row.laborPriceId, e));
       }
     }
+    hatalar.gunlukle();
 
     // Görsel yerleşim (ad/cins/çap/para/not) sheet JSON'da yaşar — güncel grid
     // ile üzerine yaz. Blank satırlar FE'de zaten filtrelendi (header + kayıtlı).
     if (hasSheet) {
-      const pl = await this.prisma.laborPriceList.findUnique({ where: { id: priceListId }, select: { name: true } });
+      const pl = await this.prisma.laborPriceList.findUnique({ where: { id: priceListId }, select: { name: true, sheets: true } });
+      // W1 (01.10): DB'ye YAZILAMAYAN satırın (ör. 409) görünümü kaydedilmez —
+      // yoksa sayfa yeni adı, DB eski adı/fiyatı gösterirdi (okumada ad hücresi
+      // DB'den bindirilmez). Kayıtlı sayfadaki hâli (aynı `_laborPriceId`) geri
+      // konur. Kayıtlı hâli yoksa: satır BU LİSTENİN fiyat satırıysa YERİNDE
+      // DB hâliyle yazılır (okumanın sayfa dışı satırı gibi; inceleme 3. tur
+      // LOW-1 — eskiden düşüyor, okumada SONA ekleniyordu); listenin satırı
+      // değilse (silinmiş, başka liste ya da kiracı) YAZILMAZ — DB'den
+      // kurulsaydı başka kiracının kalem adı bu sayfaya yazılırdı.
+      const basarisiz = new Set(errors.map((e) => e.id));
+      const kayitli = kayitliSatirAlici((pl?.sheets as any)?.rowData);
+      const roles = sheet!.columnRoles ?? {};
+      const dbHali = basarisiz.size === 0 || !roles.nameField
+        ? new Map<string, Prisma.LaborPriceGetPayload<{ include: { laborItem: true } }>>()
+        : await this.listedekiFiyatSatirlari(priceListId, Array.from(basarisiz));
+      const rowData = basarisiz.size === 0
+        ? sheet!.rowData
+        : sheet!.rowData
+          .map((r: any) => {
+            if (!r?._laborPriceId || !basarisiz.has(r._laborPriceId)) return r;
+            const eski = kayitli(r._laborPriceId);
+            if (eski) return eski;
+            const p = dbHali.get(r._laborPriceId);
+            return p ? sayfaDisiSatir(roles, p, r._rowIdx, roles.noField ? r[roles.noField] : undefined) : undefined;
+          })
+          .filter((r: any) => r !== undefined);
       await this.prisma.laborPriceList.update({
         where: { id: priceListId },
         data: {
@@ -515,7 +778,7 @@ export class LaborFirmsService {
             name: pl?.name ?? '',
             index: 0,
             columnDefs: sheet!.columnDefs ?? [],
-            rowData: sheet!.rowData,
+            rowData,
             columnRoles: sheet!.columnRoles ?? {},
             headerEndRow: sheet!.headerEndRow ?? 0,
             isEmpty: false,
@@ -696,30 +959,24 @@ export class LaborFirmsService {
         const indexData = this.matching.laborItemIndexData(fullName, unit);
         if (indexData.belirsiz) bekleyen++;
 
-        // LaborItem upsert
-        let laborItem = await this.prisma.laborItem.findFirst({
-          where: {
-            name: { equals: fullName, mode: 'insensitive' },
-            discipline: firma.discipline,
-          },
-        });
-        if (!laborItem) {
+        // LaborItem: KENDI kalemi ya da katalog; yoksa KIRACININ kalemi (C2).
+        const laborItem = await this.kalemBulVeyaAc(k, firma.discipline, fullName, () => {
           const tagged = generateTags(fullName);
-          laborItem = await this.prisma.laborItem.create({
-            data: {
-              name: fullName,
-              unit,
-              unitPrice,
-              discipline: firma.discipline,
-              tags: tagged.tags,
-              normalizedName: tagged.normalizedName,
-              isGlobal: true,
-              ...indexData,
-            },
-          });
-        } else if ((laborItem as any).indexVersion !== INDEX_VERSION) {
-          // Mevcut kalem bayat/indekssiz → canli indeksleyiciyle tazele
-          // (legacy tags de eskiyse birlikte yenilenir — zararsiz).
+          return {
+            name: fullName,
+            unit,
+            unitPrice,
+            discipline: firma.discipline,
+            tags: tagged.tags,
+            normalizedName: tagged.normalizedName,
+            ...indexData,
+          };
+        });
+        if (kiracininKalemiMi(k, laborItem) && laborItem.indexVersion !== INDEX_VERSION) {
+          // KENDI kalemi bayat/indekssiz → canli indeksleyiciyle tazele
+          // (legacy tags de eskiyse birlikte yenilenir — zararsiz). Katalog
+          // kalemine YAZILMAZ (C2): bayat indeksi eslestirmede istek aninda
+          // uretilir (hazirlaLaborPool), kiraci ortak satiri degistirmez.
           const tagged = generateTags(fullName);
           await this.prisma.laborItem.update({
             where: { id: laborItem.id },
@@ -875,31 +1132,26 @@ export class LaborFirmsService {
       const unit = item.unit?.trim() || 'Adet';
       const price = Number(item.unitPrice);
 
-      // LaborItem global katalog (discipline bazli)
-      let laborItem = await this.prisma.laborItem.findFirst({
-        where: {
-          name: { equals: name, mode: 'insensitive' },
-          discipline: firma.discipline,
-        },
-      });
-      if (!laborItem) {
+      // LaborItem: KENDI kalemi ya da katalog; yoksa KIRACININ kalemi (C2 —
+      // eskiden herkese gorunen `isGlobal` kalem aciliyordu).
+      const laborItem = await this.kalemBulVeyaAc(k, firma.discipline, name, () => {
         const { generateTags } = require('../../eslestirme/matching/tag-generator');
         const tagged = generateTags(name);
-        laborItem = await this.prisma.laborItem.create({
-          data: {
-            name,
-            unit,
-            unitPrice: price,
-            discipline: firma.discipline,
-            category: item.category,
-            tags: tagged.tags,
-            normalizedName: tagged.normalizedName,
-            isGlobal: true,
-            // L2: index-at-creation (ayni indeksleyici)
-            ...this.matching.laborItemIndexData(name, unit),
-          },
-        });
-      } else if (laborItem.tags?.length === 0) {
+        return {
+          name,
+          unit,
+          unitPrice: price,
+          discipline: firma.discipline,
+          category: item.category,
+          tags: tagged.tags,
+          normalizedName: tagged.normalizedName,
+          // L2: index-at-creation (ayni indeksleyici)
+          ...this.matching.laborItemIndexData(name, unit),
+        };
+      });
+      // Etiket tazelemesi yalniz KENDI kaleminde — katalog kalemine kiraci
+      // yazmaz (C2).
+      if (kiracininKalemiMi(k, laborItem) && laborItem.tags?.length === 0) {
         const { generateTags } = require('../../eslestirme/matching/tag-generator');
         const tagged = generateTags(name);
         await this.prisma.laborItem.update({
@@ -927,14 +1179,41 @@ export class LaborFirmsService {
     // iskontoyu DB'den overlay eder (guncel), Cinsi/Çap/Para/Not JSON'da kalir.
     if (sheet && Array.isArray(sheet.rowData)) {
       const nameField = sheet.columnRoles?.nameField;
-      const rowData = sheet.rowData.map((r: any) => {
-        if (!r?._isDataRow) return r;
+      // BU CAGRIDAN ONCE var olan satirin (`_laborPriceId`li) gorunumu KAYITLI
+      // sayfadan gelir; yukten yalniz bu cagrida acilan satirlar alinir
+      // (inceleme 2. tur). Ekran yeni satir varken iki istek gonderir: once
+      // save-sheets, sonra bu — bunun TAM sayfasi, oncekinin YAZAMADIGI
+      // satirin yeni adini tasir; yuk aynen yazilsaydi W1'in geri aldigi
+      // gorunum geri gelirdi. Kayitli KOPYASI KALMAYAN eski satir (sayfada hic
+      // yok ya da yukte kayitlidan fazla kopya — okuma ad eslesmesiyle ayni
+      // kimligi iki satira verebilir) bu kayitta DOKUNULMAMISTIR: save-sheets
+      // yazamadigini da yerinde yazar (W1), kopya sayisini korur. Yuk okumanin
+      // gorunumudur, yerinde kalir — yalniz BU LISTENIN fiyat satiriysa (3. tur
+      // LOW-1/INFO-1; silinmis / baska liste ya da kiracinin kimligi
+      // yazilmaz). Liste HIC sayfasizsa (sentetik) yuk aynen alinir: bu kayitta
+      // sayfayi yazan bir save-sheets olmamistir.
+      const kayitliSayfa = await this.prisma.laborPriceList.findUnique({ where: { id: priceList.id }, select: { sheets: true } });
+      const kayitliRows = (kayitliSayfa?.sheets as any)?.rowData;
+      const kayitli = Array.isArray(kayitliRows) ? kayitliSatirAlici(kayitliRows) : null;
+      const listedeki = kayitli
+        ? await this.listedekiFiyatSatirlari(priceList.id, sheet.rowData
+          .filter((r: any) => r?._isDataRow && r._laborPriceId)
+          .map((r: any) => r._laborPriceId))
+        : new Map();
+      const rowData = sheet.rowData.flatMap((r: any) => {
+        if (!r?._isDataRow) return [r];
+        if (r._laborPriceId) {
+          if (!kayitli) return [r];
+          const eski = kayitli(r._laborPriceId);
+          if (eski) return [eski];
+          return listedeki.has(r._laborPriceId) ? [r] : [];
+        }
         // FE her data satirina hesapladigi TAM adi (_laborName) koyar; yoksa
         // nameField hucresinden turet (buildFirmSaveItems ile ayni birlesim degil
         // ama tek-kolon senaryosunda yeterli).
         const key = String(r._laborName ?? (nameField ? r[nameField] : '') ?? '').trim();
         const pid = nameToPriceId.get(key);
-        return pid ? { ...r, _laborPriceId: pid } : r;
+        return [pid ? { ...r, _laborPriceId: pid } : r];
       });
       await this.prisma.laborPriceList.update({
         where: { id: priceList.id },

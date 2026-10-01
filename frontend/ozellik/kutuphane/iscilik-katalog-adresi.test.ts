@@ -28,15 +28,14 @@ describe('iscilikKatalogAdresi — mantık', () => {
       .toBe('/labor/yonetici-katalog?discipline=mechanical');
   });
 
-  it('normal kullanıcı bugünkü uca gider (davranış değişmedi)', () => {
-    expect(iscilikKatalogAdresi('user', 'electrical'))
-      .toBe('/labor?discipline=electrical');
+  it('yönetici DIŞINDA adres YOK (30.09 Emre: katalog yalnız yöneticiye açık, GET /labor 403)', () => {
+    expect(iscilikKatalogAdresi('user', 'electrical')).toBeNull();
   });
 
-  it('rol bilinmiyorsa (null/undefined) yönetici ucu AÇILMAZ — fail-closed', () => {
-    expect(iscilikKatalogAdresi(null, 'mechanical')).toBe('/labor?discipline=mechanical');
-    expect(iscilikKatalogAdresi(undefined, 'mechanical')).toBe('/labor?discipline=mechanical');
-    expect(iscilikKatalogAdresi('Admin', 'mechanical')).toBe('/labor?discipline=mechanical');
+  it('rol bilinmiyorsa (null/undefined/büyük harf) adres YOK — fail-closed', () => {
+    expect(iscilikKatalogAdresi(null, 'mechanical')).toBeNull();
+    expect(iscilikKatalogAdresi(undefined, 'mechanical')).toBeNull();
+    expect(iscilikKatalogAdresi('Admin', 'mechanical')).toBeNull();
   });
 
   it('disiplin adresi kaçışlanır (sorgu dizesi bozulmaz)', () => {
@@ -68,5 +67,13 @@ describe('⭐ BAĞLANTI: katalog sayfası bu kuralı gerçekten kullanıyor', ()
   it('⭐ rol localStorage`taki `user` kaydından okunuyor (bugünkü desen)', () => {
     expect(sayfa).toContain("localStorage.getItem('user')");
     expect(sayfa).toContain("=== 'admin'");
+  });
+
+  it('⭐ yönetici olmayan için sayfa KAPALI: adres yoksa istek atılmaz, not gösterilir (30.09)', () => {
+    expect(sayfaKodu).toContain('if (!adres)');
+    expect(sayfaKodu).toContain("rol === 'diger'");
+    expect(sayfaKodu).toContain('yalnız yöneticiye açık');
+    // Rol okunmadan istek atılmaz (ilk çizimde 'user' sayılıp 403 alınmasın).
+    expect(sayfaKodu).toContain("if (rol !== 'bilinmiyor') fetchItems()");
   });
 });

@@ -2115,8 +2115,14 @@ export class AdminService {
     const rows = await (this.prisma as any).productIndex.findMany();
     let guncellenen = 0, atlanan = 0, belirsizOnce = 0, belirsizSonra = 0, korunanDuzeltme = 0;
     // KÜTÜPHANE = HAFIZA (v8): reindex mevcut belirsiz urunleri self-family'ye
-    // cevirir → adlarini GLOBAL aile olarak ogren (migrasyon yolu).
-    const ogrenilecekAileler = new Map<string, string>();
+    // cevirir → adlarini aile olarak ogren (migrasyon yolu).
+    // ⚠ KAPSAM SAHIBE GORE (C5, 30.09.2026): havuz urunu (sahipsiz) → ORTAK
+    // sozluk; kiraciya ait urun → SAHIBININ sozlugu (kisi kapsami —
+    // library.service manuel marka yolunun ikizi). Onceden HEPSI ortak
+    // sozluge yaziliyordu (kanonik = urunun ADI): kiracinin urun adini her
+    // kiraci GET /matching/aliases ile okuyor, eslestirmesi etkileniyordu.
+    // Sahibi kisi olmayan (yalniz ownerFirmaId) urun ogrenilmez.
+    const ogrenilecekAileler = new Map<string | null, Map<string, string>>();
 
     for (const r of rows) {
       if (r.belirsiz) belirsizOnce++;
@@ -2142,8 +2148,14 @@ export class AdminService {
       // proxy'siydi; sozlugun cozdugu tek kelimelik adlarda (Sprinkler, Fan,
       // Damper...) YANLIS atesliyor ve o adin kelimesini yutan bir alias
       // ogreniyordu (bkz. test/alias-kelime-yutma-test.ts).
-      else if (f.selfFamily && !ogrenilecekAileler.has(f.adBucket)) {
-        ogrenilecekAileler.set(f.adBucket, r.ad ?? f.adBucket);
+      else if (f.selfFamily) {
+        const sahipli = r.ownerUserId != null || r.ownerFirmaId != null;
+        const kapsam: string | null | undefined = sahipli ? r.ownerUserId ?? undefined : null;
+        if (kapsam !== undefined) {
+          const aileler = ogrenilecekAileler.get(kapsam) ?? new Map<string, string>();
+          if (!aileler.has(f.adBucket)) aileler.set(f.adBucket, r.ad ?? f.adBucket);
+          ogrenilecekAileler.set(kapsam, aileler);
+        }
       }
       await (this.prisma as any).productIndex.update({
         where: { id: r.id },
@@ -2161,15 +2173,17 @@ export class AdminService {
       guncellenen++;
     }
 
-    if (ogrenilecekAileler.size > 0) {
+    let aileSayisi = 0;
+    for (const [kapsam, aileler] of ogrenilecekAileler) {
+      aileSayisi += aileler.size;
       await this.terminology.learnFamilyAliases(
-        Array.from(ogrenilecekAileler, ([adBucket, canonical]) => ({ adBucket, canonical })),
-        null,
+        Array.from(aileler, ([adBucket, canonical]) => ({ adBucket, canonical })),
+        kapsam,
       ).catch((e) => console.warn('[Reindex] aile ogrenme atlandi:', (e as Error).message));
     }
 
     console.log(`[Reindex] v${INDEX_VERSION}: ${guncellenen} guncellendi, ${atlanan} zaten guncel, ` +
-      `belirsiz ${belirsizOnce}→${belirsizSonra}${korunanDuzeltme ? `, ${korunanDuzeltme} admin duzeltmesi korundu` : ''}${ogrenilecekAileler.size ? `, ${ogrenilecekAileler.size} aile ogrenildi` : ''}`);
+      `belirsiz ${belirsizOnce}→${belirsizSonra}${korunanDuzeltme ? `, ${korunanDuzeltme} admin duzeltmesi korundu` : ''}${aileSayisi ? `, ${aileSayisi} aile ogrenildi` : ''}`);
     return { toplam: rows.length, guncellenen, atlanan, belirsizOnce, belirsizSonra, korunanDuzeltme, surum: INDEX_VERSION };
   }
 }

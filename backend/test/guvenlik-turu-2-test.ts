@@ -33,6 +33,9 @@
  *       pro/suite olan HERHANGI bir kullanici DELETE /labor/:id ile kuresel
  *       bir kalemi silip TUM firmalarin o kaleme bagli fiyatlarini
  *       goturebiliyordu. Capraz-tenant VERI IMHASI.
+ *       30.09.2026 (Paket 1 / C2): OKUMA uclari (GET /labor, /labor/:id) da
+ *       yalniz yonetici — kiraci kalemi (ad + fiyat) herkese donuyordu.
+ *       Davranis olcumu: `test:kiraci-siniri` K2.
  *
  *   G4  KIMLIK ASIMETRISI. quotes.controller icinde POST /quotes
  *       `kimlikCoz(user)` kullanirken kardesi POST /quotes/upload-excel
@@ -65,6 +68,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ROLES_KEY } from '../src/altyapi/auth/decorators/roles.decorator';
 import { LaborController } from '../src/ozellik/kutuphane/labor/labor.controller';
+import { LaborFirmsController } from '../src/ozellik/kutuphane/labor-firms/labor-firms.controller';
 import { QuotesController } from '../src/ozellik/teklif/quotes/quotes.controller';
 import { BrandsController } from '../src/ozellik/kutuphane/brands/brands.controller';
 import { DwgEngineController } from '../src/modules/dwg-engine/dwg-engine.controller';
@@ -278,12 +282,24 @@ function g3_iscilikKatalogu() {
   console.log('\n── G3 · ISCILIK KATALOGU ──');
   const p = LaborController.prototype as any;
 
-  // OLCUT: okuma ucu bugun admin ISTEMEMELI (kapi fazla genis olmasin)
+  // OLCUT: rol okuyucusu rolsuz ucu AYIRT EDIYOR (hep "admin" donen bozuk
+  // okuyucu asagidaki G3-c'yi bos yere yesil yapardi). Kiracinin kendi
+  // iscilik firmasi listesi rol istemez.
   check(
-    'G3-OLCUT okuma ucu (findAll) admin ISTEMIYOR — kapi dar tutuldu',
-    rolleriOku(p.findAll) === undefined,
-    `roles=${JSON.stringify(rolleriOku(p.findAll))}`,
+    'G3-OLCUT rolsuz uc ayirt ediliyor (LaborFirmsController.findAll admin ISTEMIYOR)',
+    rolleriOku((LaborFirmsController.prototype as any).findAll) === undefined,
+    `roles=${JSON.stringify(rolleriOku((LaborFirmsController.prototype as any).findAll))}`,
   );
+  // 30.09.2026 (Emre, Paket 1 / C2): katalog OKUMA uclari da YALNIZ yonetici.
+  // Eskiden rolsuzdu ve filtresizdi: kiraci yuklemesinin actigi kalem (ad +
+  // kiracinin fiyati) her pro kiraciya donuyordu (`test:kiraci-siniri` K2).
+  for (const metot of ['findAll', 'findOne']) {
+    check(
+      `G3-c OKUMA ucu da yalniz yonetici: ${metot}`,
+      JSON.stringify(rolleriOku(p[metot])) === JSON.stringify(['admin']),
+      `roles=${JSON.stringify(rolleriOku(p[metot]))}`,
+    );
+  }
 
   for (const metot of ['create', 'update', 'remove']) {
     check(

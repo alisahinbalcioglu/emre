@@ -456,14 +456,17 @@ function iscilikEkrani() {
   // olctugu sey degismedi (sayfa GERCEKTEN liste istegi atiyor mu); yalniz
   // iki dosyaya bakiyor. Tek dosyaya bakan eski hal, mekanizma tasininca
   // sessizce KIRMIZI olur ve kapi kendi anlamini kaybederdi.
+  // 30.09.2026 (Emre, Paket 1 / C2): katalog YALNIZ yoneticiye acik — kural
+  // kiraciya adres VERMEZ (`GET /labor` kiraciya 403); listenin TEK adresi
+  // `yonetici-katalog`. Olcut ayni: sayfa GERCEKTEN liste istegi atiyor mu.
   const adresKurali = fs.readFileSync(
     path.join(__dirname, '../../frontend/ozellik/kutuphane/iscilik-katalog-adresi.ts'),
     'utf8',
   );
   check(
-    'P3-OLCUT iscilik sayfasi okundu (/labor liste istegi var)',
-    sayfa.includes('iscilikKatalogAdresi(') && adresKurali.includes('/labor?'),
-    `sayfa=${sayfa.includes('iscilikKatalogAdresi(')} kural=${adresKurali.includes('/labor?')}`,
+    'P3-OLCUT iscilik sayfasi okundu (yonetici katalog liste istegi var)',
+    sayfa.includes('iscilikKatalogAdresi(') && adresKurali.includes('/labor/yonetici-katalog?'),
+    `sayfa=${sayfa.includes('iscilikKatalogAdresi(')} kural=${adresKurali.includes('/labor/yonetici-katalog?')}`,
   );
   check(
     'P3a 403 ABONELIK_KISITLI ayri ele aliniyor (genel hata toast`ina dusmuyor)',

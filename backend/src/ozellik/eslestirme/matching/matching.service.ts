@@ -36,6 +36,7 @@ import { ExchangeRatesService, paraBirimiKodu, kurGecerli } from '../../fiyat/ex
 import type { MatchResult, BrandAlternative } from './types';
 import { KIND_TAGS, SURFACE_TAGS, CONNECTION_TAGS } from './shared-tag-matcher';
 import { Kimlik } from '../../../altyapi/auth/kimlik';
+import { katalogda, kiracininKalemleri } from '../../kutuphane/labor/iscilik-kalemi-kapsami';
 
 // NOT (Faz 2b sokum — 17.07): v1 skor motoru (matchSingle zinciri,
 // HEADER_HINTS kod-ici sozlugu, marka→sinif cikarimi) kod tabanindan
@@ -762,7 +763,7 @@ export class MatchingService {
         urun,
       };
     });
-    if (bayat > 0) console.warn(`[Matching] ⚠ ISCILIK BAYAT INDEKS: ${bayat} kalem istek aninda yenilendi (v${INDEX_VERSION}) — POST /labor-matching/reindex onerilir.`);
+    if (bayat > 0) console.warn(`[Matching] ⚠ ISCILIK BAYAT INDEKS: ${bayat} kalem istek aninda yenilendi (v${INDEX_VERSION}) — kiraci kalemi: POST /labor-matching/reindex · katalog kalemi: POST /labor/yeniden-indeksle (yonetici).`);
     if (indekssiz > 0) console.log(`[Matching] ${indekssiz} indekssiz iscilik kalemi istek aninda indekslendi (legacy)`);
     return pool;
   }
@@ -861,10 +862,31 @@ export class MatchingService {
    *  indeks alanlarini yeniden uretip YAZAR. Kolonlu kalem kolonlardan,
    *  legacy kalem adindan (yol-3) turetilir — AYNI indeksleyici. */
   // G7: iscilik firmalari FIRMAYA ait — yeniden indeksleme de o eksende.
+  // 30.09.2026 (C2): YALNIZ firmanin KENDI kalemleri. Onceden firmanin
+  // fiyat satiri bagli HER kalem yaziliyordu: yonetici katalogu kalemi ve
+  // ayni adi yukleyen baska kiracinin kalemi de. Katalog kaleminin bayat
+  // indeksi eslestirmede istek aninda uretilir (hazirlaLaborPool).
   async reindexLabor(k: Kimlik): Promise<{ updated: number; total: number; belirsiz: number }> {
     const items = await (this.prisma as any).laborItem.findMany({
-      where: { laborPrices: { some: { firma: { firmaId: k.firmaId } } } },
+      where: kiracininKalemleri(k),
     });
+    return this.iscilikKalemleriniYenidenIndeksle(items, 'ISCILIK REINDEX');
+  }
+
+  /** 01.10.2026 (inceleme W2): YONETICI KATALOGU yeniden indekslemesi
+   *  (`POST /labor/yeniden-indeksle`, yalniz yonetici). Kiracinin yeniden
+   *  indekslemesi artik katalog kalemine YAZMAZ; surum artisindan sonra
+   *  katalogu kalici tazeleyen yol budur (istek anindaki uretim calismaya
+   *  devam eder, yalniz her istekte tekrarlanir). */
+  async reindexLaborKatalog(): Promise<{ updated: number; total: number; belirsiz: number }> {
+    const items = await (this.prisma as any).laborItem.findMany({ where: katalogda() });
+    return this.iscilikKalemleriniYenidenIndeksle(items, 'ISCILIK KATALOG REINDEX');
+  }
+
+  private async iscilikKalemleriniYenidenIndeksle(
+    items: any[],
+    etiket: string,
+  ): Promise<{ updated: number; total: number; belirsiz: number }> {
     let updated = 0; let belirsizSayisi = 0;
     for (const it of items) {
       const kolonlu = !!(it.cins || it.baglanti || it.capRaw || it.boyMm);
@@ -904,7 +926,7 @@ export class MatchingService {
       });
       updated++;
     }
-    console.log(`[Matching] ISCILIK REINDEX: ${updated}/${items.length} kalem (belirsiz/bekleyen: ${belirsizSayisi})`);
+    console.log(`[Matching] ${etiket}: ${updated}/${items.length} kalem (belirsiz/bekleyen: ${belirsizSayisi})`);
     return { updated, total: items.length, belirsiz: belirsizSayisi };
   }
 

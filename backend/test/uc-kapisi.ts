@@ -210,6 +210,7 @@ const UCRETSIZ: Record<string, Muafiyet> = {
   'POST /labor': ['YONETICI', 'W5 ★KALKAN: yönetici kendi küresel işçilik kataloğundan kilitlenmesin.'],
   'PUT /labor/:id': ['YONETICI', 'W5 ★KALKAN (aynı gerekçe).'],
   'DELETE /labor/:id': ['YONETICI', 'W5 ★KALKAN (aynı gerekçe).'],
+  'POST /labor/yeniden-indeksle': ['YONETICI', 'W5 ★KALKAN (aynı gerekçe): küresel katalog indeksini tazeleme (01.10, inceleme W2).'],
   'POST /matching/backfill-tags': ['YONETICI', 'Toplu etiket göçü — bakım işi.'],
   'POST /matching/generate-tags': ['YONETICI', 'Toplu etiket üretimi — bakım işi.'],
   'POST /labor-matching/backfill-tags': ['YONETICI', 'İşçilik etiket göçü — bakım işi.'],

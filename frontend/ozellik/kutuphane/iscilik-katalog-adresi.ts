@@ -13,8 +13,15 @@
  * sunucudadir (`@Get('yonetici-katalog') @Roles('admin')`); buradaki rol
  * bilgisi localStorage'dan gelir ve kullanici tarafindan degistirilebilir.
  * Degistiren kisi yalnizca 403 alir.
+ *
+ * 30.09.2026 (Emre, Paket 1 / C2): katalog YALNIZ yoneticiye acik — `GET
+ * /labor` da artik `@Roles('admin')` (kiraci 403). Eskiden kiraci
+ * yuklemesinin actigi kalem (ad + o kiracinin fiyati) her pro kiraciya
+ * donuyordu. Yonetici DISINDA adres YOK (`null`): sayfa istegi hic atmaz,
+ * "yalniz yonetici" notu gosterir. Kiracinin iscilik fiyatlari kendi
+ * iscilik firmasi listelerindedir (Kutuphanem).
  */
-export function iscilikKatalogAdresi(rol: string | null | undefined, discipline: string): string {
-  const q = `discipline=${encodeURIComponent(discipline)}`;
-  return rol === 'admin' ? `/labor/yonetici-katalog?${q}` : `/labor?${q}`;
+export function iscilikKatalogAdresi(rol: string | null | undefined, discipline: string): string | null {
+  if (rol !== 'admin') return null;
+  return `/labor/yonetici-katalog?discipline=${encodeURIComponent(discipline)}`;
 }
