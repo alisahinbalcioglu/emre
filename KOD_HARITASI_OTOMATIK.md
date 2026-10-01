@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 868
-Toplam satir: 243271
+Kod dosyasi: 869
+Toplam satir: 243502
 Uc nokta: 239
 test:* scripti: 142
 
@@ -859,6 +859,7 @@ test:* scripti: 142
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | 366 |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | 538 |
+| `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 231 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
 | `scripts/backup.sh` | 125 |
@@ -1629,6 +1630,7 @@ test:* scripti: 142
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | `@playwright/test` `../../ozellik/teklif/taslak` |
 | `frontend/vitest.config.ts` | `vitest/config` |
 | `scripts/deploy-olcum.cjs` | `fs` |
 | `scripts/harita-denetle.mjs` | `node:child_process` `node:fs` `node:path` `node:url` `./harita-uret.mjs` |

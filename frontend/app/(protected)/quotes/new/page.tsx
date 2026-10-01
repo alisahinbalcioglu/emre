@@ -755,9 +755,67 @@ export default function NewQuotePage() {
     }
   }, []);
 
+  // D5 (30.09): TASLAGI YAZAN IS, REF'TE DE TUTULUR.
+  //
+  // Asagidaki efekt taslagi yaziyor ama bagimlilik dizisi TAMAMEN REFERANS
+  // TABANLI. ExcelGrid satirlari YERINDE degistiriyor (`node.data[alan] = x`),
+  // dizi referansi DEGISMIYOR → efekt HIC kosmuyor. Kullanici fiyatlari elle
+  // yazar, sekme degistirmez, satir eklemez; sonra F5 atar ve EMEGININ TAMAMI
+  // GIDER (olculdu: gercek /quotes/new sayfasinda elle yazilan 250, yenileme
+  // sonrasi hucrede ve taslakta '' oluyordu).
+  //
+  // ⚠ ICERIK ZATEN DOGRU: satir nesneleri grid ile PAYLASILIYOR, yani efekt
+  // ne zaman kosarsa guncel degerleri serilestirir. Eksik olan yalniz TETIK.
+  //
+  // ⚠ NEDEN YENI BIR STATE/PROP DEGIL: `onRowDataChange` BILEREK verilmiyor
+  // (asagidaki grid yorumu) — her hucre yaziminda parent render ACIK EDITORU
+  // IPTAL EDERDI. Bu yuzden cozum React render'i HIC uretmiyor: ayni yazma isi
+  // bir ref'te tutulur ve sayfa gizlenirken/kapanirken (`pagehide`,
+  // `visibilitychange`) dogrudan cagrilir. F5, sekme kapatma ve sekme degistirme
+  // kapsanir; tarayici cokmesi kapsanmaz (bugun HICBIRI kapsanmiyordu).
+  const taslagiYazRef = useRef<() => void>(() => {});
+
+  // D5: GECIKMELI TASLAK YAZIMI — React render URETMEZ.
+  //
+  // `pagehide`/`beforeunload` TEK BASINA YETMEDI: olaylar ATESLENIYOR (olculdu:
+  // tarayicida bagimsiz dinleyici ikisini de gordu) ama o anda yapilan
+  // sessionStorage yazimi yenilemede TUTMADI — taslak bos kaldi. Bu yuzden asil
+  // yol gecikmeli yazim: grid "para yazildi" deyince, son yazimdan 600 ms sonra
+  // taslak bir kez yazilir. setState YOK, yani acik editor IPTAL EDILMEZ
+  // (`onRowDataChange`in bilerek verilmeme gerekcesi korunur).
+  const taslakZamanlayiciRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const taslagiGecikmeliYaz = useCallback(() => {
+    if (taslakZamanlayiciRef.current) clearTimeout(taslakZamanlayiciRef.current);
+    taslakZamanlayiciRef.current = setTimeout(() => taslagiYazRef.current(), 600);
+  }, []);
+  useEffect(() => () => {
+    if (taslakZamanlayiciRef.current) clearTimeout(taslakZamanlayiciRef.current);
+  }, []);
+
+  useEffect(() => {
+    const yaz = () => taslagiYazRef.current();
+    const gizlenince = () => { if (document.visibilityState === 'hidden') yaz(); };
+    // ⚠ UC OLAY DA GEREKLI — OLCULDU:
+    // `pagehide` tek basina YETMEDI: tarayici YENILEMESINDE (F5) atesmedi,
+    // taslak bos kaldi ve test kirmizi yandi. `beforeunload` yenilemede ve
+    // sekme kapatmada atesler. `visibilitychange` ise mobil/arka plana alma
+    // halini kapsar (orada `beforeunload` cogu tarayicida CALISMAZ).
+    // Hicbiri `preventDefault`/`returnValue` yazmiyor — "siteden ayrilmak
+    // istediginize emin misiniz?" uyarisi CIKMAZ.
+    window.addEventListener('beforeunload', yaz);
+    window.addEventListener('pagehide', yaz);
+    document.addEventListener('visibilitychange', gizlenince);
+    return () => {
+      window.removeEventListener('beforeunload', yaz);
+      window.removeEventListener('pagehide', yaz);
+      document.removeEventListener('visibilitychange', gizlenince);
+    };
+  }, []);
+
   // Save: onemli state degisimlerinde sessionStorage'a yaz
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const yaz = () => {
     if (!multiSheet) {
       sessionStorage.removeItem(DRAFT_KEY);
       return;
@@ -794,6 +852,13 @@ export default function NewQuotePage() {
       sessionStorage.removeItem(DRAFT_KEY);
       console.warn('[quotes/new] Draft save failed, eski draft temizlendi:', e);
     }
+    };
+    // D5: AYNI is `pagehide`/`visibilitychange` icin de erisilebilir olmali —
+    // yerinde (in-place) hucre yazimlari bu efekti TETIKLEMEZ, sayfa gizlenirken
+    // son hali yazan tek yol budur. Ref React render'i URETMEZ, yani acik
+    // editor iptal edilmez (`onRowDataChange`in bilerek verilmeme gerekcesi).
+    taslagiYazRef.current = yaz;
+    yaz();
     // ⚠ `revizyonId` bagimliliga DAHIL: eksik olsaydi bu efekt kimlik
     // set edilmeden once kapanan closure'i tasir, taslaga `undefined` yazar
     // ve revizyon SESSIZCE kopyaya donerdi.
@@ -2024,6 +2089,8 @@ export default function NewQuotePage() {
           // siliyordu). Grid'in guncel listesi yazilir → kayit + taslak gorur.
           // `onRowDataChange` BILEREK verilmiyor: her hucre yaziminda parent
           // render acik editoru iptal ederdi; bu kanca yalniz yapisal olayda.
+          // D5: "para yazildi" sinyali — payload YOK, setState YOK.
+          onFiyatYazildi={taslagiGecikmeliYaz}
           onStructureChange={(rows) => {
             setLiveRowDataBySheet((prev) => ({ ...prev, [activeSheetKey]: rows }));
           }}

@@ -268,6 +268,20 @@ interface Props {
    * Tiklanamayan hucre secim URETMEZ — en guvenli kaldirac budur.
    */
   seciciSaltOkunur?: boolean;
+  /**
+   * D5 (30.09): "SATIRA PARA YAZILDI" SINYALI — payload YOK, state YOK.
+   *
+   * Grid satirlari YERINDE degistiriyor (`node.data[alan] = x`); sayfanin taslak
+   * efekti REFERANS tabanli bagimlilik dizisine sahip oldugu icin HIC kosmuyor
+   * ve kullanici F5 atinca elle yazdigi fiyatlari KAYBEDIYOR (olculdu: gercek
+   * /quotes/new sayfasinda yazilan 250, yenileme sonrasi hucrede ve taslakta '').
+   *
+   * ⚠ `onRowDataChange` BU IS ICIN KULLANILAMAZ: her hucre yaziminda parent
+   * render ACIK EDITORU IPTAL EDER (sayfanin kendi gerekcesi). Bu sinyal
+   * BILEREK payload tasimaz ve cagiran tarafin setState yapmasini beklemez —
+   * sayfa onu bir ref + debounce ile karsilar, React render URETILMEZ.
+   */
+  onFiyatYazildi?: () => void;
   // library mode'da hangi fiyat alanini kullanir? (material veya labor)
   libraryPriceField?: 'materialUnitPriceField' | 'laborUnitPriceField';
   currencySymbol: string;
@@ -307,8 +321,10 @@ function BrandDropdown(props: ICellRendererParams & {
   seciciSaltOkunur?: boolean;
   /** BANT: isaret alani yazildiginda "N satir secim bekliyor" sayacini tazeler. */
   sayaciTazele?: () => void;
+  /** D5: satira para yazildi (taslak tetigi). */
+  paraYazildi?: () => void;
 }) {
-  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, unitField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, onAutoVariantApplied, seciciSaltOkunur, sayaciTazele, api, node } = props;
+  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, unitField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, onAutoVariantApplied, seciciSaltOkunur, sayaciTazele, paraYazildi, api, node } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
   const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null);
   // HATA RAPORU FIX: popup konumu WRAPPER div'den alinir — onceki triggerRef
@@ -467,6 +483,7 @@ function BrandDropdown(props: ICellRendererParams & {
     // ATESLEMEZ — "N satir secim bekliyor" sayaci bu yazimi GORMUYORDU.
     // Cagri coalesce edilir (ayni tikteki birden cok yazim TEK sayim).
     if (alan === '_matStatus') sayaciTazele?.();
+    paraYazildi?.(); // D5: yerinde yazim taslak efektini tetiklemiyor
   };
 
   const writePriceToNode = (targetNode: any, netPrice: number, isSuggestion = false, kaynakKur?: any) => {
@@ -1188,11 +1205,13 @@ function FirmaDropdown(props: ICellRendererParams & {
   seciciSaltOkunur?: boolean;
   /** BANT ikizi: isaret alani yazildiginda sayaci tazeler. */
   sayaciTazele?: () => void;
+  /** D5 ikizi: satira para yazildi. */
+  paraYazildi?: () => void;
 }) {
   const {
     data, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange,
     nameField, noField, brandField, quantityField, unitField, laborUnitPriceField, laborTotalField,
-    diameterField, seciciSaltOkunur, sayaciTazele,
+    diameterField, seciciSaltOkunur, sayaciTazele, paraYazildi,
     api, node,
   } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
@@ -1250,6 +1269,7 @@ function FirmaDropdown(props: ICellRendererParams & {
     // BANT (30.09) IKIZI: malzeme tarafiyla ayni gerekce — isaret alani kolon
     // olmadigi icin olay atesmez, sayac bu yazimi gormezdi.
     if (alan === '_labStatus') sayaciTazele?.();
+    paraYazildi?.(); // D5 ikizi
   };
 
   const writeLaborPrice = (netPrice: number, kaynakKur?: any) => {
@@ -1773,6 +1793,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   data, brands, onBrandChange,
   laborFirms = [], sheetDiscipline = null, laborEnabled = false, onFirmaChange,
   seciciSaltOkunur = false, // D9 + Y1: salt okunur sayfada secici tiklanamaz
+  onFiyatYazildi, // D5: satira para yazildi sinyali (payload yok, state yok)
   onRowDataChange,
   onColumnWidthsChange,
   columnWidths,
@@ -2922,6 +2943,18 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
    * suruklemede paketi 22 sn'den 1.4 dk'ya cikarmisti. Burada cagrilar tek
    * tike dusurulur.
    */
+  // D5: sinyal REF'te tutulur — `columnDefs` kimligine baglanmaz, yoksa her
+  // prop degisiminde tum kolonlar yeniden kurulurdu.
+  const onFiyatYazildiRef = useRef(onFiyatYazildi);
+  onFiyatYazildiRef.current = onFiyatYazildi;
+  /** D5: para yazildi — cagrilar tek tike dusurulur (yazma firtinasi olmasin). */
+  const paraBekleyenRef = useRef(false);
+  const paraYazildi = useCallback(() => {
+    if (paraBekleyenRef.current) return;
+    paraBekleyenRef.current = true;
+    setTimeout(() => { paraBekleyenRef.current = false; onFiyatYazildiRef.current?.(); }, 0);
+  }, []);
+
   const sayacBekleyenRef = useRef(false);
   const sayaciTazele = useCallback(() => {
     if (sayacBekleyenRef.current) return;
@@ -3261,6 +3294,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // Doldurma TAMAMLANDIKTAN sonra TEK sayim: dongu icinde cagirmak
     // O(satir × alan) forEachNode taramasi acardi.
     sayaciTazele();
+    paraYazildi(); // D5: doldurma da taslaga girsin
 
     // Pinned bottom yenile
     setTimeout(() => {
@@ -3275,7 +3309,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     console.log(`[FillHandle] Complete: ${result.targetRowNodes.length} rows filled, field=${result.field}`);
   }, [data.columnRoles, onBrandChange, onFirmaChange, onRowDataChange, applyDiscountBulk,
-      autoVariantEnabled, onAutoVariantChange, onAutoVariantApplied, sayaciTazele]);
+      autoVariantEnabled, onAutoVariantChange, onAutoVariantApplied, sayaciTazele, paraYazildi]);
 
   useFillHandle({
     gridRef,
@@ -3800,6 +3834,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             onBrandChange={onBrandChange}
             seciciSaltOkunur={seciciSaltOkunur}
             sayaciTazele={sayaciTazele}
+            paraYazildi={paraYazildi}
             nameField={data.columnRoles.nameField}
             noField={data.columnRoles.noField}
             brandField={data.columnRoles.brandField}
@@ -3833,6 +3868,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             {...params}
             seciciSaltOkunur={seciciSaltOkunur}
             sayaciTazele={sayaciTazele}
+            paraYazildi={paraYazildi}
             laborFirms={laborFirms}
             sheetDiscipline={sheetDiscipline}
             laborEnabled={laborEnabled}
@@ -4267,7 +4303,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       fittingDuzenlenebilir,
       // D9 + I1: bayrak burada OLMAZSA kolonlar yeniden kurulmaz ve salt okunur
       // cizim HIC uygulanmaz (sessiz olu kod).
-      seciciSaltOkunur, sayaciTazele]);
+      seciciSaltOkunur, sayaciTazele, paraYazildi]);
 
   // Ceviri kalemi gorunurlugu degisince ad kolonu yeniden cizilir: renderer
   // ref okuyor, AG Grid kendiliginden tazelemez (fitting tazelemesiyle ayni desen).
@@ -4653,8 +4689,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     // Guven kapisi sayaci tazele (PRD Bolum 9)
     recountPending();
+    // D5: ELLE yazilan/yapistirilan fiyat da taslaga girsin. Bu yol satir
+    // nesnesini YERINDE degistirir; sayfanin taslak efekti referans tabanli
+    // oldugu icin tetiklenmiyordu ve F5 emegi siliyordu (olculdu).
+    paraYazildi();
   }, [data.columnRoles, data.columnDefs, onRowDataChange, autoAppendRow, recountPending, floorFields,
-      mode, updatePinnedBottom, fittingDuzenlenebilir]);
+      mode, updatePinnedBottom, fittingDuzenlenebilir, paraYazildi]);
 
   // getRowId — stabil row kimligi (re-render'da row'un durumunu korur)
   const getRowId = useCallback((params: GetRowIdParams<ExcelRowData>) => {
