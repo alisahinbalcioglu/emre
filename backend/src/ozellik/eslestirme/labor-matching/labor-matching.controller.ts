@@ -9,6 +9,7 @@ import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
 import { TierGuard, RequireTier } from '../../../altyapi/auth/guards/tier.guard';
+import { IscilikHafizasiDto, IscilikTopluEslestirmeDto } from './dto/iscilik-eslestirme-govdesi.dto';
 
 @Controller('labor-matching')
 @UseGuards(JwtAuthGuard, TierGuard, ErisimGuard)
@@ -24,12 +25,8 @@ export class LaborMatchingController {
   @UyeIzniGerekli('kutuphane')
   bulkMatch(
     @CurrentUser() user: any,
-    @Body() body: {
-      firmaId: string;
-      laborNames: string[];
-      variantTags?: string[];
-      units?: Record<string, string>;
-    },
+    // C11 (P4a, 01.10.2026): SINIF DTO — satir ici tip ValidationPipe'i atliyordu.
+    @Body() body: IscilikTopluEslestirmeDto,
   ) {
     return this.service.bulkMatch(kimlikCoz(user), body.firmaId, body.laborNames, body.variantTags, body.units);
   }
@@ -41,7 +38,7 @@ export class LaborMatchingController {
   @UyeIzniGerekli('kutuphane')
   remember(
     @CurrentUser() user: any,
-    @Body() body: { firmaId: string; laborName: string; secilenAd: string },
+    @Body() body: IscilikHafizasiDto,
   ) {
     return this.service.remember(kimlikCoz(user), body.firmaId, body.laborName, body.secilenAd);
   }

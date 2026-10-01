@@ -957,6 +957,14 @@ const SUITES: Suite[] = [
   //    (sorgu koşulları Prisma anlamıyla). Her blokta eşleştirme BAĞLANTISI.
   //    DB/AĞ GEREKTİRMEZ.
   { ad: 'Kiracı sınırı: işçilik kalemi · ad değişikliği · ortak sözlük · yeniden indeksleme (K2/K1/K4/K5/KB)', script: 'test:kiraci-siniri', zincir: 'Z0' },
+  // ── 01.10.2026 — PAKET 4a GÖVDE DOĞRULAMA (eşleştirme denetimi C11 + P1
+  //    malzeme ikizi). Eşleştirme uçlarının (bulk-match, remember) gövdesi
+  //    sınıf DTO ile doğrulanır (biçimsiz gövde 400, servise ulaşmaz; geçerli
+  //    gövde alanlarıyla ulaşır); malzeme kütüphanesi ızgara kaydı satır
+  //    hatasında ham metin döndürmez, istek başına tek günlük satırı yazar,
+  //    biçimsiz kimliği DB'ye göndermez. GERÇEK denetleyiciler HTTP üzerinden,
+  //    ValidationPipe main.ts ile aynı. DB/AĞ GEREKTİRMEZ.
+  { ad: 'Gövde doğrulama: eşleştirme uçları DTO · kütüphane ızgara kaydı satır hataları (G/S)', script: 'test:govde-dogrulama', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

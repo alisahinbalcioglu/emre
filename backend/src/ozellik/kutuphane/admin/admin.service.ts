@@ -1340,7 +1340,9 @@ export class AdminService {
         // Onizlemede cozulmemis satir — dosya karariyla burada cozulur
         const p = parseTrNumber(
           typeof it.priceRaw === 'number' ? it.priceRaw : String(it.priceRaw ?? ''),
-          body.dotMeaning ?? undefined,
+          // C8 (P4a): `null` = "karar YOK" — "1,649" belirsiz kalir, yazim
+          // reddedilir. `undefined` virgulu sessizce ondalik okurdu (1,65).
+          body.dotMeaning ?? null,
         );
         if (p.ambiguous) {
           throw new BadRequestException(
