@@ -217,6 +217,17 @@ export default function GridTestPage() {
       log('HAKAN (gec): 6\'\' icin 999');
       return { netPrice: 999, confidence: 'high', matchedName: 'Kaynak işçiliği · 6"' } as any;
     }
+
+    // BANT (30.09): YAVAS "bu firmada yok". Hizli cevap bant kusurunu MASKELIYOR
+    // — React, kolon olayinin sayimini durum yazimiyla ayni tike topluyor ve
+    // bant TESADUFEN dogru gorunuyor (olculdu: hizli dalda yesil, 500 ms'lik
+    // dalda bant HIC gorunmedi). Iscilik sayac kapisi ancak bu dalla olculur
+    // (mutant BANT-M2 hizli dalda YASIYORDU).
+    if (firmaId === 'f-hakan' && laborName.includes("2''")) {
+      await new Promise((r) => setTimeout(r, 500));
+      log('HAKAN (gec): bu firmada 2\'\' YOK');
+      return { netPrice: 0, confidence: 'none', reason: 'Bu firmada 2" yok.' } as any;
+    }
     if (laborName.includes("2''")) return { netPrice: 0, confidence: 'none', reason: 'Bu firmada 2" yok.' } as any;
     if (laborName.includes("1''")) {
       return {

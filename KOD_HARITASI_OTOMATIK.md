@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 861
-Toplam satir: 239946
+Kod dosyasi: 862
+Toplam satir: 240157
 Uc nokta: 238
 test:* scripti: 141
 
@@ -489,7 +489,7 @@ test:* scripti: 141
 | `frontend/app/admin/users/page.tsx` | 647 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
 | `frontend/app/davet-kabul/page.tsx` | 483 |
-| `frontend/app/dev/grid-test/page.tsx` | 293 |
+| `frontend/app/dev/grid-test/page.tsx` | 304 |
 | `frontend/app/fiyatlar/page.tsx` | 174 |
 | `frontend/app/forgot-password/page.tsx` | 92 |
 | `frontend/app/gizlilik/page.tsx` | 13 |
@@ -771,7 +771,7 @@ test:* scripti: 141
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 4972 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5027 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -846,6 +846,7 @@ test:* scripti: 141
 | `frontend/test/e2e-golden/sayi-ayristirma.mjs` | 46 |
 | `frontend/test/e2e-golden/surum-kapisi.cjs` | 135 |
 | `frontend/test/e2e-golden/verify.mjs` | 836 |
+| `frontend/test/e2e/bant-sayaci.spec.ts` | 145 |
 | `frontend/test/e2e/eslestirme-temizlik.spec.ts` | 154 |
 | `frontend/test/e2e/grid.spec.ts` | 206 |
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | 126 |
@@ -1610,6 +1611,7 @@ test:* scripti: 141
 | `frontend/test/e2e-golden/run.mjs` | `node:child_process` `node:path` `node:url` `./artefakt-dizini.cjs` `./surum-kapisi.cjs` |
 | `frontend/test/e2e-golden/surum-kapisi.cjs` | `node:fs` `node:path` `node:child_process` |
 | `frontend/test/e2e-golden/verify.mjs` | `node:fs` `node:path` `node:url` `node:module` `./sayi-ayristirma.mjs` `./artefakt-dizini.cjs` |
+| `frontend/test/e2e/bant-sayaci.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/eslestirme-temizlik.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/grid.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | `@playwright/test` |
