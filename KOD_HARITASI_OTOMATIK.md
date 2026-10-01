@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 862
-Toplam satir: 240157
+Kod dosyasi: 863
+Toplam satir: 240321
 Uc nokta: 238
 test:* scripti: 141
 
@@ -489,7 +489,7 @@ test:* scripti: 141
 | `frontend/app/admin/users/page.tsx` | 647 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
 | `frontend/app/davet-kabul/page.tsx` | 483 |
-| `frontend/app/dev/grid-test/page.tsx` | 304 |
+| `frontend/app/dev/grid-test/page.tsx` | 318 |
 | `frontend/app/fiyatlar/page.tsx` | 174 |
 | `frontend/app/forgot-password/page.tsx` | 92 |
 | `frontend/app/gizlilik/page.tsx` | 13 |
@@ -771,7 +771,7 @@ test:* scripti: 141
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5027 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5048 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -850,9 +850,10 @@ test:* scripti: 141
 | `frontend/test/e2e/eslestirme-temizlik.spec.ts` | 154 |
 | `frontend/test/e2e/grid.spec.ts` | 206 |
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | 126 |
+| `frontend/test/e2e/iscilik-fill-baglam.spec.ts` | 124 |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | 366 |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
-| `frontend/test/e2e/secim-duzenleme.spec.ts` | 533 |
+| `frontend/test/e2e/secim-duzenleme.spec.ts` | 538 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
 | `scripts/backup.sh` | 125 |
@@ -1615,6 +1616,7 @@ test:* scripti: 141
 | `frontend/test/e2e/eslestirme-temizlik.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/grid.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/iscilik-fill-baglam.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | `@playwright/test` |

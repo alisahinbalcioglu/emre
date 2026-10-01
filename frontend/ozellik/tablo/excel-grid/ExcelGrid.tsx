@@ -3174,7 +3174,28 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           status: '_labStatus',
           kaynakRozeti: '_labKaynak',
         },
-        sorguMetni: (node: any) => lookupNameOf(node.data),
+        // D3 (30.09): BASLIK MIRASI — malzeme ikiziyle AYNI kurucu.
+        // Burasi `lookupNameOf` (duz ad + varsa cap kolonu) kullaniyordu: uc
+        // cagri yerinden ikisi (malzeme fill ve ELLE iscilik secimi) baglam
+        // kuruyor, yalniz bu kurmuyordu. Sonuc: ayni satir ELLE secilince
+        // esleşiyor, SURUKLEYINCE baslıksiz sorgulaniyordu.
+        //
+        // Olculdu (tarayici, yetim aile: baslik "Yükselen Milli Vana" + "DN 150"):
+        // giden sorgu `"DN 150"` idi. Yetim ad hangi aileye ait oldugunu
+        // soylemez; motorda iki kapi bosa duser — aile kapisi (yanlis aileden
+        // aday) ve SERT CAP kapisi (`line.capInfo` yoksa cap filtresi HIC
+        // kosmaz). Malzeme tarafinda bu sinifin canli vakasi kayitli
+        // (ExcelGrid.tsx yukarisi: yetim "DN 20" sorgusu BORU adaylari
+        // donduruyordu). `fill-down.ts` sozlesmesi de bunu yazili kiliyor:
+        // "sorguMetni: ... grup basligi mirasi dahil".
+        sorguMetni: (node: any) => {
+          const det = buildMaterialContextDetailed(
+            api, node.rowIndex ?? 0,
+            nameField, data.columnRoles.noField, data.columnRoles.brandField, quantityField,
+            data.columnRoles.diameterField,
+          );
+          return det.name || lookupNameOf(node.data);
+        },
       });
 
       markaFillUndoStack.current.push({
