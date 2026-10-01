@@ -71,7 +71,7 @@ function KURAL(model: string): SilmeKurali {
 export class CaprazFirmaBagiHatasi extends Error {
   constructor(
     readonly firmaId: string,
-    readonly bag: 'QuoteItem.laborFirmaId' | 'Quote.formatId',
+    readonly bag: 'QuoteItem.laborFirmaId' | 'Quote.formatId' | 'LaborPrice.laborItemId',
     readonly sayi: number,
   ) {
     super(
@@ -322,6 +322,26 @@ export class ImhaServisi {
       const yabanci = teklifler.map((q) => q.id).filter((id: string) => !bizimTeklif.has(id));
       if (yabanci.length > 0) {
         throw new CaprazFirmaBagiHatasi(firmaId, 'Quote.formatId', yabanci.length);
+      }
+    }
+
+    // 01.10.2026 (Paket 1, guvenlik incelemesi LOW-1): firmanin KENDI iscilik
+    // kalemine (`LaborItem.ownerFirmaId`) BASKA firmanin fiyat satiri bagliysa
+    // `LaborItem` kurali o satirlari CASCADE ile goturur. Bugunku kod bu bagi
+    // uretmez (kiraci baskasinin kalemini bulamaz; goc yalniz tek kiracili
+    // kalemi atar) — bu kapi o degismezin ikinci kilidi.
+    const kendiKalemler: any[] = await tx.laborItem.findMany({
+      where: { ownerFirmaId: firmaId },
+      select: { id: true },
+    });
+    if (kendiKalemler.length) {
+      const bizimIscilik = new Set(iscilikFirmaIdler);
+      const fiyatlar: any[] = await this.parcaliBul(tx.laborPrice, 'laborItemId', kendiKalemler.map((k) => k.id), {
+        firmaId: true,
+      });
+      const yabanci = fiyatlar.filter((f) => !bizimIscilik.has(f.firmaId)).length;
+      if (yabanci > 0) {
+        throw new CaprazFirmaBagiHatasi(firmaId, 'LaborPrice.laborItemId', yabanci);
       }
     }
   }

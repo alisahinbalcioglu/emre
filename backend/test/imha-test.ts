@@ -480,7 +480,13 @@ function fixture(): Record<string, Satir[]> {
     brand: [{ id: 'brA', name: 'Marka' }],
     material: [{ id: 'mtA', name: 'Boru' }],
     materialPrice: [{ id: 'mpA', materialId: 'mtA', brandId: 'brA', priceListId: 'plHAVUZ' }],
-    laborItem: [{ id: 'liA', name: 'Montaj' }],
+    // 30.09 (Paket 1): `ownerFirmaId` null = YONETICI KATALOGU (kalir);
+    // dolu = kiracinin kendi kalemi (o firmanin imhasinda gider).
+    laborItem: [
+      { id: 'liKATALOG', name: 'Montaj', ownerFirmaId: null },
+      { id: 'liA', name: 'A firmasinin kalemi', ownerFirmaId: 'A' },
+      { id: 'liB', name: 'B firmasinin kalemi', ownerFirmaId: 'B' },
+    ],
     paket: [{ id: 'pkA', kod: 'pro' }],
     paketSurumu: [{ id: 'psA', paketId: 'pkA' }],
     systemSettings: [{ id: 'ssA' }],
@@ -504,6 +510,7 @@ const B_SATIRLARI: Array<[string, string, string]> = [
   ['laborFirm', 'id', 'lfB'],
   ['laborPriceList', 'id', 'lplB'],
   ['laborPrice', 'id', 'lpB'],
+  ['laborItem', 'id', 'liB'],
   ['eslesmeHafizasi', 'id', 'ehB'],
   ['terminologyAlias', 'id', 'taB'],
   ['brandMaterialType', 'id', 'bmB'],
@@ -544,6 +551,7 @@ const A_SATIRLARI: Array<[string, string, string]> = [
   ['laborFirm', 'id', 'lfA'],
   ['laborPriceList', 'id', 'lplA'],
   ['laborPrice', 'id', 'lpA'],
+  ['laborItem', 'id', 'liA'],
   ['eslesmeHafizasi', 'id', 'ehA'],
   ['terminologyAlias', 'id', 'taA'],
   ['brandMaterialType', 'id', 'bmA'],
@@ -755,7 +763,7 @@ async function bolumEIS(): Promise<void> {
     ['abonelikBaslatma', 'abbA'], ['denemeKullanimi', 'dkuA'],
     ['havaleOdemesi', 'hoA'], ['webhookOlayi', 'whA'], ['yoneticiOlayi', 'yoEski'],
     ['translation', 'trA'], ['brand', 'brA'], ['material', 'mtA'],
-    ['materialPrice', 'mpA'], ['laborItem', 'liA'], ['paket', 'pkA'],
+    ['materialPrice', 'mpA'], ['laborItem', 'liKATALOG'], ['paket', 'pkA'],
     ['paketSurumu', 'psA'], ['systemSettings', 'ssA'],
   ];
   const silinenKoruma = korunmasi.filter(([t, d]) => !varMi(veri, t, 'id', d));
@@ -887,12 +895,34 @@ async function bolumC(): Promise<void> {
   check('C5 B\'nin teklifi hala A\'nin formatini gosteriyor (degistirilmedi)',
     satir(veri2, 'quote', 'qB1').formatId === 'fA');
 
-  // NORMAL DURUM: capraz bag YOKKEN kapi imhayi ENGELLEMEZ (yalanci alarm yok)
+  // NORMAL DURUM: capraz bag YOKKEN kapi imhayi ENGELLEMEZ (yalanci alarm yok).
+  // A'nin KENDI fiyat satiri KENDI kalemine bagli — bu capraz bag DEGIL.
   const veri3 = fixture();
+  satir(veri3, 'laborPrice', 'lpA').laborItemId = 'liA';
   const p3 = sahtePrisma(veri3);
   const ok = await servisYap(p3).firmaImhaEt('A');
-  check('C6 capraz bag yokken kapi imhayi engellemiyor', !ok.atlandi &&
-    !varMi(veri3, 'laborFirm', 'id', 'lfA'));
+  check('C6 capraz bag yokken kapi imhayi engellemiyor (A\'nin kendi kalemine kendi fiyati bagli)', !ok.atlandi &&
+    !varMi(veri3, 'laborFirm', 'id', 'lfA') && !varMi(veri3, 'laborItem', 'id', 'liA'));
+
+  // 01.10.2026 (Paket 1, guvenlik incelemesi LOW-1): BASKA firmanin fiyat
+  // satiri A'nin KENDI iscilik kalemine bagliysa LaborItem kurali onu CASCADE
+  // ile goturur. Bugunku kod bu bagi URETEMIYOR (kiraci baskasinin kalemini
+  // bulamaz, goc yalniz tek kiracili kalemi atar) — kapi ikinci kilit.
+  const veri4 = fixture();
+  veri4['laborPrice'].push({ id: 'lpB2', firmaId: 'lfB', priceListId: 'lplB', unitPrice: 5, laborItemId: 'liA' });
+  const p4 = sahtePrisma(veri4);
+  let hata4: any = null;
+  try {
+    await servisYap(p4).firmaImhaEt('A');
+  } catch (e) {
+    hata4 = e;
+  }
+  check('C7 baska firmanin fiyat satiri A\'nin kendi iscilik kalemine bagliysa IMHA DURUR',
+    hata4 instanceof CaprazFirmaBagiHatasi && hata4.bag === 'LaborPrice.laborItemId', String(hata4));
+  check('C8 durdurulan imhada A\'nin kalemi ve iscilik firmasi SILINMEDI',
+    varMi(veri4, 'laborItem', 'id', 'liA') && varMi(veri4, 'laborFirm', 'id', 'lfA'));
+  check('C9 B\'nin fiyat satiri yerinde (A\'nin kalemine bagli kaldi)',
+    satir(veri4, 'laborPrice', 'lpB2')?.laborItemId === 'liA');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

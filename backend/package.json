@@ -166,7 +166,8 @@
     "test:miras-erisimi": "ts-node test/miras-erisimi-test.ts",
     "test:miras-hakki": "ts-node test/miras-hakki-test.ts",
     "test:vitrin": "ts-node test/vitrin-test.ts",
-    "test:yonetici-paket": "ts-node test/yonetici-paket-test.ts"
+    "test:yonetici-paket": "ts-node test/yonetici-paket-test.ts",
+    "test:kiraci-siniri": "ts-node test/kiraci-siniri-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

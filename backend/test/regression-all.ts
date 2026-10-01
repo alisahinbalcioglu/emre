@@ -947,6 +947,16 @@ const SUITES: Suite[] = [
   // denetimi AYNI işlemde (geri alma gerçek), kurtarmada "ekip düşürdü"
   // e-postası YOK, eski uçlar kaldırıldı. DB/AĞ/iyzico GEREKTİRMEZ.
   { ad: 'Yönetici paket işlemleri: karar · düşürme · panel · bağlantı (K/D/P/B)', script: 'test:yonetici-paket', zincir: 'Z0' },
+  // ── 30.09.2026 — PAKET 1 KİRACI SINIRI (eşleştirme denetimi C2·C1·C4·C5).
+  //    Kiracının yüklediği işçilik kalemi ona ait (GET /labor'da başkasına
+  //    görünmez, yönetici ekranına düşmez); ad değişikliği yalnız o satırın
+  //    bağını taşır (ortak kalem yerinde adlanmaz); ortak sözlük kaydını yalnız
+  //    yönetici kapatır; yeniden indeksleme sahipli ürünü ortak sözlüğe
+  //    öğretmez; kiracının yeniden indekslemesi ortak kaleme yazmaz. GERÇEK
+  //    denetleyiciler HTTP üzerinden; veri `yardimci/bellek-prisma.ts`
+  //    (sorgu koşulları Prisma anlamıyla). Her blokta eşleştirme BAĞLANTISI.
+  //    DB/AĞ GEREKTİRMEZ.
+  { ad: 'Kiracı sınırı: işçilik kalemi · ad değişikliği · ortak sözlük · yeniden indeksleme (K2/K1/K4/K5/KB)', script: 'test:kiraci-siniri', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

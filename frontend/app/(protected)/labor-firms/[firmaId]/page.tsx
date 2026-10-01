@@ -18,6 +18,7 @@ import InlineFirmEntry from '@/ozellik/kutuphane/library/InlineFirmEntry';
 import type { FirmEntryHandle } from '@/ozellik/kutuphane/library/InlineFirmEntry';
 import type { ExcelGridData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
 import { sayiOku } from '@/ozellik/fiyat/sayi-alani';
+import { adDegistiMi, adImzalari } from '@/ozellik/kutuphane/iscilik-ad-imzasi';
 
 interface LaborFirm {
   id: string;
@@ -58,6 +59,9 @@ export default function LaborFirmDetailPage() {
   const liveRowsRef = useRef<ExcelRowData[]>([]);
   // Aktif liste grid'i — save öncesi stopEditing() + getRowData() için.
   const gridRef = useRef<ExcelGridHandle>(null);
+  // Yüklenen satırların ad hücresi imzaları — kaydette ad YALNIZ bunlardan
+  // farklıysa gönderilir (iscilik-ad-imzasi.ts).
+  const ilkAdImzalariRef = useRef<Map<string, Set<string>>>(new Map());
   const [dirtyCount, setDirtyCount] = useState(0);
   const [savingDrafts, setSavingDrafts] = useState(false);
 
@@ -99,10 +103,12 @@ export default function LaborFirmDetailPage() {
     try {
       const { data } = await api.get(`/labor-firms/price-lists/${listId}/sheets`);
       if (!data?.sheet) {
+        ilkAdImzalariRef.current = new Map();
         setGridData(null);
         return;
       }
       const sheet = data.sheet;
+      ilkAdImzalariRef.current = adImzalari(sheet.rowData, sheet.columnRoles?.nameField);
       // INLINE YENI KALEM (kullanici istegi 20.07): mevcut satirlarin altina
       // 30 bos satir + hep-bos spare (autoAppendRow) — malzeme marka-detay
       // sayfasiyla ayni desen. Kaydet: mevcut→save-sheets, yeni→save-bulk.
@@ -131,6 +137,7 @@ export default function LaborFirmDetailPage() {
       setDirtyCount(0);
     } catch (e: any) {
       toast({ title: 'Sheet yuklenemedi', description: e?.response?.data?.message, variant: 'destructive' });
+      ilkAdImzalariRef.current = new Map();
       setGridData(null);
     }
   }, []);
@@ -226,6 +233,8 @@ export default function LaborFirmDetailPage() {
       // backend LaborItem.name'i günceller + yeniden indeksler (eşleşme açılır).
       // Sentetik sheet: nameField=TAM ad → doğrudan. Import JSON'da nameField
       // cap-only olabilir (ne 'ad' ne synthetic) → ad overwrite YASAK, undefined.
+      // 01.10 (inceleme 2. tur): ad YALNIZ ad hücreleri yüklendiği hâlden
+      // farklıysa gider — yalnız fiyatı düzeltilen satır başka kaleme taşınmaz.
       const fixedFormat = nameField === 'ad'; // InlineFirmEntry sabit-format imzası
       const buildLaborName = (r: any): string | undefined => {
         if (fixedFormat) {
@@ -240,7 +249,7 @@ export default function LaborFirmDetailPage() {
           listPrice: priceField ? parseTrNum(r[priceField]) : undefined,
           discountRate: r._draftDiscount ?? r._laborDiscountRate ?? 0,
           unit: unitField ? (String(r[unitField] ?? '').trim() || undefined) : undefined,
-          laborItemName: buildLaborName(r),
+          laborItemName: adDegistiMi(r, nameField, ilkAdImzalariRef.current) ? buildLaborName(r) : undefined,
         })).filter((p) => !!p.laborPriceId);
 
         // SABIT-FORMAT: görsel yerleşim (ad/cins/çap/para/not) sheet JSON'da
@@ -258,9 +267,14 @@ export default function LaborFirmDetailPage() {
           dirtyRows: payload,
           sheet: sheetPayload,
         });
-        toast({ title: 'Kaydedildi', description: `${data.updated} kalem guncellendi` });
-        if (data.errors && data.errors.length > 0) {
-          toast({ title: 'Uyari', description: `${data.errors.length} hata`, variant: 'destructive' });
+        const hatalar: Array<{ error?: string }> = data.errors ?? [];
+        toast({ title: hatalar.length ? 'Kısmen kaydedildi' : 'Kaydedildi', description: `${data.updated} kalem guncellendi` });
+        if (hatalar.length > 0) {
+          // 01.10.2026 (inceleme W1): NEDEN söylenir. Sunucu kaydedilemeyen
+          // satırın görünümünü eski hâline döndürür; kullanıcı yeniden
+          // yüklemede satırın neden eski adda kaldığını buradan öğrenir.
+          const nedenler = Array.from(new Set(hatalar.map((h) => h.error).filter(Boolean))).slice(0, 2).join(' · ');
+          toast({ title: `${hatalar.length} satır kaydedilemedi`, description: nedenler || undefined, variant: 'destructive' });
         }
       }
 

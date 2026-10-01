@@ -61,13 +61,18 @@ export default function LaborLibraryPage() {
   // pro olmayan yonetici ekleyebildigi halde LISTEYI goremezdi. Yonetici
   // listeyi paket/yetenek kapisi tasimayan `/labor/yonetici-katalog`tan ceker.
   // ⚠ Rol yalniz HANGI UCUN cagrilacagini secer; yetki sunucuda (`Roles`).
-  const [yonetici, setYonetici] = useState(false);
+  // 30.09.2026 (Emre, Paket 1 / C2): katalog YALNIZ yoneticiye acik. Rol
+  // okunana dek ('bilinmiyor') istek ATILMAZ; yonetici degilse sayfa kapali
+  // notunu gosterir ve hic istek atmaz (sunucu da 403 doner).
+  const [rol, setRol] = useState<'bilinmiyor' | 'yonetici' | 'diger'>('bilinmiyor');
 
   useEffect(() => {
+    let yonetici = false;
     try {
       const stored = localStorage.getItem('user');
-      if (stored) setYonetici(JSON.parse(stored)?.role === 'admin');
+      if (stored) yonetici = JSON.parse(stored)?.role === 'admin';
     } catch {}
+    setRol(yonetici ? 'yonetici' : 'diger');
   }, []);
 
   // URL değişince discipline'ı güncelle
@@ -84,9 +89,13 @@ export default function LaborLibraryPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const fetchItems = useCallback(async () => {
+    const adres = iscilikKatalogAdresi(rol === 'yonetici' ? 'admin' : 'user', activeDiscipline);
+    if (!adres) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
-      const adres = iscilikKatalogAdresi(yonetici ? 'admin' : 'user', activeDiscipline);
       const { data } = await api.get<LaborItem[]>(adres);
       setItems(data);
       setKisitli(null);
@@ -99,9 +108,9 @@ export default function LaborLibraryPage() {
         toast({ title: 'Hata', description: 'İşçilik kalemleri yüklenemedi.', variant: 'destructive' });
       }
     } finally { setIsLoading(false); }
-  }, [activeDiscipline, yonetici]);
+  }, [activeDiscipline, rol]);
 
-  useEffect(() => { fetchItems(); }, [fetchItems]);
+  useEffect(() => { if (rol !== 'bilinmiyor') fetchItems(); }, [fetchItems, rol]);
 
   function openAddDialog() {
     setEditingItem(null);
@@ -156,6 +165,24 @@ export default function LaborLibraryPage() {
       toast({ title: 'Silindi' });
       await fetchItems();
     } catch { toast({ title: 'Hata', variant: 'destructive' }); }
+  }
+
+  if (rol === 'diger') {
+    return (
+      <div>
+        <GeriButonu hedef="/library" />
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-20 text-center">
+          <Wrench className="mb-4 h-12 w-12 text-muted-foreground/50" />
+          <p className="text-sm font-medium">İşçilik kataloğu yalnız yöneticiye açık</p>
+          <p className="mt-1 max-w-md text-sm text-muted-foreground">
+            İşçilik birim fiyatlarınızı Kütüphanem&apos;deki işçilik firmalarınızdan yönetirsiniz.
+          </p>
+          <Button asChild variant="outline" className="mt-4">
+            <Link href="/library">Kütüphaneme git</Link>
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   // Kategoriye göre grupla

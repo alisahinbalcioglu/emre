@@ -79,13 +79,16 @@ export class MatchingController {
     return this.terminology.saveUserAlias(userId, body);
   }
 
-  /** Alias sil (kullanici kaydi) / pasife al (seed — silinemez, S3) */
+  /** Alias sil (kullanici kaydi) / pasife al (seed — silinemez, S3).
+   *  ⚠ Rol kapisi (`@Roles`) BILEREK yok: uye KENDI kaydini siler. ORTAK
+   *  kaydi (seed/ogrenilmis) yalniz yonetici kapatir — karar serviste,
+   *  rol buradan gecer (C4, 30.09.2026). */
   @Delete('aliases/:id')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   @UyeIzniGerekli('kutuphane')
   async deleteAlias(@Param('id') id: string, @Req() req: any) {
     const userId: string = req.user?.id ?? req.user?.sub;
-    return this.terminology.deactivateAlias(userId, id);
+    return this.terminology.deactivateAlias(userId, id, req.user?.role === 'admin');
   }
 
   /** Admin: Mevcut malzemelere tag at (backfill).
