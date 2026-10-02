@@ -703,8 +703,19 @@ export class MatchingService {
     const pool: IndexedRow[] = prices.map((p) => {
       const it = p.laborItem;
       let urun: IndexedRow['urun'];
-      const kolonlu = !!(it.adSlug && it.adBucket);
-      if (kolonlu && it.indexVersion === INDEX_VERSION) {
+      // ── L1 (01.10 olculdu): IKI AYRI SORU, IKI AYRI OLCUT ───────────────
+      // Eskiden tek bayrak ikisini birden tasiyordu: `kolonlu = adSlug &&
+      // adBucket`. Ama "hic indekslenmis mi" ile "kaynak SUTUNU var mi" ayri
+      // sorular — ve ikinci soruyu kalici ikiz (`reindexLabor`) ZATEN dogru
+      // soruyor (`cins || baglanti || capRaw || boyMm`). Tek bayrak yuzunden
+      // capini ADINDA tasiyan, cap sutunu BOS bir kalem bayat dalda "kolonlu"
+      // sayilip BOS kolondan indeksleniyor ve capi DUSUYORDU; ayni kalem hic
+      // indekslenmemisken ADDAN dogru okunuyordu (kapi: iscilik-bayat-indeks).
+      // Kusur yalniz `indexVersion !== INDEX_VERSION` iken kosar — yani
+      // INDEX_VERSION artirildigi an TUM indeksli iscilik kalemlerinde.
+      const indeksli = !!(it.adSlug && it.adBucket);
+      const kolonlu = !!(it.cins || it.baglanti || it.capRaw || it.boyMm);
+      if (indeksli && it.indexVersion === INDEX_VERSION) {
         urun = {
           adSlug: it.adSlug, adBucket: it.adBucket, adTokens: it.adTokens ?? [],
           cinsNorm: it.cinsNorm ?? null, cinsTokens: it.cinsTokens ?? [],
@@ -741,7 +752,10 @@ export class MatchingService {
           price: p.unitPrice, birim: p.unit ?? it.unit ?? null,
         } as IndexedRow['urun'];
       } else {
-        indekssiz++;
+        // Sutunsuz kalem: cap/cins ADDAN okunur (yol-3). Buraya bayat indeksli
+        // kalem de duser — sayac onu "indekssiz" degil BAYAT sayar, yoksa
+        // uyari satiri "yeniden indeksleme onerilir" demeyi birakirdi.
+        if (indeksli) bayat++; else indekssiz++;
         urun = {
           ...this.manuelUrunIndeksle({
             name: it.name, price: p.unitPrice,
