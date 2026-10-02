@@ -58,6 +58,30 @@ export default function GridTestPage() {
   // grid altagacini yeniden kuruyor ve KP17'nin ok-tusu ritmi tam e2e
   // kosumunda duzenli olarak DUSUYORDU (olculdu). Bayrak mount'tan SONRA
   // yazilir — sunucu ve istemci ilk cizimde ayni seyi gorur.
+  // D11 (30.09): ISCILIK YETKISI bayragi. `?iscilik=kapali` → yetki mount'tan
+  // SONRA kapanir; `?iscilik=gec` → yetki KAPALI baslar, 300 ms sonra ACILIR.
+  // Ikincisi gercek dunyayi taklit eder: yetenekler `/auth/me` ile ASENKRON
+  // gelir (CapabilitiesContext once EMPTY ile acilir). Duzeltmede `laborEnabled`
+  // bir useCallback/useMemo bagimliligina YAZILMAZSA kapi ilk degerde (false)
+  // TAKILI kalir ve Pro kullanicinin iscilik kari SESSIZCE calismaz — bu kip o
+  // gerilemeyi olcer. Varsayilan: acik (mevcut tum e2e'ler etkilenmez).
+  const [iscilikAcik, setIscilikAcik] = useState(true);
+  // ⚠ GRID BAYRAKLAR OKUNDUKTAN SONRA MOUNT EDILIR. Ilk halinde grid ilk
+  // render'da `iscilikAcik=true` goruyordu; `?iscilik=gec` boylece gercek
+  // dunyanin TERSINI (once acik, sonra kapali, sonra acik) suruyordu ve
+  // "ilk degerde FALSE'a takili kapi" mutanti o testte HAYATTA kalirdi —
+  // test olcmedigi bir seyi iddia ediyordu. Bayrak render'da okunamaz
+  // (SSR/istemci hydration uyusmazligi); cozum grid'i bir tik geciktirmek.
+  const [gridHazir, setGridHazir] = useState(false);
+  React.useEffect(() => {
+    const kip = new URLSearchParams(window.location.search).get('iscilik');
+    if (kip === 'kapali' || kip === 'gec') setIscilikAcik(false);
+    setGridHazir(true); // ayni tikte toplanir → grid ilk render'da DOGRU degeri gorur
+    if (kip === 'gec') {
+      const t = setTimeout(() => setIscilikAcik(true), 300);
+      return () => clearTimeout(t);
+    }
+  }, []);
   const [saltOkunurSecici, setSaltOkunurSecici] = useState(false);
   React.useEffect(() => {
     setSaltOkunurSecici(new URLSearchParams(window.location.search).get('salt') === '1');
@@ -65,6 +89,15 @@ export default function GridTestPage() {
   const cagriSayisi = useRef(0);
   const log = kaydet;
 
+  // ⚠ HOOK'LAR GOVDEDE: bunlar eskiden JSX prop'unun ICINDE `useMemo` idi —
+  // grid KOSULLU (`gridHazir &&`) render edilince hook sirasi degisti ve sayfa
+  // "Rendered more hooks than during the previous render" ile COKTU (olculdu,
+  // D11 harness duzeltmesi). Hook her render'da AYNI sirada cagrilmali.
+  const markalar = useMemo(() => [{ id: 'b-ayvaz', name: 'AYVAZ' }, { id: 'b-sardogan', name: 'SARDOĞAN' }], []);
+  const firmalar = useMemo(() => [
+    { id: 'f-yasin', name: 'YASİN USTA', discipline: 'mechanical' as const },
+    { id: 'f-hakan', name: 'HAKAN USTA', discipline: 'mechanical' as const },
+  ], []);
   const data: ExcelGridData = useMemo(() => {
     const sys = {
       _malzKar: 0, _iscKar: 0, _marka: null, _firma: null, _matNetPrice: 0, _merges: {},
@@ -79,10 +112,12 @@ export default function GridTestPage() {
       const c = Object.keys(CAP_FIYAT).sort((x, y) => y.length - x.length).find((k) => ad.includes(k));
       return c ? String(CAP_FIYAT[c]) : '';
     };
-    const satir = (i: number, no: string, ad: string, mik: string, veri = true, baslik = false) => ({
+    const satir = (i: number, no: string, ad: string, mik: string, veri = true, baslik = false,
+      ek: Record<string, unknown> = {}) => ({
       _rowIdx: i, _isDataRow: veri, _isHeaderRow: baslik, ...sys,
       _matBirim: veri && mod === 'library' ? listeFiyati(ad) : '',
       col0: no, col1: ad, col2: mik, col3: veri ? 'mt' : '',
+      ...ek,
     });
     return {
       columnDefs: [
@@ -135,6 +170,20 @@ export default function GridTestPage() {
         satir(12, '11', 'Yükselen Milli Vana (OS&Y Valve)', '', false, true),
         satir(13, '12', 'DN 100', '5'),
         satir(14, '13', 'DN 150', '3'),
+        // ── D11 (30.09): ISCILIK YETKISI KAPALIYKEN Isc. Kar TUTAMAGI ─────────
+        // Kaynak %25 kar tasir, hedefler %0 kar + 100'luk iscilik birim fiyati.
+        // Kapali yetkide surukleme hedeflere 25 YAZARSA handleCellValueChanged
+        // iscilik birim/toplamini YENIDEN yazar (100 → 125) ve GENEL TOPLAM
+        // sessizce degisir — olculecek para etkisi bu. Degerler FARKLI olmali:
+        // ayni deger yazilsa AG Grid olay ATESMEZ (vakum olcum olurdu).
+        // ⚠ SONA eklendi (satir indeksleri baska testlerde sabit); KP29 kimligi
+        // bu yuzden guncellendi.
+        satir(15, '14', 'KAR KAYNAK Boru', '2', true, false,
+          { _iscKar: 25, _labBirim: '125.0', _labToplam: '250.0', _labNetPrice: 100 }),
+        satir(16, '15', 'KAR HEDEF A Boru', '2', true, false,
+          { _iscKar: 0, _labBirim: '100.0', _labToplam: '200.0' }),
+        satir(17, '16', 'KAR HEDEF B Boru', '2', true, false,
+          { _iscKar: 0, _labBirim: '100.0', _labToplam: '200.0' }),
       ],
       columnRoles: {
         nameField: 'col1', noField: 'col0', quantityField: 'col2', unitField: 'col3',
@@ -283,18 +332,18 @@ export default function GridTestPage() {
           moda geç
         </button>
       </div>
-      <ExcelGrid
+      {gridHazir && <ExcelGrid
         key={mod}
         data={data}
-        brands={useMemo(() => [{ id: 'b-ayvaz', name: 'AYVAZ' }, { id: 'b-sardogan', name: 'SARDOĞAN' }], [])}
+        brands={markalar}
         onBrandChange={onBrandChange as any}
         seciciSaltOkunur={saltOkunurSecici}
         autoVariantEnabled={autoVariant}
         onAutoVariantChange={onAutoVariantChange}
         onAutoVariantApplied={onAutoVariantApplied}
         // ISCILIK firma fill testi: laborEnabled + firma listesi + onFirmaChange
-        laborEnabled
-        laborFirms={useMemo(() => [{ id: 'f-yasin', name: 'YASİN USTA', discipline: 'mechanical' as const }, { id: 'f-hakan', name: 'HAKAN USTA', discipline: 'mechanical' as const }], [])}
+        laborEnabled={iscilikAcik}
+        laborFirms={firmalar}
         sheetDiscipline="mechanical"
         onFirmaChange={onFirmaChange as any}
         mode={mod}
@@ -308,7 +357,7 @@ export default function GridTestPage() {
         // olculemiyordu. Sag tik menusunu de acar; hicbir E2E sag tik
         // kullanmiyor (olculdu), mevcut senaryolar etkilenmez.
         enableStructureEdit
-      />
+      />}
       <div style={{ marginTop: 10, fontSize: 11, color: '#64748b' }}>
         Olay logu: konsolda <code>[GridTest]</code> ve <code>window.__olay</code> içinde.
       </div>
