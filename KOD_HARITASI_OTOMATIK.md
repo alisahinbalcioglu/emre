@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 869
-Toplam satir: 243502
+Toplam satir: 243508
 Uc nokta: 239
 test:* scripti: 142
 
@@ -859,7 +859,7 @@ test:* scripti: 142
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | 366 |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | 538 |
-| `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 231 |
+| `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 237 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
 | `scripts/backup.sh` | 125 |
