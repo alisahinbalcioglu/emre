@@ -46,7 +46,8 @@ export interface SahteAyar {
   saat?: () => Date;
 }
 
-const OPERATORLER = new Set(['gt', 'gte', 'lt', 'lte', 'in', 'not']);
+// `startsWith`: teklif no atamasi yil onekli numaralari okur (teklif-no.ts).
+const OPERATORLER = new Set(['gt', 'gte', 'lt', 'lte', 'in', 'not', 'startsWith']);
 
 /** Bileşik tekil anahtar nesnesini düz alanlara açar; operatör nesnesine dokunmaz. */
 function duzlestir(where: Kayit | undefined): Kayit | undefined {
@@ -80,6 +81,7 @@ export function eslesir(kayit: Kayit, where: Kayit | undefined): boolean {
           case 'lte': return a != null && a <= b;
           case 'in': return (hedef as unknown[]).map(olcek).includes(a);
           case 'not': return hedef === null ? deger != null : a !== b;
+          case 'startsWith': return typeof deger === 'string' && deger.startsWith(String(hedef));
           default: throw new Error(`sahte Prisma: tanınmayan operatör "${op}"`);
         }
       });

@@ -346,6 +346,12 @@ const SUITES: Suite[] = [
   //    seviyesi doğrulanır. B6 idempotensi ölçer (aynı SQL iki kez).
   //    KIRMIZIYA DÖNERSE DEPLOY KIRILIR — bu paket deploy'un ön provasıdır.
   { ad: 'Migration zinciri + backfill sözü (Z1-Z3/B1-B6)', script: 'test:migration', zincir: 'Z0' },
+  // ── 30.09.2026 — TEKLİF NO (ekip/yetki A bloğu). DB GEREKTİRMEZ: firma başına
+  //    danışma kilidi sahte DB'de muteksle taklit edilir (30 ms gecikme,
+  //    tekillik kısıtı taklitte de var); eş zamanlı iki ilk çıktı farklı numara,
+  //    ortadan silme var olan numarayı tekrarlatmaz, yıl öneki, R1-B6 korunur.
+  //    Şema kısıtının kendisi `test:migration` TN bloğunda (PGlite).
+  { ad: 'Teklif no: kilitli atama + firma içi tekillik (S/K/B/E)', script: 'test:teklif-no', zincir: 'Z0' },
   // ── 28.08.2026 — ERİŞİM KAPISI (K/L/W). DB GEREKTİRMEZ: karar matrisi saf
   //    fonksiyonla, uç kablolaması dekoratör metadata'sıyla ölçülür.
   //    ADIM 2'nin ürün sözü tek cümledir: "veriyi göstermeye devam et, DEĞER

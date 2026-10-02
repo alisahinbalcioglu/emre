@@ -856,6 +856,10 @@ model Quote {
   /// kolonlu `[firmaId]` bulunuyor, siralama sonra bellekte yapiliyordu.
   /// Durum suzgeci de ayni sorguya bindigi icin dogru bilesik indeks bu:
   @@index([firmaId, createdAt])
+  /// 30.09.2026 — teklif no FIRMA icinde tekil. Atama kilitli
+  /// (`src/ozellik/teklif/quotes/teklif-no.ts`); bu kisit son savunmadir.
+  /// NULL `quoteNo` (hic disa aktarilmamis teklif) sinirsiz tekrarlanabilir.
+  @@unique([firmaId, quoteNo])
 }
 
 /// TEKLIF SATIS DURUMU (FAZ 4.6). Enum degerleri UPPER_SNAKE + Turkce —
