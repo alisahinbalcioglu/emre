@@ -3164,6 +3164,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         },
       });
 
+      // D10 (02.10): kaynakta marka YOKTU — fillDown hicbir sey yapmadi. Geri-alma
+      // yiginina BOS kayit itilmez (Ctrl+Z bir adimi "yutardi"), ozet tostu da
+      // cikmaz (yanlis "N markada yok" sayisi yazardi). Karar: Emre 02.10.
+      // ⚠ ODAK GRIDE DONER: dalin sonundaki `focus()` erken donuste atlaniyordu;
+      // odak BODY'de kaliyor ve sonraki Ctrl+Z HICBIR yere gitmiyordu (olculdu).
+      if (sonuc.bosSecim) { rootWrapperRef.current?.focus(); return; }
+
       // K19/SD7: doldurmanin TAMAMI tek Ctrl+Z ile geri alinir
       markaFillUndoStack.current.push({
         prevSwitch,
@@ -3230,6 +3237,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           return det.name || lookupNameOf(node.data);
         },
       });
+
+      // D10 IKIZI: bos firmadan surukleme — hicbir sey yapilmadi, yigin temiz kalir.
+      if (sonuc.bosSecim) { rootWrapperRef.current?.focus(); return; }
 
       markaFillUndoStack.current.push({
         prevSwitch: autoVariantEnabled,

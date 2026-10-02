@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 874
-Toplam satir: 244534
+Kod dosyasi: 875
+Toplam satir: 244810
 Uc nokta: 239
 test:* scripti: 143
 
@@ -780,7 +780,7 @@ test:* scripti: 143
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5088 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5098 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -789,8 +789,8 @@ test:* scripti: 143
 | `frontend/ozellik/tablo/excel-grid/cap-sorguda.test.ts` | 130 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.test.ts` | 65 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 66 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 864 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 479 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 977 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 502 |
 | `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | 234 |
 | `frontend/ozellik/tablo/excel-grid/fitting.ts` | 184 |
 | `frontend/ozellik/tablo/excel-grid/gosterim-baglantisi.test.ts` | 274 |
@@ -856,6 +856,7 @@ test:* scripti: 143
 | `frontend/test/e2e-golden/surum-kapisi.cjs` | 135 |
 | `frontend/test/e2e-golden/verify.mjs` | 836 |
 | `frontend/test/e2e/bant-sayaci.spec.ts` | 145 |
+| `frontend/test/e2e/bos-kaynak-surukle.spec.ts` | 130 |
 | `frontend/test/e2e/eslestirme-temizlik.spec.ts` | 154 |
 | `frontend/test/e2e/grid.spec.ts` | 206 |
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | 126 |
@@ -1632,6 +1633,7 @@ test:* scripti: 143
 | `frontend/test/e2e-golden/surum-kapisi.cjs` | `node:fs` `node:path` `node:child_process` |
 | `frontend/test/e2e-golden/verify.mjs` | `node:fs` `node:path` `node:url` `node:module` `./sayi-ayristirma.mjs` `./artefakt-dizini.cjs` |
 | `frontend/test/e2e/bant-sayaci.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/bos-kaynak-surukle.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/eslestirme-temizlik.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/grid.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | `@playwright/test` |

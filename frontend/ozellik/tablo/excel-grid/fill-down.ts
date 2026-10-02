@@ -77,6 +77,9 @@ export interface FillSonuc {
     devredilen: number };
   /** SD7: doldurmanin TAMAMI tek Ctrl+Z ile geri alinsin diye anlik. */
   geriAl: Array<{ rowIdx: number; oncekiDegerler: Record<string, any> }>;
+  /** D10: kaynakta secim YOKTU — hicbir sey yapilmadi. Cagiran taraf geri-alma
+   *  yiginina BOS kayit itmemeli (yoksa Ctrl+Z bir adimi "yutar"). */
+  bosSecim?: boolean;
 }
 
 /** AG-Grid node'unun kullanilan yuzeyi (test edilebilirlik icin daraltildi). */
@@ -282,6 +285,26 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     ozet: { fiyatli: 0, aday: 0, yok: 0, urunDegil: 0, hata: 0, adYok: 0, atlanan: 0, devredilen: 0 },
     geriAl: [],
   };
+
+  // ── D10 (02.10): BOS KAYNAKTAN SURUKLEME HICBIR SEY YAPMAZ ─────────────
+  // Kaynak satirin marka/firma hucresi BOSKEN surukleme yapilinca bu dongu her
+  // hedef icin ONCE hedefin secimini null'a cekiyor, sonra motora BOS kimlikle
+  // soruyordu (satir basina bir istek). Cevap ne olursa olsun fiyat yazilmadigi
+  // icin D1 temizligi kosuyor — fiyat ve toplam SILINIYOR — ve satir "bu markada
+  // yok" diye KIRMIZIYA boyaniyordu, satirda marka YOKKEN (yanlis suclama:
+  // kullanici kutuphanesinde eksik malzeme aramaya yonlendiriliyordu).
+  //
+  // KARAR (Emre, 02.10): reddedilir — istek gitmez, hedeflere DOKUNULMAZ. Tek
+  // satir temizleme icin "Secimi kaldir" var. Etkilesimli yolun ikizi:
+  // BrandDropdown/FirmaDropdown `handleChange` bos secimde motoru cagirmaz.
+  //
+  // Erken donus SD2 assert'ine (dongu sonu) GIRMEZ: SD2 "secim UYGULANDIYSA her
+  // satir sonuc alir" sozlesmesidir; burada uygulanan bir secim yok.
+  if (!markaId) {
+    sonuc.ozet.atlanan = hedefler.length;
+    sonuc.bosSecim = true;
+    return sonuc;
+  }
 
   const SNAP = ['_marka', '_firma', '_matNetPrice', '_labNetPrice', '_matSuggestion',
     '_matStatus', '_matVariantMode', '_matAutoVariant', '_matVariantTags', '_matVariantLabel',
