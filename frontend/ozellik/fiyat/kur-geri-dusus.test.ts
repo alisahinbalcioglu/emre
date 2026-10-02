@@ -21,7 +21,7 @@
 import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { gosterimParaBirimi, donusumCarpani, paraSimgesi } from './para-gosterim';
+import { gosterimParaBirimi, donusumCarpani, paraSimgesi, kurKullanilabilir } from './para-gosterim';
 
 const KOK = path.resolve(__dirname, '../..');
 const oku = (goreli: string) => fs.readFileSync(path.join(KOK, goreli), 'utf8');
@@ -55,6 +55,34 @@ describe('KUR-01 gösterim: kur yüklenmeden döviz gösterilmez', () => {
   it('USD / EUR çarpanı TCMB kurundan (₺4.735 → $100, ₺5.410 → €100)', () => {
     expect(4735 * donusumCarpani('USD', RATES)).toBeCloseTo(100, 10);
     expect(5410 * donusumCarpani('EUR', RATES)).toBeCloseTo(100, 10);
+  });
+});
+
+describe('C10 bayat kur: backend "geçersiz" derse ekran da kuru kullanmaz (ekran = dosya)', () => {
+  // Backend `kurGecerli` 5 iş gününden eski kuru geçersiz sayar: eşleştirme döviz
+  // satırına fiyat yazmaz, teklif çıktısı TL iner. Ekran aynı yanıtın `gecerli`
+  // alanını okumazsa bayat kurla "$" gösterirdi (inceleme P4a M1).
+  const KUR = { usdTry: 47.35, eurTry: 54.1 };
+
+  it('gecerli: false → kullanılmaz (kur > 1 olsa da)', () => {
+    expect(kurKullanilabilir({ ...KUR, gecerli: false })).toBe(false);
+  });
+
+  it('gecerli: true ya da alan YOK (eski backend) → kur > 1 ise kullanılır', () => {
+    expect(kurKullanilabilir({ ...KUR, gecerli: true })).toBe(true);
+    expect(kurKullanilabilir({ ...KUR })).toBe(true);
+  });
+
+  it('KUR-01 korunur: 1:1 geri düşüş, eksik EUR ya da boş yanıt → kullanılmaz', () => {
+    expect(kurKullanilabilir({ usdTry: 1, eurTry: 1 })).toBe(false);
+    // Her kur KENDİ sınırında ölçülür (diğeri geçerli) — "> 0" ya da koşulun
+    // silinmesi ancak böyle yakalanır (yeniden inceleme P4a L2).
+    expect(kurKullanilabilir({ usdTry: 1, eurTry: 54.1 })).toBe(false);
+    expect(kurKullanilabilir({ usdTry: 47.35, eurTry: 1 })).toBe(false);
+    expect(kurKullanilabilir({ eurTry: 54.1 })).toBe(false);
+    expect(kurKullanilabilir({ usdTry: 47.35, eurTry: 0 })).toBe(false);
+    expect(kurKullanilabilir(null)).toBe(false);
+    expect(kurKullanilabilir(undefined)).toBe(false);
   });
 });
 
@@ -94,6 +122,14 @@ describe('KUR-01 bağlantı: bayrak motordan satır işaretine kadar taşınır'
   it('kanca: çarpan ve fiyat metni gösterim biriminden türer', () => {
     expect(kanca).toMatch(/donusumCarpani\(gosterimCurrency, exchangeRates\)/);
     expect(kanca).toMatch(/formatPrice\(valueTRY \* conversionRate, gosterimCurrency\)/);
+  });
+
+  it('C10 BAĞLANTI: kanca ve üst çubuk kur kutusu AYNI kuralı çağırır; ayrı kur eşiği kalmadı', () => {
+    const ustCubuk = kodOnly(oku('app/(protected)/layout.tsx'));
+    for (const [ad, kaynak] of [['use-currency', kanca], ['layout', ustCubuk]] as const) {
+      expect(kaynak, `${ad}: kurKullanilabilir(data) çağrılmalı`).toMatch(/kurKullanilabilir\(data\)/);
+      expect(kaynak, `${ad}: kendi "usdTry > 1" eşiği kalmamalı`).not.toMatch(/usdTry\s*(?:>|<=)\s*1\b/);
+    }
   });
 
   it('ÖLÇÜTÜN KENDİSİ: desen yalnız YORUMDA geçerse kapı yakalar (yorum kanıt değildir)', () => {

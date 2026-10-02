@@ -121,6 +121,20 @@ export default function GridTestPage() {
         // cevaplanmis sayar, kur donunce satiri yeniden fiyatlamazdi).
         // ⚠ SONA eklendi: mevcut satir indeksleri KAYMASIN (tum e2e onlara bagli).
         satir(11, '10', "KURSUZ 10'' Boru", '7'),
+        // ── D3 (30.09): YETIM SATIR AILESI — baslik mirasi olculebilsin ──
+        // Yukaridaki 12 satirin ADI "Boru" iceriyor; `isSelfSufficientRow`
+        // (build-material-context.ts TYPE_WORD_RE) onlari KENDI KENDINE YETERLI
+        // sayiyor ve baslik mirasini HIC eklemiyor. Yani harness, "sorgu
+        // basligi tasiyor mu?" sorusunu bugune kadar AYIRT EDEMIYORDU.
+        // "DN 100" / "DN 150" tip sozcugu tasimaz → baslik GERCEKTEN eklenir
+        // (build-material-context.test.ts:24 ile ayni sinif).
+        // ⚠ SONA eklendi: satir 10 ve 11 baska testlerde SABIT yazili
+        // (grid.spec, isaret-yazimi, secim-duzenleme) — araya girmek onlari
+        // kaydirirdi. KP29'un kimlik assert'i bu yuzden guncellendi; sessiz
+        // kaymayi o kapi yakaladi (tasarlandigi gibi).
+        satir(12, '11', 'Yükselen Milli Vana (OS&Y Valve)', '', false, true),
+        satir(13, '12', 'DN 100', '5'),
+        satir(14, '13', 'DN 150', '3'),
       ],
       columnRoles: {
         nameField: 'col1', noField: 'col0', quantityField: 'col2', unitField: 'col3',
@@ -216,6 +230,17 @@ export default function GridTestPage() {
       await new Promise((r) => setTimeout(r, 500));
       log('HAKAN (gec): 6\'\' icin 999');
       return { netPrice: 999, confidence: 'high', matchedName: 'Kaynak işçiliği · 6"' } as any;
+    }
+
+    // BANT (30.09): YAVAS "bu firmada yok". Hizli cevap bant kusurunu MASKELIYOR
+    // — React, kolon olayinin sayimini durum yazimiyla ayni tike topluyor ve
+    // bant TESADUFEN dogru gorunuyor (olculdu: hizli dalda yesil, 500 ms'lik
+    // dalda bant HIC gorunmedi). Iscilik sayac kapisi ancak bu dalla olculur
+    // (mutant BANT-M2 hizli dalda YASIYORDU).
+    if (firmaId === 'f-hakan' && laborName.includes("2''")) {
+      await new Promise((r) => setTimeout(r, 500));
+      log('HAKAN (gec): bu firmada 2\'\' YOK');
+      return { netPrice: 0, confidence: 'none', reason: 'Bu firmada 2" yok.' } as any;
     }
     if (laborName.includes("2''")) return { netPrice: 0, confidence: 'none', reason: 'Bu firmada 2" yok.' } as any;
     if (laborName.includes("1''")) {

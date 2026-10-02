@@ -1,5 +1,5 @@
 import {
-  Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, HttpException, Logger,
+  Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 // A2 (tur 3): insan sinirinin tek sayi kurali (dosya metni fiyat hucresi)
@@ -14,19 +14,9 @@ import type { Discipline, Prisma } from '@prisma/client';
 import {
   KENDI_KALEMI_ONCE, adEsit, kiraciKalemiAlanlari, kiraciKapsaminda, kiracininKalemiMi,
 } from '../labor/iscilik-kalemi-kapsami';
+import { GECERSIZ_SATIR_KIMLIGI, satirHatalari, satirKimligiGecerli } from '../satir-hatalari';
 
 const AYNI_AD_LISTEDE = 'Bu listede aynı adlı işçilik kalemi zaten var — önce o satırı düzenleyin ya da silin.';
-const SATIR_KAYDEDILEMEDI = 'Satır kaydedilemedi (beklenmeyen hata) — tekrar deneyin.';
-const GECERSIZ_SATIR_KIMLIGI = 'Geçersiz satır kimliği.';
-
-/**
- * Istek govdesindeki fiyat satiri kimligi (uuid) — DB'ye gitmeden once bicim
- * denetlenir (inceleme 3. tur): gercek Prisma'da dize olmayan kimlik
- * dogrulama hatasi atar, o da beklenmeyen hata olarak gunluge duserdi.
- */
-function satirKimligiGecerli(id: unknown): id is string {
-  return typeof id === 'string' && id.length > 0 && id.length <= 64;
-}
 
 /**
  * Kayitli sayfanin `_laborPriceId`li satirlarini SIRAYLA veren alici. Ayni
@@ -366,43 +356,9 @@ export class LaborFirmsService {
     };
   }
 
-  /**
-   * Toplu kayitta satir hatalari (inceleme 2-3. tur). YANITA: kendi HTTP
-   * hatalarimizin metni (409, 404, 403 — kullaniciya yazildi) aynen; gerisi
-   * (Prisma/DB, programlama hatasi) genel metin — eskiden `e.message` aynen
-   * donuyor, Prisma sorgu ayrintisini tarayiciya tasiyordu. GUNLUGE:
-   * beklenmeyenler istek sonunda TEK satirda (sayi + ilk 3 ornek + ilkinin
-   * cagri yigini), JSON — istekten gelen kimlik/mesajdaki satir sonu gunlugu
-   * bolemez; satir basina gunluk sinirsiz satir sayisiyla diski
-   * doldurabilirdi (guvenlik incelemesi LOW).
-   */
+  /** Toplu kayitta satir hatalari — kural `../satir-hatalari.ts` (malzeme ikiziyle ortak). */
   private satirHatalari(nerede: string) {
-    // Yalniz ilk 3 ornek tutulur, her mesaj 500 karakterde kirpilir: Prisma
-    // dogrulama hatasi cagrinin argumanlarini (istek govdesinden gelen
-    // degerleri) metne katar — kirpilmazsa tek satir govde boyuna yaklasirdi
-    // (inceleme 3. tur LOW-B / guvenlik INFO).
-    const ornek: Array<{ id: unknown; hata: string }> = [];
-    let yigin: string[] = [];
-    let sayi = 0;
-    return {
-      ekle: (id: unknown, e: unknown): { id: unknown; error: string } => {
-        if (e instanceof HttpException) return { id, error: e.message };
-        sayi++;
-        if (ornek.length < 3) {
-          ornek.push({ id, hata: (e instanceof Error ? e.message : String(e)).slice(0, 500) });
-          if (ornek.length === 1 && e instanceof Error) {
-            yigin = (e.stack ?? '').split('\n').filter((s) => /^\s+at /.test(s)).slice(0, 6).map((s) => s.trim());
-          }
-        }
-        return { id, error: SATIR_KAYDEDILEMEDI };
-      },
-      gunlukle: (): void => {
-        if (sayi === 0) return;
-        this.logger.error(
-          `${nerede}: ${sayi} işçilik fiyat satırı beklenmeyen hatayla kaydedilemedi; ilk ${ornek.length}: ${JSON.stringify({ ornek, yigin })}`,
-        );
-      },
-    };
+    return satirHatalari(this.logger, nerede, 'işçilik fiyat satırı');
   }
 
   async bulkUpdatePriceItems(

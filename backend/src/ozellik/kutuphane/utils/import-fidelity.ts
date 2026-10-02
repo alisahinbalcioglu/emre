@@ -6,12 +6,27 @@
 /** Z2 — dosya duzeyinde verilen "tek nokta + 3 hane" yorumu karari. */
 export type DotMeaning = 'thousands' | 'decimal';
 
+/**
+ * C8 (Paket 4a, 01.10.2026) — "1,649" ikili okunur: TR'de 1,649 (virgul
+ * ondalik), EN'de 1649 (virgul binlik). Tek virgul + 1-3 hane (0 ile
+ * baslamayan) + TAM 3 hane, noktali "540.000"un IKIZI BELIRSIZ ADAYDIR.
+ * Eskiden tek virgul her zaman ondalik ve TR kaniti sayiliyordu: EN dosyada
+ * (12.50 · 1,649) kanit celisiyor, karar `null` ama soru da cikmiyordu →
+ * "1,649" sessizce 1,65 yaziliyordu (1000× kucuk; denetim p9).
+ * "25430,000", "0,125", "12,5" aday DEGIL (tek anlamli virgul ondalik).
+ */
+const VIRGUL_BINLIK_ADAYI = /^[-+]?[1-9]\d{0,2},\d{3}$/;
+
 /** Y4 — TR sayi bicimi ayristirma.
  *  Kurallar:
  *   - number tipi → dogrudan.
  *   - ₺/$/€/TL/USD/EUR/bosluk temizlenir (para birimi ayri tespit edilir, Z4).
  *   - Hem nokta hem virgul → nokta binlik, virgul ondalik (1.234,56).
- *   - Yalniz virgul → ondalik (540,50).
+ *   - Yalniz virgul → ondalik (540,50). ISTISNA (C8): "1,649" bicimi
+ *       (VIRGUL_BINLIK_ADAYI) dosya KARARI VERILMISSE ona uyar — 'decimal'
+ *       (EN) → 1649, 'thousands' (TR) → 1,649, `null` (karar yok) → BELIRSIZ.
+ *       Karar argumani HIC verilmezse (undefined) bugunku gibi ondalik:
+ *       insanSayiOku ve sistemin 3 ondalikli yazimi ("1,125") degismez.
  *   - Yalniz nokta:
  *       birden fazla nokta → binlik (1.234.567)
  *       tek nokta + sonrasi tam 3 hane → BELIRSIZ (540.000: 540000 mu 540 mi?)
@@ -51,6 +66,14 @@ export function parseTrNumber(
       // 1,234,567 → virgul binlik (EN bicimi)
       const v = parseFloat(parts.join(''));
       return { value: isNaN(v) ? null : v, ambiguous: false };
+    }
+    if (dotMeaning !== undefined && VIRGUL_BINLIK_ADAYI.test(s)) {
+      // C8: dosya karari verilmis cagiran (yonetici ice aktarimi) — "1,649".
+      if (dotMeaning === 'decimal') {
+        const v = parseFloat(parts.join(''));
+        return { value: isNaN(v) ? null : v, ambiguous: false };
+      }
+      if (dotMeaning !== 'thousands') return { value: null, ambiguous: true };
     }
     const v = parseFloat(s.replace(',', '.'));
     return { value: isNaN(v) ? null : v, ambiguous: false };
@@ -221,6 +244,7 @@ export function detectCurrency(val: unknown): 'TRY' | 'USD' | 'EUR' | null {
  *   - "1.234,56" / "540,50" / "1.234.567"  → nokta = BINLIK kaniti
  *   - "1,234.56" / "540.5" / "540.25"      → nokta = ONDALIK kaniti
  *   - "540.000" (tek nokta + tam 3 hane)   → belirsiz aday (kanit degil)
+ *   - "1,649" (tek virgul + tam 3 hane)    → belirsiz aday (C8; kanit degil)
  *
  *  Sonuc:
  *   - Tek yonde kanit varsa → dotMeaning kesin, soru SORULMAZ (F5).
@@ -253,8 +277,15 @@ export function inferPriceFormat(rawValues: unknown[]): {
       continue;
     }
     if (hasComma) {
+      if (s.split(',').length !== 2) continue;
+      if (VIRGUL_BINLIK_ADAYI.test(s)) {
+        // C8: "1,649" → belirsiz aday (TR 1,649 mi, EN 1649 mu?) — kanit DEGIL
+        ambiguousCount++;
+        if (samples.length < 3 && !samples.includes(raw.trim())) samples.push(raw.trim());
+        continue;
+      }
       // Yalniz virgul (540,50) → virgul ondalik → nokta binlik olmali (TR)
-      if (s.split(',').length === 2) thousandsEvidence++;
+      thousandsEvidence++;
       continue;
     }
     if (hasDot) {
