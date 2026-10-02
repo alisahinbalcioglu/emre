@@ -21,6 +21,7 @@ import { KapaliHesapSeridi } from '@/ortak/kabuk/components/layout/KapaliHesapSe
 import Sidebar from '@/ortak/kabuk/components/layout/Sidebar';
 import Breadcrumb from '@/ortak/kabuk/components/layout/Breadcrumb';
 import { gecerliTokenMi, girisDonusunuSakla } from '@/ortak/lib/oturum';
+import { kurKullanilabilir, type KurYaniti } from '@/ozellik/fiyat/para-gosterim';
 
 /* ------------------------------------------------------------------ */
 /*  Currency Widget                                                    */
@@ -40,8 +41,10 @@ function useCurrencyRates(): ExchangeRates {
         // CANLI TCMB kuru — backend /exchange-rates (today.xml + 1 saat cache,
         // er-api fallback). Statik degil: her sayfa yuklemesinde guncel deger.
         const api = (await import('@/ortak/lib/api')).default;
-        const { data } = await api.get<{ usdTry: number; eurTry: number }>('/exchange-rates');
-        if (!data?.usdTry || data.usdTry <= 1) return;
+        const { data } = await api.get<Partial<KurYaniti>>('/exchange-rates');
+        // C10: kanca ile AYNI kural — backend gecersiz dediyse (5 is gununden
+        // bayat) bayat kur gosterilmez; eslestirme ve teklif ciktisi da kullanmaz.
+        if (!kurKullanilabilir(data)) return;
         setRates({ usdTry: data.usdTry, eurTry: data.eurTry });
       } catch {
         // sessizce gec

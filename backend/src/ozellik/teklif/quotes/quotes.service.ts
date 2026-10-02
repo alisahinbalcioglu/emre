@@ -10,7 +10,7 @@ import * as ExcelJS from 'exceljs';
 import { buildExportWorkbook, ExportSonucu, ExportBirim } from './export-engine';
 import { standartCiktiUret } from './standart-cikti';
 import { buildSampleFormat, ExportOverrides, FillContext } from '../../cikti/quote-formats/format-engine';
-import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
+import { ExchangeRatesService, kurGecerli } from '../../fiyat/exchange-rates/exchange-rates.service';
 import { CeviriService, KAYIT_INDIRGEME_UYARISI } from '../../giris/ai/ceviri.service';
 import { kaynakMetinleriniGeriYaz } from '../../giris/ai/ceviri-kurali';
 import { yukariYuvarla, kalemToplami } from '../../fiyat/matching/pricing';
@@ -554,9 +554,10 @@ export class QuotesService {
    *  ⚠ KUR YOKSA NOT YOK (13.09): servis TCMB'ye ve yedek kaynaga ulasamayinca
    *  1:1 doner (`source: 'fallback'`); eskiden musterinin ICMAL'ine
    *  "Kur: 1 USD = 1,00 TL (TCMB, …)" yaziliyordu. Esik `exportBirimi` ile
-   *  AYNI: 1 TL'yi gecmeyen kur alinamamis sayilir. */
+   *  AYNI: 1 TL'yi gecmeyen kur alinamamis sayilir. C10 (01.10.2026): kural
+   *  `kurGecerli` — 5 is gunundan bayat onbellek kuru da kur YOK sayilir. */
   private kurNotuUret(r: any | null): string {
-    if (!r || !(Number(r.usdTry) > 1) || !(Number(r.eurTry) > 1)) return '';
+    if (!kurGecerli(r, 'USD') || !kurGecerli(r, 'EUR')) return '';
     const tarih = r.date || new Date().toLocaleDateString('tr-TR');
     return `Kur: 1 USD = ${r.usdTry.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL · 1 EUR = ${r.eurTry.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL (TCMB, ${tarih})`;
   }
@@ -615,8 +616,9 @@ export class QuotesService {
   private exportBirimi(quote: any, r: any | null): ExportBirim | null {
     const kod = quote.displayCurrency;
     if (kod !== 'USD' && kod !== 'EUR') return null;
+    // kur alinamadi / servis hatasi / C10 5 is gunundan bayat → guvenli TL (kural kurGecerli)
+    if (!kurGecerli(r, kod)) return null;
     const tryPer = kod === 'USD' ? r?.usdTry : r?.eurTry;
-    if (!tryPer || tryPer <= 1) return null; // kur alinamadi (ya da servis hatasi) → guvenli TL
     const kur = Number(tryPer).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return {
       kod,

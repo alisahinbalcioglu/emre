@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '@/ortak/lib/api';
 import type { Currency, ExchangeRates } from '@/ortak/types/quotes';
 
-import { CURRENCY_SYMBOLS, gosterimParaBirimi, donusumCarpani } from './para-gosterim';
+import { CURRENCY_SYMBOLS, gosterimParaBirimi, donusumCarpani, kurKullanilabilir, type KurYaniti } from './para-gosterim';
 
 // Saf gosterim kurallari para-gosterim.ts'te (vitest'te kosulabilsin diye);
 // sayfalar mevcut import yolunu kullanmaya devam edebilsin.
@@ -52,9 +52,10 @@ export function useCurrency(): UseCurrencyResult {
   useEffect(() => {
     async function fetchRates() {
       try {
-        // Backend TCMB servisi: { usdTry, eurTry, source, date }
-        const { data } = await api.get<{ usdTry: number; eurTry: number }>('/exchange-rates');
-        if (data?.usdTry && data.usdTry > 1) {
+        // Backend TCMB servisi: { usdTry, eurTry, source, date, gecerli }
+        const { data } = await api.get<Partial<KurYaniti>>('/exchange-rates');
+        // C10: backend gecersiz dediyse (5 is gununden bayat) TL kalir — dosya ile ayni.
+        if (kurKullanilabilir(data)) {
           // Ic temsil USD-bazli: TRY = TL/USD, EUR = EUR/USD
           setExchangeRates({
             TRY: data.usdTry,

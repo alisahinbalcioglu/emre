@@ -8,6 +8,7 @@ import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
+import { EslestirmeHafizasiDto, TopluEslestirmeDto } from './dto/eslestirme-govdesi.dto';
 
 @Controller('matching')
 @UseGuards(JwtAuthGuard, ErisimGuard)
@@ -26,7 +27,8 @@ export class MatchingController {
   // 23.09: fiyat KUTUPHANEDEN gelir — Kutuphanem izni olmayan uye fiyat cekemez.
   @UyeIzniGerekli('kutuphane')
   async bulkMatch(
-    @Body() body: { brandId: string; materialNames: string[]; variantTags?: string[]; units?: Record<string, string> },
+    // C11 (P4a, 01.10.2026): SINIF DTO — satir ici tip ValidationPipe'i atliyordu.
+    @Body() body: TopluEslestirmeDto,
     @Req() req: any,
   ) {
     const userId: string = req.user?.id ?? req.user?.sub;
@@ -39,7 +41,7 @@ export class MatchingController {
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
   @UyeIzniGerekli('kutuphane')
   async remember(
-    @Body() body: { brandId: string; materialName: string; secilenAd: string },
+    @Body() body: EslestirmeHafizasiDto,
     @Req() req: any,
   ) {
     const userId: string = req.user?.id ?? req.user?.sub;

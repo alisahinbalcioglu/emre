@@ -127,6 +127,42 @@ num('  2.500,00 TL ', 2500);
     `got ${JSON.stringify(nums)}`);
 }
 
+// ── Z7 (C8, Paket 4a, 01.10.2026): EN BINLIK VIRGUL ─────────
+// Olculen (denetim p9): EN bicimli dosyada (ondalik NOKTA, binlik VIRGUL)
+// "1,649" sessizce 1,649 okunuyordu (1000× kucuk): tek virgul her zaman
+// ondalik sayiliyor ve TR kaniti diye yaziliyordu; nokta-ondalik kanitiyla
+// celisince karar `null`, soru da cikmiyordu (belirsiz aday yok).
+// Kural: tek virgul + 1-3 hane + virgul + TAM 3 hane BELIRSIZ ADAYDIR (nokta
+// "540.000" ikizi); dosya karari VERILMISSE ona uyar. Karar argumani
+// verilmeyen cagiranlar (insanSayiOku, sistemin yazdigi "1,125") DEGISMEZ.
+{
+  const en = inferPriceFormat(['12.50', '3.75', '1,649', '2,350', '980.40']);
+  check('Z7.1 EN dosya (nokta ondalik + virgul binlik adaylari) → dotMeaning=decimal, adaylar belirsiz sayilir',
+    en.dotMeaning === 'decimal' && en.ambiguousCount === 2, `got ${JSON.stringify(en)}`);
+  const d = parseTrNumber('1,649', 'decimal');
+  check('Z7.2 dosya karari decimal (EN): "1,649" → 1649', d.value === 1649 && !d.ambiguous, `got ${JSON.stringify(d)}`);
+  const t = parseTrNumber('1,649', 'thousands');
+  check('Z7.3 dosya karari thousands (TR): "1,649" → 1,649', t.value === 1.649 && !t.ambiguous, `got ${JSON.stringify(t)}`);
+  const n = parseTrNumber('1,649', null);
+  check('Z7.4 karar YOK (null): "1,649" BELIRSIZ — sessiz varsayim yok', n.value === null && n.ambiguous, `got ${JSON.stringify(n)}`);
+  const u = parseTrNumber('1,649');
+  check('Z7.5 KORUMA: karar argumani verilmeyen cagiran degismez ("1,649" → 1,649 — sistemin 3 ondalik yazimi)',
+    u.value === 1.649 && !u.ambiguous, `got ${JSON.stringify(u)}`);
+  const yalnizVirgul = inferPriceFormat(['1,649', '2,350']);
+  check('Z7.6 yalniz virgul adaylari → karar YOK, soru (eskiden TR kaniti sayilip sessizce 1,649)',
+    yalnizVirgul.dotMeaning === null && yalnizVirgul.ambiguousCount === 2 && yalnizVirgul.samples.length === 2,
+    `got ${JSON.stringify(yalnizVirgul)}`);
+  const trKarma = inferPriceFormat(['540,50', '1,649']);
+  check('Z7.7 KORUMA: TR kaniti (540,50) varken aday TR okunur (thousands)', trKarma.dotMeaning === 'thousands',
+    `got ${JSON.stringify(trKarma)}`);
+  const trKanit = inferPriceFormat(['25430,000', '0,125', '12,5']);
+  check('Z7.8 KORUMA: 4+ haneli ya da 0 ile baslayan virgullu deger aday DEGIL, TR kanitidir',
+    trKanit.dotMeaning === 'thousands' && trKanit.ambiguousCount === 0, `got ${JSON.stringify(trKanit)}`);
+  check('Z7.9 KORUMA: cift virgul ve karma bicim degismez',
+    parseTrNumber('1,234,567', null).value === 1234567 && parseTrNumber('1.649,00', null).value === 1649 &&
+      parseTrNumber('1,649.00', null).value === 1649);
+}
+
 // ── Z4: para birimi tespiti (cevrimsiz etiketleme) ──────────
 {
   check('Z4 $ → USD', detectCurrency('$15.000') === 'USD');
@@ -316,7 +352,47 @@ async function a2EskiIceAktarma() {
     `atlanan=${sonuc.totalSkipped} yazılan=${yazilan.length}`);
 }
 
-bitmezseKirmizi(a2EskiIceAktarma().catch((e) => { failed++; failures.push(`A2 eski içe aktarma koşamadı: ${(e as Error).message}`); }).then(() => {
+// ── Z8 (C8): GERCEK onizleme yolu — metin hucreli xlsx → previewBrandExcel ──
+// Kural parsePriceListExcel'in kullandigi yerde olculur (kolon bicim cikarimi
+// + satir ayrisimi + soru + commit karar kapisi).
+async function z8OnizlemeYolu() {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const XLSX = require('xlsx');
+  const { AdminService } = require('../src/ozellik/kutuphane/admin/admin.service');
+  const dosya = (fiyatlar: string[]) => {
+    const ws = XLSX.utils.aoa_to_sheet([['Malzeme Adı', 'Birim', 'Birim Fiyat'], ...fiyatlar.map((f, i) => [`Küresel vana DN${15 + i * 5}`, 'adet', f])]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Liste');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  };
+  const prisma: any = { brand: { findUnique: async () => ({ id: 'b1', name: 'Marka' }) } };
+  const svc = new AdminService(prisma, {} as any, {} as any);
+  const sessiz = console.log; console.log = () => {};
+  let en: any; let tr: any; let commitHatasi: any = null;
+  try {
+    en = await svc.previewBrandExcel('b1', dosya(['12.50', '3.75', '1,649', '2,350', '980.40']));
+    tr = await svc.previewBrandExcel('b1', dosya(['1,649', '2,350']));
+    try {
+      await (svc as any).commitImportCore('b1', 'pl1', { items: tr.items });
+    } catch (e) { commitHatasi = e; }
+  } finally { console.log = sessiz; }
+  const fiyat = (p: any, ham: string) => p.items.find((i: any) => i.priceRaw === ham);
+  check('Z8.1 EN dosya onizlemesi: "1,649" → 1649, "2,350" → 2350, soru YOK',
+    fiyat(en, '1,649')?.unitPrice === 1649 && fiyat(en, '2,350')?.unitPrice === 2350 && en.formatQuestion === null &&
+      fiyat(en, '12.50')?.unitPrice === 12.5,
+    `got ${JSON.stringify(en.items.map((i: any) => [i.priceRaw, i.unitPrice, i.ambiguous]))} soru=${JSON.stringify(en.formatQuestion)}`);
+  const ornek = tr.formatQuestion?.samples?.find((s: any) => s.raw === '1,649');
+  check('Z8.2 yalniz virgul adayli dosya: SORU cikar, iki okuma gosterilir (1,649 / 1649), fiyat yazilmaz',
+    tr.formatQuestion?.count === 2 && ornek?.asThousands === 1.649 && ornek?.asDecimal === 1649 &&
+      tr.items.every((i: any) => i.ambiguous && i.unitPrice == null),
+    `got soru=${JSON.stringify(tr.formatQuestion)} items=${JSON.stringify(tr.items.map((i: any) => [i.priceRaw, i.unitPrice, i.ambiguous]))}`);
+  check('Z8.3 karar verilmeden commit REDDEDILIR (eskiden 1,649 yaziliyordu)',
+    !!commitHatasi && String(commitHatasi?.message ?? '').includes('Fiyat biçimi kararı'),
+    `got ${commitHatasi?.constructor?.name}: ${String(commitHatasi?.message ?? commitHatasi).slice(0, 160)}`);
+}
+
+bitmezseKirmizi(z8OnizlemeYolu().catch((e) => { failed++; failures.push(`Z8 önizleme yolu koşamadı: ${(e as Error).message}`); })
+  .then(() => a2EskiIceAktarma()).catch((e) => { failed++; failures.push(`A2 eski içe aktarma koşamadı: ${(e as Error).message}`); }).then(() => {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`SONUC: ${passed} PASS, ${failed} FAIL`);
   console.log('='.repeat(60));

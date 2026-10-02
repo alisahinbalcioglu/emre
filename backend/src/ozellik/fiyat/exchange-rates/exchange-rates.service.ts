@@ -22,6 +22,42 @@ export interface ExchangeRatesResult {
   /** Kurun ait oldugu tarih (TCMB Tarih attribute'u veya fetch ani) */
   date: string;
   fetchedAt: string;
+  /** C10: onbellek donusunde son BASARILI cekimden bu yana gecen is gunu. */
+  yasIsGunu?: number;
+  /** C10: `yasIsGunu > BAYAT_KUR_IS_GUNU` — kur bayat (uyari; gecerlilik `kurGecerli`de). */
+  bayat?: boolean;
+}
+
+/**
+ * BAYAT KUR (C10, Paket 4a, 01.10.2026 — Emre karari). TCMB ve yedek kaynak
+ * gunlerce alinamazsa servis son basarili kuru YAS SINIRSIZ 'cache' diye
+ * donuyordu; `kurGecerli` tarihe bakmadigi icin eski kur yuksek guvenli
+ * fiyata ve teklif ciktisina giriyordu. Son basarili cekimden (cacheAt) bu
+ * yana gecen is gunu > 2 → "bayat" + WARN; > 5 → kur YOK (doviz satiri
+ * "kur alinamadi", cikti TL — bugunku kur-yok davranisi). Kaynak donunce
+ * kendiliginden duzelir.
+ */
+export const BAYAT_KUR_IS_GUNU = 2;
+export const GECERSIZ_KUR_IS_GUNU = 5;
+const ISTANBUL_MS = 3 * 60 * 60 * 1000; // sabit UTC+3 (Turkiye 2016'dan beri yaz saati uygulamiyor)
+const GUN_MS = 86_400_000;
+
+/**
+ * `onceMs`in gununden SONRAKI gunlerden `simdiMs`in gunune kadar (dahil)
+ * Pazartesi-Cuma sayisi — gun sinirlari ISTANBUL saatiyle; resmi tatil
+ * tablosu YOK (bayram haftasi en fazla 4-5 gunluk erken uyari uretir).
+ * Ornek: Cuma 16:00 → Pazartesi 10:00 = 1; Pzt 23:30 → Sali 00:30 = 1.
+ */
+export function gecenIsGunu(onceMs: number, simdiMs: number): number {
+  const gun = (ms: number) => Math.floor((ms + ISTANBUL_MS) / GUN_MS);
+  const bas = gun(onceMs);
+  const son = Math.min(gun(simdiMs), bas + 400); // 400 gunden yasli kur her kosulda gecersiz
+  let sayi = 0;
+  for (let g = bas + 1; g <= son; g++) {
+    const haftaGunu = (((g + 4) % 7) + 7) % 7; // 1970-01-01 Persembe → 0 = Pazar
+    if (haftaGunu !== 0 && haftaGunu !== 6) sayi++;
+  }
+  return sayi;
 }
 
 /** Eslestirmenin tanidigi para birimleri — kutuphane fiyatlari yalniz bunlarla TL'ye cevrilir. */
@@ -117,13 +153,18 @@ export function satirAdi(sira: string, ad: unknown): string {
  * `usdTry > 1` sartiyla doviz dugmelerini kapatir), ama eslestirme cevirici
  * kaynaga bakmadigi icin 100 dolarlik kalemi 100 TL yaziyordu.
  * Kural: kaynak 'fallback' ise ya da kur 1'i gecmiyorsa kur YOKTUR. Esik
- * cikti (quotes.service `exportBirimi`) ve on yuz (use-currency) ile AYNI.
+ * cikti (quotes.service `exportBirimi`, `kurNotuUret`) ile AYNI fonksiyon.
+ * C10 (01.10.2026): son basarili cekimden bu yana GECERSIZ_KUR_IS_GUNU'nden
+ * fazla is gunu gecmis onbellek kuru da YOKTUR. On yuz bu karari kur ucunun
+ * `gecerli` alanindan okur (exchange-rates.controller.ts → frontend
+ * para-gosterim.ts `kurKullanilabilir`); esik on yuzde TUTULMAZ.
  */
 export function kurGecerli(
-  r: { usdTry?: number; eurTry?: number; source?: string } | null | undefined,
+  r: { usdTry?: number; eurTry?: number; source?: string; yasIsGunu?: number } | null | undefined,
   kod: 'USD' | 'EUR',
 ): boolean {
   if (!r || r.source === 'fallback') return false;
+  if ((r.yasIsGunu ?? 0) > GECERSIZ_KUR_IS_GUNU) return false;
   const kur = Number(kod === 'USD' ? r.usdTry : r.eurTry);
   return Number.isFinite(kur) && kur > 1;
 }
@@ -161,15 +202,17 @@ export class ExchangeRatesService {
   private negatifAt = 0;
   /** Servis saati — test sahte saat baglar (gercek bekleme olmadan pencere olculur). */
   private simdi: () => number = () => Date.now();
+  /** Son BAYAT KUR uyarisinin ani — uyari saatte en cok bir (gunluk sel olmasin). */
+  private sonBayatUyari = 0;
 
   async getRates(): Promise<ExchangeRatesResult> {
     const now = this.simdi();
     if (this.cache && now - this.cacheAt < CACHE_TTL_MS) {
-      return { ...this.cache, source: 'cache' };
+      return this.onbellektenDon();
     }
     // Negatif pencere: asili kaynaga yeniden gidilmez (bkz. NEGATIF_TTL_MS).
     if (this.negatifAt && now - this.negatifAt < NEGATIF_TTL_MS) {
-      return this.cache ? { ...this.cache, source: 'cache' } : this.geriDusus();
+      return this.cache ? this.onbellektenDon() : this.geriDusus();
     }
     if (this.inflight) return this.inflight;
 
@@ -183,13 +226,32 @@ export class ExchangeRatesService {
       .catch((e) => {
         this.logger.warn(`Kur cekilemedi: ${e?.message ?? e}`);
         if (this.simdi() - basla >= ASILI_ESIK_MS) this.negatifAt = this.simdi();
-        // Eski cache varsa onu dondur (bayat kur > kur yok)
-        if (this.cache) return { ...this.cache, source: 'cache' as const };
+        // Eski cache varsa onu dondur (bayat kur > kur yok) — YASIYLA (C10):
+        // 5 is gununu asan kur `kurGecerli`de gecersiz sayilir.
+        if (this.cache) return this.onbellektenDon();
         return this.geriDusus();
       })
       .finally(() => { this.inflight = null; });
 
     return this.inflight;
+  }
+
+  /** Onbellek donusu — UC yolun ortak noktasi (TTL, negatif pencere, ag hatasi): yas + bayat isareti + uyari. */
+  private onbellektenDon(): ExchangeRatesResult {
+    const simdi = this.simdi();
+    const yasIsGunu = gecenIsGunu(this.cacheAt, simdi);
+    const bayat = yasIsGunu > BAYAT_KUR_IS_GUNU;
+    if (bayat && simdi - this.sonBayatUyari >= CACHE_TTL_MS) {
+      this.sonBayatUyari = simdi;
+      this.logger.warn(
+        `BAYAT KUR: son başarılı çekim ${yasIsGunu} iş günü önce (kur tarihi ${this.cache!.date}); ` +
+          (yasIsGunu > GECERSIZ_KUR_IS_GUNU
+            ? 'döviz satırlarına fiyat VERİLMİYOR'
+            : `${GECERSIZ_KUR_IS_GUNU} iş gününü aşınca döviz fiyatı verilmez`) +
+          ' — TCMB ve yedek kur kaynağına erişimi denetleyin.',
+      );
+    }
+    return { ...this.cache!, source: 'cache', yasIsGunu, bayat };
   }
 
   /** Hic veri yok — 1:1 fallback (frontend TRY gosterir; `kurGecerli` false). */
