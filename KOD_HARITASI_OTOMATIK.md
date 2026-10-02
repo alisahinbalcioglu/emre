@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 859
-Toplam satir: 238971
+Kod dosyasi: 860
+Toplam satir: 239157
 Uc nokta: 238
-test:* scripti: 142
+test:* scripti: 143
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -137,7 +137,7 @@ test:* scripti: 142
 | `backend/src/ozellik/eslestirme/matching/ad-resolver.ts` | 122 |
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 448 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 231 |
-| `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 665 |
+| `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 721 |
 | `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1561 |
 | `backend/src/ozellik/eslestirme/matching/index/types.ts` | 275 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
@@ -416,6 +416,7 @@ test:* scripti: 142
 | `backend/test/odeme-imha-test.ts` | 875 |
 | `backend/test/odeme-onyukleme-test.ts` | 425 |
 | `backend/test/olcu-anahtari-cakismasi-test.ts` | 450 |
+| `backend/test/olcu-sinifi-test.ts` | 129 |
 | `backend/test/onceden-fiyatli-test.ts` | 164 |
 | `backend/test/oneri-kutusu-cekince-test.ts` | 361 |
 | `backend/test/ortam-degiskenleri-test.ts` | 255 |
@@ -431,7 +432,7 @@ test:* scripti: 142
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 1025 |
+| `backend/test/regression-all.ts` | 1026 |
 | `backend/test/s45-malzeme-aile-test.ts` | 441 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 901 |
@@ -1241,6 +1242,7 @@ test:* scripti: 142
 | `backend/test/odeme-imha-test.ts` | `node:fs` `node:path` `@nestjs/config` `@prisma/client` `../src/ozellik/odeme/abonelik/satinalma.servisi` `../src/ozellik/odeme/abonelik/deneme-hakki.servisi` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/odeme-onyukleme-test.ts` | `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/olcu-anahtari-cakismasi-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/tag-generator` `../src/ozellik/eslestirme/matching/normalizer` `../src/ozellik/eslestirme/matching/conversion` `./yardimci/bitmezse-kirmizi` |
+| `backend/test/olcu-sinifi-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/onceden-fiyatli-test.ts` | `fs` `../src/ozellik/giris/excel-grid/excel-grid.service` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/oneri-kutusu-cekince-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/types` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/ortam-degiskenleri-test.ts` | `node:fs` `node:path` |
@@ -1898,6 +1900,7 @@ test:* scripti: 142
 | `backend/package.json` | `test:dn-koprusu` | `ts-node test/dn-koprusu-test.ts` |
 | `backend/package.json` | `test:labor` | `ts-node test/labor-matching-test.ts` |
 | `backend/package.json` | `test:iscilik-bayat` | `ts-node test/iscilik-bayat-indeks-test.ts` |
+| `backend/package.json` | `test:olcu-sinifi` | `ts-node test/olcu-sinifi-test.ts` |
 | `backend/package.json` | `test:grid` | `ts-node test/excel-grid-test.ts` |
 | `backend/package.json` | `test:labor-sheet` | `ts-node test/labor-sheet-test.ts` |
 | `backend/package.json` | `test:kl` | `ts-node test/kl-liste-ekleme-test.ts` |

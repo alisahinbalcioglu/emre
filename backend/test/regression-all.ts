@@ -105,6 +105,7 @@ const SUITES: Suite[] = [
   { ad: 'Sözleşme dondurma (C1-C10)', script: 'test:contract', zincir: 'Z2' },
   { ad: 'İşçilik tek motor (L)', script: 'test:labor', zincir: 'Z2' },
   { ad: 'İşçilik bayat indeks — çap addan (L1)', script: 'test:iscilik-bayat', zincir: 'Z2' },
+  { ad: 'Ürün ölçü sınıfı — nitelik gövdeyi ezmez (A1)', script: 'test:olcu-sinifi', zincir: 'Z2' },
   // ── S2+S3 (06.08.2026): ÖNERİ KUTUSU. Çapraz-marka/firma önerisi ana
   //    motoru çağırıyor ve motorun "onaylat" dediği tek adayı KESİN gibi
   //    sunuyordu. İki kural mühürlendi: kanıt gücü yetmeyen aday (çapı ya da
