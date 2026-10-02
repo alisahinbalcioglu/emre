@@ -421,6 +421,19 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
 
   let donusum: string | null = null;
   let capsizDusum = false;
+  /**
+   * A2 (02.10 olculdu): eslesme YALNIZCA capraz yorumla mumkun oldu.
+   * Sinif cozulemeyince `sizeEquivalents` celik+plastik BIRLESIMINI dondurur ve
+   * `ambiguous` isaretler; isaretin amaci dosyada yazili ("iki yoruma yayilan
+   * adayi gorunce ASLA otomatik yazma, P4") ama `conversion.ts`in kendi notu
+   * 26.08'de curutmus: "hicbir cagiran bu bayragi okumuyor". Ana eslesme yolu
+   * hala okumuyordu → KOMSU cap tek eslesme sayilip fiyat OTOMATIK yaziliyordu:
+   *   "Kör Flanş 1\""              → Kör Flanş 3/4" @70  (1"→dn25 ∩ 3/4"→25mm)
+   *   "Kaynak Boyunlu Flanş 1 1/4\"" → … 1" @100         (1 1/4"→dn32 ∩ 1"→32mm)
+   *   "Dirsek 1\""                 → Dirsek Siyah 1 1/4" @50
+   * ADAY ELENMEZ (kanit yok, suclama yok); yalnizca otomatik yazim kesilir.
+   */
+  let capBelirsizDusum = false;
   /** S4: capsiz istisnasindan gecen adaylar arasinda ailesi ZAYIF olan var mi
    *  (aile yalniz kategori basligindan turedi) → ek kanit kapisi. */
   let capsizAileZayif = false;
@@ -764,6 +777,49 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       };
       const capOncesi = rows; // PANO 20: cap-yok'ta mevcut caplari raporla
       const d = rows.filter(capUyar);
+      // ── A2: KIYAS SINIF ICINDE (02.10) ────────────────────────────────
+      // Satirin okumasi belirsizse (iki yorum FARKLI fiziksel urune gidiyor),
+      // adayin KENDI sinifinda da eslesip eslesmedigini ayrica olc: celik
+      // okuma celik okumayla, plastik okuma plastik okumayla. Hicbiri
+      // tutmuyorsa eslesme YALNIZCA capraz yorumla olmustur — aday kalir ama
+      // fiyat otomatik yazilamaz.
+      // ⚠ KAPI SATIRIN BELIRSIZLIGIYLE SINIRLI DEGIL (02.10 olculdu): ilk
+      // yazimda kosul `equiv.ambiguous` idi, yani yalniz SATIRIN okumasi
+      // belirsizse acilyordu. Capraz eslesme satirin sinifi COZULSE BILE
+      // olabilir — urunun sinifi 'unknown' ise ONUN capTags'i birlesimdir ve
+      // kesisim urunun OBUR okumasindan gelebilir. Olculdu: satir 3/4"
+      // (plastikte 25 mm), urun 1" (celikte dn25) → kesisen tek tag dn25 ve
+      // urunun CELIK okumasindan geliyor; dar kosulda 3/4" satirina 1"
+      // urununun fiyati OTOMATIK yaziliyordu (kapi: U blogu).
+      // On kontrol: capraz okuma icin taraflardan biri BIRLESIM olmali —
+      // satir belirsiz ya da en az bir aday 'unknown'. Ikisi de cozulmusse
+      // `sinifUyar` zaten ayni sinifi sart kosar, okuma tektir.
+      // ⚠ BU SATIR ESDEGER MUTANT URETIR, bilerek birakildi: `true` yapmak
+      // DAVRANISI DEGISTIRMEZ (olculdu — 1946 gercek sorgunun 1946'si ayni) ve
+      // bu derlemde SURE FARKI DA OLCULEMEDI (3'er kosum: 14352/13300/13753 ms
+      // vs 13443/14169/14435 ms, araliklar ic ice). Yani hicbir test onu
+      // olduremez; "mutasyon tam" diye yazmak yanlis olurdu. Korundu cunku
+      // olcum 3.293 urunluk havuzda yapildi — 50 binlik kutuphanede aday basina
+      // iki `sizeEquivalents` cagrisini bastan elemek ucuz sigortadir.
+      const birlesimVar = equiv.ambiguous || d.some((r) => r.urun.sizeClass === 'unknown');
+      if (birlesimVar && d.length > 0) {
+        const urunTag = (r: IndexedRow, c: SizeClass): string[] => {
+          const bilgi = extractSizeInfo(r.urun.capNorm ?? r.urun.capRaw ?? '');
+          return bilgi ? sizeEquivalents(c, bilgi).tags : [];
+        };
+        // NOT: capsiz urun kontrolu YOK — gereksiz. `d` zaten `capUyar`dan
+        // geciyor, o da `r.urun.capTags.some(...)` istiyor; capTags bos bir urun
+        // `d`ye HIC giremez. Savunma satiri yazildi, mutasyonla ERISILEMEZ
+        // oldugu olculdu (mutant yasiyordu) ve silindi.
+        const tutarli = (r: IndexedRow): boolean => {
+          for (const c of ['steel', 'plastic'] as const) {
+            const satir = sizeEquivalents(c, line.capInfo!).tags;
+            if (satir.some((t) => urunTag(r, c).includes(t))) return true;
+          }
+          return false;
+        };
+        if (d.every((r) => !tutarli(r))) capBelirsizDusum = true;
+      }
       // Capsiz ekipman (E1/H3): urunun capi yoksa cap filtresi ELEMEZ —
       // "kompansator 40cm hortum" gibi satirlarda cap satira degil urune ait
       // olmayabilir. Capi OLAN urunler arasinda ise filtre serttir.
@@ -1180,6 +1236,11 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   const capCevrilemediNotu = capCevrilemedi && line.capInfo
     ? `Satırın çapı (${line.capInfo.display}) çevrim tablosunda yok — çap süzgeci uygulanmadı, çapı siz doğrulayın`
     : null;
+  // A2: eslesme yalniz capraz yorumla mumkun oldu (satirin sinifi cozulemedi
+  // ve aday KENDI sinifinda eslesmiyor) — komsu cap olabilir, onay ister.
+  const capBelirsizNotu = capBelirsizDusum && line.capInfo
+    ? `Satırın çapı (${line.capInfo.display}) iki ayrı ölçü sistemine çevrilebiliyor ve ürün yalnız diğer okumayla eşleşti — komşu çap olabilir, doğrulayın`
+    : null;
   // S4: capsiz istisnasindan gecen adayin ailesi de dogrulanmamissa (yalniz
   // kategori basligindan turedi) kapi AYRICA acilir — capsizNotu'ndan daha
   // AGIR bir cekincedir, bu yuzden uyariNot zincirinde ondan ONCE gelir.
@@ -1237,6 +1298,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   if (aileZayifNotu) kapilar.push('aile-zayif');
   if (capsizNotu) kapilar.push('capsiz-dusum');
   if (capCevrilemediNotu) kapilar.push('cap-cevrilemedi');
+  if (capBelirsizNotu) kapilar.push('cap-belirsiz');
   if (dnKoprusuNotu) kapilar.push('dn-koprusu');
   if (gevsetmeNotu) kapilar.push('ad-gevsetildi');
   if (bilinmeyenNotu) kapilar.push('bilinmeyen-kelime');
@@ -1244,13 +1306,13 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
 
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
   if (rows.length === 1) {
-    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
+    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? capBelirsizNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
     if (celiski) {
       return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: celiski, kapilar };
     }
     return { kind: 'single', row: rows[0], donusum };
   }
-  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? undefined, kapilar };
+  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? capBelirsizNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? undefined, kapilar };
 }
 
 /**

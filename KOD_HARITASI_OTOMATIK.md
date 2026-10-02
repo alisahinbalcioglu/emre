@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 860
-Toplam satir: 239157
+Kod dosyasi: 861
+Toplam satir: 239380
 Uc nokta: 238
-test:* scripti: 143
+test:* scripti: 144
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -138,8 +138,8 @@ test:* scripti: 143
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 448 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 231 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 721 |
-| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1561 |
-| `backend/src/ozellik/eslestirme/matching/index/types.ts` | 275 |
+| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1623 |
+| `backend/src/ozellik/eslestirme/matching/index/types.ts` | 283 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 111 |
 | `backend/src/ozellik/eslestirme/matching/matching.module.ts` | 16 |
@@ -318,6 +318,7 @@ test:* scripti: 143
 | `backend/test/audit-real-excel.ts` | 82 |
 | `backend/test/b1-kutuphane-cascade-test.ts` | 186 |
 | `backend/test/build-sha-kablolama-test.ts` | 140 |
+| `backend/test/cap-belirsizligi-test.ts` | 152 |
 | `backend/test/cap-cevrilemedi-test.ts` | 254 |
 | `backend/test/ceviri-duzeltme-test.ts` | 1028 |
 | `backend/test/ceviri-gecis-test.ts` | 293 |
@@ -432,7 +433,7 @@ test:* scripti: 143
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 1026 |
+| `backend/test/regression-all.ts` | 1027 |
 | `backend/test/s45-malzeme-aile-test.ts` | 441 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 901 |
@@ -1145,6 +1146,7 @@ test:* scripti: 143
 | `backend/test/audit-real-excel.ts` | `xlsx` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/product-index` |
 | `backend/test/b1-kutuphane-cascade-test.ts` | `@prisma/client` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/build-sha-kablolama-test.ts` | `fs` `path` `../src/health.controller` |
+| `backend/test/cap-belirsizligi-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/index/types` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/cap-cevrilemedi-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/conversion` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `backend/test/ceviri-duzeltme-test.ts` | `http` `@nestjs/common` `@nestjs/common/constants` `@nestjs/core` `@nestjs/platform-express` `express` `@nestjs/throttler` `fs` `path` `../src/ozellik/giris/ai/ceviri-katmani` `../src/ozellik/giris/ai/ceviri-kurali` `../src/ozellik/giris/ai/ceviri-duzeltme.controller` `../src/ozellik/giris/ai/dto/ceviri-duzeltme.dto` `../src/ozellik/giris/ai/ceviri.service` `../src/ozellik/odeme/abonelik/ceviri-kota.servisi` `../src/ozellik/odeme/abonelik/erisim.guard` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/altyapi/auth/guards/kullanici-hiz-siniri.guard` `../src/altyapi/auth/hesap.servisi` `../src/ozellik/teklif/quotes/quotes.service` `../scripts/ceviri-suzgec-olcum` `./ceviri-sahte-db` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/ceviri-gecis-test.ts` | `exceljs` `../src/ozellik/giris/ai/ceviri-kurali` `../src/ozellik/odeme/abonelik/ceviri-kotasi` `../src/ozellik/odeme/abonelik/ceviri-kota.servisi` `../src/ozellik/giris/ai/ceviri.service` `./ceviri-sahte-db` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
@@ -1901,6 +1903,7 @@ test:* scripti: 143
 | `backend/package.json` | `test:labor` | `ts-node test/labor-matching-test.ts` |
 | `backend/package.json` | `test:iscilik-bayat` | `ts-node test/iscilik-bayat-indeks-test.ts` |
 | `backend/package.json` | `test:olcu-sinifi` | `ts-node test/olcu-sinifi-test.ts` |
+| `backend/package.json` | `test:cap-belirsizligi` | `ts-node test/cap-belirsizligi-test.ts` |
 | `backend/package.json` | `test:grid` | `ts-node test/excel-grid-test.ts` |
 | `backend/package.json` | `test:labor-sheet` | `ts-node test/labor-sheet-test.ts` |
 | `backend/package.json` | `test:kl` | `ts-node test/kl-liste-ekleme-test.ts` |

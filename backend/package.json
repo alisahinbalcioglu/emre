@@ -48,6 +48,7 @@
     "test:labor": "ts-node test/labor-matching-test.ts",
     "test:iscilik-bayat": "ts-node test/iscilik-bayat-indeks-test.ts",
     "test:olcu-sinifi": "ts-node test/olcu-sinifi-test.ts",
+    "test:cap-belirsizligi": "ts-node test/cap-belirsizligi-test.ts",
     "test:grid": "ts-node test/excel-grid-test.ts",
     "test:labor-sheet": "ts-node test/labor-sheet-test.ts",
     "test:kl": "ts-node test/kl-liste-ekleme-test.ts",

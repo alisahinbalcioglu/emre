@@ -138,6 +138,14 @@ export type KanitKapisi =
    *  yok, burada SATIRIN capi cevrilemiyor. Olculdu: kapi yokken 1/2" fiyati
    *  1/4" satirina, 110 mm fiyati 8" satirina OTOMATIK yaziliyordu. */
   | 'cap-cevrilemedi'
+  /** A2: satirin capi IKI olcu sistemine cevrilebiliyor (sinif cozulemedi) ve
+   *  aday YALNIZCA diger okumayla eslesti — yani komsu cap olabilir.
+   *  `sizeEquivalents` bunu `ambiguous` ile zaten isaretliyordu; ana eslesme
+   *  yolu OKUMUYORDU (conversion.ts'in 26.08 notu: "hicbir cagiran bu bayragi
+   *  okumuyor"). Olculdu: "Kör Flanş 1\"" → 3/4" @70, "Kaynak Boyunlu Flanş
+   *  1 1/4\"" → 1" @100, "Dirsek 1\"" → celik 1 1/4" @50 — ucu de conf=high
+   *  ve sessiz. Aday ELENMEZ; yalniz otomatik yazim kesilir. */
+  | 'cap-belirsiz'
   /** DN KOPRUSU (27.08): SATIR bir DN yaziyor, hayatta kalan ADAYLARIN HEPSI
    *  de DN yaziyor ama BASKA bir DN degeri. Eslesme yalnizca
    *  `NOMINAL_MM_TO_DN` koprusune dayaniyor demektir — istenen olcu bu urunde
