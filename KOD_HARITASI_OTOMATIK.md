@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 873
-Toplam satir: 244394
+Kod dosyasi: 874
+Toplam satir: 244534
 Uc nokta: 239
 test:* scripti: 143
 
@@ -486,7 +486,7 @@ test:* scripti: 143
 | `frontend/app/(protected)/quote-formats/page.tsx` | 396 |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 780 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2404 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2422 |
 | `frontend/app/(protected)/quotes/page.tsx` | 330 |
 | `frontend/app/admin/brands/page.tsx` | 904 |
 | `frontend/app/admin/denetim/page.tsx` | 294 |
@@ -861,6 +861,7 @@ test:* scripti: 143
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | 126 |
 | `frontend/test/e2e/iscilik-fill-baglam.spec.ts` | 124 |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | 366 |
+| `frontend/test/e2e/restore-ozet.spec.ts` | 122 |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | 538 |
 | `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 237 |
@@ -1636,6 +1637,7 @@ test:* scripti: 143
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/iscilik-fill-baglam.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/restore-ozet.spec.ts` | `@playwright/test` `../../ozellik/teklif/taslak` |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | `@playwright/test` `../../ozellik/teklif/taslak` |
