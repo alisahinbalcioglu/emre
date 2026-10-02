@@ -64,6 +64,22 @@ const SIMDI = new Date('2026-09-22T12:00:00.000Z');
 const GELECEK = new Date(SIMDI.getTime() + 10 * GUN);
 const GECMIS = new Date(SIMDI.getTime() - 10 * GUN);
 
+/**
+ * ⚠ I BLOGU GERCEK SAATI OKUR — fikstur tarihi DONMUS `SIMDI`den TURETILEMEZ.
+ *
+ * `tierKapisi` gercek `TierGuard`i kurar ve guard kendi `new Date()`ini
+ * kullanir; saat enjekte edilemiyor. Donmus `GELECEK` (= SIMDI + 10 gun)
+ * 2026-10-02T12:00:00Z'ye denk geliyordu ve O AN GELINCE dort assert
+ * (I0/I2/I6/I11) kirmiziya dondu: ayni gun sabah YESIL, ogleden sonra KIRMIZI.
+ * Kod degismemisti — fikstur eskimisti.
+ *
+ * Saf bloklar (S/T) saati ACIKCA `SIMDI` olarak gecirdigi icin etkilenmedi;
+ * o yuzden donmus sabitler OLDUGU GIBI kaliyor (determinizm orada deger).
+ * Yalniz gercek saati okuyan yol kendi tarihlerini GERCEK saatten turetir.
+ */
+const GERCEK_ILERI = new Date(Date.now() + 10 * GUN);
+const GERCEK_GERI = new Date(Date.now() - 10 * GUN);
+
 const KOK = path.join(__dirname, '..');
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -212,41 +228,49 @@ async function tIkizKural() {
 async function iUcKapisi() {
   console.log('\n── I · TierGuard tek basina (ErisimGuard DEVREDE DEGIL) ───');
 
-  const i0 = await tierKapisi({ durum: 'AKTIF', erisimSonu: GELECEK });
+  // FIKSTUR KANITI (02.10): bu blogun tarihleri GERCEK saate gore ileri/geri
+  // olmali. Biri donmus bir sabitten turetilirse gun gelince sessizce eskir ve
+  // kapi "kod bozuldu" diye yanlis alarm verir — bir kez oldu, bir daha olmasin.
+  const simdiGercek = Date.now();
+  check('I-FIXTURE ⭐ blogun tarihleri GERCEK saate gore ileri/geri',
+    GERCEK_ILERI.getTime() > simdiGercek && GERCEK_GERI.getTime() < simdiGercek,
+    `ileri=${GERCEK_ILERI.toISOString()} geri=${GERCEK_GERI.toISOString()} simdi=${new Date(simdiGercek).toISOString()}`);
+
+  const i0 = await tierKapisi({ durum: 'AKTIF', erisimSonu: GERCEK_ILERI });
   check('I0-OLCUT yururlukteki AKTIF pro abonelik GECIYOR (kapi kor degil)',
     i0.gecti === true, i0.mesaj);
   check('I0-FIXTURE ⭐ sorgu `durum` ve `erisimSonu` ALANLARINI CEKIYOR',
     i0.iz.cagri === 1 && i0.iz.select[0]?.durum === true && i0.iz.select[0]?.erisimSonu === true,
     JSON.stringify(i0.iz.select[0]));
 
-  const i1 = await tierKapisi({ durum: 'SONA_ERDI', erisimSonu: GECMIS });
+  const i1 = await tierKapisi({ durum: 'SONA_ERDI', erisimSonu: GERCEK_GERI });
   check('I1 ⭐ suresi dolmus abonelikle korunan uc 403',
     i1.gecti === false, i1.mesaj);
 
-  const i2 = await tierKapisi({ durum: 'IPTAL', erisimSonu: GELECEK });
+  const i2 = await tierKapisi({ durum: 'IPTAL', erisimSonu: GERCEK_ILERI });
   check('I2 ⭐⭐ IPTAL ama ODENMIS DONEM SURUYOR → GECER (200)',
     i2.gecti === true, i2.mesaj);
 
-  const i3 = await tierKapisi({ durum: 'IPTAL', erisimSonu: GECMIS });
+  const i3 = await tierKapisi({ durum: 'IPTAL', erisimSonu: GERCEK_GERI });
   check('I3 ⭐ IPTAL ve odenmis donem BITTI → 403',
     i3.gecti === false, i3.mesaj);
 
-  const i4 = await tierKapisi({ durum: 'ASKIDA', erisimSonu: GELECEK });
+  const i4 = await tierKapisi({ durum: 'ASKIDA', erisimSonu: GERCEK_ILERI });
   check('I4 ASKIDA → 403 (tarih ileride olsa bile)', i4.gecti === false, i4.mesaj);
 
-  const i5 = await tierKapisi({ durum: 'DENEME', erisimSonu: GECMIS });
+  const i5 = await tierKapisi({ durum: 'DENEME', erisimSonu: GERCEK_GERI });
   check('I5 suresi dolmus DENEME → 403', i5.gecti === false, i5.mesaj);
 
-  const i6 = await tierKapisi({ durum: 'DENEME', erisimSonu: GELECEK });
+  const i6 = await tierKapisi({ durum: 'DENEME', erisimSonu: GERCEK_ILERI });
   check('I6 suren DENEME → GECER', i6.gecti === true, i6.mesaj);
 
   // ⚠ Tolerans ve salt-okunur kiplerde SEVIYE KORUNUR: o iki kipte musteri
   // urunu gormeye devam etmeli, kisitlamayi ErisimGuard yapar.
-  const i7 = await tierKapisi({ durum: 'ODEME_BEKLIYOR', erisimSonu: GECMIS });
+  const i7 = await tierKapisi({ durum: 'ODEME_BEKLIYOR', erisimSonu: GERCEK_GERI });
   check('I7 ⭐ ODEME_BEKLIYOR (tolerans) → GECER, tarih gecmis olsa bile',
     i7.gecti === true, i7.mesaj);
 
-  const i8 = await tierKapisi({ durum: 'KISITLI', erisimSonu: GECMIS });
+  const i8 = await tierKapisi({ durum: 'KISITLI', erisimSonu: GERCEK_GERI });
   check('I8 ⭐ KISITLI (salt-okunur) seviyesini KORUR → TierGuard GECIRIR',
     i8.gecti === true, i8.mesaj);
 
@@ -259,7 +283,7 @@ async function iUcKapisi() {
     i10.gecti === false && /Mevcut paketiniz yok/.test(i10.mesaj), i10.mesaj);
 
   // Seviye ekseni hala calisiyor mu (2.12 nobeti): saglikli ama CORE abonelik.
-  const i11 = await tierKapisi({ durum: 'AKTIF', erisimSonu: GELECEK, seviye: 'core' });
+  const i11 = await tierKapisi({ durum: 'AKTIF', erisimSonu: GERCEK_ILERI, seviye: 'core' });
   check('I11 saglikli ama Basic abonelik → 403 (seviye ekseni bozulmadi)',
     i11.gecti === false && /Pro paketi gerektirir/.test(i11.mesaj), i11.mesaj);
 }

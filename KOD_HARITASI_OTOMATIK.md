@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 875
-Toplam satir: 244925
+Toplam satir: 244949
 Uc nokta: 239
 test:* scripti: 144
 
@@ -310,7 +310,7 @@ test:* scripti: 144
 | `backend/src/ozellik/teklif/quotes/teklif-no.ts` | 85 |
 | `backend/src/surum.ts` | 30 |
 | `backend/test/a1-silme-etkisi-test.ts` | 331 |
-| `backend/test/abonelik-erisim-test.ts` | 353 |
+| `backend/test/abonelik-erisim-test.ts` | 377 |
 | `backend/test/abonelik-olcum-sorgu-test.ts` | 575 |
 | `backend/test/admin-import-test.ts` | 402 |
 | `backend/test/aile-oncelik-simulasyon.ts` | 292 |
