@@ -4,6 +4,7 @@ import { CreateQuoteDto } from './dto/create-quote.dto';
 import { TekliflerSorgusuDto } from './dto/teklifler-sorgusu.dto';
 import { Kimlik, TeklifKimligi, teklifKosulu } from '../../../altyapi/auth/kimlik';
 import { hazirlayanGorunumu } from './hazirlayan';
+import { teklifNoAta } from './teklif-no';
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
 // PRD Teklif Formatim (v2.1): profesyonel cikti motoru
@@ -654,13 +655,19 @@ export class QuotesService {
     return [quote.title, quote.musteri, quote.proje].map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ');
   }
 
-  private async ciktiKur(k: Kimlik, quote: any, rev: number, dil: string | undefined, kur: any | null): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik'; birim: ExportBirim | null; antetNotu: string | null }> {
-    // Bulgu Raporu kok neden: grid'den uretim SILINDI — orijinal dosya ZORUNLU.
+  /** Bulgu Raporu kok neden: grid'den uretim SILINDI — orijinal dosya ZORUNLU.
+   *  Teklif no atamasindan ONCE de cagrilir: kesin reddedilecek cikti numara
+   *  YAKMAZ (R1-B6'nin ikizi). */
+  private orijinalDosyaZorunlu(quote: any): void {
     if (!quote.originalFile) {
       throw new BadRequestException(
         'Bu teklifte orijinal Excel dosyası kayıtlı değil — dışa aktarım için keşif Excel\'ini yükleyip teklifi yeniden kaydedin.',
       );
     }
+  }
+
+  private async ciktiKur(k: Kimlik, quote: any, rev: number, dil: string | undefined, kur: any | null): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik'; birim: ExportBirim | null; antetNotu: string | null }> {
+    this.orijinalDosyaZorunlu(quote);
     const { wb: formatWb, formatAdi, formatKaynak, sheetRoles } = await this.resolveFormatWb(k, quote);
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
     const birim = this.exportBirimi(quote, kur); // PANO 18 (KF7: iki yol ayni)
@@ -702,17 +709,14 @@ export class QuotesService {
       : this.turkceCikti(quote.sheets, secim);
     dil = ceviri.dil;
 
-    // Teklif no ILK aktarimda atanir, sonra SABIT (T10)
-    let quoteNo: string = quote.quoteNo;
-    if (!quoteNo) {
-      const yil = new Date().getFullYear();
-      const sayac = await this.prisma.quote.count({
-        // Teklif no sayaci FIRMA basina — ayni firmanin iki uyesi ortak
-        // numara dizisini paylasir (MP-2026-001, -002 ...).
-        where: { firmaId: k.firmaId, quoteNo: { not: null } } as any,
-      });
-      quoteNo = `MP-${yil}-${String(sayac + 1).padStart(3, '0')}`;
-    }
+    // Teklif no ILK aktarimda atanir, sonra SABIT (T10). Sayac FIRMA basina
+    // (ayni firmanin uyeleri ortak diziyi paylasir). Atama KILITLI ve dosya
+    // uretiminden ONCE kalici — kural `teklif-no.ts`. Kesin ret (orijinal
+    // dosya yok) numara ALMAZ; uretim gecici bir hatayla duserse numara bu
+    // teklifte kalir: yanmaz, baskasina da verilmez.
+    this.orijinalDosyaZorunlu(quote);
+    const quoteNo: string = quote.quoteNo
+      ?? await teklifNoAta(this.prisma, k.firmaId, id, new Date().getFullYear());
     const yeniRev = (quote.rev ?? 0) + 1;
 
     const sonuc = await this.ciktiKur(k, { ...quote, quoteNo }, yeniRev, dil, await this.kurOku());

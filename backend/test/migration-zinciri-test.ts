@@ -451,6 +451,7 @@ async function main() {
   await denemeHakkiDoldurmasi(db, klasorler);
   await mirasHakkiDoldurmasi(db, klasorler);
   await iscilikKalemiSahipligi(db, klasorler);
+  await teklifNoTekilligi(db, klasorler);
 
   await db.close();
 
@@ -992,6 +993,52 @@ async function iscilikKalemiSahipligi(db: PGlite, klasorler: string[]): Promise<
   const ilk = JSON.stringify(await durum());
   await db.exec(doldurma);
   check('IK9 IDEMPOTENT: ikinci koşum hiçbir satırı değiştirmedi', JSON.stringify(await durum()) === ilk);
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  TN — TEKLİF NO TEKİLLİĞİ (göç 20260930180000)
+//    `@@unique([firmaId, quoteNo])`: aynı firmada aynı numara İKİNCİ kez
+//    yazılamaz; başka firmada aynı numara serbest; NULL numara (hiç dışa
+//    aktarılmamış teklif) sınırsız. Göç P1'in göçünden SONRA sıralanır
+//    (Prisma ad sırasıyla uygular).
+// ═════════════════════════════════════════════════════════════════════════
+async function teklifNoTekilligi(db: PGlite, klasorler: string[]): Promise<void> {
+  console.log('\n── TN · TEKLİF NO TEKİLLİĞİ ──');
+  const klasor = klasorler.find((k) => k.endsWith('_teklif_no_tekilligi'));
+  check('TN-OLCUT teklif no göçü zincirde', !!klasor, JSON.stringify(klasorler.slice(-2)));
+  if (!klasor) return;
+  const p1 = klasorler.find((k) => k.includes('iscilik_kalemi_sahipligi'));
+  check('TN-OLCUT göç P1\'in göçünden SONRA sıralanıyor (ad sırası = uygulama sırası)',
+    !!p1 && klasorler.indexOf(klasor) > klasorler.indexOf(p1), `${p1} · ${klasor}`);
+
+  const indeks = await db.query<{ indexdef: string }>(
+    `SELECT indexdef FROM pg_indexes WHERE tablename = 'Quote' AND indexname = 'Quote_firmaId_quoteNo_key'`,
+  );
+  check('TN0 tekil indeks var: (firmaId, quoteNo)',
+    indeks.rows.length === 1 && /UNIQUE/.test(indeks.rows[0].indexdef) && /"firmaId", "quoteNo"/.test(indeks.rows[0].indexdef),
+    JSON.stringify(indeks.rows));
+
+  await db.exec(`
+    INSERT INTO "Firma" ("id","ad") VALUES ('tn-A','TN A'), ('tn-B','TN B');
+    INSERT INTO "User" ("id","email","password","firmaId") VALUES
+      ('tn-ua','tna@x.com','h','tn-A'), ('tn-ub','tnb@x.com','h','tn-B');
+    INSERT INTO "Quote" ("id","userId","firmaId","quoteNo") VALUES
+      ('tn-q1','tn-ua','tn-A','MP-2026-001');
+  `);
+  const yaz = async (sql: string): Promise<string | null> => {
+    try {
+      await db.exec(sql);
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+  };
+  const ayniFirma = await yaz(`INSERT INTO "Quote" ("id","userId","firmaId","quoteNo") VALUES ('tn-q2','tn-ua','tn-A','MP-2026-001')`);
+  check('TN1 ⭐ aynı firmada aynı numara İKİNCİ kez yazılamaz', !!ayniFirma && /unique|duplicate/i.test(ayniFirma), String(ayniFirma));
+  const baskaFirma = await yaz(`INSERT INTO "Quote" ("id","userId","firmaId","quoteNo") VALUES ('tn-q3','tn-ub','tn-B','MP-2026-001')`);
+  check('TN2 başka firmada aynı numara serbest (sayaç firma başına)', baskaFirma === null, String(baskaFirma));
+  const numarasiz = await yaz(`INSERT INTO "Quote" ("id","userId","firmaId") VALUES ('tn-q4','tn-ua','tn-A'), ('tn-q5','tn-ua','tn-A')`);
+  check('TN3 numarasız (NULL) teklif aynı firmada birden çok olabilir', numarasiz === null, String(numarasiz));
 }
 
 bitmezseKirmizi(main().catch((e) => {

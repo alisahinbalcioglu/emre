@@ -63,7 +63,9 @@ function servis(sheets: any[], firma: any, ek: { firmaHatasi?: boolean; formatBy
   };
   const prisma: any = {
     $transaction: async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma)),
-    quote: { findFirst: async () => quote, count: async () => 0, update: async ({ data }: any) => Object.assign(quote, data) },
+    // Teklif no kilitli atanir (teklif-no.ts): danisma kilidi + onekli numaralar.
+    $queryRaw: async () => [{ kilit: '' }],
+    quote: { findFirst: async () => quote, findMany: async () => [], count: async () => 0, update: async ({ data }: any) => Object.assign(quote, data) },
     quoteFormat: { findFirst: async () => (ek.formatBytes ? { id: 'fmt1', name: 'Kullanıcı formatı', fileBytes: ek.formatBytes, isDefault: true, mapping: null } : null) },
     quoteExport: { create: async () => ({}) },
     firma: {
