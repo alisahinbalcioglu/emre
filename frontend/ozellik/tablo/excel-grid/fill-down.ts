@@ -25,7 +25,7 @@
  */
 // NOT: relative import — vitest.config.ts'te '@/' alias'i tanimli degil ve
 // bu modul birim testle sinaniyor (fill-down.test.ts).
-import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, kalemToplami, PARA_ONDALIK } from '../../fiyat/pricing';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, kalemToplami, kalemBirimFiyatMetni, PARA_ONDALIK } from '../../fiyat/pricing';
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil
 // ve bu modul vitest ile kosuyor (fill-down.test.ts).
 import { sayiAlani, sayiOku } from '../../fiyat/sayi-alani';
@@ -123,6 +123,14 @@ function genelToplamiTazele(
   // veriyi olaydan once degistirdigi icin recalcGrand bunu HIC duzeltmiyordu.
   // Tek yuvarlama fonksiyonu (orantili epsilon): pricing `yukariYuvarla`.
   yaz(node, genelAlan, kalemToplami(mat, lab).toFixed(PARA_ONDALIK));
+  // Y2 (02.10): rolun IKIZI — genel BIRIM fiyat. KD11 genel TOPLAMI eklemisti,
+  // bunu unutmustu: dosyasinda "TOPLAM BIRIM FIYAT" kolonu olan teklifte satir
+  // Malz. Birim 100 · Genel Toplam 1.000 iken bu hucre ONCEKI markanin degerinde
+  // kaliyordu. Kural `recalcGrand` ile TEK kaynaktan (`kalemBirimFiyatMetni`).
+  if (roller.grandUnitPriceField) {
+    yaz(node, roller.grandUnitPriceField,
+      kalemBirimFiyatMetni(oku(roller.materialUnitPriceField), oku(roller.laborUnitPriceField)));
+  }
 }
 
 /** `fiyatiTemizle` icin dal alanlari — fillDown icinde bir kez turetilir. */
@@ -217,6 +225,10 @@ export interface FillRoller {
    *  ama Genel Toplam bos kaliyordu (kalem 54, Yol C). */
   laborTotalField?: string;
   grandTotalField?: string;
+  /** Y2: "Toplam Birim Fiyat" — etkilesimli yol (`recalcGrand`) yaziyordu,
+   *  doldurma yolu YAZMIYORDU; satir kendi icinde celisiyordu. */
+  laborUnitPriceField?: string;
+  grandUnitPriceField?: string;
 }
 
 export interface FillDownArgs {

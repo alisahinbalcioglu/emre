@@ -123,6 +123,21 @@ export function kalemToplami(mat: number, lab: number): number {
 }
 
 /**
+ * KALEM BIRIM FIYATI — "Toplam Birim Fiyat" hucresinin METNI (Y2, 02.10).
+ * Malzeme + iscilik SATIS birim fiyati, 1 haneye YUKARI; toplam 0 ise BOS
+ * (hucreye "0.0" yazilmaz).
+ *
+ * Bu kural eskiden yalniz ExcelGrid `recalcGrand` icinde yasiyordu; surukle-
+ * doldur (`fill-down.ts`) ve geri yukleme (`restore-rematch.ts`) bu hucreyi HIC
+ * yazmiyordu — dosyasinda "TOPLAM BIRIM FIYAT" kolonu olan tekliflerde satir
+ * kendi icinde celisiyordu. Uc tuketici TEK kuraldan beslenir.
+ */
+export function kalemBirimFiyatMetni(matBirim: number, labBirim: number): string {
+  const toplam = matBirim + labBirim;
+  return toplam > 0 ? yukariYuvarla(toplam).toFixed(1) : '';
+}
+
+/**
  * SATIR GENEL TOPLAMI — EKRAN BIRIMINDE, PARCALARDAN (A4a/A4b, tur 3 14.09).
  * Cikti motorunun satir I hucresiyle AYNI kural: K(mat×oran) + K(lab×oran).
  *  - Dovizde `_toplam × oran` tek seferde cevrilince 1 kurus kayiyordu (4400

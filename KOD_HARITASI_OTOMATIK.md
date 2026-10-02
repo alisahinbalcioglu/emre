@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 878
-Toplam satir: 245060
+Toplam satir: 245241
 Uc nokta: 239
 test:* scripti: 143
 
@@ -590,7 +590,7 @@ test:* scripti: 143
 | `frontend/lib/ondalik-kurali.test.ts` | 70 |
 | `frontend/lib/parse-material-text.test.ts` | 86 |
 | `frontend/lib/popup-secici-sozlesmesi.test.ts` | 62 |
-| `frontend/lib/pricing.test.ts` | 95 |
+| `frontend/lib/pricing.test.ts` | 117 |
 | `frontend/lib/sayfa-toplamlari.test.ts` | 234 |
 | `frontend/lib/sayi-ayristirma.test.ts` | 80 |
 | `frontend/lib/silme-etkisi-getir.ts` | 26 |
@@ -671,12 +671,12 @@ test:* scripti: 143
 | `frontend/ozellik/fiyat/fitting-hesap.test.ts` | 354 |
 | `frontend/ozellik/fiyat/gosterim-dili.test.ts` | 301 |
 | `frontend/ozellik/fiyat/hesap-sinirlari.test.ts` | 242 |
-| `frontend/ozellik/fiyat/ikiz-suzgec-kapilari.test.ts` | 130 |
+| `frontend/ozellik/fiyat/ikiz-suzgec-kapilari.test.ts` | 155 |
 | `frontend/ozellik/fiyat/kar-tek-suzgec.test.ts` | 189 |
 | `frontend/ozellik/fiyat/kur-geri-dusus.test.ts` | 140 |
 | `frontend/ozellik/fiyat/para-gosterim.ts` | 68 |
 | `frontend/ozellik/fiyat/para-sutun-genisligi.ts` | 243 |
-| `frontend/ozellik/fiyat/pricing.ts` | 698 |
+| `frontend/ozellik/fiyat/pricing.ts` | 713 |
 | `frontend/ozellik/fiyat/sayi-alani.ts` | 385 |
 | `frontend/ozellik/fiyat/sayi-kurali.test.ts` | 289 |
 | `frontend/ozellik/fiyat/sayi-oku.test.ts` | 72 |
@@ -780,7 +780,7 @@ test:* scripti: 143
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5123 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5125 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -791,8 +791,8 @@ test:* scripti: 143
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 66 |
 | `frontend/ozellik/tablo/excel-grid/fill-alanlari.test.ts` | 30 |
 | `frontend/ozellik/tablo/excel-grid/fill-alanlari.ts` | 25 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 977 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 502 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 1051 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 514 |
 | `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | 234 |
 | `frontend/ozellik/tablo/excel-grid/fitting.ts` | 184 |
 | `frontend/ozellik/tablo/excel-grid/gosterim-baglantisi.test.ts` | 274 |
@@ -830,8 +830,8 @@ test:* scripti: 143
 | `frontend/ozellik/teklif/fitting-ipucu.ts` | 49 |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.test.ts` | 254 |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | 195 |
-| `frontend/ozellik/teklif/restore-rematch.test.ts` | 717 |
-| `frontend/ozellik/teklif/restore-rematch.ts` | 267 |
+| `frontend/ozellik/teklif/restore-rematch.test.ts` | 741 |
+| `frontend/ozellik/teklif/restore-rematch.ts` | 274 |
 | `frontend/ozellik/teklif/salt-okunur-secici.test.ts` | 113 |
 | `frontend/ozellik/teklif/taslak.test.ts` | 89 |
 | `frontend/ozellik/teklif/taslak.ts` | 98 |

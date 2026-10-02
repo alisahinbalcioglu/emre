@@ -22,7 +22,7 @@ import { planYapistir, type PasteKolon, type PasteSatir } from './yapistir';
 import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, type Nokta } from './kopyala';
 import { isaretStili, isaretTooltip, secimBekliyor, kutuphaneFiyatAyrisimi, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
-import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
+import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
 // FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
 import {
   FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
@@ -4470,7 +4470,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
       if (grandUnitPriceField) {
         // Miktar 0 veya bos olsa bile birim fiyat gosterilir
-        e.node.setDataValue(grandUnitPriceField, grandUnit > 0 ? yukariYuvarla(grandUnit).toFixed(1) : '');
+        // Y2: kural TEK yerde (pricing `kalemBirimFiyatMetni`) — doldurma ve geri
+        // yukleme ayni fonksiyonu cagirir; uc kopya ayrisamaz.
+        e.node.setDataValue(grandUnitPriceField, kalemBirimFiyatMetni(matUnit, labUnit));
       }
 
       // Grand total = matTotal + labTotal
