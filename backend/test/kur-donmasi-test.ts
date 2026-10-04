@@ -304,6 +304,11 @@ async function kurGeriDususu() {
       kanit?.hafizaOtoyaz === true && kanit?.netPrice === 4735, `otoyaz=${kanit?.hafizaOtoyaz} net=${kanit?.netPrice}`);
     check('I1 kur yokken hafiza otoyazisi fiyat yazmaz, satir isaretli', dusuk?.netPrice === 0 && !dusuk?.hafizaOtoyaz && dusuk?.kurAlinamadi === true,
       `net=${dusuk?.netPrice} otoyaz=${dusuk?.hafizaOtoyaz} kurAlinamadi=${dusuk?.kurAlinamadi}`);
+    // KUR DONMASI IKIZI (04.10): otoyaz adayin TL fiyatini yaziyor ama KURUNU
+    // tasimiyordu (`...result` coklu sonuctan gelir, orada kaynakKur yok) —
+    // dovizli kalem gecmis secimden yazilinca "hangi kurla?" bilgisi kayboluyordu.
+    check('I2 ★ hafiza otoyazisi aday KURUNU da tasir (kur donmasi ikizi)',
+      kanit?.kaynakKur?.currency === 'USD' && kanit?.kaynakKur?.kur === 47.35, JSON.stringify(kanit?.kaynakKur));
   }
 
   console.log('── J) KUR-02: para birimi kodu yazim bicimi 1:1 TL uretmez ──');

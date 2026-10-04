@@ -1000,6 +1000,10 @@ export class MatchingService {
             return {
               ...result,
               netPrice: c.netPrice, listPrice: c.listPrice, discount: c.discount,
+              // KUR DONMASI IKIZI (04.10): `...result` COKLU sonuctan gelir ve
+              // orada kur yok — adayin kuru tasinmazsa dovizli kalem gecmis
+              // secimden yazildiginda "hangi kurla?" bilgisi kaybolur.
+              kaynakKur: c.kaynakKur,
               confidence: 'high',
               matchedName: c.materialName,
               candidates: undefined,

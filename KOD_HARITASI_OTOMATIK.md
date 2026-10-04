@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 888
-Toplam satir: 246751
+Toplam satir: 246760
 Uc nokta: 239
 test:* scripti: 144
 
@@ -145,7 +145,7 @@ test:* scripti: 144
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 116 |
 | `backend/src/ozellik/eslestirme/matching/matching.module.ts` | 16 |
-| `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1235 |
+| `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1239 |
 | `backend/src/ozellik/eslestirme/matching/normalizer.ts` | 712 |
 | `backend/src/ozellik/eslestirme/matching/shared-tag-matcher.ts` | 165 |
 | `backend/src/ozellik/eslestirme/matching/tag-generator.ts` | 161 |
@@ -400,7 +400,7 @@ test:* scripti: 144
 | `backend/test/kisisel-liste-izolasyon-test.ts` | 365 |
 | `backend/test/kl-kayit-toplami-test.ts` | 149 |
 | `backend/test/kl-liste-ekleme-test.ts` | 172 |
-| `backend/test/kur-donmasi-test.ts` | 570 |
+| `backend/test/kur-donmasi-test.ts` | 575 |
 | `backend/test/kurtarma-mesaj-test.ts` | 367 |
 | `backend/test/kutuphane-ad-duzenleme-test.ts` | 153 |
 | `backend/test/kutuphane-fiyat-donmasi-test.ts` | 249 |
