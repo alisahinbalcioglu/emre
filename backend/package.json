@@ -169,7 +169,8 @@
     "test:vitrin": "ts-node test/vitrin-test.ts",
     "test:yonetici-paket": "ts-node test/yonetici-paket-test.ts",
     "test:kiraci-siniri": "ts-node test/kiraci-siniri-test.ts",
-    "test:govde-dogrulama": "ts-node test/govde-dogrulama-test.ts"
+    "test:govde-dogrulama": "ts-node test/govde-dogrulama-test.ts",
+    "test:ci-ek-notu": "ts-node test/ci-ek-notu-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

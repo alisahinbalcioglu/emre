@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 890
-Toplam satir: 247195
+Kod dosyasi: 892
+Toplam satir: 247474
 Uc nokta: 239
-test:* scripti: 144
+test:* scripti: 145
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -331,6 +331,7 @@ test:* scripti: 144
 | `backend/test/ceviri-kota-uygulama-test.ts` | 1195 |
 | `backend/test/ceviri-kotasi-test.ts` | 311 |
 | `backend/test/ceviri-sahte-db.ts` | 275 |
+| `backend/test/ci-ek-notu-test.ts` | 178 |
 | `backend/test/cikti-dil-test.ts` | 91 |
 | `backend/test/cikti-test-yardimci.ts` | 338 |
 | `backend/test/contract-test.ts` | 365 |
@@ -437,7 +438,7 @@ test:* scripti: 144
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 1048 |
+| `backend/test/regression-all.ts` | 1061 |
 | `backend/test/s45-malzeme-aile-test.ts` | 441 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 901 |
@@ -458,6 +459,7 @@ test:* scripti: 144
 | `backend/test/webhook-tahsilat-dogrulama-test.ts` | 2162 |
 | `backend/test/yardimci/bellek-prisma.ts` | 651 |
 | `backend/test/yardimci/bitmezse-kirmizi.ts` | 64 |
+| `backend/test/yardimci/ci-ek-notu.ts` | 88 |
 | `backend/test/yardimci/saat-kaydir.cjs` | 57 |
 | `backend/test/yardimci/sahte-oidc-saglayici.ts` | 244 |
 | `backend/test/yardimci/sahte-sahiplik.ts` | 39 |
@@ -1187,6 +1189,7 @@ test:* scripti: 144
 | `backend/test/ceviri-karar-test.ts` | `../src/ozellik/giris/ai/ceviri.service` `../src/ozellik/giris/ai/ceviri-kurali` |
 | `backend/test/ceviri-kota-uygulama-test.ts` | `fs` `path` `@nestjs/common` `@nestjs/common/constants` `@nestjs/throttler` `../src/ozellik/giris/ai/ceviri.service` `../src/ozellik/giris/ai/ai.controller` `../src/ozellik/giris/ai/dto/ceviri.dto` `../src/ozellik/odeme/abonelik/erisim.servisi` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/ceviri-kotasi-test.ts` | `../src/ozellik/odeme/abonelik/satinalma.servisi` `../src/ozellik/odeme/abonelik/fiyat.controller` `../src/ozellik/odeme/abonelik/abonelik.controller` `../src/ozellik/odeme/odeme.module` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
+| `backend/test/ci-ek-notu-test.ts` | `child_process` `fs` `os` `path` |
 | `backend/test/cikti-dil-test.ts` | `../src/ozellik/teklif/quotes/cikti-dil` `../src/ozellik/teklif/quotes/standart-cikti` |
 | `backend/test/cikti-test-yardimci.ts` | `zlib` `exceljs` `../../frontend/ozellik/fiyat/pricing` |
 | `backend/test/contract-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/types` `./yardimci/bitmezse-kirmizi` |
@@ -1292,7 +1295,7 @@ test:* scripti: 144
 | `backend/test/pk3-kimlik-haritasi-test.ts` | `./fixture-anonim` |
 | `backend/test/pk3-repo-kapsama-test.ts` | `fs` `path` `child_process` |
 | `backend/test/pk9-sessiz-indeks-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
-| `backend/test/regression-all.ts` | `child_process` |
+| `backend/test/regression-all.ts` | `child_process` `./yardimci/ci-ek-notu` |
 | `backend/test/s45-malzeme-aile-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/conversion` `../src/ozellik/eslestirme/matching/index/types` `./yardimci/bitmezse-kirmizi` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` |
 | `backend/test/s45-olcum.ts` | `fs` `path` `../src/ozellik/giris/excel-grid/excel-grid.service` `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` |
 | `backend/test/satinalma-yolu-test.ts` | `node:fs` `node:path` `@nestjs/config` `../src/altyapi/auth/hukuki-surum` `class-transformer` `class-validator` `../src/ozellik/odeme/abonelik/abonelik.controller` `../src/ozellik/odeme/abonelik/dto/abonelik-basla.dto` `@nestjs/common` `../src/ozellik/odeme/abonelik/deneme-hakki.servisi` `./yardimci/bitmezse-kirmizi` |
@@ -2067,6 +2070,7 @@ test:* scripti: 144
 | `backend/package.json` | `test:yonetici-paket` | `ts-node test/yonetici-paket-test.ts` |
 | `backend/package.json` | `test:kiraci-siniri` | `ts-node test/kiraci-siniri-test.ts` |
 | `backend/package.json` | `test:govde-dogrulama` | `ts-node test/govde-dogrulama-test.ts` |
+| `backend/package.json` | `test:ci-ek-notu` | `ts-node test/ci-ek-notu-test.ts` |
 | `frontend/package.json` | `test:e2e` | `playwright test` |
 | `frontend/package.json` | `test:e2e-golden` | `node test/e2e-golden/run.mjs` |
 
