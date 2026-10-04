@@ -1,3 +1,5 @@
+import type { KanitKapisi } from './index/types';
+
 /**
  * KUR DONMASI (kullanici karari 06.08: "dovizli maliyetin kuru teklife
  * donsun"). Dovizli (USD/EUR) kutuphane satirindan fiyat yazildiginda,
@@ -28,37 +30,17 @@ export interface MatchResult {
   // 'multi' = birden cok aday, kullaniciya popup
   // 'none' = cap yok veya kutuphanede aday yok
   confidence: 'high' | 'suggestion' | 'medium' | 'low' | 'none' | 'multi';
-  /** K4 (27.08): aday satirda YAZILI olan yuzeyi TASIMIYOR — yuzey suzgeci
-   *  havuzu bosalttigi icin genisletilmis kumeden geldi. Motorun ic
-   *   listesi bu sozlesmeye tasinmiyor; hafiza otoyazisi kapisi
-   *  (matching.service) bu bayragi okur: bir kez onaylanan secim ikinci
-   *  kosumda uyariyi SILIP fiyati high olarak yazmasin. Diger kapilardan
-   *  FARKI: burada aday YAZILI bir kisiti IHLAL ediyor. */
-  yuzeyGenisletildi?: boolean;
-  /** K2/CC IKIZI (27.08): SATIRIN capi cevrim tablosunda YOK — cap suzgeci
-   *  hicbir adayi dogrulayamadi. 26.08'de motor tarafinda kapatilan kapinin
-   *  (`cap-cevrilemedi`) sozlesme karsiligi.
+  /** KARAR (b) (04.10): motorun I6 kapi listesi TOPLUCA. Hafiza otoyazisi
+   *  (matching.service) `HAFIZA_OTOYAZ_ENGELI`ndeki bir kapi aciksa YAZMAZ.
    *
-   *  NEDEN GEREKLI: kapi motorun ic `kapilar` listesindeydi ama MatchResult'a
-   *  TASINMIYORDU, dolayisiyla hafiza otoyazisi (matching.service) onu
-   *  GOREMIYORDU. Olculdu: satirda bir kez secim yapilinca otoyaz kapinin
-   *  UYARI CUMLESINI SILIP fiyati 'high' yaziyordu — yani 26.08'de kapatilan
-   *  kapi hafiza yolundan aynen geri aciliyordu (3/8" satirina 1/2" fiyati).
-   *  `yuzeyGenisletildi` ile ayni gerekce: bir kez onaylanan secim, ikinci
-   *  kosumda dogrulanmamis bir olcuyu dogrulanmis gibi gosteremez. */
-  capCevrilemedi?: boolean;
-  /** DN KOPRUSU (27.08): satirin DN'i ile adayin DN'i FARKLI — eslesme yalniz
-   *  `NOMINAL_MM_TO_DN` nominal koprusune dayaniyor, istenen olcu bu urunde
-   *  YOK. `capCevrilemedi` ile ayni gerekce: kapiyi motorda kapatmak YETMEZ,
-   *  cunku hafiza otoyazisi sozlesmeyi okur. Olculdu: kullanici satira bir kez
-   *  cevap verince otoyaz kapinin cumlesini silip 1200 TL'yi 'high' yaziyordu.
-   *
-   *  ⚠ DESEN BORCU: bu, ayni amaca hizmet eden UCUNCU boolean
-   *  (`yuzeyGenisletildi` · `capCevrilemedi` · `dnKoprusu`). Motorun ic
-   *  `kapilar` listesinde 12 kapi var ve otoyaz bunlarin yalnizca ucunu
-   *  gorebiliyor. Dogru cozum kapilarin TOPLUCA tasinmasidir; kapsami
-   *  ('capsiz-dusum' yaygin ekipmanda ateslendigi icin) ayri olcum turu ister. */
-  dnKoprusu?: boolean;
+   *  Onceden uc ayri boolean vardi (yuzeyGenisletildi · capCevrilemedi ·
+   *  dnKoprusu, hepsi 27.08) ve otoyaz kapilarin yalnizca ucunu gorebiliyordu
+   *  — kayitli "DESEN BORCU": "dogru cozum kapilarin TOPLUCA tasinmasidir;
+   *  kapsami ayri olcum turu ister". Olcum (Pimtas, 04.10): tek adayli 123
+   *  sorunun 122'si aile-yok, engel kumesindeki kapilarin hicbiri yok.
+   *  Bedeli odenmeyen ornek: 373.825 TL'lik makine (aile zayif + capsiz) tek
+   *  onaydan sonra 'high' yaziliyordu. */
+  kapilar?: KanitKapisi[];
   // URUN DEGIL (spec): "FITTINGS ORANI" gibi oran/hizmet satirlari — fiyat
   // BEKLENMEZ. Hucre bos + gri isaretlenir ('yok' kirmizisindan farkli).
   notProduct?: boolean;

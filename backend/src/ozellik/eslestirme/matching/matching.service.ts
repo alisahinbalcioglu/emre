@@ -25,7 +25,7 @@ import { extractSizeInfo } from './conversion';
 import { TerminologyService, SOZLUK_MALZEME_RETTI } from './terminology.service';
 // TEK MOTOR (Faz 2b): indeksli + Ad-kilitli cekirdek (saf — test:index K1-K7)
 import { parseLine } from './index/line-parser';
-import { runQuery, guclutekAday, aileUyusmazligiTeshisi } from './index/query-engine';
+import { runQuery, guclutekAday, aileUyusmazligiTeshisi, HAFIZA_OTOYAZ_ENGELI } from './index/query-engine';
 import { toMatchResult, gorunenAd, kurOf } from '../../fiyat/matching/index/outcome-mapper';
 import type { TryCevirici } from '../../fiyat/matching/index/outcome-mapper';
 import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields, iscilikAdCekirdegi, malzemeEtiketleri } from './index/product-index';
@@ -988,8 +988,13 @@ export class MatchingService {
           // dogrulanmis gibi gosteremez. Kapi ateslediginde akis asagidaki
           // ON-SECIM daline duser — kalem ekranda KALIR, yalniz onay istenir.
           // Kapi: test/olcu-anahtari-cakismasi-test.ts (B-R1/B-R2)
-          if (result.candidates.length === 1 && !result.variantMissing && !akiskanSupheli
-              && !result.yuzeyGenisletildi && !result.capCevrilemedi && !result.dnKoprusu) {
+          // KARAR (b) (04.10): yukaridaki uc sinir ve karar metnindeki dort
+          // (capsiz dusus, aile zayif, aile uyusmazligi, ad gevsetildi) TEK
+          // listede — adayin KIMLIGINE dokunan kapi aciksa gecmis onay yeni
+          // durumu kapsamaz. Olculdu: 373.825 TL'lik makine tek onaydan sonra
+          // 'high' yaziliyordu. Kapi: test/hafiza-kimlik-kapisi-test.ts
+          const kimlikKapisi = (result.kapilar ?? []).some((k) => HAFIZA_OTOYAZ_ENGELI.includes(k));
+          if (result.candidates.length === 1 && !result.variantMissing && !akiskanSupheli && !kimlikKapisi) {
             const c = result.candidates[idx];
             console.log(`[Matching] HAFIZA TEK-ADAY OTOYAZ: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×)`);
             return {

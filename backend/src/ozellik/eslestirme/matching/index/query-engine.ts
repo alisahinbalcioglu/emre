@@ -1484,6 +1484,35 @@ export function varyantTagEsit(a: string, b: string): boolean {
 }
 
 /**
+ * KARAR (b) — HAFIZA OTOYAZISINI DURDURAN KAPILAR (Emre 30.09).
+ *
+ * "Hafiza (onceden onaylanmis eslesme) bir guvenlik kapisi tetiklenince
+ * (capsiz dusus, aile zayif, aile uyusmazligi, ad gevsetildi…) OTOMATIK
+ * YAZMAZ, onaya duser." Olculdu: 27.08'deki 373.825 TL "Yiv açma makinesi"
+ * (aile zayif + capsiz) tek onaydan sonra 'high' yaziliyordu — hafiza kapisi
+ * motorun `kapilar` listesini goremiyor, yalniz uc boolean'i okuyordu.
+ *
+ * Olcut asagidaki KANIT BARAJIYLA ayni ayrimdir: adayin KIMLIGINE dokunan
+ * ("bu urun O urun mu?") kapi aciksa gecmis onay yeni durumu KAPSAMAZ.
+ *   · karar metnindeki dort: capsiz-dusum · aile-zayif · aile-uyusmazligi ·
+ *     ad-gevsetildi
+ *   · 27.08'den beri boolean'la engellenen uc: yuzey-genisletildi ·
+ *     cap-cevrilemedi · dn-koprusu
+ *   · ayni tur (olcu dogrulanmadi): cap-belirsiz (A2)
+ * Ek nitelik kapilari (bilinmeyen-kelime, malzeme/taban/birim/yuzey
+ * celiskisi) engellemez — gecmis onay o belirsizligi zaten cevapladi.
+ * ⚠ aile-yok BILEREK disarida: Pimtas derleminde tek adayli 123 sorunun
+ * 122'si aile-yok (kendi adiyla bulunan urun); engellense hafiza otoyazisi
+ * pratikte kapanirdi ve karar metninde yok. Akiskan ve variantMissing
+ * matching.service'te ayrica engellidir.
+ * Kapi: test/hafiza-kimlik-kapisi-test.ts
+ */
+export const HAFIZA_OTOYAZ_ENGELI: readonly KanitKapisi[] = [
+  'capsiz-dusum', 'aile-zayif', 'aile-uyusmazligi', 'ad-gevsetildi',
+  'yuzey-genisletildi', 'cap-cevrilemedi', 'dn-koprusu', 'cap-belirsiz',
+];
+
+/**
  * KANIT BARAJI — "bu sonuc, ekranda TEK SATIRLIK BIR IDDIA olarak sunulacak
  * kadar guclu mu?"
  *
