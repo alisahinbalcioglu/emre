@@ -37,8 +37,20 @@ export function normalizeText(s: string): string {
   let result = normalizeUnicodeFractions(s);
   result = normalizeTurkish(result);
   result = result
-    .replace(/[""\u201C\u201D\u2033]/g, '"')  // fancy quotes → standard
-    .replace(/['']/g, "'")
+    // TIRNAK AILELERI KACISLA YAZILIR (B2, 04.10 olculdu).
+    // Onceki hal ikinci satirda tipografik SANILAN bir karakter sinifiydi;
+    // icindeki iki karakter aslinda IKI ASCII KESME ISARETIYDI (U+0027),
+    // yani ASCII tirnagi yine ASCII tirnaga ceviren bir NO-OP. Tipografik
+    // tek tirnaklar (U+2018/U+2019) ve prime (U+2032) HIC donusturulmuyordu:
+    //   "BORU 1" + U+2019 x2  ==> extractSizeInfo YOK (cap TAMAMEN duser)
+    //   "1 1/4"  + U+2019 x2  ==> okunuyordu (kesir kalibi tirnak istemez)
+    // Kusur bu yuzden yalniz TAM SAYI inclerde gorunuyor, kolayca kaciyor.
+    // Kacisla yazmak niyeti ASCII'de gorunur kilar: editor ya da ofis
+    // otomatik duzeltmesi karakteri bir daha SESSIZCE degistiremez.
+    // Kapi: test/tipografik-tirnak-test.ts | on yuz ikizi:
+    // frontend/ozellik/tablo/excel-grid/build-material-context.ts
+    .replace(/[\u0022\u201C\u201D\u2033]/g, '"')
+    .replace(/[\u0027\u2018\u2019\u02BC\u2032]/g, "'")
     .replace(/\s+/g, ' ')
     .trim();
   return result;
