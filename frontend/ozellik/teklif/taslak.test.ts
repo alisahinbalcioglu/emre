@@ -9,7 +9,9 @@
  * ⚠ BIR ASSERT TEK KRITERE (proje kurali).
  */
 import { describe, it, expect } from 'vitest';
-import { kayittanTaslak, TASLAK_SURUMU, TASLAK_ANAHTARI } from './taslak';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { kayittanTaslak, TASLAK_SURUMU, TASLAK_ANAHTARI, taslakUyarisiGerekirMi, TASLAK_YAZILAMADI_UYARISI } from './taslak';
 
 const KAYIT = {
   id: 'q-1',
@@ -84,5 +86,43 @@ describe('kayittanTaslak', () => {
   // farkli anahtar kullansaydi taslak yazilir ama HIC okunmazdi.
   it('taslak anahtari sabit ve tek kaynakta', () => {
     expect(TASLAK_ANAHTARI).toBe('metaprice_quote_draft');
+  });
+});
+
+describe('TASLAK YAZILAMAZSA (Emre karari 02.10) — kural', () => {
+  it('★ ilk basarisiz yazim uyarir (onceki durum yok)', () => {
+    expect(taslakUyarisiGerekirMi(null, 'yazilamadi')).toBe(true);
+  });
+  it('★ yazildi → yazilamadi gecisi uyarir', () => {
+    expect(taslakUyarisiGerekirMi('yazildi', 'yazilamadi')).toBe(true);
+  });
+  it('★★ art arda basarisiz yazim TEKRAR uyarmaz (tost seli yok)', () => {
+    expect(taslakUyarisiGerekirMi('yazilamadi', 'yazilamadi')).toBe(false);
+  });
+  it('basarili yazim hic uyarmaz', () => {
+    expect(taslakUyarisiGerekirMi(null, 'yazildi')).toBe(false);
+    expect(taslakUyarisiGerekirMi('yazilamadi', 'yazildi')).toBe(false);
+  });
+  it('uyari metni tek kaynakta', () => {
+    expect(TASLAK_YAZILAMADI_UYARISI.title).toBe('Taslak kaydedilemedi');
+  });
+});
+
+describe('TASLAK YAZILAMAZSA — BAGLANTI (quotes/new)', () => {
+  // Yorumlar soyulur: yorumdaki ibare kodu olcmez (kapi-ibaresi dersi).
+  const sayfa = readFileSync(join(__dirname, '..', '..', 'app', '(protected)', 'quotes', 'new', 'page.tsx'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split(/\r?\n/).filter((l) => !l.trim().startsWith('//')).join('\n');
+  const bas = sayfa.indexOf('sessionStorage.setItem(DRAFT_KEY');
+  const c = sayfa.indexOf('catch (e)', bas);
+  const yakala = c > bas && bas >= 0 ? sayfa.slice(c, sayfa.indexOf('};', c)) : '';
+
+  it('★★ catch dali taslagi SILMEZ', () => {
+    expect(yakala.length, 'taslak yazim catch dali bulunamadi').toBeGreaterThan(0);
+    expect(yakala).not.toMatch(/removeItem\(DRAFT_KEY\)/);
+  });
+  it('★ catch dali uyariyi KURALDAN gecirerek gosterir', () => {
+    expect(yakala).toMatch(/taslakUyarisiGerekirMi\(/);
+    expect(yakala).toMatch(/TASLAK_YAZILAMADI_UYARISI/);
   });
 });

@@ -51,7 +51,7 @@ import { indeksUyarilari } from '@/lib/indeks-sagligi';
 import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/ozellik/teklif/dwg-teklif-sema';
 import { kalemUret } from '@/ozellik/teklif/teklif-kalem';
 import { restoreRematch } from '@/ozellik/teklif/restore-rematch';
-import { TASLAK_ANAHTARI, TASLAK_SURUMU } from '@/ozellik/teklif/taslak';
+import { TASLAK_ANAHTARI, TASLAK_SURUMU, taslakUyarisiGerekirMi, TASLAK_YAZILAMADI_UYARISI, type TaslakYazimDurumu } from '@/ozellik/teklif/taslak';
 // Y4: doldurma ozeti tost metni tek yerde (isçilik "firmada yok").
 import { doldurmaOzetMetni } from '@/ozellik/teklif/doldurma-ozeti';
 import { ceviriUygula, ceviriGeriAl, cevrilmisSatirVarMi } from '@/ozellik/teklif/ceviri';
@@ -794,6 +794,8 @@ export default function NewQuotePage() {
   // `visibilitychange`) dogrudan cagrilir. F5, sekme kapatma ve sekme degistirme
   // kapsanir; tarayici cokmesi kapsanmaz (bugun HICBIRI kapsanmiyordu).
   const taslagiYazRef = useRef<() => void>(() => {});
+  // TASLAK YAZILAMAZSA (02.10): son yazim sonucu — uyari yalniz DURUM DEGISINCE.
+  const taslakYazimDurumuRef = useRef<TaslakYazimDurumu | null>(null);
 
   // D5: GECIKMELI TASLAK YAZIMI — React render URETMEZ.
   //
@@ -865,12 +867,17 @@ export default function NewQuotePage() {
         // davranisi korunur (yoksa yenileme sonrasi KOPYA olusurdu).
         quoteId: revizyonId ?? undefined,
       }));
+      taslakYazimDurumuRef.current = 'yazildi';
     } catch (e) {
-      // Kota vb. hata: ESKI draft'i birakma — bayat state restore edilmesin.
-      // (Kayit yapilamiyorsa refresh'te bos baslamak, yanlis/eski veriyle
-      // baslamaktan iyidir.)
-      sessionStorage.removeItem(DRAFT_KEY);
-      console.warn('[quotes/new] Draft save failed, eski draft temizlendi:', e);
+      // TASLAK YAZILAMAZSA (Emre karari 02.10): ESKI taslak KORUNUR, SILINMEZ.
+      // Eskiden burada siliniyordu ("bayat restore olmasin") — F5'te kullanicinin
+      // tum emegi gidiyordu. Yazilamayan son degisiklik kaybolur; uyari yalniz
+      // durum DEGISINCE bir kez (kural ve metin: ozellik/teklif/taslak.ts).
+      console.warn('[quotes/new] Taslak yazilamadi, onceki taslak korunuyor:', e);
+      if (taslakUyarisiGerekirMi(taslakYazimDurumuRef.current, 'yazilamadi')) {
+        toast({ ...TASLAK_YAZILAMADI_UYARISI, variant: 'destructive' });
+      }
+      taslakYazimDurumuRef.current = 'yazilamadi';
     }
     };
     // D5: AYNI is `pagehide`/`visibilitychange` icin de erisilebilir olmali —

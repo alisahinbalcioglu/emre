@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 890
-Toplam satir: 247485
+Toplam satir: 247653
 Uc nokta: 239
 test:* scripti: 145
 
@@ -490,7 +490,7 @@ test:* scripti: 145
 | `frontend/app/(protected)/quote-formats/page.tsx` | 396 |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 780 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2422 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2429 |
 | `frontend/app/(protected)/quotes/page.tsx` | 330 |
 | `frontend/app/admin/brands/page.tsx` | 904 |
 | `frontend/app/admin/denetim/page.tsx` | 294 |
@@ -839,8 +839,8 @@ test:* scripti: 145
 | `frontend/ozellik/teklif/restore-rematch.test.ts` | 741 |
 | `frontend/ozellik/teklif/restore-rematch.ts` | 274 |
 | `frontend/ozellik/teklif/salt-okunur-secici.test.ts` | 113 |
-| `frontend/ozellik/teklif/taslak.test.ts` | 89 |
-| `frontend/ozellik/teklif/taslak.ts` | 98 |
+| `frontend/ozellik/teklif/taslak.test.ts` | 129 |
+| `frontend/ozellik/teklif/taslak.ts` | 124 |
 | `frontend/ozellik/teklif/teklif-dil-karari.test.ts` | 117 |
 | `frontend/ozellik/teklif/teklif-dil-karari.ts` | 103 |
 | `frontend/ozellik/teklif/teklif-kalem.test.ts` | 288 |
@@ -879,7 +879,7 @@ test:* scripti: 145
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | 547 |
 | `frontend/test/e2e/surukle-bayat-sebep.spec.ts` | 91 |
-| `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 237 |
+| `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 332 |
 | `frontend/test/e2e/varyant-kimligi.spec.ts` | 113 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
@@ -1631,7 +1631,7 @@ test:* scripti: 145
 | `frontend/ozellik/teklif/restore-rematch.test.ts` | `vitest` `./restore-rematch` `../tablo/excel-grid/types` |
 | `frontend/ozellik/teklif/restore-rematch.ts` | `../tablo/excel-grid/types` `../fiyat/sayi-alani` `../tablo/excel-grid/fitting` |
 | `frontend/ozellik/teklif/salt-okunur-secici.test.ts` | `vitest` `node:fs` `node:path` |
-| `frontend/ozellik/teklif/taslak.test.ts` | `vitest` `./taslak` |
+| `frontend/ozellik/teklif/taslak.test.ts` | `vitest` `node:fs` `node:path` `./taslak` |
 | `frontend/ozellik/teklif/teklif-dil-karari.test.ts` | `vitest` `./ceviri-kota` |
 | `frontend/ozellik/teklif/teklif-dil-karari.ts` | `./ceviri` `./ceviri-kota` |
 | `frontend/ozellik/teklif/teklif-kalem.test.ts` | `vitest` `./teklif-kalem` |
