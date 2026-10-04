@@ -628,6 +628,11 @@ function BrandDropdown(props: ICellRendererParams & {
       setPopupPos(computePopupPos());
       fiyatiTemizle(); // D1: onceki markanin fiyati secim beklerken DURAMAZ
       yazVeri(node, '_matStatus', 'belirsiz'); // secim bekleniyor (V4.5 dahil)
+      // D14 (02.10) — SD6 ISCILIK IKIZI: isaret EYLEMLI, sebep + kac aday
+      // satirda tasinir. Eskiden yalniz durum yaziliyordu: ipucu "N aday var"
+      // demiyor, ONCEKI markanin sebebini ("Bu markada 6" yok") gosteriyordu.
+      yazVeri(node, '_matAdaySayisi', result.candidates.length);
+      yazVeri(node, '_matSebep', (result as any).reason ?? null);
       setShowAllCandidates(false); // V7: yeni popup 8 adayla baslar
       setStage2(null); // K6: zincir bastan
       setFilterText(''); // F3: arama sifirlanir
@@ -700,6 +705,10 @@ function BrandDropdown(props: ICellRendererParams & {
       setPopupPos(computePopupPos());
       fiyatiTemizle(); // D1: bu markada urun YOK — onceki markanin fiyati kalmaz
       yazVeri(node, '_matStatus', 'belirsiz');
+      // D14: bu dalin KENDI sebebi; aday sayisi YOK (secenekler baska markada)
+      // — onceki aday dalinin "N aday var"i burada kalirsa yanlis yonlendirir.
+      yazVeri(node, '_matSebep', (result as any).reason ?? null);
+      yazVeri(node, '_matAdaySayisi', null);
       setAlternatives(marked);
       return;
     }

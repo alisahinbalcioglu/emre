@@ -93,7 +93,8 @@ export default function GridTestPage() {
   // grid KOSULLU (`gridHazir &&`) render edilince hook sirasi degisti ve sayfa
   // "Rendered more hooks than during the previous render" ile COKTU (olculdu,
   // D11 harness duzeltmesi). Hook her render'da AYNI sirada cagrilmali.
-  const markalar = useMemo(() => [{ id: 'b-ayvaz', name: 'AYVAZ' }, { id: 'b-sardogan', name: 'SARDOĞAN' }], []);
+  // D14 (02.10): ÇAYIROVA = "bu markada yok, baska markada var" (alternatif dal)
+  const markalar = useMemo(() => [{ id: 'b-ayvaz', name: 'AYVAZ' }, { id: 'b-sardogan', name: 'SARDOĞAN' }, { id: 'b-cayirova', name: 'ÇAYIROVA' }], []);
   const firmalar = useMemo(() => [
     { id: 'f-yasin', name: 'YASİN USTA', discipline: 'mechanical' as const },
     { id: 'f-hakan', name: 'HAKAN USTA', discipline: 'mechanical' as const },
@@ -207,6 +208,17 @@ export default function GridTestPage() {
     if (materialName.includes('KURSUZ')) {
       log('KUR ALINAMADI dondu');
       return { netPrice: 0, confidence: 'none', kurAlinamadi: true, reason: 'Döviz kuru alınamadı.' } as any;
+    }
+
+    // D14 (02.10): ALTERNATIF-MARKA DALI — urun bu markada yok, AYVAZ'da var.
+    // Mock bugune kadar bu cevabi HIC uretmiyordu; dalin isaret yazimi
+    // olculemiyordu. Satir EKLENMEDI (indeksler kaymaz) — yalniz markaya bagli.
+    if (brandId === 'b-cayirova') {
+      log('CAYIROVA: bu markada yok, AYVAZ\'da var');
+      return {
+        netPrice: 0, confidence: 'none', reason: 'Bu markada bu ürün ailesi yok.',
+        alternatives: [{ brandId: 'b-ayvaz', brandName: 'AYVAZ', materialName: 'Çelik boru · siyah', netPrice: 100, listPrice: 100, discount: 0 }],
+      } as any;
     }
 
     // D1 (30.09): MARKAYA GORE AYRISAN cevap. "Satir A ile fiyatlandi, sonra
