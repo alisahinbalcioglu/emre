@@ -193,9 +193,34 @@ const CINS_TANIMLAYICI = new Set([
   'pe', 'pex', 'hdpe', 'polietilen', 'plastik', 'wafer', 'lug',
 ]);
 
+/** B1 (04.10): CINS_TANIMLAYICI'nin GOVDE MALZEMESI alt kumesi.
+ *
+ *  Bu kelimeler urunun NE OLDUGUNU soyler ("PE Boru" = govdesi PE olan boru).
+ *  Yuzey kelimeleri (siyah/galvaniz/paslanmaz…) ise urunun NASIL oldugunu
+ *  soyler ve CINS kolonunda yasamalari dogaldir — 04.08'de konan yeniden-
+ *  yonlendirme kurali onlar icindir ve DOKUNULMAZ.
+ *
+ *  OLCULEN KUSUR: govde kelimesi de yeniden yonlendirilince satirin 'pe'si
+ *  CINSe gidiyor ve havuzda CINSINDE 'pe' gecen urun — yani PE KAPLI CELIK
+ *  boru — kazaniyordu. Urun tarafi ayni kelimeyi ADa indeksliyor ("PE Boru"
+ *  → adTokens ['pe','boru']), yani iki taraf AYNI KELIMEYI FARKLI KOLONA
+ *  yaziyordu. Olculdu: "PE BORU Ø32" → single · "Çelik Boru | PE Kaplı
+ *  Doğalgaz @400"; gercek PE boru (@60) hic teklif edilmiyordu.
+ *
+ *  Kural A1'in ikizi: KAPLAMA GOVDE DEGILDIR. Govde kelimesi CINSe yalnizca
+ *  hemen ardindan "kapl…" geliyorsa yonlenir ("PE kaplı çelik boru").
+ *  Kapi: test/kaplama-cins-test.ts (PE + PVC aileleri, yuzey kalkani). */
+const GOVDE_MALZEMESI = new Set([
+  'ppr', 'pprc', 'pvc', 'pe', 'pex', 'hdpe', 'polietilen', 'plastik',
+]);
+
 export function classifyTokens(tokens: string[], vocab: FamilyVocab): RoutedTokens {
   const out: RoutedTokens = { ad: [], cins: [], baglanti: [], bilinmeyen: [] };
-  for (const t of tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    // B1: govde malzemesi YALNIZ kaplama olarak yazilmissa cins sayilir.
+    const kaplama = /^kapl/.test(tokens[i + 1] ?? '');
+    const cinsTanimlayici = CINS_TANIMLAYICI.has(t) && (!GOVDE_MALZEMESI.has(t) || kaplama);
     // ONCELIK: AD > BAGLANTI > CINS.
     //
     // AD once, cunku AD KILITTIR (PRD 2B-1); cins/baglanti onun icinde
@@ -220,7 +245,7 @@ export function classifyTokens(tokens: string[], vocab: FamilyVocab): RoutedToke
     // diyordu — oysa urun kutuphanede VARDI (I7 sessiz-bos yasagi).
     // K4 BOZULMAZ: cins de SERT filtredir (query-engine.ts:300-308) — kelime
     // elenmez, yalnizca DOGRU kolona yonlenir.
-    else if (CINS_TANIMLAYICI.has(t) && varMi(vocab.cins)) out.cins.push(t);
+    else if (cinsTanimlayici && varMi(vocab.cins)) out.cins.push(t);
     else if (varMi(vocab.ad)) out.ad.push(t);
     else if (varMi(vocab.baglanti)) out.baglanti.push(t);
     else if (varMi(vocab.cins)) out.cins.push(t);

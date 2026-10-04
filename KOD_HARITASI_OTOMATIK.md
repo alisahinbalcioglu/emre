@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 862
-Toplam satir: 239577
+Kod dosyasi: 863
+Toplam satir: 239748
 Uc nokta: 238
-test:* scripti: 145
+test:* scripti: 146
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -136,7 +136,7 @@ test:* scripti: 145
 | `backend/src/ozellik/eslestirme/matching/ad-cins-sozlugu.ts` | 251 |
 | `backend/src/ozellik/eslestirme/matching/ad-resolver.ts` | 122 |
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 448 |
-| `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 231 |
+| `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 256 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 721 |
 | `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1650 |
 | `backend/src/ozellik/eslestirme/matching/index/types.ts` | 283 |
@@ -388,6 +388,7 @@ test:* scripti: 145
 | `backend/test/iyzico-imza-basligi-test.ts` | 236 |
 | `backend/test/iyzico-zaman-asimi-test.ts` | 1094 |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | 132 |
+| `backend/test/kaplama-cins-test.ts` | 145 |
 | `backend/test/kart-guncelleme-test.ts` | 685 |
 | `backend/test/kaucuk-izolasyon-test.ts` | 244 |
 | `backend/test/kd11-toplam-yollari-test.ts` | 173 |
@@ -434,7 +435,7 @@ test:* scripti: 145
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 1028 |
+| `backend/test/regression-all.ts` | 1029 |
 | `backend/test/s45-malzeme-aile-test.ts` | 441 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 901 |
@@ -1216,6 +1217,7 @@ test:* scripti: 145
 | `backend/test/iyzico-imza-basligi-test.ts` | `node:crypto` `@nestjs/config` `../src/ozellik/odeme/iyzico/iyzico.client` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/iyzico-zaman-asimi-test.ts` | `node:http` `node:net` `node:fs` `node:path` `@nestjs/common` `@nestjs/config` `@prisma/client` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/abonelik/paket-degisimi.servisi` `../src/ozellik/odeme/dunning/dunning.servisi` |
 | `backend/test/kalem59-oksuz-kutuphane-test.ts` | `@prisma/client` `../src/ozellik/kutuphane/admin/admin.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
+| `backend/test/kaplama-cins-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/index/types` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/kart-guncelleme-test.ts` | `node:fs` `node:http` `node:path` `@nestjs/common` `@nestjs/common/constants` `@nestjs/config` `@nestjs/core` `@nestjs/platform-express` `@nestjs/throttler/dist/throttler.constants` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/dunning/dunning.servisi` `../src/ozellik/odeme/abonelik/satinalma.servisi` `../src/ozellik/odeme/abonelik/abonelik.controller` `../src/ozellik/odeme/abonelik/iyzico-donus.controller` `../src/ozellik/odeme/abonelik/dto/kart-guncelle.dto` `../src/altyapi/auth/decorators/firma-rolu.decorator` `../src/altyapi/auth/guards/kullanici-hiz-siniri.guard` `../src/ozellik/odeme/dunning/dunning.metinleri` `../src/altyapi/http/cors` `./yardimci/uc-envanteri` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/kaucuk-izolasyon-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/ad-resolver` `../src/ozellik/eslestirme/matching/index/types` `../src/ozellik/eslestirme/matching/normalizer` |
 | `backend/test/kd11-toplam-yollari-test.ts` | `fs` `path` `../src/ozellik/giris/excel-grid/excel-grid.service` `./yardimci/bitmezse-kirmizi` `../../frontend/ozellik/fiyat/pricing` |
@@ -1907,6 +1909,7 @@ test:* scripti: 145
 | `backend/package.json` | `test:olcu-sinifi` | `ts-node test/olcu-sinifi-test.ts` |
 | `backend/package.json` | `test:cap-belirsizligi` | `ts-node test/cap-belirsizligi-test.ts` |
 | `backend/package.json` | `test:aci-okuma` | `ts-node test/aci-okuma-test.ts` |
+| `backend/package.json` | `test:kaplama-cins` | `ts-node test/kaplama-cins-test.ts` |
 | `backend/package.json` | `test:grid` | `ts-node test/excel-grid-test.ts` |
 | `backend/package.json` | `test:labor-sheet` | `ts-node test/labor-sheet-test.ts` |
 | `backend/package.json` | `test:kl` | `ts-node test/kl-liste-ekleme-test.ts` |
