@@ -536,6 +536,11 @@ function BrandDropdown(props: ICellRendererParams & {
     yazVeri(node, '_matSuggestion', false);
     yazVeri(node, '_matAutoVariant', null);
     node.data._matVariantLabel = null;
+    // Y3 (02.10): varyant KIMLIGI de gider — kimlik onu ureten markayla anlamli.
+    // Kalsaydi bu satirdan surukleyince eski markanin varyanti yeni markanin
+    // sorgularina sert filtre olarak giderdi (surukleme kaynak etiketini once
+    // `_matVariantTags`tan okur). Grid kolonu degil — dogrudan veri.
+    node.data._matVariantTags = null;
     if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
     if (materialTotalField) node.setDataValue(materialTotalField, '');
   };
@@ -1301,6 +1306,7 @@ function FirmaDropdown(props: ICellRendererParams & {
   const fiyatiTemizleLab = () => {
     yazVeriLab(node, '_labNetPrice', 0);
     node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+    node.data._labVariantTags = null; // Y3 ikizi: eski firmanin kalem kimligi tohum olmaz
     if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
     if (laborTotalField) node.setDataValue(laborTotalField, '');
   };

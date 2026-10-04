@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 880
-Toplam satir: 245778
+Kod dosyasi: 881
+Toplam satir: 245968
 Uc nokta: 239
 test:* scripti: 144
 
@@ -782,7 +782,7 @@ test:* scripti: 144
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5125 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5131 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -793,8 +793,8 @@ test:* scripti: 144
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 66 |
 | `frontend/ozellik/tablo/excel-grid/fill-alanlari.test.ts` | 30 |
 | `frontend/ozellik/tablo/excel-grid/fill-alanlari.ts` | 25 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 1051 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 514 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 1113 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 522 |
 | `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | 234 |
 | `frontend/ozellik/tablo/excel-grid/fitting.ts` | 184 |
 | `frontend/ozellik/tablo/excel-grid/gosterim-baglantisi.test.ts` | 274 |
@@ -871,6 +871,7 @@ test:* scripti: 144
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | 538 |
 | `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 237 |
+| `frontend/test/e2e/varyant-kimligi.spec.ts` | 114 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
 | `scripts/backup.sh` | 125 |
@@ -1652,6 +1653,7 @@ test:* scripti: 144
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | `@playwright/test` `../../ozellik/teklif/taslak` |
+| `frontend/test/e2e/varyant-kimligi.spec.ts` | `@playwright/test` |
 | `frontend/vitest.config.ts` | `vitest/config` |
 | `scripts/deploy-olcum.cjs` | `fs` |
 | `scripts/harita-denetle.mjs` | `node:child_process` `node:fs` `node:path` `node:url` `./harita-uret.mjs` |

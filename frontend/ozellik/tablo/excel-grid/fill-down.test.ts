@@ -1048,3 +1048,65 @@ describe('Y2 — surukle-doldur Toplam Birim Fiyat hucresini tazeler', () => {
     expect('_gBirim' in h.data).toBe(false);
   });
 });
+
+/**
+ * Y3 (30.09, P2) — FIYAT YAZMAYAN DAL VARYANT KIMLIGINI DE SILER
+ *
+ * D1 fiyati ve rozetleri siliyordu ama `_matVariantTags`/`_labVariantTags`
+ * BIRAKIYORDU (D1'de bilerek: "kimlik tohumu" sanildi). Yanlisti: kimlik YALNIZ
+ * onu ureten markayla anlamlidir. Marka A ile fiyatlanmis satira marka B
+ * secilip B fiyat vermeyince A'nin etiketi satirda kaliyor; o satirdan asagi
+ * surukleyince `handleFillComplete` bu bayat etiketi KAYNAK varyanti sayiyor ve
+ * TUM hedefler B altinda A'nin varyantiyla SERT FILTRELI sorgulaniyor:
+ *  (1) B'de o varyant yoksa aile sahte "yok"/"belirsiz" alir — urun B'de VARDIR;
+ *  (2) B'de ayni etiketli varyant varsa kullanicinin B icin HIC SECMEDIGI
+ *      varyantin fiyati tum aileye SESSIZCE yazilir.
+ * Etiket geri-alma anligindadir (SNAP) — silme Ctrl+Z ile geri gelir.
+ */
+describe('Y3 — fiyat yazmayan dal varyant kimligini siler', () => {
+  const ROLLER_TAM = { ...ROLLER, laborTotalField: '_labToplam', grandTotalField: '_toplam' };
+  const yok = async () => ({ netPrice: 0, confidence: 'none' } as MotorSonucu);
+
+  it('★ MALZEME: B fiyat vermeyince A\'nin varyant etiketi kalmaz', async () => {
+    const h = node(1, 'KÜRESEL VANA DN25', 10, {
+      _marka: 'A', _matNetPrice: 100, col5: '100.0', col6: '1000.0', _matVariantTags: ['v:A-kaynakli'],
+    });
+    await fillDown({ hedefler: [h] as any, markaId: 'B', roller: ROLLER_TAM, motor: yok, kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(h.data._matVariantTags).toBeNull();
+  });
+
+  it('★ IKIZ ISCILIK: firma degisip fiyat gelmeyince eski isçilik kimligi kalmaz', async () => {
+    const h = node(2, 'Montaj bedeli', 10, {
+      _firma: 'F1', _labNetPrice: 80, _labBirim: '80.0', _labToplam: '800.0', _labVariantTags: ['v:F1-disli'],
+    });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'F2', roller: ROLLER_TAM, motor: yok, kaynakVaryantTags: null, kaynakLabel: '',
+      hedefAlanlar: { birimFiyat: '_labBirim', toplam: '_labToplam', status: '_labStatus', kaynakRozeti: '_labKaynak', dal: 'iscilik' },
+    });
+    expect(h.data._labVariantTags).toBeNull();
+  });
+
+  it('★ aday dali da siler (secim bekleyen satir eski kimligi tasimaz)', async () => {
+    const h = node(3, 'KÜRESEL VANA DN25', 10, { _marka: 'A', _matVariantTags: ['v:A'] });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_TAM, kaynakVaryantTags: null, kaynakLabel: '',
+      motor: async () => ({ netPrice: 0, confidence: 'multi', candidates: [{}, {}] as any }),
+    });
+    expect(h.data._matVariantTags).toBeNull();
+  });
+
+  it('★ SD7: silinen kimlik geri-alma anliginda (Ctrl+Z geri getirir)', async () => {
+    const h = node(4, 'KÜRESEL VANA DN25', 10, { _marka: 'A', _matVariantTags: ['v:A'] });
+    const s = await fillDown({ hedefler: [h] as any, markaId: 'B', roller: ROLLER_TAM, motor: yok, kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(s.geriAl[0].oncekiDegerler._matVariantTags).toEqual(['v:A']);
+  });
+
+  it('KONTROL: fiyat GELEN dal kimligi yeniden yazar (silme ona karismaz)', async () => {
+    const h = node(5, 'KÜRESEL VANA DN25', 10, { _marka: 'A', _matVariantTags: ['v:A'] });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_TAM, kaynakVaryantTags: null, kaynakLabel: '',
+      motor: async () => ({ netPrice: 50, confidence: 'high', variantTags: ['v:B'] }),
+    });
+    expect(h.data._matVariantTags).toEqual(['v:B']);
+  });
+});

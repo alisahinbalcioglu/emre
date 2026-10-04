@@ -139,6 +139,8 @@ interface TemizAlanlar {
   toplam?: string;
   net: string;
   kur: string;
+  /** Y3: varyant kimligi (`_matVariantTags` / `_labVariantTags`). */
+  tag: string;
   iscilikMi: boolean;
 }
 
@@ -171,6 +173,12 @@ function fiyatiTemizle(
   yaz(node, alanlar.net, 0);
   // Kolon degil veri alani — fiyat yazan dal da dogrudan yaziyor (KUR DONMASI).
   node.data[alanlar.kur] = null;
+  // Y3 (02.10): VARYANT KIMLIGI de gider. D1'de bilerek birakilmisti ("kimlik
+  // tohumu") — yanlisti: kimlik YALNIZ onu ureten markayla anlamlidir. Kalsaydi
+  // bu satirdan surukleyince A'nin varyanti B'nin sorgularina SERT FILTRE olarak
+  // gidiyordu: ya sahte "yok", ya kullanicinin secmedigi varyantin fiyati.
+  // Anlikta (SNAP + tagAlan) oldugu icin Ctrl+Z geri getirir.
+  node.data[alanlar.tag] = null;
   if (alanlar.birimFiyat) yaz(node, alanlar.birimFiyat, '');
   if (alanlar.toplam) yaz(node, alanlar.toplam, '');
   if (!alanlar.iscilikMi) {
@@ -289,7 +297,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
   const kurAlan = iscilikMi ? '_labKurBilgi' : '_matKurBilgi';
   // D1: fiyat YAZMAYAN her dalin kullandigi ortak "eski fiyati sil" kumesi.
   const temizAlanlar: TemizAlanlar = {
-    birimFiyat: bfAlan, toplam: totAlan, net: netAlan, kur: kurAlan, iscilikMi,
+    birimFiyat: bfAlan, toplam: totAlan, net: netAlan, kur: kurAlan, tag: tagAlan, iscilikMi,
   };
 
   const sonuc: FillSonuc = {
