@@ -1110,3 +1110,48 @@ describe('Y3 — fiyat yazmayan dal varyant kimligini siler', () => {
     expect(h.data._matVariantTags).toEqual(['v:B']);
   });
 });
+
+describe('D14b — surukle-doldur onceki sorgunun sebebini birakmaz', () => {
+  // Ekran olcumu: test/e2e/surukle-bayat-sebep.spec.ts (ipucu metni). Burada
+  // kural saf modulde kilitlenir: "secim bekliyor/yok/hata" yazan her dal
+  // sebebi KENDISI yazar (D14 etkilesimli yolun ikizi).
+  const ISC = { birimFiyat: '_labBirim', toplam: '_labToplam', status: '_labStatus', kaynakRozeti: '_labKaynak', dal: 'iscilik' as const };
+
+  it('★★ hata dali: eski sebep silinir (ipucu "Eşleştirme hatası: <eski sebep>" demez)', async () => {
+    const h = node(1, 'KÜRESEL VANA DN25', 10, { _marka: 'A', _matStatus: 'belirsiz', _matSebep: 'Bu markada bu ürün ailesi yok.' });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER, kaynakVaryantTags: null, kaynakLabel: '',
+      motor: async () => { throw new Error('ağ hatası'); },
+    });
+    expect(h.data._matStatus).toBe('hata'); // FIKSTUR KANITI: hata dali kostu
+    expect(h.data._matSebep).toBeNull();
+  });
+
+  it('★★ sebepsiz sonuc (sarmalayici null): eski "2 seçenek" sebebi kalmaz — isçilik', async () => {
+    const h = node(2, 'Montaj 1"', 10, { _firma: 'F1', _labStatus: 'belirsiz', _labSebep: '2 seçenek', _labAdaySayisi: 2 });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'F2', roller: ROLLER, kaynakVaryantTags: null, kaynakLabel: '',
+      motor: async () => null, hedefAlanlar: ISC,
+    });
+    expect(h.data._labStatus).toBe('yok'); // FIKSTUR KANITI
+    expect(h.data._labSebep).toBeNull();
+  });
+
+  it('KONTROL: sebepli sonuc sebebini yazar (degismedi)', async () => {
+    const h = node(3, 'KÜRESEL VANA DN25', 10, { _marka: 'A', _matSebep: 'eski' });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER, kaynakVaryantTags: null, kaynakLabel: '',
+      motor: async () => ({ netPrice: 0, confidence: 'none', reason: 'Bu markada DN25 yok.' } as MotorSonucu),
+    });
+    expect(h.data._matSebep).toBe('Bu markada DN25 yok.');
+  });
+
+  it('★ SD7: silinen sebep geri-alma anliginda (Ctrl+Z geri getirir)', async () => {
+    const h = node(4, 'KÜRESEL VANA DN25', 10, { _marka: 'A', _matSebep: 'Bu markada bu ürün ailesi yok.' });
+    const s = await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER, kaynakVaryantTags: null, kaynakLabel: '',
+      motor: async () => { throw new Error('ağ hatası'); },
+    });
+    expect(s.geriAl[0].oncekiDegerler._matSebep).toBe('Bu markada bu ürün ailesi yok.');
+  });
+});

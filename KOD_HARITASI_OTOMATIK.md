@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 887
-Toplam satir: 246602
+Kod dosyasi: 888
+Toplam satir: 246751
 Uc nokta: 239
 test:* scripti: 144
 
@@ -498,7 +498,7 @@ test:* scripti: 144
 | `frontend/app/admin/users/page.tsx` | 647 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
 | `frontend/app/davet-kabul/page.tsx` | 483 |
-| `frontend/app/dev/grid-test/page.tsx` | 411 |
+| `frontend/app/dev/grid-test/page.tsx` | 418 |
 | `frontend/app/fiyatlar/page.tsx` | 174 |
 | `frontend/app/forgot-password/page.tsx` | 92 |
 | `frontend/app/gizlilik/page.tsx` | 13 |
@@ -793,8 +793,8 @@ test:* scripti: 144
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 66 |
 | `frontend/ozellik/tablo/excel-grid/fill-alanlari.test.ts` | 30 |
 | `frontend/ozellik/tablo/excel-grid/fill-alanlari.ts` | 25 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 1113 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 522 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 1158 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 528 |
 | `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | 234 |
 | `frontend/ozellik/tablo/excel-grid/fitting.ts` | 184 |
 | `frontend/ozellik/tablo/excel-grid/gosterim-baglantisi.test.ts` | 274 |
@@ -876,6 +876,7 @@ test:* scripti: 144
 | `frontend/test/e2e/restore-ozet.spec.ts` | 122 |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | 547 |
+| `frontend/test/e2e/surukle-bayat-sebep.spec.ts` | 91 |
 | `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 237 |
 | `frontend/test/e2e/varyant-kimligi.spec.ts` | 113 |
 | `frontend/vitest.config.ts` | 15 |
@@ -1663,6 +1664,7 @@ test:* scripti: 144
 | `frontend/test/e2e/restore-ozet.spec.ts` | `@playwright/test` `../../ozellik/teklif/taslak` |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/surukle-bayat-sebep.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | `@playwright/test` `../../ozellik/teklif/taslak` |
 | `frontend/test/e2e/varyant-kimligi.spec.ts` | `@playwright/test` |
 | `frontend/vitest.config.ts` | `vitest/config` |

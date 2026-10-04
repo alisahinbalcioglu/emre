@@ -411,6 +411,9 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
       // SD2b: motor hatasi SESSIZCE yutulmaz
       fiyatiTemizle(node, roller, temizAlanlar, yaz); // D1
       yaz(node, statusAlan, 'hata');
+      // D14b (04.10): ONCEKI sorgunun sebebi kalirsa ipucu "Eşleştirme hatası:
+      // Bu markada bu ürün ailesi yok." der (olculdu) — hata o degil.
+      yaz(node, sebepAlan, null);
       sonuc.satirlar.push({ rowIdx, durum: 'hata', hata: hataMesaji });
       sonuc.ozet.hata++;
       continue;
@@ -473,7 +476,10 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     // davranip sessiz ikame yapmadi ama ekranda yalniz pembe hucre gorundu →
     // kullanici "otomatik varyant calismiyor" olarak yasadi. Sebep ve aday
     // sayisi gorunur olmadan isaret EYLEMLI degildir.
-    if (r?.reason) yaz(node, sebepAlan, r.reason);
+    // D14b (04.10): sebep HER ZAMAN yazilir — sebepsiz cevapta (isçilik
+    // sarmalayicisi motor kaydi yoksa `null` doner) eski sebep kaliyordu:
+    // 'yok' ipucu onceki sorgunun "2 seçenek" metnini gosteriyordu (olculdu).
+    yaz(node, sebepAlan, r?.reason ?? null);
 
     // KUR-01 (14.09): urun VAR, dovizli fiyat TL'ye cevrilemedi. Etkilesimli
     // yol ile AYNI isaret: 'hata' (turuncu, "tekrar deneyin"). 'yok' YAZILMAZ —

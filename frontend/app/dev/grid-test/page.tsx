@@ -106,6 +106,10 @@ export default function GridTestPage() {
   const firmalar = useMemo(() => [
     { id: 'f-yasin', name: 'YASİN USTA', discipline: 'mechanical' as const },
     { id: 'f-hakan', name: 'HAKAN USTA', discipline: 'mechanical' as const },
+    // D14b (04.10): OZKAN = motor bu kalem icin KAYIT DONDURMEDI → sarmalayici
+    // `null` doner (quotes/new isçilik dali `if (!match) return null`). Sebepsiz
+    // sonuc ancak boyle uretilir; surukle-doldur bayat sebep olcumu icin.
+    { id: 'f-ozkan', name: 'ÖZKAN USTA', discipline: 'mechanical' as const },
   ], []);
   const data: ExcelGridData = useMemo(() => {
     const sys = {
@@ -210,7 +214,9 @@ export default function GridTestPage() {
     log(`#${cagriSayisi.current} sorgu: satir=${rowIdx} "${materialName.slice(0, 30)}" varyant=[${vt}]`);
 
     // D14 (denetim): ag hatasi simulasyonu — sorgu FIRLATIR (fetch reject esdegeri)
-    if (materialName.includes('HATALI')) { log('AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
+    // D14b (04.10): CAYIROVA HARIC — satira once bir SEBEP yazilabilsin (alternatif
+    // dali), sonra surukleme hatasi o sebebi bayat birakiyor mu olculsun.
+    if (materialName.includes('HATALI') && brandId !== 'b-cayirova') { log('AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
 
     // KUR-01 (29.09): urun VAR ama doviz kuru alinamadi → 'hata' (turuncu)
     if (materialName.includes('KURSUZ')) {
@@ -308,6 +314,7 @@ export default function GridTestPage() {
     const vt = opts?.variantTags?.join(',') ?? '-';
     log(`#${cagriSayisi.current} ISC sorgu: satir=${rowIdx} "${laborName.slice(0, 30)}" varyant=[${vt}]`);
     if (laborName.includes('HATALI')) { log('ISC AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
+    if (firmaId === 'f-ozkan') { log('OZKAN: motor kaydi yok (null)'); return null as any; }
 
     // D2 IKIZI (30.09): HAKAN USTA bu sorguda YAVAS ve FARKLI fiyat doner.
     // Malzeme tarafindaki SARDOGAN gecikmesinin iscilik karsiligi — yaris
