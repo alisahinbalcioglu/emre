@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 902
-Toplam satir: 249919
+Kod dosyasi: 904
+Toplam satir: 250088
 Uc nokta: 239
 test:* scripti: 156
 
@@ -692,12 +692,14 @@ test:* scripti: 156
 | `frontend/ozellik/fiyat/kur-geri-dusus.test.ts` | 140 |
 | `frontend/ozellik/fiyat/para-gosterim.ts` | 68 |
 | `frontend/ozellik/fiyat/para-sutun-genisligi.ts` | 243 |
-| `frontend/ozellik/fiyat/pricing.ts` | 713 |
+| `frontend/ozellik/fiyat/pricing.ts` | 715 |
 | `frontend/ozellik/fiyat/sayi-alani.ts` | 385 |
 | `frontend/ozellik/fiyat/sayi-kurali.test.ts` | 289 |
 | `frontend/ozellik/fiyat/sayi-oku.test.ts` | 72 |
 | `frontend/ozellik/fiyat/sayi-tek-suzgec.test.ts` | 175 |
 | `frontend/ozellik/fiyat/sayi-yollari.test.ts` | 366 |
+| `frontend/ozellik/fiyat/taraf-para-birimi.test.ts` | 96 |
+| `frontend/ozellik/fiyat/taraf-para-birimi.ts` | 71 |
 | `frontend/ozellik/fiyat/use-currency.ts` | 88 |
 | `frontend/ozellik/giris/kaynak-kolon.ts` | 34 |
 | `frontend/ozellik/hukuki/HukukiSayfa.tsx` | 110 |
@@ -1530,6 +1532,8 @@ test:* scripti: 156
 | `frontend/ozellik/fiyat/sayi-oku.test.ts` | `vitest` `./sayi-alani` |
 | `frontend/ozellik/fiyat/sayi-tek-suzgec.test.ts` | `vitest` `fs` `path` |
 | `frontend/ozellik/fiyat/sayi-yollari.test.ts` | `vitest` `fs` `path` `./pricing` `../tablo/excel-grid/discount-utils` `../tablo/excel-grid/yapistir` |
+| `frontend/ozellik/fiyat/taraf-para-birimi.test.ts` | `vitest` `./pricing` |
+| `frontend/ozellik/fiyat/taraf-para-birimi.ts` | `./pricing` |
 | `frontend/ozellik/fiyat/use-currency.ts` | `react` `@/ortak/lib/api` `@/ortak/types/quotes` `./para-gosterim` |
 | `frontend/ozellik/hukuki/HukukiSayfa.tsx` | `next/link` `@/ortak/kabuk/components/layout/Altbilgi` `./metinler` |
 | `frontend/ozellik/hukuki/metinler.ts` | `../kimlik/kapatma-metinleri` |
