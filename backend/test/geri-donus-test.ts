@@ -195,6 +195,28 @@ const SIMDI = new Date('2026-09-21T12:00:00.000Z');
 const ILERDE = new Date(SIMDI.getTime() + 20 * GUN);
 const GECMIS = new Date(SIMDI.getTime() - 1 * GUN);
 
+/**
+ * ⚠ GERCEK SAATI OKUYAN BLOKLAR pencere sonunu DONMUS `SIMDI`den TURETEMEZ.
+ *
+ * M (`OturumServisi.girisKarari`), P (`ParolaServisi`), K
+ * (`AuthService.register`), E1-E8 ve FK kullanicisi (`JwtStrategy.validate`,
+ * `girisKarari`) KULLANICININ pencere sonunu kendi `new Date()`leriyle
+ * karsilastirir; saat enjekte edilemiyor. Donmus
+ * `ILERDE` (= SIMDI + 20 gun) 2026-10-11T12:00:00Z'ye denk geliyordu: O AN
+ * GELINCE hesap "pencere disi" sayilir, M1'de `girisKarari` YAKALANMAMIS
+ * "Hesabiniz kapatilmis." atar ve paket coker (kalan bloklar hic kosmaz).
+ * 04.10'da saat +30 gun kaydirilmis regresyon taramasiyla olculdu —
+ * `abonelik-erisim` I blogunun ikizi (0e5173f).
+ *
+ * Saf bloklar (S, G, E9-E13, F5-F6, FK1, FK8-FK9) saati ACIKCA `SIMDI`
+ * olarak gecirdigi icin DONMUS sabitlerle kalir (determinizm orada deger;
+ * pencere yuklemi yalniz `imhaTarihi > simdi`ye bakar). `GECMIS` gecmiste
+ * kalmaya devam ettigi icin (deletedAt / suresi dolmus imha) degismez.
+ * FIRMA satirinin `imhaTarihi` (F, FK) gercek saatle KARSILASTIRILMIYOR —
+ * +30 gun kaydirmali mutasyonla olculdu (donmus haliyle de yesil); donmus kalir.
+ */
+const GERCEK_ILERDE = new Date(Date.now() + 20 * GUN);
+
 async function main() {
   // ═══════════════════════════════════════════════════════════════════════
   console.log('\n── S · SAF YUKLEMLER ────────────────────────────────────');
@@ -307,6 +329,14 @@ async function main() {
   // ═══════════════════════════════════════════════════════════════════════
   console.log('\n── M · IKI ADIMLI GIRIS (§4.7) ──────────────────────────');
   // ═══════════════════════════════════════════════════════════════════════
+  // FIKSTUR KANITI (04.10): gercek saatli bloklarin pencere sonu GERCEK
+  // saatten turemeli (simdi + 20 gun). Donmus bir sabitten turetilirse gun
+  // gelince sessizce eskir ve paket "kod bozuldu" gibi coker — iki kez oldu
+  // (abonelik 02.10; bu dosya 11.10'da olacakti). Tarihler teshis icin basilir.
+  const simdiGercek = Date.now();
+  check('GD-FIXTURE ⭐ gercek saatli bloklarin pencere sonu GERCEK saatten turuyor (simdi + 20 gun)',
+    Math.abs(GERCEK_ILERDE.getTime() - (simdiGercek + 20 * GUN)) < 60 * 60 * 1000,
+    `gercekIlerde=${GERCEK_ILERDE.toISOString()} simdi=${new Date(simdiGercek).toISOString()} donmusIlerde=${ILERDE.toISOString()}`);
   {
     const db = sahteDb();
     const jwt = { sign: () => 'a.b.c' } as any;
@@ -315,7 +345,7 @@ async function main() {
     const kapaliMfali = {
       id: 'U1', email: 'a@x.test', role: 'user', firmaId: 'F1', firmaRol: 'sahip',
       createdAt: GECMIS, mfaAcikAt: GECMIS, mfaKaynagi: 'kisisel',
-      status: 'active', deletedAt: GECMIS, kapatmaNedeni: 'kendi', imhaTarihi: ILERDE,
+      status: 'active', deletedAt: GECMIS, kapatmaNedeni: 'kendi', imhaTarihi: GERCEK_ILERDE,
     };
     const yanit: any = await oturum.girisKarari(kapaliMfali as any, 'parola');
     check('M1 ⭐ kapali hesapta IKI ADIMLI GIRIS HALA KOD ISTIYOR (kapatma, MFA atlatma yolu degil)',
@@ -339,12 +369,12 @@ async function main() {
 
     db.users.push({
       id: 'P1', email: 'kapali@x.test', password: 'ozet', role: 'user', firmaId: null,
-      status: 'active', deletedAt: GECMIS, kapatmaNedeni: 'kendi', imhaTarihi: ILERDE,
+      status: 'active', deletedAt: GECMIS, kapatmaNedeni: 'kendi', imhaTarihi: GERCEK_ILERDE,
       parolaTanimli: true,
     });
     db.users.push({
       id: 'P2', email: 'yonetici-kapatti@x.test', password: 'ozet', role: 'user', firmaId: null,
-      status: 'active', deletedAt: GECMIS, kapatmaNedeni: 'yonetici', imhaTarihi: ILERDE,
+      status: 'active', deletedAt: GECMIS, kapatmaNedeni: 'yonetici', imhaTarihi: GERCEK_ILERDE,
       parolaTanimli: true,
     });
 
@@ -372,7 +402,7 @@ async function main() {
 
     const u = db.users[0];
     check('P4 ⭐⭐ PAROLA YENILEMEK HESABI GERI ACMADI (deletedAt/imhaTarihi/kapatmaNedeni DEGISMEDI)',
-      u.deletedAt === oncekiDeletedAt && u.imhaTarihi === ILERDE && u.kapatmaNedeni === 'kendi',
+      u.deletedAt === oncekiDeletedAt && u.imhaTarihi === GERCEK_ILERDE && u.kapatmaNedeni === 'kendi',
       `deletedAt=${u.deletedAt} imha=${u.imhaTarihi} neden=${u.kapatmaNedeni}`);
     check('P5 hesap hala pencerede (yani giris yapabilir, ama hesap ACIK DEGIL)',
       geriDonusPenceresinde(u as any, SIMDI) === true && !!u.deletedAt);
@@ -391,7 +421,7 @@ async function main() {
     );
     db.users.push({
       id: 'K1', email: 'donen@x.test', password: 'ozet', role: 'user', firmaId: null,
-      status: 'active', deletedAt: GECMIS, kapatmaNedeni: 'kendi', imhaTarihi: ILERDE,
+      status: 'active', deletedAt: GECMIS, kapatmaNedeni: 'kendi', imhaTarihi: GERCEK_ILERDE,
     });
     db.users.push({
       id: 'K2', email: 'suresi-dolmus@x.test', password: 'ozet', role: 'user', firmaId: null,
@@ -429,7 +459,7 @@ async function main() {
     db.users.push({
       id: 'E1', email: 'kapali@e.test', password: 'x', role: 'user',
       firmaId: 'F9', firmaRol: 'sahip', createdAt: GECMIS, mfaAcikAt: null,
-      status: 'active', deletedAt: GECMIS, kapatmaNedeni: 'kendi', imhaTarihi: ILERDE,
+      status: 'active', deletedAt: GECMIS, kapatmaNedeni: 'kendi', imhaTarihi: GERCEK_ILERDE,
       passwordChangedAt: null,
     });
     const strateji = new JwtStrategy(db.prisma);
@@ -437,7 +467,7 @@ async function main() {
     check('E1 ⭐ TOKEN KAPISI: pencere icindeki hesap 401 ALMIYOR ve `hesapKapali: true` tasiyor',
       kimlik?.id === 'E1' && kimlik?.hesapKapali === true && kimlik?.kapatmaTipi === 'hesap');
     check('E2 403 govdesindeki cumle EKRANDAKIYLE ayni kaynaktan',
-      kimlik?.kapatmaMetni === kapaliHesapMetni({ kapali: true, tip: 'hesap', imhaTarihi: ILERDE }),
+      kimlik?.kapatmaMetni === kapaliHesapMetni({ kapali: true, tip: 'hesap', imhaTarihi: GERCEK_ILERDE }),
       String(kimlik?.kapatmaMetni));
 
     const guard = new JwtAuthGuard(new Reflector());
@@ -620,7 +650,7 @@ async function fkBlogu() {
     id: 'FKU', email: 'uye@fx.test', password: 'ozet', role: 'user',
     firmaId: 'FX', firmaRol: 'uye', createdAt: GECMIS, mfaAcikAt: null,
     status: 'active', deletedAt: GECMIS, kapatmaNedeni: 'firmaKapandi',
-    imhaTarihi: ILERDE, passwordChangedAt: null, parolaTanimli: true,
+    imhaTarihi: GERCEK_ILERDE, passwordChangedAt: null, parolaTanimli: true,
   });
 
   // 1) GIRIS
