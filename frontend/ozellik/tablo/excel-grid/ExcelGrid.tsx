@@ -1415,6 +1415,24 @@ function FirmaDropdown(props: ICellRendererParams & {
     }
   };
 
+  /** D15 (30.09): aday penceresinde KAPATMA YOKTU — pencere ancak bir aday
+   *  secilerek ya da firma degistirilerek kapaniyordu; "bu firmayi istemiyorum"
+   *  diyen kullanici istemedigi kalemi secmeye itiliyordu. Malzeme ikizi
+   *  (BrandDropdown `handleCancel`) ile AYNI sozlesme: firma bosalir, isaret
+   *  kalkar (firmasiz satir "secim bekliyor" sayilamaz).
+   *  `fiyatiTemizleLab` YOK: pencere yalniz aday dalindan acilir, o dal fiyati
+   *  ZATEN silmis olur (malzeme ikizinde EG-M3 mutanti bu yuzden yasadi).
+   *  Sebep/aday sayisi temizligi ESDEGER mutanttir (durum '' iken ipucu bos,
+   *  sonraki her yol sebebi yeniden yazar) — ikizle ayni kalsin diye durur. */
+  const handleCandidateCancel = () => {
+    setCandidates(null);
+    setPopupPos(null);
+    node.setDataValue('_firma', null);
+    yazVeriLab(node, '_labStatus', '');
+    yazVeriLab(node, '_labSebep', null);
+    yazVeriLab(node, '_labAdaySayisi', null);
+  };
+
   // L5: alternatif firma secimi — firma + fiyat BIRLIKTE atanir
   const handleAlternativeSelect = (a: BrandAlternative) => {
     node.setDataValue('_firma', a.brandId); // alan adi marka tasir, deger FIRMA
@@ -1486,6 +1504,16 @@ function FirmaDropdown(props: ICellRendererParams & {
               {`Başka firmalarda ${alternatives.length} kalem var — göster`}
             </button>
           )}
+          <button
+            onClick={handleCandidateCancel}
+            style={{
+              display: 'block', width: '100%', textAlign: 'center', padding: '6px',
+              border: '1px solid #e5e7eb', background: '#f9fafb', cursor: 'pointer',
+              fontSize: 11, color: '#6b7280', borderRadius: 4, marginTop: 4,
+            }}
+          >
+            İptal
+          </button>
         </div>,
         document.body,
       )}

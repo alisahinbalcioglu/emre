@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 884
-Toplam satir: 246179
+Kod dosyasi: 885
+Toplam satir: 246280
 Uc nokta: 239
 test:* scripti: 144
 
@@ -782,7 +782,7 @@ test:* scripti: 144
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5150 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5178 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -866,6 +866,7 @@ test:* scripti: 144
 | `frontend/test/e2e/eslestirme-temizlik.spec.ts` | 154 |
 | `frontend/test/e2e/grid.spec.ts` | 206 |
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | 126 |
+| `frontend/test/e2e/iscilik-aday-iptal.spec.ts` | 74 |
 | `frontend/test/e2e/iscilik-doldurma-ozeti.spec.ts` | 83 |
 | `frontend/test/e2e/iscilik-fill-baglam.spec.ts` | 124 |
 | `frontend/test/e2e/iscilik-kapali-tutamak.spec.ts` | 121 |
@@ -874,7 +875,7 @@ test:* scripti: 144
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | 538 |
 | `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 237 |
-| `frontend/test/e2e/varyant-kimligi.spec.ts` | 114 |
+| `frontend/test/e2e/varyant-kimligi.spec.ts` | 113 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
 | `scripts/backup.sh` | 125 |
@@ -1650,6 +1651,7 @@ test:* scripti: 144
 | `frontend/test/e2e/eslestirme-temizlik.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/grid.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/isaret-yazimi.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/iscilik-aday-iptal.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/iscilik-doldurma-ozeti.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/iscilik-fill-baglam.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/iscilik-kapali-tutamak.spec.ts` | `@playwright/test` |

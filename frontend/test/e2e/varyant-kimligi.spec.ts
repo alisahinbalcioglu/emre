@@ -101,9 +101,8 @@ test.describe('Y3 İKİZİ — eski firmanın kalem kimliği filtre olmaz', () =
     await page.locator('[row-index="6"] [col-id="_firma"] button').click();
     await page.getByText('HAKAN USTA', { exact: true }).click();
     await expect(page.locator('[row-index="6"] [col-id="_labBirim"]')).toHaveText(/^\s*$/);
-    // ⚠ İşçilik ADAY popup'ında kapatma düğmesi YOK (bu D15 bulgusudur —
-    // popup ancak aday seçilerek/firma değiştirilerek kapanır). Popup açıkken
-    // sürüklüyoruz; popup tutamağın üstünü örtmüyor.
+    // Popup açıkken sürüklüyoruz (tutamağın üstünü örtmüyor). "İptal" (D15)
+    // burada KULLANILMAZ: firmayı boşaltır, sürüklenecek kaynak kalmazdı.
     // 3) HAKAN'ı satır 7'ye sürükle.
     await surukle(page, 6, 7, '_firma');
     await expect.poll(async () => iscSon(await olaylar(page), 7) ?? '', { timeout: 10_000 }).toContain('satir=7');
