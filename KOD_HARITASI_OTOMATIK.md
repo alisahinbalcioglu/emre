@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 886
-Toplam satir: 246391
+Toplam satir: 246421
 Uc nokta: 239
 test:* scripti: 144
 
@@ -371,7 +371,7 @@ test:* scripti: 144
 | `backend/test/fixture-dogrula.ts` | 224 |
 | `backend/test/fiyat-capasi-test.ts` | 185 |
 | `backend/test/gercek-dosya-test.ts` | 264 |
-| `backend/test/geri-donus-test.ts` | 737 |
+| `backend/test/geri-donus-test.ts` | 767 |
 | `backend/test/govde-dogrulama-test.ts` | 355 |
 | `backend/test/gs6b-teshis.ts` | 85 |
 | `backend/test/guvenlik-basliklari-test.ts` | 137 |
