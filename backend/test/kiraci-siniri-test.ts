@@ -923,7 +923,7 @@ async function k1cBlogu(): Promise<void> {
         !a1Sayfa.includes('SAHTE') && !a1Sayfa.includes(B_GIZLI),
       a1Sayfa);
 
-    // W1 + baska kiracinin satiri: yazilamayan (403) yabanci satir kayitli hali
+    // W1 + baska kiracinin satiri: yazilamayan (404, olmayanla ayni) yabanci satir kayitli hali
     // olmadigi icin DB'den KURULMAZ — kurulsaydi B'nin kalem adi A'nin
     // sayfasina yazilirdi (okuma kendi listesinde bulamadigi kimligi oldugu
     // gibi gosterir).
@@ -932,7 +932,7 @@ async function k1cBlogu(): Promise<void> {
       sheet: { ...sayfa([]), rowData: [...okuA1Satirlari, { _rowIdx: 94, _isDataRow: true, _laborPriceId: bFiyat.id, ad: 'SAHTE B W1', fiyat: 1 }] },
     });
     const a1SayfaW1 = JSON.stringify((d.db.tablo('LaborPriceList').find((l) => l.id === listeA1)?.sheets as any)?.rowData);
-    check('K1c.13i W1: yazilamayan YABANCI satir (403) DB\'den kurulmaz — B\'nin kimligi/kalem adi A\'nin sayfasinda yok',
+    check('K1c.13i W1: yazilamayan YABANCI satir (404) DB\'den kurulmaz — B\'nin kimligi/kalem adi A\'nin sayfasinda yok',
       w1Yabanci.durum === 201 && (w1Yabanci.veri?.errors ?? []).length === 1 &&
         !a1SayfaW1.includes(bFiyat.id) && !a1SayfaW1.includes(B_GIZLI) && !a1SayfaW1.includes('SAHTE') &&
         d.db.tablo('LaborPrice').find((p) => p.id === bFiyat.id)?.unitPrice === 777,
@@ -1293,6 +1293,145 @@ function k0Blogu(): void {
       JSON.stringify(kiracininKalemleri({ userId: 'u', firmaId: 'f' })).includes('"ownerFirmaId":"f"'));
 }
 
+// ═══ KV — P1 takibi (02.10.2026): baska kiracinin kaydi OLMAYANLA AYNI yanit ══
+// Eskiden firma / liste / fiyat satiri icin "bulunamadi" (404) ile "erisim
+// yetkiniz yok" (403) ayriydi: B, A'nin kimligini bilirse kaydin VARLIGINI
+// okurdu (toplu kayitta ve izgara kaydinda satir basina ayni fark; eslestirme
+// ucunda 403 ile bos yanit). Olcut: B'nin A kaydina istegi ile OLMAYAN kimlige
+// istegi BIREBIR ayni durum + govde; yazma denemeleri A'nin verisini degistirmez.
+async function kvBlogu(): Promise<void> {
+  console.log('\n── KV (P1 takibi) başka kiracının kaydı olmayanla aynı yanıtı alır ──');
+  const d = await dunyaKur();
+  try {
+    const aF = await iscilikFirmasiAc(d, 'a1', 'Usta A');
+    const aL = await yukle(d, 'a1', aF, [[A_OZEL, 777]]);
+    const aP = fiyatSatiri(d, aF, A_OZEL)!.id as string;
+    const bF = await iscilikFirmasiAc(d, 'b', 'Usta B');
+    const bL = await yukle(d, 'b', bF, [[B_OZEL, 555]]);
+    const YOK = { firma: `${aF}-yok`, liste: `${aL}-yok`, kalem: `${aP}-yok` };
+
+    const A_SATIR = 'KÜRESEL VANA DN65'; // A'nin kalemiyle eslesen teklif satiri
+    const aFirma = await d.istek('a1', 'GET', `/labor-firms/${aF}`);
+    const aListe = await d.istek('a1', 'GET', `/labor-firms/price-lists/${aL}/items`);
+    const aEsle = await eslestir(d, 'a1', aF, A_SATIR);
+    check('KV.0 FIXTURE: A kendi firmasini/listesini okur ve satiri 777 ile eslestirir (B\'nin yaniti kaydin YOKLUGUNDAN degil; kapi acilsa 777 gorunurdu)',
+      aFirma.durum === 200 && aListe.durum === 200 && aListe.metin.includes(A_OZEL) && aEsle?.netPrice === 777,
+      `${aFirma.durum} ${aListe.durum} ${JSON.stringify(aEsle)}`);
+    const izBas = d.db.izler.length; // bundan sonrasi B'nin istekleri (KV.17 sorgu kapsami)
+
+    const ayni = async (ad: string, yontem: string, yol: (id: string) => string, gercek: string, yok: string, govde?: unknown) => {
+      const r1 = await d.istek('b', yontem, yol(gercek), govde);
+      const r2 = await d.istek('b', yontem, yol(yok), govde);
+      check(`${ad} ${yontem} ${yol(':id')}: A'nin kaydi ile OLMAYAN kimlik AYNI yanit (404, ayni govde)`,
+        r1.durum === 404 && r1.durum === r2.durum && r1.metin === r2.metin,
+        `A: ${r1.durum} ${r1.metin} | yok: ${r2.durum} ${r2.metin}`);
+    };
+    await ayni('KV.1', 'GET', (id) => `/labor-firms/${id}`, aF, YOK.firma);
+    await ayni('KV.2', 'GET', (id) => `/labor-firms/${id}/price-lists`, aF, YOK.firma);
+    await ayni('KV.3', 'PUT', (id) => `/labor-firms/${id}`, aF, YOK.firma, { name: 'Ele gecirildi' });
+    await ayni('KV.4', 'POST', (id) => `/labor-firms/${id}/price-lists`, aF, YOK.firma, { name: 'Sizma listesi' });
+    await ayni('KV.5', 'GET', (id) => `/labor-firms/price-lists/${id}/items`, aL, YOK.liste);
+    await ayni('KV.6', 'GET', (id) => `/labor-firms/price-lists/${id}/sheets`, aL, YOK.liste);
+    await ayni('KV.7', 'PUT', (id) => `/labor-firms/price-items/${id}`, aP, YOK.kalem, { unitPrice: 1 });
+
+    const toplu = await d.istek('b', 'POST', '/labor-firms/price-items/bulk-update', {
+      items: [{ id: aP, unitPrice: 1 }, { id: YOK.kalem, unitPrice: 1 }],
+    });
+    const [tA, tYok] = (toplu.veri?.errors ?? []) as Array<{ id: string; error: string }>;
+    check('KV.11 toplu kayit (bulk-update): A\'nin satiri ile OLMAYAN satir AYNI satir hatasi ("Kalem bulunamadi")',
+      toplu.durum < 300 && toplu.veri?.updated === 0 && tA?.id === aP && tYok?.id === YOK.kalem &&
+        tA.error === 'Kalem bulunamadi' && tYok.error === 'Kalem bulunamadi',
+      toplu.metin);
+    const izgara = await d.istek('b', 'POST', `/labor-firms/price-lists/${bL}/save-sheets`, {
+      dirtyRows: [{ laborPriceId: aP, listPrice: 1 }, { laborPriceId: YOK.kalem, listPrice: 1 }],
+    });
+    const [iA, iYok] = (izgara.veri?.errors ?? []) as Array<{ id: string; error: string }>;
+    check('KV.12 izgara kaydi (save-sheets, B\'nin KENDI listesi): A\'nin satiri ile OLMAYAN satir AYNI satir hatasi ("Kalem bulunamadi")',
+      izgara.durum < 300 && iA?.id === aP && iYok?.id === YOK.kalem &&
+        iA.error === 'Kalem bulunamadi' && iYok.error === 'Kalem bulunamadi',
+      izgara.metin);
+
+    const esle = (firmaId: string) => d.istek('b', 'POST', '/labor-matching/bulk-match', {
+      firmaId, laborNames: [A_SATIR], units: { [A_SATIR]: 'adet' },
+    });
+    const eA = await esle(aF);
+    const eYok = await esle(YOK.firma);
+    check('KV.13 eslestirme: A\'nin iscilik firmasi ile OLMAYAN firma AYNI yanit (bos; A\'nin fiyati yanitta yok)',
+      eA.durum === eYok.durum && eA.metin === eYok.metin && JSON.stringify(eA.veri) === '{}' && !eA.metin.includes('777'),
+      `A: ${eA.durum} ${eA.metin} | yok: ${eYok.durum} ${eYok.metin}`);
+    const hatirla = (firmaId: string) => d.istek('b', 'POST', '/labor-matching/remember', {
+      firmaId, laborName: A_OZEL, secilenAd: A_OZEL,
+    });
+    const hA = await hatirla(aF);
+    const hYok = await hatirla(YOK.firma);
+    check('KV.14 eslestirme hafizasi: A\'nin firmasi ile OLMAYAN firma AYNI yanit ({ ok: false })',
+      hA.durum === hYok.durum && hA.metin === hYok.metin && hA.veri?.ok === false,
+      `A: ${hA.durum} ${hA.metin} | yok: ${hYok.durum} ${hYok.metin}`);
+
+    // save-bulk: B'nin KENDI iscilik firmasina A'nin LISTESI hedef verilir.
+    const topluYukle = (priceListId: string) => d.istek('b', 'POST', `/labor-firms/${bF}/save-bulk`, {
+      priceListId, items: [{ laborName: B_OZEL, unitPrice: 1, unit: 'adet' }],
+    });
+    const yA = await topluYukle(aL);
+    const yYok = await topluYukle(YOK.liste);
+    check('KV.18 save-bulk: A\'nin LISTESI ile OLMAYAN liste AYNI yanit (404, ayni govde)',
+      yA.durum === 404 && yA.durum === yYok.durum && yA.metin === yYok.metin,
+      `A: ${yA.durum} ${yA.metin} | yok: ${yYok.durum} ${yYok.metin}`);
+
+    // YIKICI denemeler EN SONDA: kapi acilsaydi A'nin kaydi silinir ve sonraki
+    // karsilastirmalar "yok ile yok"a donerdi (inceleme LOW-2).
+    await ayni('KV.8', 'DELETE', (id) => `/labor-firms/price-items/${id}`, aP, YOK.kalem);
+    await ayni('KV.9', 'DELETE', (id) => `/labor-firms/price-lists/${id}`, aL, YOK.liste);
+    await ayni('KV.10', 'DELETE', (id) => `/labor-firms/${id}`, aF, YOK.firma);
+
+    const aFirmaSon = d.db.tablo('LaborFirm').find((f) => f.id === aF);
+    const aFiyatSon = d.db.tablo('LaborPrice').find((p) => p.id === aP);
+    check('KV.15 A\'nin verisi DEGISMEDI: firma adi, liste ve fiyat satiri (777) yerinde, sizma listesi yok',
+      aFirmaSon?.name === 'Usta A' && d.db.tablo('LaborPriceList').some((l) => l.id === aL) &&
+        aFiyatSon?.unitPrice === 777 && !d.db.tablo('LaborPriceList').some((l) => l.name === 'Sizma listesi'),
+      JSON.stringify({ firma: aFirmaSon?.name, fiyat: aFiyatSon?.unitPrice }));
+    const bKendi = await eslestir(d, 'b', bF, 'KELEBEK VANA DN80');
+    check('KV.16 KORUMA: B KENDI kaydinda calisir (firma okunur, eslestirme kendi fiyatini bulur — kapi her seyi reddetmiyor)',
+      (await d.istek('b', 'GET', `/labor-firms/${bF}`)).durum === 200 && bKendi?.netPrice === 555,
+      JSON.stringify(bKendi));
+
+    // SURE KAHINI (guvenlik incelemesi MEDIUM-1): sahiplik JS'te karsilastirilirsa
+    // yabanci kayit DB'den ILISKILERIYLE okunur (liste: sheets JSON), olmayan
+    // kayitta tek bos sorgu — fark sureden olculur, toplu ucla buyutulur.
+    // Kiraci kosulu SORGUDA (WHERE) ise A'nin kaydi hic donmez.
+    const bKiraci = KISILER.b.firmaId;
+    const aKimlikleri = new Set([aF, aL, aP]);
+    const aOkumalari = d.db.izler.slice(izBas).filter((i) =>
+      ['LaborFirm', 'LaborPriceList', 'LaborPrice'].includes(i.model) && /^find/.test(i.islem) &&
+        aKimlikleri.has((i.args as any)?.where?.id));
+    const kapsamli = (w: any) => w?.firmaId === bKiraci || w?.firmaId === bF || w?.firma?.firmaId === bKiraci;
+    check('KV.17 SURE KAHINI KAPALI: B\'nin A kaydina yonelik HER okumasi kiraci kosulunu SORGUDA tasir (A\'nin kaydi DB\'den donmez)',
+      aOkumalari.length >= 15 && aOkumalari.every((i) => kapsamli((i.args as any).where)),
+      `okuma=${aOkumalari.length} kapsamsiz=${JSON.stringify(aOkumalari.filter((i) => !kapsamli((i.args as any).where))
+        .map((i) => ({ m: i.model, o: i.islem, w: (i.args as any).where })))}`);
+
+    // LOW-1 (inceleme): save-bulk govdesi satir ici tipte (ValidationPipe yok) —
+    // `priceListId` eksik ya da nesne (`{ not: '' }`) gelince findFirst kosulu
+    // DUSER ve kayit firmanin RASTGELE bir listesine yazilirdi. Bicimsiz liste
+    // kimligi 400 alir, hicbir yere yazilmaz. (KV.17 olcumunden SONRA: A'nin
+    // kendi istegi o pencereye girmesin.)
+    const satirSayisi = () => d.db.tablo('LaborPrice').length;
+    const oncekiSatir = satirSayisi();
+    const kalem = [{ laborName: 'Sızma kalemi montajı', unitPrice: 9, unit: 'adet' }];
+    const eksik = await d.istek('a1', 'POST', `/labor-firms/${aF}/save-bulk`, { items: kalem });
+    const nesne = await d.istek('a1', 'POST', `/labor-firms/${aF}/save-bulk`, { priceListId: { not: '' }, items: kalem });
+    // Metin de olculur: daha erken donen BASKA bir 400 kaldirilmis bir
+    // denetimi gizleyemesin (kod incelemesi).
+    const KIMLIK_400 = 'Gecersiz fiyat listesi kimligi';
+    check('KV.19 save-bulk: liste kimligi eksik ya da nesneyse 400 ("Gecersiz fiyat listesi kimligi"), HICBIR listeye yazilmaz',
+      eksik.durum === 400 && nesne.durum === 400 && eksik.veri?.message === KIMLIK_400 && nesne.veri?.message === KIMLIK_400 &&
+        satirSayisi() === oncekiSatir,
+      `${eksik.durum} ${eksik.metin} | ${nesne.durum} ${nesne.metin} | satir ${oncekiSatir}→${satirSayisi()}`);
+  } finally {
+    await d.app.close();
+  }
+}
+
 async function main(): Promise<void> {
   k0Blogu();
   await kmBlogu();
@@ -1306,6 +1445,7 @@ async function main(): Promise<void> {
   await k4Blogu();
   await k5Blogu();
   await kbBlogu();
+  await kvBlogu();
   const hatalar = gunluk.filter((s) => s.startsWith('ERROR'));
   if (hatalar.length) console.log(`\n  (Nest ERROR satirlari: ${hatalar.length}) ${hatalar.slice(0, 3).join(' || ').slice(0, 600)}`);
   console.log(`\nKIRACI SINIRI: ${passed} PASS, ${failures.length} FAIL`);

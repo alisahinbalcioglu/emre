@@ -1,5 +1,5 @@
 import {
-  Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, Logger,
+  Injectable, NotFoundException, ConflictException, BadRequestException, Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 // A2 (tur 3): insan sinirinin tek sayi kurali (dosya metni fiyat hucresi)
@@ -81,20 +81,26 @@ export class LaborFirmsService {
   // ISIM CAKISMASI — DIKKAT: `firmaId` parametresi ISCILIK FIRMASININ
   // id'sidir; KIRACI firma daima `k.firmaId`dir. quotes.service:194'teki
   // `f.firmaId === k.firmaId` ayrimiyla ayni kalip.
+  // ⚠ VARLIK SIZMAZ (P1 takibi, 02.10.2026): baska kiracinin kaydi OLMAYAN
+  // kayitla AYNI 404'u alir (firma, liste ve fiyat satiri icin; toplu kayit ve
+  // izgara kaydi satir hatasi da buradan). Eskiden 403 "erisim yetkiniz yok"
+  // donuyordu: kimligi bilen baska kiraci kaydin VARLIGINI okurdu. Kiraci
+  // kosulu SORGUDA (WHERE): yabanci kayit DB'den HIC donmez — JS'te
+  // karsilastirmak onu iliskileriyle okuyordu, fark SUREDEN olculurdu
+  // (guvenlik incelemesi MEDIUM-1; kutuphane ikizi zaten boyle).
+  // Kapi: `test:kiraci-siniri` KV (KV.17 sorgu kapsami).
   private async assertOwnership(firmaId: string, k: Kimlik) {
-    const firma = await this.prisma.laborFirm.findUnique({ where: { id: firmaId } });
+    const firma = await this.prisma.laborFirm.findFirst({ where: { id: firmaId, firmaId: k.firmaId } });
     if (!firma) throw new NotFoundException('Firma bulunamadi');
-    if (firma.firmaId !== k.firmaId) throw new ForbiddenException('Bu firmaya erisim yetkiniz yok');
     return firma;
   }
 
   private async assertPriceListOwnership(priceListId: string, k: Kimlik) {
-    const pl = await this.prisma.laborPriceList.findUnique({
-      where: { id: priceListId },
+    const pl = await this.prisma.laborPriceList.findFirst({
+      where: { id: priceListId, firma: { firmaId: k.firmaId } },
       include: { firma: true },
     });
     if (!pl) throw new NotFoundException('Liste bulunamadi');
-    if (pl.firma.firmaId !== k.firmaId) throw new ForbiddenException('Bu listeye erisim yetkiniz yok');
     return pl;
   }
 
@@ -168,15 +174,13 @@ export class LaborFirmsService {
 
   // ── Tekil LaborPrice kalem guncelleme ──
 
+  /** Baska kiracinin satiri OLMAYAN satirla ayni 404, kiraci kosulu SORGUDA (varlik ve sure sizmaz — bkz. assertOwnership). */
   private async assertPriceItemOwnership(priceItemId: string, k: Kimlik) {
-    const price = await this.prisma.laborPrice.findUnique({
-      where: { id: priceItemId },
+    const price = await this.prisma.laborPrice.findFirst({
+      where: { id: priceItemId, firma: { firmaId: k.firmaId } },
       include: { firma: true, laborItem: true },
     });
     if (!price) throw new NotFoundException('Kalem bulunamadi');
-    if (price.firma.firmaId !== k.firmaId) {
-      throw new ForbiddenException('Bu kaleme erisim yetkiniz yok');
-    }
     return price;
   }
 
@@ -1066,8 +1070,14 @@ export class LaborFirmsService {
       });
       if (!priceList) priceList = await yeniListeOlustur();
     } else {
-      priceList = await this.prisma.laborPriceList.findUnique({ where: { id: priceListId } });
-      if (!priceList || priceList.firmaId !== firmaId) {
+      // Govde satir ici tipte (ValidationPipe yok): bicimsiz kimlik (eksik,
+      // nesne `{ not: '' }`) findFirst kosulunu DUSURUR ve kayit firmanin
+      // RASTGELE bir listesine yazilirdi (inceleme LOW-1) → 400, yazim yok.
+      if (!satirKimligiGecerli(priceListId)) throw new BadRequestException('Gecersiz fiyat listesi kimligi');
+      // Sahiplik SORGUDA (bu iscilik firmasinin listesi): baska firmanin
+      // listesi DB'den donmez — yanit ve sure olmayan listeyle ayni.
+      priceList = await this.prisma.laborPriceList.findFirst({ where: { id: priceListId, firmaId } });
+      if (!priceList) {
         throw new NotFoundException('Fiyat listesi bulunamadi');
       }
     }

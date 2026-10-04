@@ -544,6 +544,13 @@ async function kFirmaEkseni() {
       findUnique: async ({ where }: any) => (where.id === 'firma-A'
         ? { id: 'firma-A', userId: 'u1', firmaId: 'F1', name: 'A FIRMASI', discipline: 'mechanical' }
         : null),
+      // Sahiplik SORGUDA (02.10): `firmaId` kosulu Prisma gibi uygulanir.
+      findFirst: async ({ where }: any) => {
+        const f = where.id === 'firma-A'
+          ? { id: 'firma-A', userId: 'u1', firmaId: 'F1', name: 'A FIRMASI', discipline: 'mechanical' }
+          : null;
+        return f && (where.firmaId === undefined || where.firmaId === f.firmaId) ? f : null;
+      },
     },
   };
   const k1Matching: any = {
@@ -564,12 +571,16 @@ async function kFirmaEkseni() {
     k1aHata === null && k1Iz.bulk === 1,
     `bulk=${k1Iz.bulk} hata=${k1aHata?.constructor?.name}: ${k1aHata?.message ?? '-'}`);
 
-  const k1b: any = await k1
-    .bulkMatch({ userId: 'u9', firmaId: 'F2' }, 'firma-A', ['kalem'])
-    .then(() => null, (e: unknown) => e);
-  check('K1b ⭐ BASKA firmanin kullanicisi 403 (capraz-kiraci kapisi)',
-    k1b !== null && /Forbidden/i.test(k1b?.constructor?.name ?? ''),
-    `${k1b?.constructor?.name}: ${k1b?.message}`);
+  // 02.10 (P1 takibi): baska kiracinin firmasi OLMAYAN firmayla AYNI yaniti
+  // alir (bos nesne) — eskiden 403'un olmayan firmanin bos yanitindan farki
+  // firmanin VARLIGINI okutuyordu. Kapi hala kapali (asagidaki FIXTURE:
+  // bulkMatchLabor ikinci kez cagrilmadi).
+  const sonuc = (p: Promise<unknown>) => p.then((r) => ({ r, e: null as any }), (e: any) => ({ r: undefined, e }));
+  const k1b = await sonuc(k1.bulkMatch({ userId: 'u9', firmaId: 'F2' }, 'firma-A', ['kalem']));
+  const k1bYok = await sonuc(k1.bulkMatch({ userId: 'u9', firmaId: 'F2' }, 'firma-YOK', ['kalem']));
+  check('K1b ⭐ BASKA firmanin kullanicisi OLMAYAN firmayla AYNI yanit (bos, hata yok — capraz-kiraci kapisi, varlik sizmaz)',
+    k1b.e === null && k1bYok.e === null && JSON.stringify(k1b.r) === '{}' && JSON.stringify(k1bYok.r) === '{}',
+    `baska=${k1b.e ? `${k1b.e.constructor?.name}: ${k1b.e.message}` : JSON.stringify(k1b.r)} yok=${JSON.stringify(k1bYok.r)}`);
   check('K1b-FIXTURE ret sahiplikten geldi, bulkMatchLabor ikinci kez CAGRILMADI',
     k1Iz.bulk === 1, `bulk=${k1Iz.bulk}`);
 
