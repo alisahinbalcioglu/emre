@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 887
-Toplam satir: 246561
+Toplam satir: 246572
 Uc nokta: 239
 test:* scripti: 144
 
@@ -782,7 +782,7 @@ test:* scripti: 144
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5195 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5197 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -875,7 +875,7 @@ test:* scripti: 144
 | `frontend/test/e2e/malzeme-aday-ipucu.spec.ts` | 90 |
 | `frontend/test/e2e/restore-ozet.spec.ts` | 122 |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
-| `frontend/test/e2e/secim-duzenleme.spec.ts` | 538 |
+| `frontend/test/e2e/secim-duzenleme.spec.ts` | 547 |
 | `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 237 |
 | `frontend/test/e2e/varyant-kimligi.spec.ts` | 113 |
 | `frontend/vitest.config.ts` | 15 |

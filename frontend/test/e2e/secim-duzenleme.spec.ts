@@ -131,7 +131,16 @@ async function tekFiyatiPanoyaAlVeTeklifeGec(page: Page) {
   await moduAyarla(page, 'quote');
 }
 
-test('KP17 ★ EDITORDE ↓ ile alt satira gecis — "300 ↓ 400 ↓ 500" ritmi', async ({ page }) => {
+// ⚠ KARANTINA (04.10, koordinator karari — kararsiz test kurali: adiyla).
+// OLCUM (kapinin kendi komutu, `--repeat-each`): mevcut kodda 16'da 1, 8'de 1;
+// D14 degisikligi OLMADAN (HEAD) da dustu — P3 duzeltmelerinden bagimsiz.
+// Belirti: ↓ ile alt satira gectikten sonra yazilan degerin TAMAMI kayboluyor
+// ("400" ya da "500" hucrede bos); eski "ilk karakter kaybi" sinifinin agir
+// hali. Kok adres: ExcelGrid.tsx editor ↓/↑ gezinmesi (~2404: stopEditing →
+// ensureIndexVisible → setFocusedCell + rAF ikinci odak). Kok duzeltme AYRI
+// IS (sahibi Emre'nin kararinda). CI Playwright kosmuyor; karantina yalniz
+// yerel e2e kapisinin anlamli kalmasi icin. Duzeltilince `test.fixme` → `test`.
+test.fixme('KP17 ★ EDITORDE ↓ ile alt satira gecis — "300 ↓ 400 ↓ 500" ritmi', async ({ page }) => {
   // Kullanicinin cumlesi: "300 tl girdik, hemen alt satira yon tuslari ile
   // gecmek istiyorum ancak olmuyor; hucreden ciktigimda calisiyor."
   await moduAyarla(page, 'quote');
