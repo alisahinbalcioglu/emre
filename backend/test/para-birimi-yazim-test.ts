@@ -44,6 +44,7 @@ import { CreateManualBrandDto } from '../src/ozellik/kutuphane/library/dto/creat
 import { AddLibraryRowsDto } from '../src/ozellik/kutuphane/library/dto/add-library-rows.dto';
 import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
 import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
+import { sahiplikSorgusu } from './yardimci/sahte-sahiplik';
 
 let passed = 0;
 const failures: string[] = [];
@@ -68,9 +69,13 @@ const ozet = (l: { h: unknown; e: any }[]) => l.map((x) => `${JSON.stringify(x.h
 function iscilikSahte() {
   const s = { listeAcilan: 0, kalemAcilan: 0, upsert: [] as any[] };
   const client: any = {
-    laborFirm: { findUnique: async () => ({ id: 'f1', firmaId: 'fa', name: 'Yasin Usta', discipline: 'mechanical' }) },
+    // Sahiplik SORGUDA (02.10, P1 takibi): id'li arama kiraci/firma kosuluyla.
+    laborFirm: {
+      findUnique: async () => ({ id: 'f1', firmaId: 'fa', name: 'Yasin Usta', discipline: 'mechanical' }),
+      findFirst: sahiplikSorgusu({ id: 'f1', firmaId: 'fa', name: 'Yasin Usta', discipline: 'mechanical' }),
+    },
     laborPriceList: {
-      findFirst: async () => null,
+      findFirst: sahiplikSorgusu({ id: 'pl1', name: 'Liste', firmaId: 'f1' }, null),
       create: async (a: any) => { s.listeAcilan++; return { id: 'pl-yeni', ...a.data }; },
       findUnique: async () => ({ id: 'pl1', name: 'Liste', firmaId: 'f1' }),
       update: async () => ({}),

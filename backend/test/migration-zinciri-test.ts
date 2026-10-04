@@ -452,6 +452,7 @@ async function main() {
   await mirasHakkiDoldurmasi(db, klasorler);
   await iscilikKalemiSahipligi(db, klasorler);
   await teklifNoTekilligi(db, klasorler);
+  await iscilikListeCascade(db, klasorler);
 
   await db.close();
 
@@ -1039,6 +1040,90 @@ async function teklifNoTekilligi(db: PGlite, klasorler: string[]): Promise<void>
   check('TN2 başka firmada aynı numara serbest (sayaç firma başına)', baskaFirma === null, String(baskaFirma));
   const numarasiz = await yaz(`INSERT INTO "Quote" ("id","userId","firmaId") VALUES ('tn-q4','tn-ua','tn-A'), ('tn-q5','tn-ua','tn-A')`);
   check('TN3 numarasız (NULL) teklif aynı firmada birden çok olabilir', numarasiz === null, String(numarasiz));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  LC — İŞÇİLİK FİYAT LİSTESİ SİLİNİNCE FİYATLARI DA GİDER (göç *_iscilik_liste_silme_cascade)
+//    `LaborPrice.priceList` `SetNull → Cascade` (L3/S1, 04.10.2026). Eskiden
+//    liste silinince satırlar priceListId=NULL kalıyor, eşleştirme (`firmaId`
+//    ile çeker) SİLİNEN LİSTENİN FİYATINI kullanmaya devam ediyordu; kod
+//    düzeyinde ayrı silme ise eşzamanlı yazımla yarışırdı. DB tek ifadede siler.
+// ═════════════════════════════════════════════════════════════════════════
+async function iscilikListeCascade(db: PGlite, klasorler: string[]): Promise<void> {
+  console.log('\n── LC · İŞÇİLİK FİYAT LİSTESİ SİLİNİNCE FİYATLARI DA GİDER ──');
+  const klasor = klasorler.find((k) => k.endsWith('_iscilik_liste_silme_cascade'));
+  check('LC-OLCUT liste silme göçü zincirde', !!klasor, JSON.stringify(klasorler.slice(-3)));
+  if (!klasor) return;
+  const tn = klasorler.find((k) => k.endsWith('_teklif_no_tekilligi'));
+  check('LC-OLCUT göç teklif no göçünden SONRA sıralanıyor (ad sırası = uygulama sırası)',
+    !!tn && klasorler.indexOf(klasor) > klasorler.indexOf(tn), `${tn} · ${klasor}`);
+  const sql = fs.readFileSync(path.join(MIGRATIONS, klasor, 'migration.sql'), 'utf8');
+  check('LC-OLCUT göç dosyasında GERİ ALMA satırı var (SET NULL dönüşü, yorum olarak)',
+    /^--.*GERI ALMA/m.test(sql) && /^--.*ON DELETE SET NULL/m.test(sql), sql.slice(0, 300));
+
+  const fk = await db.query<{ confdeltype: string }>(
+    `SELECT confdeltype FROM pg_constraint WHERE conname = 'LaborPrice_priceListId_fkey'`,
+  );
+  check('LC0 ⭐ yabancı anahtar silmede CASCADE (confdeltype c)', fk.rows[0]?.confdeltype === 'c', JSON.stringify(fk.rows));
+  // Aynı sütunda ikinci (eski adlı SET NULL) bir FK kalsaydı tetikleyiciler ad
+  // sırasıyla koşar ve CASCADE sessizce etkisiz kalabilirdi (DB incelemesi).
+  const fkTum = await db.query<{ conname: string; confupdtype: string }>(
+    `SELECT conname, confupdtype FROM pg_constraint
+      WHERE conrelid = '"LaborPrice"'::regclass AND contype = 'f' AND pg_get_constraintdef(oid) LIKE '%"priceListId"%'`,
+  );
+  check('LC0b priceListId üzerinde TEK yabancı anahtar, güncellemede de CASCADE (confupdtype c)',
+    fkTum.rows.length === 1 && fkTum.rows[0].conname === 'LaborPrice_priceListId_fkey' && fkTum.rows[0].confupdtype === 'c',
+    JSON.stringify(fkTum.rows));
+  // SQL METNİ SABİT: göç `prisma migrate diff` çıktısıyla BİREBİR olmalı (drift
+  // olmasın) — yalnız yorum dışı satırlar karşılaştırılır.
+  const govde = sql.split('\n').filter((l) => l.trim() && !l.trim().startsWith('--')).join('\n');
+  check('LC-SQL göçün yorum dışı SQL metni migrate diff çıktısıyla BİREBİR (yalnız FK değişikliği)',
+    govde === [
+      'ALTER TABLE "LaborPrice" DROP CONSTRAINT "LaborPrice_priceListId_fkey";',
+      'ALTER TABLE "LaborPrice" ADD CONSTRAINT "LaborPrice_priceListId_fkey" FOREIGN KEY ("priceListId") REFERENCES "LaborPriceList"("id") ON DELETE CASCADE ON UPDATE CASCADE;',
+    ].join('\n'),
+    govde);
+  // GERİ ALMA satırları gerçekten çalışır mı: işlem içinde koş, SET NULL'a
+  // döndüğünü ölç, işlemi geri al (aşağıdaki LC1/LC2 CASCADE ile koşar).
+  const geriAlma = sql.split('\n').filter((l) => /^--\s+ALTER TABLE/.test(l)).map((l) => l.replace(/^--\s+/, '')).join('\n');
+  let geriAlmaSonucu = '';
+  await db.exec('BEGIN');
+  try {
+    await db.exec(geriAlma);
+    geriAlmaSonucu = (await db.query<{ confdeltype: string }>(
+      `SELECT confdeltype FROM pg_constraint WHERE conname = 'LaborPrice_priceListId_fkey'`,
+    )).rows[0]?.confdeltype ?? 'yok';
+  } catch (e) {
+    geriAlmaSonucu = `HATA: ${e instanceof Error ? e.message : String(e)}`;
+  } finally {
+    await db.exec('ROLLBACK');
+  }
+  const geriAlmaSonrasi = (await db.query<{ confdeltype: string }>(
+    `SELECT confdeltype FROM pg_constraint WHERE conname = 'LaborPrice_priceListId_fkey'`,
+  )).rows[0]?.confdeltype;
+  check('LC-GERI dosyadaki GERİ ALMA satırları çalışır (işlem içinde SET NULL = n), işlem geri alınınca CASCADE kalır',
+    geriAlma.split('\n').length === 2 && geriAlmaSonucu === 'n' && geriAlmaSonrasi === 'c',
+    `satir=${geriAlma.split('\n').length} islemde=${geriAlmaSonucu} sonra=${geriAlmaSonrasi}`);
+
+  await db.exec(`
+    INSERT INTO "Firma" ("id","ad") VALUES ('lc-F','LC');
+    INSERT INTO "User" ("id","email","password","firmaId") VALUES ('lc-u','lc@x.com','h','lc-F');
+    INSERT INTO "LaborFirm" ("id","name","discipline","userId","firmaId") VALUES ('lc-LF','Usta LC','mechanical','lc-u','lc-F');
+    INSERT INTO "LaborItem" ("id","name","unitPrice","discipline","updatedAt") VALUES
+      ('lc-i1','Vana montajı DN50',100,'mechanical',NOW()), ('lc-i2','Boru montajı DN25',50,'mechanical',NOW());
+    INSERT INTO "LaborPriceList" ("id","name","firmaId") VALUES ('lc-L1','Liste 1','lc-LF'), ('lc-L2','Liste 2','lc-LF');
+    INSERT INTO "LaborPrice" ("id","laborItemId","firmaId","priceListId","unitPrice") VALUES
+      ('lc-p1','lc-i1','lc-LF','lc-L1',777), ('lc-p2','lc-i1','lc-LF','lc-L2',800), ('lc-p3','lc-i2','lc-LF','lc-L2',50);
+  `);
+  await db.exec(`DELETE FROM "LaborPriceList" WHERE id = 'lc-L1'`);
+  const kalan = await db.query<{ id: string; priceListId: string | null }>(
+    `SELECT id, "priceListId" FROM "LaborPrice" WHERE id LIKE 'lc-%' ORDER BY id`,
+  );
+  check('LC1 ⭐ liste silinince ONUN satırı da gider (listesiz NULL satır kalmaz)',
+    !kalan.rows.some((r) => r.id === 'lc-p1') && !kalan.rows.some((r) => r.priceListId === null), JSON.stringify(kalan.rows));
+  check('LC2 başka listenin satırları duruyor (kapsam yalnız silinen liste)',
+    JSON.stringify(kalan.rows) === JSON.stringify([{ id: 'lc-p2', priceListId: 'lc-L2' }, { id: 'lc-p3', priceListId: 'lc-L2' }]),
+    JSON.stringify(kalan.rows));
 }
 
 bitmezseKirmizi(main().catch((e) => {

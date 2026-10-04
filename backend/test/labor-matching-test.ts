@@ -69,6 +69,15 @@ function makeSvc(mainRows: any[], otherRows: any[] = [], otherFirmaName = 'B Fİ
           ? { id: 'firma-A', userId: 'u1', firmaId: 'F1', name: 'A FİRMASI', discipline: 'mechanical' }
           : null;
       },
+      // Sahiplik SORGUDA (02.10): `firmaId` kosulu Prisma gibi uygulanir
+      // (undefined → kosul duser) — sahte kosulu yok sayarsa U2 kapisi kor kalirdi.
+      findFirst: async ({ where }: any) => {
+        IZ.firmaSorgusu.push(where.id);
+        const f = where.id === 'firma-A'
+          ? { id: 'firma-A', userId: 'u1', firmaId: 'F1', name: 'A FİRMASI', discipline: 'mechanical' }
+          : null;
+        return f && (where.firmaId === undefined || where.firmaId === f.firmaId) ? f : null;
+      },
     },
     laborPrice: {
       findMany: async (args: any) => {
@@ -215,13 +224,16 @@ async function run() {
     check('U1-FIXTURE sahiplik sorgusu GERCEKTEN firma-A ile atildi',
       IZ.firmaSorgusu.includes('firma-A'), JSON.stringify(IZ.firmaSorgusu));
 
-    // U2: BASKA firma (F2) — 403.
-    const hata = await svc
-      .bulkMatch({ userId: 'u9', firmaId: 'F2' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50'])
-      .then(() => null, (e: any) => e);
-    check('U2 ⭐ BASKA firmanin kullanicisi 403 aliyor (capraz-kiraci kapisi)',
-      hata !== null && /Forbidden/i.test(hata?.constructor?.name ?? ''),
-      `hata=${hata?.constructor?.name}: ${hata?.message}`);
+    // U2: BASKA firma (F2) — OLMAYAN firmayla AYNI yanit (02.10, P1 takibi):
+    // eskiden 403 donuyordu, olmayan firma bos nesne — fark, baska kiracinin
+    // iscilik firmasinin VARLIGINI okutuyordu. Kapi hala kapali: sonuc bos
+    // (motor kossaydi U1'deki gibi 85 donerdi).
+    const sonuc = (p: Promise<unknown>) => p.then((r) => ({ r, e: null as any }), (e: any) => ({ r: undefined, e }));
+    const baska = await sonuc(svc.bulkMatch({ userId: 'u9', firmaId: 'F2' }, 'firma-A', ['SİYAH ÇELİK BORU - DN50']));
+    const yok = await sonuc(svc.bulkMatch({ userId: 'u9', firmaId: 'F2' }, 'firma-YOK', ['SİYAH ÇELİK BORU - DN50']));
+    check('U2 ⭐ BASKA firmanin kullanicisi OLMAYAN firmayla AYNI yaniti aliyor (bos, hata yok — varlik sizmaz, kapi kapali)',
+      baska.e === null && yok.e === null && JSON.stringify(baska.r) === '{}' && JSON.stringify(yok.r) === '{}',
+      `baska=${baska.e ? `${baska.e.constructor?.name}: ${baska.e.message}` : JSON.stringify(baska.r)} yok=${JSON.stringify(yok.r)}`);
 
     // U3: hafiza KISIYE yazilmaya devam ediyor (ogrenme kisisel, V2).
     memStore.clear();

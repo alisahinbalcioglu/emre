@@ -1055,7 +1055,7 @@ model LaborPrice {
   laborItemId  String
   firma        LaborFirm       @relation(fields: [firmaId], references: [id], onDelete: Cascade)
   firmaId      String
-  priceList    LaborPriceList? @relation(fields: [priceListId], references: [id], onDelete: SetNull)
+  priceList    LaborPriceList? @relation(fields: [priceListId], references: [id], onDelete: Cascade)
   priceListId  String?
   unitPrice    Float // liste fiyat
   discountRate Float           @default(0) // iskonto %

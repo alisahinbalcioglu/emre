@@ -28,6 +28,10 @@ import { BadRequestException } from '@nestjs/common';
 import { LaborFirmsService } from '../src/ozellik/kutuphane/labor-firms/labor-firms.service';
 import { LibraryService } from '../src/ozellik/kutuphane/library/library.service';
 import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
+import { sahiplikSorgusu } from './yardimci/sahte-sahiplik';
+
+/** Sahte iscilik firmasi — sahiplik SORGUDA aranir (02.10, P1 takibi). */
+const YASIN_FIRMA = { id: 'f1', userId: 'u1', firmaId: 'u1', name: 'Yasin Usta', discipline: 'mechanical' };
 
 let passed = 0;
 const failures: string[] = [];
@@ -42,7 +46,7 @@ bitmezseKirmizi((async () => {
   {
     const created: any[] = [];
     const sahte: any = {
-      laborFirm: { findUnique: async () => ({ id: 'f1', userId: 'u1', firmaId: 'u1', name: 'Yasin Usta', discipline: 'mechanical' }) },
+      laborFirm: { findUnique: async () => YASIN_FIRMA, findFirst: sahiplikSorgusu(YASIN_FIRMA) },
       laborPriceList: {
         findFirst: async () => null,
         create: async (arg: any) => { created.push(arg); return { id: 'pl-yeni', ...arg.data }; },
@@ -66,9 +70,10 @@ bitmezseKirmizi((async () => {
     // MEVCUT listeye ekleme yolunda davranis DEGISMEDI: hata yerine imported:0
     // doner (FE o yolda kendi "Birim Fiyat yok" uyarisini verir).
     const sahte: any = {
-      laborFirm: { findUnique: async () => ({ id: 'f1', userId: 'u1', firmaId: 'u1', name: 'Yasin Usta', discipline: 'mechanical' }) },
+      laborFirm: { findUnique: async () => YASIN_FIRMA, findFirst: sahiplikSorgusu(YASIN_FIRMA) },
       laborPriceList: {
-        findFirst: async () => null,
+        // id'li arama = sahiplik (bu iscilik firmasinin listesi); id'siz = 'auto' (yok)
+        findFirst: sahiplikSorgusu({ id: 'pl1', name: 'Liste', firmaId: 'f1' }, null),
         create: async () => { throw new Error('mevcut liste yolunda create OLMAMALI'); },
         findUnique: async () => ({ id: 'pl1', name: 'Liste', firmaId: 'f1' }),
       },

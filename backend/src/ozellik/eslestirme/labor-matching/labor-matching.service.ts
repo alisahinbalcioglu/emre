@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { MatchingService } from '../matching/matching.service';
 import { generateTags } from '../matching/tag-generator';
@@ -33,14 +33,14 @@ export class LaborMatchingService {
    *
    * `null` donusu KORUNUR (mevcut sozlesme): firma bulunamazsa `bulkMatch`
    * bos nesne, `remember` `{ ok: false }` doner — 404 degil.
+   * ⚠ VARLIK SIZMAZ (P1 takibi, 02.10.2026): BASKA kiracinin firmasi da
+   * `null` (olmayan firmayla AYNI yanit). Eskiden 403 donuyordu: bos yanittan
+   * farki, kimligi bilen kiraciya firmanin VARLIGINI okutuyordu. Motor yine
+   * cagrilmaz. Kiraci kosulu SORGUDA: yabanci firma DB'den donmez (sure de
+   * ayni). Kapi: `test:kiraci-siniri` KV.13-14 + KV.17, `test:labor` U2.
    */
   private async assertOwnership(iscilikFirmaId: string, k: Kimlik) {
-    const firma = await this.prisma.laborFirm.findUnique({ where: { id: iscilikFirmaId } });
-    if (!firma) return null;
-    if (firma.firmaId !== k.firmaId) {
-      throw new ForbiddenException('Bu firmaya erisim yetkiniz yok');
-    }
-    return firma;
+    return this.prisma.laborFirm.findFirst({ where: { id: iscilikFirmaId, firmaId: k.firmaId } });
   }
 
   async bulkMatch(
