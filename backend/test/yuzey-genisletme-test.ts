@@ -175,15 +175,16 @@ console.log('── YG-11..12) hafiza otoyazi kapisi ──');
   ];
   const Q = '2" Galvaniz Çelik Boru';
   const r = sonuc(sor(Q, HAVUZ), Q);
-  // Motorun ic `kapilar` listesi dis sozlesmeye (MatchResult) tasinmiyor;
-  // hafiza otoyazi kapisi bu bayragi okur. Bayrak dusesse bir kez onaylanan
-  // secim IKINCI kosumda uyariyi silip fiyati 'high' yazardi.
-  check('YG-11 bayrak dis sozlesmeye tasinir (hafiza otoyazi kapisi okur)',
-    r.yuzeyGenisletildi === true, JSON.stringify(r.yuzeyGenisletildi));
-  check('YG-12 KARSI: normal cap-yok yolunda bayrak URETILMEZ',
+  // Hafiza otoyazi kapisi kapiyi dis sozlesmeden (MatchResult) okur. Kapi
+  // dusesse bir kez onaylanan secim IKINCI kosumda uyariyi silip fiyati
+  // 'high' yazardi. KARAR (b) 04.10: eskiden `yuzeyGenisletildi` boolean'iydi,
+  // artik kapilar TOPLUCA tasinir (`kapilar`) — sozlesmenin ayni maddesi.
+  check('YG-11 kapi dis sozlesmeye tasinir (hafiza otoyazi kapisi okur)',
+    (r.kapilar ?? []).includes('yuzey-genisletildi'), JSON.stringify(r.kapilar));
+  check('YG-12 KARSI: normal cap-yok yolunda kapi URETILMEZ',
     (() => {
       const q2 = '4" Çelik Boru';
-      return sonuc(sor(q2, HAVUZ), q2).yuzeyGenisletildi === undefined;
+      return !(sonuc(sor(q2, HAVUZ), q2).kapilar ?? []).includes('yuzey-genisletildi');
     })(), '-');
 }
 

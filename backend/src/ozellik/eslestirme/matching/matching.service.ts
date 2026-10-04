@@ -22,10 +22,12 @@ import { generateTags } from './tag-generator';
 import { hesaplaNetFiyat } from '../../fiyat/matching/pricing';
 import { extractMaterialKind, extractFluid } from './normalizer';
 import { extractSizeInfo } from './conversion';
-import { TerminologyService } from './terminology.service';
+import { TerminologyService, SOZLUK_MALZEME_RETTI } from './terminology.service';
+// P4 notu 1 (04.10): gunluge giden KULLANICI metni kacislanir (satir sonuyla sahte kayit olmaz)
+import { gunlukDegeri } from './gunluk-degeri';
 // TEK MOTOR (Faz 2b): indeksli + Ad-kilitli cekirdek (saf — test:index K1-K7)
 import { parseLine } from './index/line-parser';
-import { runQuery, guclutekAday, aileUyusmazligiTeshisi } from './index/query-engine';
+import { runQuery, guclutekAday, aileUyusmazligiTeshisi, HAFIZA_OTOYAZ_ENGELI } from './index/query-engine';
 import { toMatchResult, gorunenAd, kurOf, kaynakFiyatOf } from '../../fiyat/matching/index/outcome-mapper';
 import type { TryCevirici } from '../../fiyat/matching/index/outcome-mapper';
 import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields, iscilikAdCekirdegi, malzemeEtiketleri } from './index/product-index';
@@ -42,6 +44,18 @@ import { katalogda, kiracininKalemleri } from '../../kutuphane/labor/iscilik-kal
 // HEADER_HINTS kod-ici sozlugu, marka→sinif cikarimi) kod tabanindan
 // SILINDI. Islevsel baslik sozlugu artik TEK yerde yasar: TerminologyAlias
 // (DB seed + S4 kullanici ogrenmesi) → matchV2 QueryOpts ipuclari.
+
+/** P4 notu 4 (C12): obur katalog havuzu — satirdan BAGIMSIZ, istek basina bir kez. */
+type OneriHavuzu = {
+  /** marka (ya da iscilik firmasi) kimligi → o katalogun satirlari */
+  gruplar: Map<string, IndexedRow[]>;
+  /** satir kimligi → sahibi (marka / iscilik firmasi) */
+  sahipOf: Map<string, { id: string; name: string }>;
+  toTry: TryCevirici;
+};
+/** Istek boyunca tutulan bellek: SOZ (Promise) saklanir — es zamanli iki
+ *  satir ayni anda isterse de havuz bir kez hazirlanir. */
+type OneriBellegi = { malzeme?: Promise<OneriHavuzu | null>; iscilik?: Promise<OneriHavuzu | null> };
 
 @Injectable()
 export class MatchingService {
@@ -96,7 +110,12 @@ export class MatchingService {
     // Gecersiz kur (1:1 geri dusus) metaveri OLARAK DA tasinmaz — uydurma
     // "kur 1" teklife donmasin (kapi D1, test:kur E4).
     if (rates && (gecerli.USD || gecerli.EUR)) {
-      cevirici.kur = { usdTry: rates.usdTry, eurTry: rates.eurTry, tarih: rates.date };
+      cevirici.kur = {
+        usdTry: rates.usdTry, eurTry: rates.eurTry, tarih: rates.date,
+        // C10 (P4 notu 3): bayat kur isareti kur metaverisiyle akar — kurOf
+        // onu sonuca, adaya ve oneriye tasir (tek yer).
+        ...(rates.bayat ? { bayat: true as const, yasIsGunu: rates.yasIsGunu } : {}),
+      };
     }
     return cevirici;
   }
@@ -157,7 +176,7 @@ export class MatchingService {
     });
 
     if (libRows.length === 0) {
-      console.log(`[Matching] Kutuphane bos: firma=${k.firmaId}, brand=${brandId}`);
+      console.log(`[Matching] Kutuphane bos: firma=${gunlukDegeri(k.firmaId)}, brand=${gunlukDegeri(brandId)}`);
       const empty: Record<string, MatchResult> = {};
       const reason =
         'Kütüphanenizde bu markaya ait malzeme yok. Malzeme Havuzu\'ndan "Kütüphaneme Aktar" ile ekleyin.';
@@ -177,7 +196,7 @@ export class MatchingService {
     // MOTORA GETIRILIR — indekssiz (manuel/legacy) satir istek aninda
     // indekslenir, bayat indeks istek aninda yeniden uretilir (hazirlaPool).
     const pool = this.hazirlaPool(libRows as any[]);
-    console.log(`[Matching] v2 INDEKSLI MOTOR (Ad kilitli): ${pool.length} satir, brand=${brandId}`);
+    console.log(`[Matching] v2 INDEKSLI MOTOR (Ad kilitli): ${pool.length} satir, brand=${gunlukDegeri(brandId)}`);
     return this.matchV2(k, brandId, materialNames, pool, toTry, variantTags, units);
   }
 
@@ -377,9 +396,20 @@ export class MatchingService {
     const aliases = await this.terminology.loadAliases(k.userId);
 
     const out: Record<string, MatchResult> = {};
-    for (const name of materialNames) {
+    // P4 notu 4 (04.10, C12): sonuc ADA baglidir (`out[name]`) — ayni ad
+    // 50.000 kez gelirse 50.000 kez islenmez. Oneri havuzu da istek basina
+    // BIR KEZ hazirlanir (bkz. `OneriHavuzu`): eskiden "bu markada yok" diyen
+    // HER satir obur markalarin TUM kutuphanesini yeniden cekiyordu.
+    const oneriBellegi: OneriBellegi = {};
+    for (const name of new Set(materialNames)) {
       if (!name?.trim()) continue;
-      const line = parseLine(name, units?.[name]);
+      // P4 notu 2 (04.10): SAVUNMA DERINLIGI. DTO (C11) prototipsiz kopya +
+      // metin dogrulamasi yapar; motor DTO'suz cagrilirsa (servis, test)
+      // "toString" adli satir Object.prototype'tan FONKSIYON aliyor, parseLine
+      // TypeError atiyor ve TUM toplu istek dusuyordu (olculdu). Yalniz KENDI
+      // anahtari ve METIN deger okunur. (`Object.hasOwn` ES2022; hedef ES2021.)
+      const ham = units && Object.prototype.hasOwnProperty.call(units, name) ? units[name] : undefined;
+      const line = parseLine(name, typeof ham === 'string' ? ham : undefined);
 
       // TS vakasi (24.07/27.07): alias secimi KADEMELI — guard'a takilan
       // (veya motorun kullanamadigi) alias atlanir, SIRADAKI denenir. Eski
@@ -418,7 +448,7 @@ export class MatchingService {
         hint = aday;
         break;
       }
-      if (atlanan > 0) console.log(`[Matching] v2 sozluk: "${name}" — ${atlanan} alias adayi guard'la atlandi${hint ? '' : ', hint YOK'}`);
+      if (atlanan > 0) console.log(`[Matching] v2 sozluk: ${gunlukDegeri(name)} — ${atlanan} alias adayi guard'la atlandi${hint ? '' : ', hint YOK'}`);
       // T3/T5: SATIR KAZANIR — satirda ACIK sinif/cins kelimesi yaziliysa
       // sozluk sinif/taban DAYATAMAZ ("TEMİZ SU başlığı altında DN50 GALVANİZ
       // ÇELİK BORU" satiri CELIKTIR; alias plastic filtresi onu ELIYORDU ve
@@ -443,6 +473,12 @@ export class MatchingService {
         // filtresi olarak calisir, ustune bir de siralama baskisi koymak
         // "PVC yazdim, PVC elendi" celiskisini dogururdu.
         hintMalzeme: yaziliSinif ? [] : malzemeEtiketleri(...(hint?.kinds ?? [])),
+        // KARAR (a): pis su → PP ailesi ELENIR. Satirda malzeme yaziliysa
+        // ("PP PİS SU BORUSU") satir kazanir — kullanicinin kelimesi serttir.
+        // canonical KULLANICI alias'indan da gelebilir: yalniz tablonun KENDI
+        // anahtari okunur (prototip adi → fonksiyon → yayma cokerdi; olculdu).
+        hintMalzemeEle: yaziliSinif || !hint || !Object.prototype.hasOwnProperty.call(SOZLUK_MALZEME_RETTI, hint.canonical)
+          ? [] : [...SOZLUK_MALZEME_RETTI[hint.canonical]],
         hintLabel: hint ? (hint.kinds.join('/') || hint.canonical) : undefined,
         // Alias'in kendi kelimeleri + stripTags kisit/bilinmeyen sayilmaz —
         // YALNIZ GERCEK CEVIRIDE (impliedType). S4 ZEHRI (canli 17.07,
@@ -455,7 +491,7 @@ export class MatchingService {
         ignoreTokens: hint?.impliedType ? Array.from(new Set([...tokenize(hint.alias), ...hint.stripTags])) : undefined,
       };
       if (hint) {
-        console.log(`[Matching] v2 sozluk: "${name}" → ${hint.alias} (${opts.hintClass ?? '-'}${opts.hintBases?.length ? `, taban=${opts.hintBases.join('/')}` : ''})`);
+        console.log(`[Matching] v2 sozluk: ${gunlukDegeri(name)} → ${gunlukDegeri(hint.alias)} (${opts.hintClass ?? '-'}${opts.hintBases?.length ? `, taban=${opts.hintBases.join('/')}` : ''})`);
       }
 
       // S6 (06.08) — "bu markada yok" mu, yoksa AILELER ANLASAMADI mi?
@@ -497,8 +533,8 @@ export class MatchingService {
           && (r.confidence === 'none' || (r.dogrulanamadi?.length ?? 0) > 0 || teshisAcik)) {
         // L5 (iscilik): "bu firmada yok" → kullanicinin DIGER firmalari taranir
         const alts = catalogOpts
-          ? await this.findLaborAlternativesV2(k, catalogOpts.firmaId, line, opts)
-          : await this.findAlternativesV2(k, brandId, line, opts);
+          ? await this.findLaborAlternativesV2(k, catalogOpts.firmaId, line, opts, oneriBellegi)
+          : await this.findAlternativesV2(k, brandId, line, opts, oneriBellegi);
         if (alts.length > 0) r = { ...r, alternatives: alts };
       }
       out[name] = r;
@@ -557,7 +593,14 @@ export class MatchingService {
    * M3 (v2): satirin ailesi+capi DIGER markalarin indeksli kutuphanesinde var mi?
    * Ayni sert kurallar — yalniz GERCEKTEN o urunu sunan markalar onerilir.
    */
-  private async findAlternativesV2(k: Kimlik, brandId: string, line: LineQuery, opts?: QueryOpts): Promise<BrandAlternative[]> {
+  /**
+   * P4 notu 4 (04.10, C12) — obur MARKALARIN havuzu: satirdan BAGIMSIZ kisim
+   * (DB cekimi, indeks tamiri, kur ceviricisi, marka gruplamasi). Eskiden
+   * `findAlternativesV2` bunu "bu markada yok" diyen HER satir icin yeniden
+   * yapiyordu (ayni teklifte 50.000 satir → 50.000 tam tarama). Artik istek
+   * basina BIR KEZ (`OneriBellegi`), satir sorgusu bu havuz uzerinde kosar.
+   */
+  private async malzemeOneriHavuzu(k: Kimlik, brandId: string): Promise<OneriHavuzu | null> {
     const others = await this.prisma.userLibrary.findMany({
       // G8: capraz-marka alternatif havuzu da FIRMAYA ait.
       where: { firmaId: k.firmaId, brandId: { not: brandId } },
@@ -569,24 +612,33 @@ export class MatchingService {
     });
     // Faz 2b: diger markalarin manuel/bayat satirlari da ayni yoldan gecer
     const pool = this.hazirlaPool(others as any[]);
-    if (pool.length === 0) return [];
-
+    if (pool.length === 0) return null;
     const toTry = await this.buildTryConverter(others as { currency?: string | null }[]);
-    const byBrand = new Map<string, BrandAlternative>();
-    const kesinlik = new Map<string, 'single' | 'ask1'>();
-    const markaOf = new Map<string, { id: string; name: string }>(
+    const sahipOf = new Map<string, { id: string; name: string }>(
       (others as any[]).map((r) => [r.id, r.brand]),
     );
-
     // Marka basina AYRI sorgu: her markanin havuzu kendi icinde degerlendirilir
     // (dagarcik marka+aile kapsaminda uretilir — vocab.ts).
-    const markaGruplari = new Map<string, IndexedRow[]>();
+    const gruplar = new Map<string, IndexedRow[]>();
     for (const row of pool) {
-      const m = markaOf.get(row.id);
+      const m = sahipOf.get(row.id);
       if (!m) continue;
-      if (!markaGruplari.has(m.id)) markaGruplari.set(m.id, []);
-      markaGruplari.get(m.id)!.push(row);
+      if (!gruplar.has(m.id)) gruplar.set(m.id, []);
+      gruplar.get(m.id)!.push(row);
     }
+    return { gruplar, sahipOf, toTry };
+  }
+
+  private async findAlternativesV2(
+    k: Kimlik, brandId: string, line: LineQuery, opts?: QueryOpts, bellek?: OneriBellegi,
+  ): Promise<BrandAlternative[]> {
+    const havuz = await (bellek
+      ? (bellek.malzeme ??= this.malzemeOneriHavuzu(k, brandId))
+      : this.malzemeOneriHavuzu(k, brandId));
+    if (!havuz) return [];
+    const { gruplar: markaGruplari, sahipOf: markaOf, toTry } = havuz;
+    const byBrand = new Map<string, BrandAlternative>();
+    const kesinlik = new Map<string, 'single' | 'ask1'>();
 
     // S3: sozluk ipuclari alternatif taramaya da islenir (R3: temiz su icin
     // CELIK marka onerilemez) — yalniz varyant filtresi tasinmaz.
@@ -685,7 +737,7 @@ export class MatchingService {
 
     const toTry = await this.buildTryConverter(prices as { currency?: string | null }[]);
     const pool = this.hazirlaLaborPool(prices as any[]);
-    console.log(`[Matching] v2 ISCILIK MOTORU (tek motor, catalog=iscilik): ${pool.length} kalem, firma=${firmaId}`);
+    console.log(`[Matching] v2 ISCILIK MOTORU (tek motor, catalog=iscilik): ${pool.length} kalem, firma=${gunlukDegeri(firmaId)}`);
     return this.matchV2(
       k,
       `iscilik|${firmaId}`, // hafiza kapsami — malzeme imzalariyla CAKISMAZ
@@ -705,8 +757,19 @@ export class MatchingService {
     const pool: IndexedRow[] = prices.map((p) => {
       const it = p.laborItem;
       let urun: IndexedRow['urun'];
-      const kolonlu = !!(it.adSlug && it.adBucket);
-      if (kolonlu && it.indexVersion === INDEX_VERSION) {
+      // ── L1 (01.10 olculdu): IKI AYRI SORU, IKI AYRI OLCUT ───────────────
+      // Eskiden tek bayrak ikisini birden tasiyordu: `kolonlu = adSlug &&
+      // adBucket`. Ama "hic indekslenmis mi" ile "kaynak SUTUNU var mi" ayri
+      // sorular — ve ikinci soruyu kalici ikiz (`reindexLabor`) ZATEN dogru
+      // soruyor (`cins || baglanti || capRaw || boyMm`). Tek bayrak yuzunden
+      // capini ADINDA tasiyan, cap sutunu BOS bir kalem bayat dalda "kolonlu"
+      // sayilip BOS kolondan indeksleniyor ve capi DUSUYORDU; ayni kalem hic
+      // indekslenmemisken ADDAN dogru okunuyordu (kapi: iscilik-bayat-indeks).
+      // Kusur yalniz `indexVersion !== INDEX_VERSION` iken kosar — yani
+      // INDEX_VERSION artirildigi an TUM indeksli iscilik kalemlerinde.
+      const indeksli = !!(it.adSlug && it.adBucket);
+      const kolonlu = !!(it.cins || it.baglanti || it.capRaw || it.boyMm);
+      if (indeksli && it.indexVersion === INDEX_VERSION) {
         urun = {
           adSlug: it.adSlug, adBucket: it.adBucket, adTokens: it.adTokens ?? [],
           cinsNorm: it.cinsNorm ?? null, cinsTokens: it.cinsTokens ?? [],
@@ -743,7 +806,10 @@ export class MatchingService {
           price: p.unitPrice, birim: p.unit ?? it.unit ?? null,
         } as IndexedRow['urun'];
       } else {
-        indekssiz++;
+        // Sutunsuz kalem: cap/cins ADDAN okunur (yol-3). Buraya bayat indeksli
+        // kalem de duser — sayac onu "indekssiz" degil BAYAT sayar, yoksa
+        // uyari satiri "yeniden indeksleme onerilir" demeyi birakirdi.
+        if (indeksli) bayat++; else indekssiz++;
         urun = {
           ...this.manuelUrunIndeksle({
             name: it.name, price: p.unitPrice,
@@ -781,28 +847,38 @@ export class MatchingService {
    *  sahte Prisma'si `where.firmaId` gorunce ANA havuz, `where.firma`
    *  gorunce ALTERNATIF dalina gider; ust duzeye `firmaId` eklemek testi
    *  yanlis dala dusururdu. */
-  private async findLaborAlternativesV2(
-    // ⚠ `k.firmaId` KIRACI firma · `iscilikFirmaId` ISCILIK firmasi.
-    k: Kimlik, iscilikFirmaId: string, line: LineQuery, opts?: QueryOpts,
-  ): Promise<BrandAlternative[]> {
+  /** P4 notu 4 IKIZI (C12): obur ISCILIK FIRMALARININ havuzu — istek basina
+   *  BIR KEZ (bkz. `malzemeOneriHavuzu`). */
+  private async iscilikOneriHavuzu(k: Kimlik, iscilikFirmaId: string): Promise<OneriHavuzu | null> {
     const others = await (this.prisma as any).laborPrice.findMany({
       where: { firma: { firmaId: k.firmaId, id: { not: iscilikFirmaId } } },
       include: { laborItem: true, firma: { select: { id: true, name: true } } },
     });
-    if (others.length === 0) return [];
+    if (others.length === 0) return null;
     const pool = this.hazirlaLaborPool(others);
     const toTry = await this.buildTryConverter(others as { currency?: string | null }[]);
-
-    const firmaOf = new Map<string, { id: string; name: string }>(
+    const sahipOf = new Map<string, { id: string; name: string }>(
       (others as any[]).map((r) => [r.id, r.firma]),
     );
     const gruplar = new Map<string, IndexedRow[]>();
     for (const row of pool) {
-      const f = firmaOf.get(row.id);
+      const f = sahipOf.get(row.id);
       if (!f) continue;
       if (!gruplar.has(f.id)) gruplar.set(f.id, []);
       gruplar.get(f.id)!.push(row);
     }
+    return { gruplar, sahipOf, toTry };
+  }
+
+  private async findLaborAlternativesV2(
+    // ⚠ `k.firmaId` KIRACI firma · `iscilikFirmaId` ISCILIK firmasi.
+    k: Kimlik, iscilikFirmaId: string, line: LineQuery, opts?: QueryOpts, bellek?: OneriBellegi,
+  ): Promise<BrandAlternative[]> {
+    const havuz = await (bellek
+      ? (bellek.iscilik ??= this.iscilikOneriHavuzu(k, iscilikFirmaId))
+      : this.iscilikOneriHavuzu(k, iscilikFirmaId));
+    if (!havuz) return [];
+    const { gruplar, sahipOf: firmaOf, toTry } = havuz;
 
     const altOpts: QueryOpts | undefined = opts ? { ...opts, variantTags: undefined } : undefined;
     const out: BrandAlternative[] = [];
@@ -995,10 +1071,15 @@ export class MatchingService {
           // dogrulanmis gibi gosteremez. Kapi ateslediginde akis asagidaki
           // ON-SECIM daline duser — kalem ekranda KALIR, yalniz onay istenir.
           // Kapi: test/olcu-anahtari-cakismasi-test.ts (B-R1/B-R2)
-          if (result.candidates.length === 1 && !result.variantMissing && !akiskanSupheli
-              && !result.yuzeyGenisletildi && !result.capCevrilemedi && !result.dnKoprusu) {
+          // KARAR (b) (04.10): yukaridaki uc sinir ve karar metnindeki dort
+          // (capsiz dusus, aile zayif, aile uyusmazligi, ad gevsetildi) TEK
+          // listede — adayin KIMLIGINE dokunan kapi aciksa gecmis onay yeni
+          // durumu kapsamaz. Olculdu: 373.825 TL'lik makine tek onaydan sonra
+          // 'high' yaziliyordu. Kapi: test/hafiza-kimlik-kapisi-test.ts
+          const kimlikKapisi = (result.kapilar ?? []).some((k) => HAFIZA_OTOYAZ_ENGELI.includes(k));
+          if (result.candidates.length === 1 && !result.variantMissing && !akiskanSupheli && !kimlikKapisi) {
             const c = result.candidates[idx];
-            console.log(`[Matching] HAFIZA TEK-ADAY OTOYAZ: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×)`);
+            console.log(`[Matching] HAFIZA TEK-ADAY OTOYAZ: ${gunlukDegeri(excelName)} → ${gunlukDegeri(mem.secilenAd)} (${mem.secimSayisi}×)`);
             return {
               ...result,
               netPrice: c.netPrice, listPrice: c.listPrice, discount: c.discount,
@@ -1025,7 +1106,7 @@ export class MatchingService {
               reason: `Aynı soruda kayıtlı seçim (${mem.secimSayisi}×) — tek aday, otomatik uygulandı.`,
             };
           }
-          console.log(`[Matching] HAFIZA ON-SECILI: "${excelName}" → "${mem.secilenAd}" (${mem.secimSayisi}×) basa alindi`);
+          console.log(`[Matching] HAFIZA ON-SECILI: ${gunlukDegeri(excelName)} → ${gunlukDegeri(mem.secilenAd)} (${mem.secimSayisi}×) basa alindi`);
           const cand = { ...result.candidates[idx], preferred: true };
           const rest = result.candidates.filter((_, i) => i !== idx);
           result = {
@@ -1052,7 +1133,7 @@ export class MatchingService {
         const preferred = result.candidates.filter((c) => c.tags?.includes(kmem.secilenAd));
         if (preferred.length > 0 && preferred.length < result.candidates.length) {
           const rest = result.candidates.filter((c) => !c.tags?.includes(kmem.secilenAd));
-          console.log(`[Matching] CINS TERCIHI ON-SECILI: "${excelName}" → ${kmem.secilenAd} (${preferred.length} aday one alindi)`);
+          console.log(`[Matching] CINS TERCIHI ON-SECILI: ${gunlukDegeri(excelName)} → ${gunlukDegeri(kmem.secilenAd)} (${preferred.length} aday one alindi)`);
           result = {
             ...result,
             candidates: [...preferred.map((c) => ({ ...c, preferred: true })), ...rest],
@@ -1177,9 +1258,9 @@ export class MatchingService {
         },
         create: { userId, firmaId: yaziFirmaId, imza, secilenAd },
       });
-      console.log(`[Matching] HAFIZA YAZ: user=${userId} imza="${imza}" → "${secilenAd}"`);
+      console.log(`[Matching] HAFIZA YAZ: user=${gunlukDegeri(userId)} imza=${gunlukDegeri(imza)} → ${gunlukDegeri(secilenAd)}`);
     } else {
-      console.log(`[Matching] HAFIZA YAZILMADI (ölçü çözülemedi): "${materialName}"`);
+      console.log(`[Matching] HAFIZA YAZILMADI (ölçü çözülemedi): ${gunlukDegeri(materialName)}`);
     }
 
     // ── CINS TERCIHI YAZ (V5): secilen urun TEK cins tasiyorsa kaydet ──
@@ -1199,7 +1280,7 @@ export class MatchingService {
           },
           create: { userId, firmaId: yaziFirmaId, imza: kindImza, secilenAd: chosenKinds[0] },
         });
-        console.log(`[Matching] CINS TERCIHI YAZ: imza="${kindImza}" → ${chosenKinds[0]}`);
+        console.log(`[Matching] CINS TERCIHI YAZ: imza=${gunlukDegeri(kindImza)} → ${gunlukDegeri(chosenKinds[0])}`);
       }
     } catch { /* cins tercihi opsiyonel — ana hafiza yazildi */ }
 

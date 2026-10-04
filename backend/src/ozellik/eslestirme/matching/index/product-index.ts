@@ -162,7 +162,24 @@ export interface ProductIndexFields {
 //     duzeltme yalniz YENI ice aktarimlarda gorunurdu. 16→17 ile her satir bayat
 //     sayilir ve istek aninda kendiliginden tazelenir (manuel reindex SART DEGIL,
 //     yalniz kalici/performansli cozumdur).
-export const INDEX_VERSION = 17;
+// v18 (02.10): A1 OLCU SINIFI — NITELIK GOVDEYI EZMIYOR + eksik plastik
+//     yazimlari. `resolveProductSizeClass` iki sey birden degisti:
+//       (1) "once CELIK, sonra PLASTIK" yerine KAPLAMA elendikten sonra ADda
+//           ONCE gecen sinyal govde sayilir — "U-PVC … Paslanmaz Civata",
+//           "UH-PVC … Pirinc Cikisli", "HDPE … (Siyah)" artik plastic;
+//       (2) yalin `pe`, bosluklu `pe 100`/`pe 80`, `pead`, `ldpe`, tiresiz
+//           `upvc`, `pvcu`, `pe-rt` taninir.
+//     `sizeClass` → `capTags` DEGISIR (plastik urun `dn*` etiketini kazanir)
+//     → SURUM ARTISI ZORUNLU. v17 satirlari artmadan ne istek aninda tazelenir
+//     ne de reindex'te yeniden yazilir (iki yol da surumle kapili, bkz. v17).
+//     OLCULDU (gercek Pimtas listesi, 3293 adli satir): steel 376 → 42,
+//     plastic 2719 → 3055, unknown 198 → 196. 1946 sorgunun 1856'si AYNI;
+//     degisen 90'in TAMAMI `ask/multi → ask/multi` ve yalniz ADAY SAYISI artti
+//     (+4 / +8); net fiyat degisen 0, gosterilen urun degisen 0, aday kaybeden
+//     sorgu 0. Yani duzeltme yalniz GORUNMEYEN adaylari geri getiriyor.
+//     ⚠ Surum artisi iscilik tarafini da bayatlatir — L1 (hazirlaLaborPool)
+//     duzeltilmeden bu artis yapilamazdi: bayat dal capi ADINDAN okumuyordu.
+export const INDEX_VERSION = 18;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';
@@ -461,8 +478,14 @@ export function resolveProductSizeClass(ad: string, cins?: string | null, katego
   // YALANI. malzemeEtiketleri ayni metinden zaten ['pp'] uretiyordu — sinif
   // katmani ile malzeme katmani ayni kelimeyi farkli taniyordu (ikiz kusuru).
   // CELIK ONCELIGI DEGISMEDI: 'PE kapli celik' yine steel (once CELIK denenir).
-  const PLASTIK = /\b(ppr|pp-?rc?|pprc|polipropilen|pp\s+boru|pe-?100|pe-?80|pex|pvc|hdpe|polietilen|plastik|pp)\b/;
-  const CELIK = /\b(celik|paslanmaz|pirinc|dokum|bronz|bakir|galvaniz|siyah|st\s*37)\b/;
+  // ── A1 (01.10 olculdu, gercek Pimtas listesi) ───────────────────────────
+  // EKSIK YAZIMLAR: yalin `pe`, BOSLUKLU `pe 100`/`pe 80`, `pead`, `ldpe`,
+  // tiresiz `upvc`, `pvcu`, `pe-rt` hic taninmiyordu — "PE 100 Boru" steel
+  // siniflanip 1" sorgusu 25 mm'ye dusuyordu (dogrusu 32 mm).
+  // ⚠ Alternatif SIRASI onemli: uzun belirtec once gelmeli ki `pead` icinde
+  // `pe` yakalanmasin (zaten `\b` de korur, ama sira niyeti belgeler).
+  const PLASTIK = /\b(?:ppr|pp-?rc?|pprc|polipropilen|pe-?rt|pe[\s-]?100|pe[\s-]?80|pead|hdpe|ldpe|pex|upvc|pvcu|pvc|polietilen|plastik|pp|pe)\b/g;
+  const CELIK = /\b(?:celik|paslanmaz|pirinc|dokum|bronz|bakir|galvaniz|siyah|st\s*37)\b/g;
   // ── KAPLAMA TUZAGI (canli Çayırova vakasi 16.07 — INDEX_VERSION 5) ──
   // "Çelik boru · PE kaplı doğalgaz · sarı POLIETILEN 3 kat kaplı":
   // 'polietilen' KAPLAMADIR, govde CELIKTIR. plastic once kosunca urun
@@ -472,12 +495,45 @@ export function resolveProductSizeClass(ad: string, cins?: string | null, katego
   //   2. Cins dahil metinde IKI sinyal birden varsa STEEL kazanir — plastik
   //      boru adinda/cinsinde 'celik' GECMEZ, celik boru ise 'PE kapli'
   //      olabilir (v1'in "plastik boru galvanizlenmez" mantiginin simetrigi).
+  // ── A1: NITELIK GOVDEYI EZMIYOR (01.10) ─────────────────────────────────
+  // Eski kural "once CELIK, sonra PLASTIK" idi ve celik kelimesinin GOVDEYI mi
+  // yoksa bir PARCAYI/RENGI mi anlattigina BAKMIYORDU. Gercek listede olculdu
+  // (3293 adli satirin 376'si steel, 334'u bu kalip):
+  //   "U-PVC … 304/316 Paslanmaz Civata-Somun-Pul" → paslanmaz CIVATADIR
+  //   "UH-PVC Rakor Dis Dis Pirinc Cikisli"        → pirinc CIKISTIR
+  //   "HDPE Ici Dolu Kutuk (Siyah)"                → siyah RENKTIR
+  // Sonuc: plastik urun `capTags`te `dn*` kaybediyor, "DN 63" satiri bulamiyor.
+  //
+  // YENI KURAL — iki adim, ikisi de ayri bir aileden kanitli:
+  //   1. KAPLAMA GOVDE DEGILDIR: plastik belirtecinin hemen ardindan "kapl…"
+  //      geliyorsa o sinyal SAYILMAZ. Cayirova vakasini (16.07) ayakta tutan
+  //      sey budur: "Celik boru · PE kapli" ve "PE Kapli Celik Boru" → steel.
+  //   2. Kaplama elendikten sonra ADda ONCE gecen sinyal GOVDEDIR. Turkce urun
+  //      adi govdeyle baslar, nitelik (civata/cikis/renk) sonra gelir.
+  // Kapi: test/olcu-sinifi-test.ts — Pimtas nitelik ailesi + Cayirova kaplama
+  // ailesi (regresyon kalkani) + govdesi gercekten celik olan karsi ornekler.
+  const ilkKonum = (metin: string, kalip: RegExp, kaplamaEle: boolean): number => {
+    kalip.lastIndex = 0;
+    for (let m = kalip.exec(metin); m; m = kalip.exec(metin)) {
+      if (!kaplamaEle) return m.index;
+      // "pe kapli", "polietilen kapli" → belirtecten sonra (bosluklu) "kapl"
+      if (!/^\s*kapl/.test(metin.slice(m.index + m[0].length))) return m.index;
+    }
+    return Number.POSITIVE_INFINITY;
+  };
+  const govde = (metin: string): SizeClass | null => {
+    const p = ilkKonum(metin, PLASTIK, true);
+    const c = ilkKonum(metin, CELIK, false);
+    if (p === Number.POSITIVE_INFINITY && c === Number.POSITIVE_INFINITY) return null;
+    return p < c ? 'plastic' : 'steel';
+  };
+
   const adNorm = normalizeText(ad);
-  if (CELIK.test(adNorm)) return 'steel';
-  if (PLASTIK.test(adNorm)) return 'plastic';
-  const norm = normalizeText(`${cins ?? ''} ${ad}`);
-  if (CELIK.test(norm)) return 'steel';
-  if (PLASTIK.test(norm)) return 'plastic';
+  const adKarar = govde(adNorm);
+  if (adKarar) return adKarar;
+  // AD sessizse CINS metnine bakilir (eski davranis; ayni govde kurali).
+  const cinsKarar = govde(normalizeText(`${cins ?? ''} ${ad}`));
+  if (cinsKarar) return cinsKarar;
   const slug = resolveFamily(ad, kategori);
   if (slug && (AD_DNLI_SLUGS.has(slug) || slug === 'boru' || slug === 'vana' || slug === 'fitting')) {
     return 'steel';

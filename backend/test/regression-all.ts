@@ -104,6 +104,17 @@ const SUITES: Suite[] = [
   { ad: 'Spec regresyon (R1-R12)', script: 'test:spec', zincir: 'Z2' },
   { ad: 'Sözleşme dondurma (C1-C10)', script: 'test:contract', zincir: 'Z2' },
   { ad: 'İşçilik tek motor (L)', script: 'test:labor', zincir: 'Z2' },
+  { ad: 'İşçilik bayat indeks — çap addan (L1)', script: 'test:iscilik-bayat', zincir: 'Z2' },
+  { ad: 'Ürün ölçü sınıfı — nitelik gövdeyi ezmez (A1)', script: 'test:olcu-sinifi', zincir: 'Z2' },
+  { ad: 'Çap belirsizliği — komşu çap otomatik yazılmaz (A2)', script: 'test:cap-belirsizligi', zincir: 'Z2' },
+  { ad: 'Açı okuma — ondalık + cins, 90°ye 22,5° düşmez (A3)', script: 'test:aci-okuma', zincir: 'Z2' },
+  { ad: 'Kaplama/cins — gövde malzemesi cinse düşmez (B1)', script: 'test:kaplama-cins', zincir: 'Z2' },
+  { ad: 'Tipografik tırnak — inç okunur (B2)', script: 'test:tipografik-tirnak', zincir: 'Z2' },
+  { ad: 'Kısa kök PP/PPR — satır malzemesi kapısı (B3)', script: 'test:kisa-kok-malzeme', zincir: 'Z2' },
+  { ad: 'Pis su / gider = PVC, PP ailesi elenir (karar a)', script: 'test:pis-su-eleme', zincir: 'Z2' },
+  { ad: 'Sürükleme akışkan kapısını atlamaz (K1)', script: 'test:surukleme-akiskan', zincir: 'Z2' },
+  { ad: 'Hafıza kimlik kapısında otomatik yazmaz (karar b)', script: 'test:hafiza-kimlik-kapisi', zincir: 'Z2' },
+  { ad: 'P4 motor notları: günlük · prototip · bayat kur · öneri havuzu', script: 'test:p4-motor-notlari', zincir: 'Z2' },
   // ── S2+S3 (06.08.2026): ÖNERİ KUTUSU. Çapraz-marka/firma önerisi ana
   //    motoru çağırıyor ve motorun "onaylat" dediği tek adayı KESİN gibi
   //    sunuyordu. İki kural mühürlendi: kanıt gücü yetmeyen aday (çapı ya da

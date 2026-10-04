@@ -138,6 +138,14 @@ export type KanitKapisi =
    *  yok, burada SATIRIN capi cevrilemiyor. Olculdu: kapi yokken 1/2" fiyati
    *  1/4" satirina, 110 mm fiyati 8" satirina OTOMATIK yaziliyordu. */
   | 'cap-cevrilemedi'
+  /** A2: satirin capi IKI olcu sistemine cevrilebiliyor (sinif cozulemedi) ve
+   *  aday YALNIZCA diger okumayla eslesti — yani komsu cap olabilir.
+   *  `sizeEquivalents` bunu `ambiguous` ile zaten isaretliyordu; ana eslesme
+   *  yolu OKUMUYORDU (conversion.ts'in 26.08 notu: "hicbir cagiran bu bayragi
+   *  okumuyor"). Olculdu: "Kör Flanş 1\"" → 3/4" @70, "Kaynak Boyunlu Flanş
+   *  1 1/4\"" → 1" @100, "Dirsek 1\"" → celik 1 1/4" @50 — ucu de conf=high
+   *  ve sessiz. Aday ELENMEZ; yalniz otomatik yazim kesilir. */
+  | 'cap-belirsiz'
   /** DN KOPRUSU (27.08): SATIR bir DN yaziyor, hayatta kalan ADAYLARIN HEPSI
    *  de DN yaziyor ama BASKA bir DN degeri. Eslesme yalnizca
    *  `NOMINAL_MM_TO_DN` koprusune dayaniyor demektir — istenen olcu bu urunde
@@ -248,6 +256,17 @@ export interface QueryOpts {
    * yaziliysa K4 zaten sert filtredir; bu alan yalniz SOZLUK VARSAYIMIDIR.
    */
   hintMalzeme?: string[];
+  /**
+   * KARAR (a) — SOZLUK MALZEME RETTI (Emre 04.08 canli vaka, 30.09 teyit:
+   * "pis su = PVC, PP/PPR (PPR-C) elenir"). `hintMalzeme`in tersine SERTTIR:
+   * malzemesi YALNIZ bu kumeden olan aday elenir (PP, PP-R, PPR-C, PP-HT).
+   * Yukaridaki "eleyen surum" reddinin gerekcesi burada KARSILANIR:
+   * etiketsiz aday ELENMEZ, karisik etiketli (pvc+pp) aday ELENMEZ — yalniz
+   * malzemesi bilinen ve tamami reddedilen aday.
+   * Kaynak `terminology.service.SOZLUK_MALZEME_RETTI` (canonical anahtarli).
+   * `sozlukSusar` (surukleme) bunu SUSTURMAZ: E1 yalniz VARSAYIMI susturur.
+   */
+  hintMalzemeEle?: string[];
   /** none/elenme mesajlarinda gosterilecek sozluk etiketi ("ppr" gibi) */
   hintLabel?: string;
   /** Alias'in KENDI kelimeleri + stripTags — kisit/bilinmeyen SAYILMAZ

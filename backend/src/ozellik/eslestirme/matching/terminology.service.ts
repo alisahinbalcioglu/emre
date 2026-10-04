@@ -61,6 +61,19 @@ const TEMIZ_SU = {
   stripTags: [],
 };
 
+/**
+ * KARAR (a) — SOZLUK MALZEME RETTI (Emre 04.08 canli vaka, 30.09 teyit):
+ * "pissu - pis su - gider borusu - PVC borulardir. PP boru onerme." Bu
+ * girislerde malzemesi YALNIZ bu kumeden olan aday ELENIR (siralanmaz).
+ *
+ * ⚠ Anahtar `canonical`, seed sabitinde alan DEGIL: `loadAliases` DB satirini
+ * alan alan esler — seed'e eklenen yeni bir alan uretimde KAYBOLURDU (test
+ * seed'i yaydigi icin yesil kalir, canli kirik). `canonical` DB'de vardir.
+ */
+export const SOZLUK_MALZEME_RETTI: Readonly<Record<string, readonly string[]>> = {
+  [PIS_SU.canonical]: ['pp', 'ppr'],
+};
+
 export const ALIAS_SEEDS: Array<{ alias: string } & typeof CELIK> = [
   // Sprinkler / yangin → siyah celik boru (TR)
   { alias: 'sprink hatti', ...CELIK },
@@ -95,6 +108,10 @@ export const ALIAS_SEEDS: Array<{ alias: string } & typeof CELIK> = [
   { alias: 'atiksu', ...PIS_SU },
   { alias: 'kanalizasyon', ...PIS_SU },
   { alias: 'drenaj', ...PIS_SU },
+  // KARAR (a) 30.09: "gider borusu" = pis su (Emre). YALNIZ boru bicimi:
+  // cipla 'gider' "LAVABO GİDERİ" / sifon satirlarina boru ailesi dayatirdi.
+  { alias: 'gider boru', ...PIS_SU },
+  { alias: 'gider hatt', ...PIS_SU },
   // Temiz su → PPR-C varsayilani (Duzeltme Talebi T1 — onceki "bilerek yok"
   // karari kullanici talebiyle degisti; satir detayi varsayilani ezer T3)
   { alias: 'temiz su', ...TEMIZ_SU },

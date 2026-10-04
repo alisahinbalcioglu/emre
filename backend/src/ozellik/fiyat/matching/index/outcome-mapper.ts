@@ -30,7 +30,8 @@ import type { IndexedRow, QueryOutcome, AskColumn, LineQuery } from '../../../es
  * URETILMEZ — kur bilinmiyorken tarih/kur uydurmak yasak (kapi D1).
  */
 export type TryCevirici = ((v: number, cur: string) => number) & {
-  kur?: { usdTry: number; eurTry: number; tarih: string };
+  /** C10 (P4 notu 3): `bayat` + `yasIsGunu` yalniz kur > 2 is gunu eskiyse */
+  kur?: { usdTry: number; eurTry: number; tarih: string; bayat?: true; yasIsGunu?: number };
   /**
    * KUR-01 (14.09): bu para birimi TL'ye CEVRILEMIYOR mu? (kur alinamadi ya da
    * para birimi taninmadi). `buildTryConverter` atar; yoksa her satir
@@ -52,6 +53,9 @@ export function kurOf(r: IndexedRow, toTry: (v: number, cur: string) => number):
     currency: kod,
     kur: kod === 'USD' ? t.kur.usdTry : t.kur.eurTry,
     tarih: t.kur.tarih,
+    // C10 (P4 notu 3, Emre karari): bayat kur isareti kurla BIRLIKTE akar —
+    // sonuc, aday ve oneri ayni yerden alir. Taze kurda alan YOK.
+    ...(t.kur.bayat ? { bayat: true as const, yasIsGunu: t.kur.yasIsGunu } : {}),
   };
 }
 
@@ -316,20 +320,12 @@ export function toMatchResult(
         reason,
         donusum: outcome.donusum ?? undefined,
         variantMissing: outcome.variantMissing ?? undefined,
-        // K4 (27.08): ic `kapilar` listesi bu sozlesmeye tasinmiyor; hafiza
-        // otoyazi kapisinin okuyabilmesi icin YALNIZ bu kapi bayraga cevrilir.
-        // Diger kapilarda otoyazi ZATEN kabul edilmis (aday satirin YAZILI sert
-        // kisitlarini saglar); burada aday YAZILI bir kisiti IHLAL ediyor.
-        yuzeyGenisletildi: outcome.kapilar?.includes('yuzey-genisletildi') || undefined,
-        // K2/CC (27.08): ayni gerekce ikinci kapi icin de gecerli. SATIRIN
-        // capi cevrilemediyse eslesme OLCUYLE DOGRULANMAMISTIR; hafiza
-        // otoyazisi bunu goremedigi icin kapinin cumlesini silip fiyati
-        // 'high' yaziyordu (olculdu: 3/8" satirina 1/2" fiyati, onaysiz).
-        capCevrilemedi: outcome.kapilar?.includes('cap-cevrilemedi') || undefined,
-        // DN koprusu (27.08): ayni gerekce — istenen olcu bu urunde YOK,
-        // eslesme nominal kopruyle kuruldu. Hafiza otoyazisi bunu goremezse
-        // kapinin cumlesini silip komsu DN'in fiyatini 'high' yazar (olculdu).
-        dnKoprusu: outcome.kapilar?.includes('dn-koprusu') || undefined,
+        // KARAR (b) (04.10): kapilar TOPLUCA tasinir — hafiza otoyazisi
+        // `HAFIZA_OTOYAZ_ENGELI`ni buradan okur. Onceden yalniz uc kapi
+        // (yuzey-genisletildi · cap-cevrilemedi · dn-koprusu) boolean'a
+        // cevriliyordu; capsiz/aile-zayif/ad-gevsetildi/aile-uyusmazligi
+        // otoyazidan GORUNMUYORDU (373.825 TL makine vakasi, olculdu).
+        kapilar: outcome.kapilar?.length ? outcome.kapilar : undefined,
         // Faz 2b: dogrulanamayan yazili kelimeler — M3 multi'de de kosulsun
         dogrulanamadi: outcome.bilinmeyen?.length ? outcome.bilinmeyen : undefined,
       };
