@@ -861,3 +861,190 @@ describe('D2 — geç gelen cevap yeni seçimi ezmez', () => {
     expect(s.ozet.devredilen).toBe(0);
   });
 });
+
+/**
+ * D10 (30.09, P2) — BOŞ KAYNAKTAN SÜRÜKLEME HİÇBİR ŞEY YAPMAZ
+ *
+ * Kullanıcı marka/firma hücresi BOŞ bir satırın tutamağından aşağı sürükler
+ * (tutamaç dolu hücredekiyle aynı görünüyor, imleçte "N satır" rozeti çıkıyor).
+ * Eski hâl: `fillDown({ markaId: null })` her hedef için ÖNCE hedefin
+ * markasını/firmasını null'a çekiyor, sonra motora boş kimlikle SORUYORDU (satır
+ * başına bir istek); cevap ne olursa olsun fiyat yazılmadığı için D1 temizliği
+ * koşuyor (fiyat, toplam SİLİNİYOR) ve satır "bu markada yok" diye KIRMIZIYA
+ * boyanıyordu — satırda marka YOKKEN. Kullanıcı kütüphanesinde eksik malzeme
+ * aramaya yönlendiriliyordu.
+ *
+ * KARAR (Emre, 02.10): boş kaynak sürüklemesi REDDEDİLİR — istek gitmez,
+ * hedeflere DOKUNULMAZ. Tek satır temizleme için "Seçimi kaldır" zaten var.
+ * Etkileşimli yolun ikizi: BrandDropdown/FirmaDropdown `handleChange` boş
+ * seçimde motoru hiç çağırmaz.
+ */
+describe('D10 — boş kaynaktan sürükleme hiçbir şey yapmaz', () => {
+  const ROLLER_TAM = { ...ROLLER, laborTotalField: '_labToplam', grandTotalField: '_toplam' };
+  const fiyatli = (rowIdx: number) => node(rowIdx, 'KÜRESEL VANA DN25', 10, {
+    _marka: 'A', _malzKar: 0, _matNetPrice: 100, _matStatus: '',
+    col5: '100.0', col6: '1000.0', _toplam: '1000.00',
+  });
+  const motorCasusu = () => {
+    const cagrilar: string[] = [];
+    const motor = async (_r: number, id: string, ad: string) => {
+      cagrilar.push(`${id}|${ad}`);
+      return { netPrice: 0, confidence: 'none' } as MotorSonucu;
+    };
+    return { motor, cagrilar };
+  };
+
+  for (const [etiket, bos] of [['null', null], ['boş metin', ''], ['undefined', undefined]] as const) {
+    it(`★ ${etiket}: motora HİÇ sorulmaz (satır başına boş istek gitmez)`, async () => {
+      const { motor, cagrilar } = motorCasusu();
+      const hedefler = [fiyatli(1), fiyatli(2), fiyatli(3)];
+      await fillDown({
+        hedefler: hedefler as any, markaId: bos as any, roller: ROLLER_TAM,
+        motor, kaynakVaryantTags: null, kaynakLabel: '',
+      });
+      expect(cagrilar).toEqual([]);
+    });
+  }
+
+  it('★★ hedeflerin markası, fiyatı ve toplamı DOKUNULMADAN kalır', async () => {
+    const { motor } = motorCasusu();
+    const h = fiyatli(4);
+    await fillDown({
+      hedefler: [h] as any, markaId: null as any, roller: ROLLER_TAM,
+      motor, kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(h.data._marka, 'marka').toBe('A');
+    expect(h.data.col5, 'birim fiyat').toBe('100.0');
+    expect(h.data.col6, 'satır toplamı').toBe('1000.0');
+    expect(h.data._toplam, 'genel toplam').toBe('1000.00');
+    expect(h.data._matNetPrice, 'net').toBe(100);
+  });
+
+  it('★★ YANLIŞ SUÇLAMA YOK: satır "markada yok" diye işaretlenmez', async () => {
+    const { motor } = motorCasusu();
+    const h = fiyatli(5);
+    await fillDown({
+      hedefler: [h] as any, markaId: '' as any, roller: ROLLER_TAM,
+      motor, kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(String(h.data._matStatus ?? ''), 'işaret').toBe('');
+    expect(h.data._matSebep, 'sebep').toBeUndefined();
+  });
+
+  it('★ sonuç "boş seçim" olduğunu SÖYLER — çağıran geri-alma yığınına boş kayıt itmesin', async () => {
+    // Boş kayıt itilseydi Ctrl+Z bir adımı "yutardı" (kullanıcı geri almak
+    // istediği önceki işlemi geri alamazdı).
+    const { motor } = motorCasusu();
+    const s = await fillDown({
+      hedefler: [fiyatli(6), fiyatli(7)] as any, markaId: null as any, roller: ROLLER_TAM,
+      motor, kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(s.bosSecim).toBe(true);
+    expect(s.geriAl).toEqual([]);
+    expect(s.satirlar).toEqual([]);
+    expect(s.ozet.atlanan).toBe(2);
+  });
+
+  it('★ İKİZ işçilik: boş firmadan sürükleme de motora sormaz, işçilik fiyatına dokunmaz', async () => {
+    const { motor, cagrilar } = motorCasusu();
+    const h = node(8, 'Montaj bedeli', 10, {
+      _firma: 'F1', _iscKar: 0, _labNetPrice: 80, _labStatus: '',
+      _labBirim: '80.0', _labToplam: '800.0', _toplam: '800.00',
+    });
+    await fillDown({
+      hedefler: [h] as any, markaId: null as any, roller: ROLLER_TAM, motor,
+      kaynakVaryantTags: null, kaynakLabel: '',
+      hedefAlanlar: {
+        birimFiyat: '_labBirim', toplam: '_labToplam', status: '_labStatus',
+        kaynakRozeti: '_labKaynak', dal: 'iscilik',
+      },
+    });
+    expect(cagrilar).toEqual([]);
+    expect(h.data._firma).toBe('F1');
+    expect(h.data._labBirim).toBe('80.0');
+    expect(String(h.data._labStatus ?? '')).toBe('');
+  });
+
+  it('KONTROL GRUBU: dolu kaynakla sürükleme bozulmadı (motora sorulur)', async () => {
+    const { motor, cagrilar } = motorCasusu();
+    await fillDown({
+      hedefler: [fiyatli(9)] as any, markaId: 'B', roller: ROLLER_TAM,
+      motor, kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(cagrilar).toHaveLength(1);
+  });
+});
+
+/**
+ * Y2 (30.09, P2) — SURUKLE-DOLDUR "Toplam Birim Fiyat" HUCRESINI DE TAZELER.
+ * KD11 doldurma yoluna "genel TOPLAMI da yaz" kuralini getirmisti ama rolun
+ * IKIZI olan genel BIRIM fiyati unutmustu. Dosyasinda "TOPLAM BIRIM FIYAT"
+ * kolonu olan tekliflerde satir kendi icinde celisiyordu: Malz. Birim 100,
+ * Genel Toplam 1.000 iken Toplam Birim Fiyat ONCEKI markanin degerinde kaliyordu.
+ * Etkilesimli yol (`recalcGrand`) iki hucreyi birden yaziyordu — ayni niyet iki
+ * yolda iki farkli satir (E5 sozlesmesi ihlali).
+ */
+describe('Y2 — surukle-doldur Toplam Birim Fiyat hucresini tazeler', () => {
+  const ROLLER_GB = {
+    ...ROLLER, laborUnitPriceField: '_labBirim', laborTotalField: '_labToplam',
+    grandTotalField: '_toplam', grandUnitPriceField: '_gBirim',
+  };
+  const bos = (rowIdx: number, ek: Record<string, any> = {}) =>
+    node(rowIdx, 'KÜRESEL VANA DN25', 10, { _malzKar: 0, _iscKar: 0, ...ek });
+
+  it('★ malzeme fiyatlaninca Toplam Birim Fiyat = malzeme birim', async () => {
+    const h = bos(1, { _gBirim: '999.0' }); // onceki markanin bayat degeri
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_GB,
+      motor: async () => ({ netPrice: 100, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(h.data.col5).toBe('100.0');
+    expect(h.data._gBirim).toBe('100.0');
+  });
+
+  it('★ iscilik birimi varsa toplanir (malzeme 100 + iscilik 50 = 150)', async () => {
+    const h = bos(2, { _labBirim: '50.0', _labToplam: '500.0' });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_GB,
+      motor: async () => ({ netPrice: 100, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(h.data._gBirim).toBe('150.0');
+  });
+
+  it('★ IKIZ iscilik dolumu da tazeler (malzeme 100 + iscilik 80 = 180)', async () => {
+    const h = bos(3, { col5: '100.0', col6: '1000.0' });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'F', roller: ROLLER_GB,
+      motor: async () => ({ netPrice: 80, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '',
+      hedefAlanlar: { birimFiyat: '_labBirim', toplam: '_labToplam', status: '_labStatus', kaynakRozeti: '_labKaynak', dal: 'iscilik' },
+    });
+    expect(h.data._gBirim).toBe('180.0');
+  });
+
+  it('★ D1 silme yolu da tazeler: fiyat gidince yalniz iscilik kalir', async () => {
+    const h = bos(4, { col5: '100.0', col6: '1000.0', _labBirim: '50.0', _labToplam: '500.0', _gBirim: '150.0', _marka: 'A', _matNetPrice: 100 });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_GB,
+      motor: async () => ({ netPrice: 0, confidence: 'none' }), kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(h.data._gBirim).toBe('50.0');
+  });
+
+  it('★ hic fiyat kalmazsa BOS (0 yazilmaz — recalcGrand ile ayni)', async () => {
+    const h = bos(5, { col5: '100.0', col6: '1000.0', _gBirim: '100.0', _marka: 'A', _matNetPrice: 100 });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER_GB,
+      motor: async () => ({ netPrice: 0, confidence: 'none' }), kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect(h.data._gBirim).toBe('');
+  });
+
+  it('KONTROL: rolde Toplam Birim Fiyat YOKSA hicbir alan yazilmaz', async () => {
+    const h = bos(6);
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: { ...ROLLER, grandTotalField: '_toplam' },
+      motor: async () => ({ netPrice: 100, confidence: 'high' }), kaynakVaryantTags: null, kaynakLabel: '',
+    });
+    expect('_gBirim' in h.data).toBe(false);
+  });
+});

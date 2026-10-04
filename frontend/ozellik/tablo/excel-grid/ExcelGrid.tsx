@@ -13,6 +13,8 @@ import { SATIR_YUKSEKLIGI } from './types';
 // S2: oneri kutusunun kesinlik/onay karari — IKI kutu da buradan okur
 import { oneriBasligi, cekinceSatiri } from './oneri-cekince';
 import { useFillHandle, FillHandleIndicator } from './useFillHandle';
+// D11: surukle-doldur alanlari iscilik YETKISINE bagli — kural tek yerde.
+import { fillAlanlari } from './fill-alanlari';
 import { clampDiscount, parseDiscountInput, parseDiscountPaste, iskontoHucresiOku } from './discount-utils';
 import { CustomDropdown } from './CustomDropdown';
 import { fillDown, karYayilimi } from './fill-down';
@@ -20,7 +22,7 @@ import { planYapistir, type PasteKolon, type PasteSatir } from './yapistir';
 import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, type Nokta } from './kopyala';
 import { isaretStili, isaretTooltip, secimBekliyor, kutuphaneFiyatAyrisimi, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
-import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
+import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
 // FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
 import {
   FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
@@ -3091,9 +3093,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   }, [onColumnsChange, data.columnDefs, data.columnRoles]);
 
   // ── Fill Handle (surukle-doldur) ──
-  const FILLABLE_FIELDS = useMemo(() => new Set([
-    '_malzKar', '_marka', '_iscKar', '_firma', '_draftDiscount',
-  ]), []);
+  // D11 (02.10): kume iscilik YETKISINI okur. Eskiden bos bagimlilikli sabit
+  // kumeydi: yetki kapaliyken kilitli "İşç. Kâr %" yine surukleniyor, iscilik
+  // fiyati yeniden yaziliyor ve GENEL TOPLAM sessizce degisiyordu (olculdu:
+  // ₺650 → ₺750). ⚠ `laborEnabled` BAGIMLILIKTA: yetenekler asenkron gelir,
+  // ilk degerde (false) donmus kume Pro kullanicinin iscilik karini kilitlerdi
+  // (e2e `?iscilik=gec` kipi bu gerilemeyi olcer).
+  const FILLABLE_FIELDS = useMemo(() => fillAlanlari(laborEnabled), [laborEnabled]);
 
   const handleFillComplete = useCallback(async (resultHam: { field: string; value: any; sourceRowIndex: number; targetRowNodes: any[] }) => {
     const api = gridRef.current?.api;
@@ -3164,6 +3170,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         },
       });
 
+      // D10 (02.10): kaynakta marka YOKTU — fillDown hicbir sey yapmadi. Geri-alma
+      // yiginina BOS kayit itilmez (Ctrl+Z bir adimi "yutardi"), ozet tostu da
+      // cikmaz (yanlis "N markada yok" sayisi yazardi). Karar: Emre 02.10.
+      // ⚠ ODAK GRIDE DONER: dalin sonundaki `focus()` erken donuste atlaniyordu;
+      // odak BODY'de kaliyor ve sonraki Ctrl+Z HICBIR yere gitmiyordu (olculdu).
+      if (sonuc.bosSecim) { rootWrapperRef.current?.focus(); return; }
+
       // K19/SD7: doldurmanin TAMAMI tek Ctrl+Z ile geri alinir
       markaFillUndoStack.current.push({
         prevSwitch,
@@ -3231,6 +3244,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         },
       });
 
+      // D10 IKIZI: bos firmadan surukleme — hicbir sey yapilmadi, yigin temiz kalir.
+      if (sonuc.bosSecim) { rootWrapperRef.current?.focus(); return; }
+
       markaFillUndoStack.current.push({
         prevSwitch: autoVariantEnabled,
         entries: sonuc.geriAl.map((g) => ({ rowId: String(g.rowIdx), prev: g.oncekiDegerler })),
@@ -3257,6 +3273,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         }
       }
     } else if (result.field === '_iscKar') {
+      // D11: bu dala yetki kapisi KONMADI — olculdu (mutant D11-M6 YASADI): dal
+      // yalniz tutamaktan gelir ve tutamak yetkisizken zaten BASLAMAZ
+      // (`fill-handle-cell` sarmalayicisi yok + FILLABLE_FIELDS'te alan yok —
+      // ikisi de mutasyonla olculu). Ayni yolda ikinci kapi saf tekrardi.
       // Iscilik kar % fill → deger kopyala + fiyat recalc
       // Malzeme ikiziyle AYNI suzgec (ikizi unutma).
       const iscKarVal = sayiAlani(result.value);
@@ -3757,8 +3777,14 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (params.data?._fitting) return null;
           const val = params.value ?? 0;
           const hasVal = (sayiOku(val) ?? 0) > 0; // A2: makine okuyucusu (hayalet "35x240mm" dolu cip yakmaz)
+          // D11 (02.10): yetki kapaliyken iscilik karinin TUTAMAK SARMALAYICISI
+          // cizilmez — kilitli kolonda tutamak seridi + kose karesi yaniltici
+          // bir ipucuydu (firma ikizi yetkisizken zaten sarmalayici cizmiyor).
+          // `useFillHandle` yalniz `.fill-handle-cell` icinde baslar: sinifsiz
+          // kap surukleme ve cift-tik doldurmayi da kapatir.
+          const tutamakli = !(karField === '_iscKar' && !laborEnabled);
           return (
-            <div className="fill-handle-cell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className={tutamakli ? 'fill-handle-cell' : undefined} style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {/* 18.08 HEDEF TASARIM (ikinci tur, "hucreler yine uygun degil"):
                   kutu artik hucreyi DOLDURMAYAN, ortalanmis kompakt bir CIP.
                   Hedef fotograf bos %0'i da GORUNUR gri cip olarak gosteriyor —
@@ -4444,7 +4470,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
       if (grandUnitPriceField) {
         // Miktar 0 veya bos olsa bile birim fiyat gosterilir
-        e.node.setDataValue(grandUnitPriceField, grandUnit > 0 ? yukariYuvarla(grandUnit).toFixed(1) : '');
+        // Y2: kural TEK yerde (pricing `kalemBirimFiyatMetni`) — doldurma ve geri
+        // yukleme ayni fonksiyonu cagirir; uc kopya ayrisamaz.
+        e.node.setDataValue(grandUnitPriceField, kalemBirimFiyatMetni(matUnit, labUnit));
       }
 
       // Grand total = matTotal + labTotal
@@ -4492,7 +4520,16 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     }
 
     // ── Iscilik kar % degisti ── (fitting satirinda kar yok)
-    if (e.colDef.field === '_iscKar' && laborUnitPriceField && laborTotalField && quantityField && !row._fitting) {
+    // D11 (02.10): PARA KAPISI — `setDataValue` AG Grid'de `editable`a BAKMAZ;
+    // bu dal iscilik birim/toplamini kar uygulanmis fiyatla YENIDEN yazar.
+    // Yetki yoksa iscilik fiyati yeniden HESAPLANMAZ.
+    // ⚠ OLCULMEMIS SAVUNMA — BILEREK TUTULDU: bugun `_iscKar`i yazan tek yol
+    // tutamak dolumu ve o yetkisizken baslamiyor (olculu); bu yuzden mutant
+    // D11-M4 YASIYOR. Ama bu kapi farkli bir sozlesmeyi korur ("hangi yazici
+    // olursa olsun") ve gercek bir senaryosu var: yetki, kar hucresinde editor
+    // ACIKKEN duserse (abonelik oturum icinde kapanir) Enter yazimi bu dala
+    // ulasir. Senaryo surulmedi — yasayan mutant "kod gereksiz" demek degil.
+    if (e.colDef.field === '_iscKar' && laborEnabled && laborUnitPriceField && laborTotalField && quantityField && !row._fitting) {
       const kar = sayiAlani(row._iscKar);
       // Malzeme ikiziyle AYNI duzeltme (bkz. yukaridaki gerekce).
       const oncekiKarLab = sayiAlani(e.oldValue);
@@ -4694,7 +4731,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // oldugu icin tetiklenmiyordu ve F5 emegi siliyordu (olculdu).
     paraYazildi();
   }, [data.columnRoles, data.columnDefs, onRowDataChange, autoAppendRow, recountPending, floorFields,
-      mode, updatePinnedBottom, fittingDuzenlenebilir, paraYazildi]);
+      mode, updatePinnedBottom, fittingDuzenlenebilir, paraYazildi, laborEnabled]);
 
   // getRowId — stabil row kimligi (re-render'da row'un durumunu korur)
   const getRowId = useCallback((params: GetRowIdParams<ExcelRowData>) => {

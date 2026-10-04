@@ -714,3 +714,27 @@ describe('restoreRematch — fitting satırı sorguya GİRMEZ (türetilmiş hüc
     expect(row['Birim Fiyat']).toBe('110.0'); // 100 × (1 + %10) — LİTERAL
   });
 });
+
+/**
+ * Y2 (30.09, P2) — GERI YUKLEME "Toplam Birim Fiyat" HUCRESINI DE TAZELER.
+ * Restore genel TOPLAMI yaziyordu, genel BIRIM fiyati yazmiyordu.
+ */
+describe('Y2 — restore Toplam Birim Fiyat hucresini tazeler', () => {
+  const ROLLER_GB: ColumnRoles = { ...ROLLER, grandUnitPriceField: '_gBirim' };
+
+  it('★ restore malzeme fiyatini yazinca Toplam Birim Fiyat da yazilir', async () => {
+    const r = satir({ _marka: 'marka-A', _gBirim: '' });
+    const { poster } = posterKur({ '/matching/bulk-match': { [AD]: { netPrice: 100, confidence: 'high' } } });
+    await restoreRematch([sayfa([r], ROLLER_GB)], { 0: [r] }, poster);
+    expect(r['Birim Fiyat']).toBe('110.0'); // 100 × (1 + %10) — LITERAL
+    expect(r._gBirim).toBe('110.0');
+  });
+
+  it('★ IKIZ: iscilik restore edilince Toplam Birim Fiyat iki tarafi toplar', async () => {
+    const r = satir({ _firma: 'firma-A', 'Birim Fiyat': '110.0', 'Tutar': '2750.0', _gBirim: '110.0' });
+    const { poster } = posterKur({ '/labor-matching/bulk-match': { [AD]: { netPrice: 100, confidence: 'high' } } });
+    await restoreRematch([sayfa([r], ROLLER_GB)], { 0: [r] }, poster);
+    expect(r._labBirim).toBe('120.0'); // 100 × (1 + %20) — LITERAL
+    expect(r._gBirim).toBe('230.0');
+  });
+});

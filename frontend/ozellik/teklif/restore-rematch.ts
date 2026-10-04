@@ -62,6 +62,7 @@ import {
   hesaplaSatirToplam,
   etkinMiktar,
   kalemToplami,
+  kalemBirimFiyatMetni,
   PARA_ONDALIK,
 } from '../fiyat/pricing';
 import { sayiAlani, sayiOku } from '../fiyat/sayi-alani';
@@ -215,6 +216,12 @@ function genelToplamiTazele(row: ExcelRowData, roles: ColumnRoles): void {
   const mat = oku(roles.materialTotalField);
   const lab = oku(roles.laborTotalField);
   row[genelAlan] = kalemToplami(mat, lab).toFixed(PARA_ONDALIK);
+  // Y2 (02.10): genel BIRIM fiyat da tazelenir — surukle-doldur ikiziyle ayni
+  // kural, `recalcGrand` ile ayni kaynak (`kalemBirimFiyatMetni`).
+  if (roles.grandUnitPriceField) {
+    row[roles.grandUnitPriceField] = kalemBirimFiyatMetni(
+      oku(roles.materialUnitPriceField), oku(roles.laborUnitPriceField));
+  }
 }
 
 /**

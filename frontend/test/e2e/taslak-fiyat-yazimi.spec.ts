@@ -97,7 +97,14 @@ async function ac(page: Page) {
     ([jeton, anahtar, veri]) => {
       localStorage.setItem('token', jeton as string);
       localStorage.setItem('user', JSON.stringify({ id: 'u1', email: 'x@y.z', tier: 'pro' }));
-      sessionStorage.setItem(anahtar as string, veri as string);
+      // ⚠ YALNIZ BIR KEZ TOHUMLA: `addInitScript` HER gezinmede — YENILEME DAHIL —
+      // yeniden kosar. Ilk halinde kosulsuz yaziyordu; F5'te temiz taslagi
+      // yeniden yazip urunun yazdigi 250'yi eziyor ve test URUN KUSURU gibi
+      // kirmizi yaniyordu. Iz alinarak bulundu (her get/set/remove sirayla
+      // kaydedildi): yeni sayfa geri yuklemesi aslinda `GET:250` okuyordu.
+      if (!sessionStorage.getItem(anahtar as string)) {
+        sessionStorage.setItem(anahtar as string, veri as string);
+      }
     },
     [JETON, TASLAK_ANAHTARI, JSON.stringify(taslak())] as const,
   );
@@ -182,27 +189,26 @@ test.describe('D5 — elle yazılan fiyat taslağa girer', () => {
     expect(sonra, 'unload kancası taslağı HEMEN yazmalı').toMatch(/250/);
   });
 
-  // ⚠ "F5 SONRASI FİYAT EKRANDA DURUR" TESTİ BU PAKETTE YOK — SEBEBİ ÖLÇÜLDÜ.
-  //
-  // Taslağın yenileme boyunca izi alındı (her `setItem`/`removeItem` sırayla
-  // kaydedildi). Sonuç:
-  //   yazım öncesi : REMOVE | REMOVE | SET: | SET: | SET:250
-  //   yenileme sonrası: SET:250 | SET:250 | SET:250 | REMOVE | REMOVE | SET:250 | SET:250
-  // Yani TASLAK DOĞRU — yenilemeden sonra da 250 taşıyor. Buna karşın hücre
-  // boş görünüyor. Demek ki kalan kusur taslak YAZIMINDA değil, geri
-  // yüklemenin o değeri EKRANA uygulamasında.
-  //
-  // İzdeki yenileme sonrası `REMOVE | REMOVE` çifti, dev sunucusunun bileşeni
-  // iki kez mount etmesinden geliyor (`multiSheet` bir an null → taslak efekti
-  // siliyor). Yani F5 davranışını DOĞRU ölçmek `next start` ister; bu paketin
-  // kapısı dev sunucusu üzerinde koşuyor (playwright.config.ts) ve ölçüm
-  // dev'e özgü bir yan etkiyle karışıyor. Dev'e özgü bir yan etkiyi ürün
-  // kusuru gibi mühürlemek yanlış olurdu; kırmızı bir testi de paket içinde
-  // bırakmak kapıyı çürütür (kararsız-test kuralı).
-  //
-  // BU YÜZDEN: aşağıdaki testler "yazılan fiyat taslağa GİRER" sözleşmesini
-  // kilitliyor (ölçüldü ve mutasyonla sınandı). "F5 sonrası ekranda durur"
-  // ucu AYRI bir bulgu olarak raporlandı ve `next start` üzerinde ölçülecek.
+  test('★★ F5 SONRASI fiyat ekranda DURUR (kullanıcının emeği gitmez)', async ({ page }) => {
+    await ac(page);
+    const h = await hucre(page, 0, '_matBirim');
+    await h.dblclick();
+    await page.keyboard.type('250');
+    await page.keyboard.press('Enter');
+    await expect(h).toHaveText(/250/);
+
+    // SÖZLEŞME: yazım GECİKMELİ (600 ms) — React render üretmemek için. Önce
+    // taslağa girdiğini bekle, SONRA yenile.
+    await expect.poll(async () => {
+      const s2 = await taslakSatirlari(page, TASLAK_ANAHTARI);
+      return String(s2?.[0]?._matBirim ?? '');
+    }, { timeout: 10_000 }).toMatch(/250/);
+
+    await page.reload();
+    await expect(page.locator('[row-index="0"] [col-id="col1"]')).toHaveText(/Siyah Boru DN25/, { timeout: 30_000 });
+    // Kusurlu hâlde: '' — elle yazılan fiyat yenilemede kayboluyordu.
+    await expect(await hucre(page, 0, '_matBirim'), 'F5 sonrası fiyat KAYBOLDU').toHaveText(/250/);
+  });
 
   // ⚠ İŞÇİLİK İKİZİ BU DOSYADA ÖLÇÜLEMEDİ — ölçüldü ve sebebi yazıldı:
   // `laborEnabled` sayfada API'den gelen `capabilities`ten türetiliyor; bu test

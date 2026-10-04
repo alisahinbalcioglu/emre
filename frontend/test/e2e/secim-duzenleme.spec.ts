@@ -447,7 +447,7 @@ test('KP29 ★ EDITORDE son veri satirinda ↓ — rakamlar AYNI hucrede birlesm
   await expect(
     page.locator(`[row-index="${sonIndeks}"] [col-id="col1"]`),
     'FIKSTUR KANITI: olculen satir harness\'in SON veri satiri olmali',
-  ).toHaveText(/DN 150/);
+  ).toHaveText(/KAR HEDEF B Boru/);
   const son = page.locator(`[row-index="${sonIndeks}"] [col-id="_matBirim"]`);
   await son.dblclick();
   await page.keyboard.type('300');

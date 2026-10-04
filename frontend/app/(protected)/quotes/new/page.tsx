@@ -745,7 +745,25 @@ export default function NewQuotePage() {
             async (url, body) => (await api.post(url, body)).data,
           );
           if (reMatched > 0) {
-            setLiveRowDataBySheet({ ...live });
+            // D8 (30.09): IC DIZILER DE YENI REFERANS OLMALI.
+            // `restoreRematch` fiyati satir NESNELERINE yerinde yaziyor. Eskiden
+            // burada `{ ...live }` vardi: DIS obje yeni, IC DIZI AYNI referans.
+            // ExcelGrid'in alt sabit seridini (GENEL TOPLAM + KAR) tazeleyen tek
+            // efekt `[data.rowData]`a bagli ve ic dizi degismedigi icin KOSMUYORDU
+            // — satirlarda yeni fiyat gorunurken serit mount anindaki fiyatsiz
+            // rakamda donuyordu (olculdu, gercek /quotes/new: satir ₺1.000,
+            // GENEL TOPLAM ₺0,00).
+            // Satir NESNELERI ayni kalir (grid `getRowId` ile tanir, delta
+            // gunceller); yalniz DIZI kimligi yenilenir. Restore aninda acik
+            // editor yoktur (yukleme + 500 ms), editor iptali riski yok.
+            setLiveRowDataBySheet(() => {
+              const yeni: Record<number, ExcelRowData[]> = {};
+              for (const k of Object.keys(live)) {
+                const i = Number(k);
+                yeni[i] = [...live[i]];
+              }
+              return yeni;
+            });
             console.log(`[quotes/new] Re-matched ${reMatched} rows after restore`);
           }
         }, 500);

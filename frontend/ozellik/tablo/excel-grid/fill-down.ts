@@ -25,7 +25,7 @@
  */
 // NOT: relative import — vitest.config.ts'te '@/' alias'i tanimli degil ve
 // bu modul birim testle sinaniyor (fill-down.test.ts).
-import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, kalemToplami, PARA_ONDALIK } from '../../fiyat/pricing';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, kalemToplami, kalemBirimFiyatMetni, PARA_ONDALIK } from '../../fiyat/pricing';
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil
 // ve bu modul vitest ile kosuyor (fill-down.test.ts).
 import { sayiAlani, sayiOku } from '../../fiyat/sayi-alani';
@@ -77,6 +77,9 @@ export interface FillSonuc {
     devredilen: number };
   /** SD7: doldurmanin TAMAMI tek Ctrl+Z ile geri alinsin diye anlik. */
   geriAl: Array<{ rowIdx: number; oncekiDegerler: Record<string, any> }>;
+  /** D10: kaynakta secim YOKTU — hicbir sey yapilmadi. Cagiran taraf geri-alma
+   *  yiginina BOS kayit itmemeli (yoksa Ctrl+Z bir adimi "yutar"). */
+  bosSecim?: boolean;
 }
 
 /** AG-Grid node'unun kullanilan yuzeyi (test edilebilirlik icin daraltildi). */
@@ -120,6 +123,14 @@ function genelToplamiTazele(
   // veriyi olaydan once degistirdigi icin recalcGrand bunu HIC duzeltmiyordu.
   // Tek yuvarlama fonksiyonu (orantili epsilon): pricing `yukariYuvarla`.
   yaz(node, genelAlan, kalemToplami(mat, lab).toFixed(PARA_ONDALIK));
+  // Y2 (02.10): rolun IKIZI — genel BIRIM fiyat. KD11 genel TOPLAMI eklemisti,
+  // bunu unutmustu: dosyasinda "TOPLAM BIRIM FIYAT" kolonu olan teklifte satir
+  // Malz. Birim 100 · Genel Toplam 1.000 iken bu hucre ONCEKI markanin degerinde
+  // kaliyordu. Kural `recalcGrand` ile TEK kaynaktan (`kalemBirimFiyatMetni`).
+  if (roller.grandUnitPriceField) {
+    yaz(node, roller.grandUnitPriceField,
+      kalemBirimFiyatMetni(oku(roller.materialUnitPriceField), oku(roller.laborUnitPriceField)));
+  }
 }
 
 /** `fiyatiTemizle` icin dal alanlari — fillDown icinde bir kez turetilir. */
@@ -214,6 +225,10 @@ export interface FillRoller {
    *  ama Genel Toplam bos kaliyordu (kalem 54, Yol C). */
   laborTotalField?: string;
   grandTotalField?: string;
+  /** Y2: "Toplam Birim Fiyat" — etkilesimli yol (`recalcGrand`) yaziyordu,
+   *  doldurma yolu YAZMIYORDU; satir kendi icinde celisiyordu. */
+  laborUnitPriceField?: string;
+  grandUnitPriceField?: string;
 }
 
 export interface FillDownArgs {
@@ -282,6 +297,26 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     ozet: { fiyatli: 0, aday: 0, yok: 0, urunDegil: 0, hata: 0, adYok: 0, atlanan: 0, devredilen: 0 },
     geriAl: [],
   };
+
+  // ── D10 (02.10): BOS KAYNAKTAN SURUKLEME HICBIR SEY YAPMAZ ─────────────
+  // Kaynak satirin marka/firma hucresi BOSKEN surukleme yapilinca bu dongu her
+  // hedef icin ONCE hedefin secimini null'a cekiyor, sonra motora BOS kimlikle
+  // soruyordu (satir basina bir istek). Cevap ne olursa olsun fiyat yazilmadigi
+  // icin D1 temizligi kosuyor — fiyat ve toplam SILINIYOR — ve satir "bu markada
+  // yok" diye KIRMIZIYA boyaniyordu, satirda marka YOKKEN (yanlis suclama:
+  // kullanici kutuphanesinde eksik malzeme aramaya yonlendiriliyordu).
+  //
+  // KARAR (Emre, 02.10): reddedilir — istek gitmez, hedeflere DOKUNULMAZ. Tek
+  // satir temizleme icin "Secimi kaldir" var. Etkilesimli yolun ikizi:
+  // BrandDropdown/FirmaDropdown `handleChange` bos secimde motoru cagirmaz.
+  //
+  // Erken donus SD2 assert'ine (dongu sonu) GIRMEZ: SD2 "secim UYGULANDIYSA her
+  // satir sonuc alir" sozlesmesidir; burada uygulanan bir secim yok.
+  if (!markaId) {
+    sonuc.ozet.atlanan = hedefler.length;
+    sonuc.bosSecim = true;
+    return sonuc;
+  }
 
   const SNAP = ['_marka', '_firma', '_matNetPrice', '_labNetPrice', '_matSuggestion',
     '_matStatus', '_matVariantMode', '_matAutoVariant', '_matVariantTags', '_matVariantLabel',
