@@ -22,7 +22,7 @@ import { generateTags } from './tag-generator';
 import { hesaplaNetFiyat } from '../../fiyat/matching/pricing';
 import { extractMaterialKind, extractFluid } from './normalizer';
 import { extractSizeInfo } from './conversion';
-import { TerminologyService } from './terminology.service';
+import { TerminologyService, SOZLUK_MALZEME_RETTI } from './terminology.service';
 // TEK MOTOR (Faz 2b): indeksli + Ad-kilitli cekirdek (saf — test:index K1-K7)
 import { parseLine } from './index/line-parser';
 import { runQuery, guclutekAday, aileUyusmazligiTeshisi } from './index/query-engine';
@@ -442,6 +442,9 @@ export class MatchingService {
         // filtresi olarak calisir, ustune bir de siralama baskisi koymak
         // "PVC yazdim, PVC elendi" celiskisini dogururdu.
         hintMalzeme: yaziliSinif ? [] : malzemeEtiketleri(...(hint?.kinds ?? [])),
+        // KARAR (a): pis su → PP ailesi ELENIR. Satirda malzeme yaziliysa
+        // ("PP PİS SU BORUSU") satir kazanir — kullanicinin kelimesi serttir.
+        hintMalzemeEle: yaziliSinif || !hint ? [] : [...(SOZLUK_MALZEME_RETTI[hint.canonical] ?? [])],
         hintLabel: hint ? (hint.kinds.join('/') || hint.canonical) : undefined,
         // Alias'in kendi kelimeleri + stripTags kisit/bilinmeyen sayilmaz —
         // YALNIZ GERCEK CEVIRIDE (impliedType). S4 ZEHRI (canli 17.07,

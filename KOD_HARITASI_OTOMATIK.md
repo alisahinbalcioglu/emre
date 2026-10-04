@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 865
-Toplam satir: 240119
+Kod dosyasi: 866
+Toplam satir: 240390
 Uc nokta: 238
-test:* scripti: 148
+test:* scripti: 149
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -138,16 +138,16 @@ test:* scripti: 148
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 448 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 256 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 721 |
-| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1677 |
-| `backend/src/ozellik/eslestirme/matching/index/types.ts` | 283 |
+| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1698 |
+| `backend/src/ozellik/eslestirme/matching/index/types.ts` | 294 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 111 |
 | `backend/src/ozellik/eslestirme/matching/matching.module.ts` | 16 |
-| `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1227 |
+| `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1230 |
 | `backend/src/ozellik/eslestirme/matching/normalizer.ts` | 724 |
 | `backend/src/ozellik/eslestirme/matching/shared-tag-matcher.ts` | 165 |
 | `backend/src/ozellik/eslestirme/matching/tag-generator.ts` | 161 |
-| `backend/src/ozellik/eslestirme/matching/terminology.service.ts` | 327 |
+| `backend/src/ozellik/eslestirme/matching/terminology.service.ts` | 344 |
 | `backend/src/ozellik/eslestirme/matching/types.ts` | 152 |
 | `backend/src/ozellik/eslestirme/utils/build-material-context.ts` | 126 |
 | `backend/src/ozellik/eslestirme/utils/etiket-display.ts` | 70 |
@@ -432,12 +432,13 @@ test:* scripti: 148
 | `backend/test/para-birimi-yazim-test.ts` | 356 |
 | `backend/test/parola-kapisi-test.ts` | 536 |
 | `backend/test/perf-profil.ts` | 74 |
+| `backend/test/pis-su-eleme-test.ts` | 197 |
 | `backend/test/pk3-kimlik-haritasi-test.ts` | 159 |
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 1031 |
-| `backend/test/s45-malzeme-aile-test.ts` | 441 |
+| `backend/test/regression-all.ts` | 1032 |
+| `backend/test/s45-malzeme-aile-test.ts` | 462 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 901 |
 | `backend/test/sir-dondur-kapsam-test.ts` | 188 |
@@ -1263,6 +1264,7 @@ test:* scripti: 148
 | `backend/test/para-birimi-yazim-test.ts` | `@nestjs/common` `xlsx` `../src/ozellik/kutuphane/labor-firms/labor-firms.service` `../src/ozellik/kutuphane/library/library.service` `../src/ozellik/kutuphane/library/library.controller` `../src/ozellik/kutuphane/library/dto/create-manual-brand.dto` `../src/ozellik/kutuphane/library/dto/add-library-rows.dto` `../src/ozellik/kutuphane/admin/admin.service` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/parola-kapisi-test.ts` | `node:fs` `node:path` `@nestjs/config` `@nestjs/core` `class-validator` `class-transformer` `bcrypt` `../src/altyapi/auth/dto/register.dto` `../src/altyapi/auth/dto/parola-degistir.dto` `../src/altyapi/auth/dto/parola-sifirla.dto` `../src/ozellik/firma/dto/davet-kabul.dto` `../src/altyapi/auth/parola.servisi` `../src/altyapi/auth/hesap.servisi` `../src/altyapi/auth/auth.controller` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/perf-profil.ts` | `fs` `../src/ozellik/giris/excel-grid/excel-grid.service` `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/teklif/quotes/export-engine` `../src/ozellik/teklif/quotes/standart-cikti` `../src/ozellik/cikti/quote-formats/format-engine` `exceljs` `./yardimci/bitmezse-kirmizi` |
+| `backend/test/pis-su-eleme-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `./yardimci/bitmezse-kirmizi` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` |
 | `backend/test/pk3-kimlik-haritasi-test.ts` | `./fixture-anonim` |
 | `backend/test/pk3-repo-kapsama-test.ts` | `fs` `path` `child_process` |
 | `backend/test/pk9-sessiz-indeks-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
@@ -1916,6 +1918,7 @@ test:* scripti: 148
 | `backend/package.json` | `test:kaplama-cins` | `ts-node test/kaplama-cins-test.ts` |
 | `backend/package.json` | `test:tipografik-tirnak` | `ts-node test/tipografik-tirnak-test.ts` |
 | `backend/package.json` | `test:kisa-kok-malzeme` | `ts-node test/kisa-kok-malzeme-test.ts` |
+| `backend/package.json` | `test:pis-su-eleme` | `ts-node test/pis-su-eleme-test.ts` |
 | `backend/package.json` | `test:grid` | `ts-node test/excel-grid-test.ts` |
 | `backend/package.json` | `test:labor-sheet` | `ts-node test/labor-sheet-test.ts` |
 | `backend/package.json` | `test:kl` | `ts-node test/kl-liste-ekleme-test.ts` |

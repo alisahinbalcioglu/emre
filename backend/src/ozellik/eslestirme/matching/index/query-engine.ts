@@ -179,6 +179,26 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     }
   }
 
+  // ── 1a3. SOZLUK MALZEME RETTI — SERT (KARAR a, Emre 30.09) ───────
+  // "Pis su = PVC, PP/PPR (PPR-C) elenir" — siralanmaz, ELENIR. Yalniz
+  // malzemesi TAMAMEN ret kumesinde olan aday duser; etiketsiz ve karisik
+  // etiketli aday kalir (S5'in "eleyen surum" reddinin gerekcesi budur).
+  // `sozlukSusar` bunu SUSTURMAZ: E1 yalniz sozlugun VARSAYIMINI susturur
+  // ("temiz su → PPR"); bu bir rettir. Olculdu: susturulsa temiz su
+  // satirindan surulen PP-R secimi pis su satirina 500 TL'den yaziliyordu.
+  // Tum havuzlar `rows`tan turedigi icin (kurtarma, genisletme, varyant)
+  // burada bir kez elemek hepsini kapsar.
+  const malzemeRetti = opts?.hintMalzemeEle ?? [];
+  if (malzemeRetti.length) {
+    rows = rows.filter((r) => {
+      const m = r.urun.malzemeler ?? [];
+      return m.length === 0 || !m.every((x) => malzemeRetti.includes(x));
+    });
+    if (rows.length === 0) {
+      return { kind: 'none', reason: 'kriter-yok', detail: opts?.hintLabel ?? malzemeRetti.join('/') };
+    }
+  }
+
   // ── 1b. SEVIYE2: AD TOKEN'LARI — AILE COZULMESE DE UYGULANIR ─────
   // ⚠ Bunu once yanlis yaptim: tum token filtrelemesi `if (familySlug)`
   // blogunun ICINDEYDI. Aile cozulemeyen satirda ("OTOMATİK HAVA ATMA
@@ -1075,6 +1095,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   }
 
   // ── 5b-2. MALZEME BEKLENTISI (S5) — SIRALAR, ELEMEZ ──────────────
+  // (Istisna: sozlugun RET kumesi 1a3'te sert elenir — karar (a), pis su.)
   // Taban yuzey kuralinin (yukarisi) MALZEME eksenindeki ikizi. Sozluk
   // "pis su = PVC|HDPE" der; havuzda hem PVC hem PP boru olabilir ve ikisi
   // de `plastic` sinifindadir — sizeClass onlari AYIRT EDEMEZ, malzeme

@@ -12,6 +12,9 @@
  * eksenine dogal genislemesi): beklenen malzemeyi tasiyan aday ONE, CAKISAN
  * malzeme tasiyan SONA; cakisan TEK aday kalirsa fiyat OTOMATIK YAZILMAZ.
  * SERT FILTRE YOK — malzemesi cozulemeyen urun elenmez (kanit yok, suclama yok).
+ * ISTISNA — KARAR (a) (Emre 30.09): pis suda PP/PPR SIRALANMAZ, ELENIR
+ * (`SOZLUK_MALZEME_RETTI`, kilidi test/pis-su-eleme-test.ts). A1/A2 bu yuzden
+ * siralamayi ret disi bir plastikle (PEX) sinar.
  *
  * ── S4: AILE ZAYIFLIGI ─────────────────────────────────────────────────
  * product-index.resolveFamily aileyi ADdan cozemezse KATEGORIDEN cozer.
@@ -92,6 +95,9 @@ function libRow(c: ProductColumns & { discount?: number }) {
 const PVC = { kategori: 'Pis Su Boruları', ad: 'PVC atık su borusu', cins: 'PVC-U', cap: '110 mm', price: 300, sheetName: 'S1' };
 const PP = { kategori: 'Tesisat Boruları', ad: 'PP boru', cins: 'PP-R', cap: '110 mm', price: 500, sheetName: 'S1' };
 const PE = { kategori: 'Hidrant Hattı', ad: 'PE100 boru', cins: 'PE 100', cap: '110 mm', price: 400, sheetName: 'S1' };
+// PEX: plastik, cakisan malzeme ama pis su RET kumesinin (pp, ppr) DISINDA —
+// S5 siralamasini karar (a) elemesinden bagimsiz sinamak icin.
+const PEX = { kategori: 'Tesisat Boruları', ad: 'PEX boru', cins: 'PEX-B', cap: '110 mm', price: 450, sheetName: 'S1' };
 
 // AILESI ZAYIF urunler: adlari HICBIR aile cozmuyor, aile YALNIZ kategoriden
 // geliyor (probe ile dogrulandi — resolveFamily(ad, null) === null).
@@ -143,24 +149,39 @@ async function bolumA() {
     !!hidrant && (hidrant.kinds.includes('hdpe') || hidrant.kinds.includes('pe')), `got ${JSON.stringify(hidrant?.kinds)}`);
 
   // ── AILE 1: PIS SU (beklenen malzeme PVC|PE) ──────────────────────────
-  // Havuzda PP ONCE duruyor: siralama duzelmezse aday listesinin basinda
-  // PP kalir (bugunku davranis).
+  // ⚠ KARAR (a) (Emre 30.09 teyit): pis suda PP/PPR SIRALANMAZ, ELENIR. Bu
+  // blok onceden PP ile "elenmez, siralanir" sapmasini KILITLIYORDU (A1c/A2a);
+  // test kurala gore duzeltildi, kod teste gore degil. Siralama kapsamini
+  // korumak icin cakisan ama ret kumesi DISINDAKI bir plastik (PEX) kullanilir
+  // — ret yalniz pp/ppr'dir. Eleme kurali kendi kilidinde:
+  // test/pis-su-eleme-test.ts. Havuzda PEX ve PP ONCE duruyor.
   {
-    const svc = svcWith([libRow(PP), libRow(PVC)]);
+    const svc = svcWith([libRow(PEX), libRow(PP), libRow(PVC)]);
     const r = await sor(svc, 'PİS SU BORUSU DN 110');
-    check('A1a bos-kume kapisi: pis su satiri IKI aday uretiyor (havuz dolu)',
+    check('A1a bos-kume kapisi: pis su satiri IKI aday uretiyor (PEX + PVC; PP elendi)',
       (r?.candidates?.length ?? 0) === 2, `got ${r?.confidence} adayi=${r?.candidates?.length}`);
     check('A1b PIS SU: beklenen malzeme (PVC) listenin BASINDA',
       /PVC/i.test(r?.candidates?.[0]?.materialName ?? ''), `got "${r?.candidates?.[0]?.materialName}"`);
-    check('A1c PIS SU: cakisan malzeme (PP) listenin SONUNDA — elenmez, siralanir',
-      /PP/i.test(r?.candidates?.[r.candidates.length - 1]?.materialName ?? ''), `got "${r?.candidates?.[(r?.candidates?.length ?? 1) - 1]?.materialName}"`);
+    check('A1c PIS SU: ret DISI cakisan malzeme (PEX) listenin SONUNDA — elenmez, siralanir',
+      /PEX/i.test(r?.candidates?.[(r?.candidates?.length ?? 1) - 1]?.materialName ?? ''), `got "${r?.candidates?.[(r?.candidates?.length ?? 1) - 1]?.materialName}"`);
+    check('A1d PIS SU: PP (ret kumesi) listede YOK — karar (a)',
+      !(r?.candidates ?? []).some((c: any) => /PP boru/i.test(c.materialName ?? '')), `got ${JSON.stringify((r?.candidates ?? []).map((c: any) => c.materialName))}`);
   }
   {
     const svc = svcWith([libRow(PP)]);
     const r = await sor(svc, 'PİS SU BORUSU DN 110');
-    check('A2a PIS SU: cakisan malzemeli TEK aday elenmez (havuzda kalir)',
-      (r?.candidates?.length ?? 0) === 1 || r?.netPrice === PP.price, `got ${r?.confidence} adayi=${r?.candidates?.length} net=${r?.netPrice}`);
-    check('A2b PIS SU: cakisan malzemeli TEK adaya fiyat OTOMATIK YAZILMAZ',
+    check('A2a PIS SU: yalniz PP varsa aday KALMAZ (karar a — elenir)',
+      r?.confidence === 'none' && (r?.candidates?.length ?? 0) === 0, `got ${r?.confidence} adayi=${r?.candidates?.length} net=${r?.netPrice}`);
+    check('A2b PIS SU: PP\'ye fiyat OTOMATIK YAZILMAZ',
+      r?.confidence !== 'high' && r?.netPrice === 0, `got ${r?.confidence} net=${r?.netPrice}`);
+  }
+  {
+    // S5 TEK-ADAY KAPISI ret disi malzemede SURER: PEX elenmez, yazilmaz.
+    const svc = svcWith([libRow(PEX)]);
+    const r = await sor(svc, 'PİS SU BORUSU DN 110');
+    check('A2c PIS SU: ret disi cakisan TEK aday (PEX) elenmez (havuzda kalir)',
+      (r?.candidates?.length ?? 0) === 1, `got ${r?.confidence} adayi=${r?.candidates?.length} net=${r?.netPrice}`);
+    check('A2d PIS SU: ret disi cakisan TEK adaya fiyat OTOMATIK YAZILMAZ',
       r?.confidence !== 'high' && r?.netPrice === 0, `got ${r?.confidence} net=${r?.netPrice}`);
   }
 

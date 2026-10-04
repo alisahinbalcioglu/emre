@@ -111,6 +111,7 @@ const SUITES: Suite[] = [
   { ad: 'Kaplama/cins — gövde malzemesi cinse düşmez (B1)', script: 'test:kaplama-cins', zincir: 'Z2' },
   { ad: 'Tipografik tırnak — inç okunur (B2)', script: 'test:tipografik-tirnak', zincir: 'Z2' },
   { ad: 'Kısa kök PP/PPR — satır malzemesi kapısı (B3)', script: 'test:kisa-kok-malzeme', zincir: 'Z2' },
+  { ad: 'Pis su / gider = PVC, PP ailesi elenir (karar a)', script: 'test:pis-su-eleme', zincir: 'Z2' },
   // ── S2+S3 (06.08.2026): ÖNERİ KUTUSU. Çapraz-marka/firma önerisi ana
   //    motoru çağırıyor ve motorun "onaylat" dediği tek adayı KESİN gibi
   //    sunuyordu. İki kural mühürlendi: kanıt gücü yetmeyen aday (çapı ya da

@@ -256,6 +256,17 @@ export interface QueryOpts {
    * yaziliysa K4 zaten sert filtredir; bu alan yalniz SOZLUK VARSAYIMIDIR.
    */
   hintMalzeme?: string[];
+  /**
+   * KARAR (a) — SOZLUK MALZEME RETTI (Emre 04.08 canli vaka, 30.09 teyit:
+   * "pis su = PVC, PP/PPR (PPR-C) elenir"). `hintMalzeme`in tersine SERTTIR:
+   * malzemesi YALNIZ bu kumeden olan aday elenir (PP, PP-R, PPR-C, PP-HT).
+   * Yukaridaki "eleyen surum" reddinin gerekcesi burada KARSILANIR:
+   * etiketsiz aday ELENMEZ, karisik etiketli (pvc+pp) aday ELENMEZ — yalniz
+   * malzemesi bilinen ve tamami reddedilen aday.
+   * Kaynak `terminology.service.SOZLUK_MALZEME_RETTI` (canonical anahtarli).
+   * `sozlukSusar` (surukleme) bunu SUSTURMAZ: E1 yalniz VARSAYIMI susturur.
+   */
+  hintMalzemeEle?: string[];
   /** none/elenme mesajlarinda gosterilecek sozluk etiketi ("ppr" gibi) */
   hintLabel?: string;
   /** Alias'in KENDI kelimeleri + stripTags — kisit/bilinmeyen SAYILMAZ

@@ -53,6 +53,7 @@
     "test:kaplama-cins": "ts-node test/kaplama-cins-test.ts",
     "test:tipografik-tirnak": "ts-node test/tipografik-tirnak-test.ts",
     "test:kisa-kok-malzeme": "ts-node test/kisa-kok-malzeme-test.ts",
+    "test:pis-su-eleme": "ts-node test/pis-su-eleme-test.ts",
     "test:grid": "ts-node test/excel-grid-test.ts",
     "test:labor-sheet": "ts-node test/labor-sheet-test.ts",
     "test:kl": "ts-node test/kl-liste-ekleme-test.ts",
