@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 881
-Toplam satir: 246057
+Toplam satir: 246219
 Uc nokta: 239
 test:* scripti: 144
 
@@ -197,7 +197,7 @@ test:* scripti: 144
 | `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts` | 1120 |
 | `backend/src/ozellik/giris/excel-grid/sheet-discipline.ts` | 61 |
 | `backend/src/ozellik/giris/excel-grid/standart-sema.ts` | 361 |
-| `backend/src/ozellik/imha/imha-listesi.ts` | 646 |
+| `backend/src/ozellik/imha/imha-listesi.ts` | 647 |
 | `backend/src/ozellik/imha/imha.job.ts` | 149 |
 | `backend/src/ozellik/imha/imha.module.ts` | 25 |
 | `backend/src/ozellik/imha/imha.servisi.ts` | 525 |
@@ -214,7 +214,7 @@ test:* scripti: 144
 | `backend/src/ozellik/kutuphane/brands/dto/create-brand.dto.ts` | 17 |
 | `backend/src/ozellik/kutuphane/labor-firms/labor-firms.controller.ts` | 215 |
 | `backend/src/ozellik/kutuphane/labor-firms/labor-firms.module.ts` | 16 |
-| `backend/src/ozellik/kutuphane/labor-firms/labor-firms.service.ts` | 1210 |
+| `backend/src/ozellik/kutuphane/labor-firms/labor-firms.service.ts` | 1222 |
 | `backend/src/ozellik/kutuphane/labor/iscilik-kalemi-kapsami.ts` | 85 |
 | `backend/src/ozellik/kutuphane/labor/labor.controller.ts` | 121 |
 | `backend/src/ozellik/kutuphane/labor/labor.module.ts` | 18 |
@@ -396,7 +396,7 @@ test:* scripti: 144
 | `backend/test/kd11-toplam-yollari-test.ts` | 173 |
 | `backend/test/kd12-baslik-satiri-test.ts` | 227 |
 | `backend/test/kd9-kur-olcutu-test.ts` | 252 |
-| `backend/test/kiraci-siniri-test.ts` | 1462 |
+| `backend/test/kiraci-siniri-test.ts` | 1526 |
 | `backend/test/kisisel-liste-izolasyon-test.ts` | 365 |
 | `backend/test/kl-kayit-toplami-test.ts` | 149 |
 | `backend/test/kl-liste-ekleme-test.ts` | 172 |
@@ -411,7 +411,7 @@ test:* scripti: 144
 | `backend/test/manifest-kapisi.ts` | 224 |
 | `backend/test/matching-regression.ts` | 282 |
 | `backend/test/matching-unit-test.ts` | 714 |
-| `backend/test/migration-zinciri-test.ts` | 1048 |
+| `backend/test/migration-zinciri-test.ts` | 1133 |
 | `backend/test/miras-erisimi-test.ts` | 706 |
 | `backend/test/miras-hakki-test.ts` | 1804 |
 | `backend/test/musteri-epostalari-test.ts` | 1118 |

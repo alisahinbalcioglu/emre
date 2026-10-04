@@ -1432,6 +1432,69 @@ async function kvBlogu(): Promise<void> {
   }
 }
 
+// ═══ KL — L3/S1 (02.10.2026): liste silinince fiyat satirlari da gider ═════
+// Eskiden yalniz liste siliniyordu; satirlar `onDelete: SetNull` ile
+// priceListId=NULL kaliyor, kullanici onlari ne goruyor ne silebiliyordu — ve
+// eslestirme fiyatlari `firmaId` ile cektigi icin SILINEN LISTENIN FIYATI
+// TEKLIFTE KULLANILMAYA DEVAM EDIYORDU (canli 02.10: 0 satir). Eslestirme
+// etkisi motor dosyasina dokunmadan GERCEK uctan olculur.
+async function klBlogu(): Promise<void> {
+  console.log('\n── KL (L3/S1) liste silinince fiyat satırları da gider ──');
+  const d = await dunyaKur();
+  try {
+    const aF = await iscilikFirmasiAc(d, 'a1', 'Usta A');
+    const silinecek = await yukle(d, 'a1', aF, [[A_OZEL, 777]]);
+    const kalan = await yukle(d, 'a1', aF, [[KOMP, 200]]);
+    const bF = await iscilikFirmasiAc(d, 'b', 'Usta B');
+    await yukle(d, 'b', bF, [[B_OZEL, 555]]);
+    const silinecekSatir = fiyatSatiri(d, aF, A_OZEL)!.id as string;
+    const kalanSatir = fiyatSatiri(d, aF, KOMP)!.id as string;
+    const bSatir = fiyatSatiri(d, bF, B_OZEL)!.id as string;
+    const once = await eslestir(d, 'a1', aF, 'KÜRESEL VANA DN65');
+    check('KL.0 FIXTURE: silinecek listenin satiri eslestirmede 777 ile bulunur', once?.netPrice === 777, JSON.stringify(once));
+
+    const satirlar = () => d.db.tablo('LaborPrice');
+    const sil = await d.istek('a1', 'DELETE', `/labor-firms/price-lists/${silinecek}`);
+    check('KL.1 ★ liste silinince ONUN fiyat satiri da silinir (listesiz NULL satir KALMAZ)',
+      sil.durum === 200 && !satirlar().some((p) => p.id === silinecekSatir) && !satirlar().some((p) => p.priceListId === null),
+      `${sil.durum} ${JSON.stringify(satirlar().map((p) => ({ id: p.id, liste: p.priceListId })))}`);
+    // Ham yanit olculur: hata yanitinda `eslestir` undefined doner ve olumsuz
+    // kontrol bos yere gecerdi (inceleme LOW-2).
+    const sonraYanit = await d.istek('a1', 'POST', '/labor-matching/bulk-match', {
+      firmaId: aF, laborNames: ['KÜRESEL VANA DN65'], units: { 'KÜRESEL VANA DN65': 'adet' },
+    });
+    const sonra = sonraYanit.veri?.['KÜRESEL VANA DN65'];
+    check('KL.2 ★ BAGLANTI eslestirme: silinen listenin fiyati (777) havuza GIRMEZ (yanit 201, satir eslesmez)',
+      sonraYanit.durum === 201 && sonra?.confidence === 'none' && sonra?.netPrice === 0 && !sonraYanit.metin.includes('777'),
+      `${sonraYanit.durum} ${sonraYanit.metin.slice(0, 200)}`);
+    const kalanEsle = await eslestir(d, 'a1', aF, 'KOMPANSATÖR DN100');
+    check('KL.3 KORUMA: diger listenin ve baska kiracinin satiri YERINDE (kapsam yalniz silinen liste); kalan liste eslesir (200)',
+      satirlar().some((p) => p.id === kalanSatir && p.priceListId === kalan) && satirlar().some((p) => p.id === bSatir) &&
+        kalanEsle?.netPrice === 200,
+      JSON.stringify(kalanEsle));
+
+    // ATOMIK: liste silme duserse satirlar da YERINDE kalir (ayni islem).
+    const ikinci = await yukle(d, 'a1', aF, [[ORTAK_AD, 90]]);
+    const ikinciSatir = fiyatSatiri(d, aF, ORTAK_AD)!.id as string;
+    const api = d.db.istemci.laborPriceList;
+    const asil = api.delete;
+    api.delete = async () => {
+      api.delete = asil;
+      throw new Error('liste silinemedi (test)');
+    };
+    const hatali = await d.istek('a1', 'DELETE', `/labor-firms/price-lists/${ikinci}`);
+    api.delete = asil;
+    // Olcut: IKI ADIMLI silme (once satirlar, sonra liste) geri gelirse liste
+    // silme dustugunde satirlar gitmis olur. Cascade'in kendisini KL.1 ve
+    // `test:migration` LC0 olcer (kod incelemesi LOW-1).
+    check('KL.4 IKI ADIMLI SILME YOK: liste silme duserse fiyat satiri da SILINMEZ (satirlari DB siler, tek ifade)',
+      hatali.durum >= 500 && satirlar().some((p) => p.id === ikinciSatir) && d.db.tablo('LaborPriceList').some((l) => l.id === ikinci),
+      `${hatali.durum} ${hatali.metin.slice(0, 120)}`);
+  } finally {
+    await d.app.close();
+  }
+}
+
 async function main(): Promise<void> {
   k0Blogu();
   await kmBlogu();
@@ -1446,6 +1509,7 @@ async function main(): Promise<void> {
   await k5Blogu();
   await kbBlogu();
   await kvBlogu();
+  await klBlogu();
   const hatalar = gunluk.filter((s) => s.startsWith('ERROR'));
   if (hatalar.length) console.log(`\n  (Nest ERROR satirlari: ${hatalar.length}) ${hatalar.slice(0, 3).join(' || ').slice(0, 600)}`);
   console.log(`\nKIRACI SINIRI: ${passed} PASS, ${failures.length} FAIL`);

@@ -230,7 +230,8 @@ export class LaborFirmsService {
    * takasi 409 aliyordu. Atlanan aday yerine 4. adim kendi kalemini acar (ad
    * tekrari kalemlerde serbest; 1. adimin yerinde adlandirmasiyla ayni sonuc).
    * Liste satirsiz (NULL) satirda suzgec yok — o satirlar tekillik
-   * guvencesinin disinda (bilinen acik L3). 409 yalniz yarista kalir (es
+   * guvencesinin disinda; artik dogmazlar (L3/S1, 04.10: liste silme FK
+   * CASCADE ile satirlarini da siler; canlida 0). 409 yalniz yarista kalir (es
    * zamanli istek ayni kalemi listeye ekler); tek yazim oldugu icin hicbir
    * alan degismez. Ad aramalari `adEsit` ile (ILIKE jokerleri kacislanir).
    * Eskiden ortak kalemin adi dogrudan degisiyordu: ayni kaleme bagli BASKA
@@ -802,6 +803,17 @@ export class LaborFirmsService {
     return this.prisma.laborPriceList.create({ data: { firmaId, name } });
   }
 
+  /**
+   * LISTE SILME (L3/S1, 04.10.2026): listenin fiyat satirlari da gider —
+   * `LaborPrice.priceList` `onDelete: Cascade` (goc
+   * `20261004120000_iscilik_liste_silme_cascade`): DB TEK ifadede siler, ayni
+   * listeye eszamanli yazimla yaris da kalmaz. Eskiden `SetNull` satirlari
+   * priceListId=NULL birakiyordu — kullanici onlari ne goruyor ne
+   * silebiliyordu ve eslestirme fiyatlari `firmaId` ile cektigi icin SILINEN
+   * LISTENIN FIYATI teklifte kullanilmaya devam ediyordu. Listesiz satirin
+   * baska kaynagi yok (iki upsert de `priceList.id` yazar; canli 02.10: 0).
+   * Kapilar: `test:kiraci-siniri` KL, `test:migration` LC.
+   */
   async deletePriceList(k: Kimlik, priceListId: string) {
     await this.assertPriceListOwnership(priceListId, k);
     return this.prisma.laborPriceList.delete({ where: { id: priceListId } });

@@ -107,7 +107,8 @@ export interface KorumaKurali {
  *  SILINECEKLER — SIRA ONEMLI: YAPRAKTAN KOKE.
  * ───────────────────────────────────────────────────────────────────────────
  *  Sira neden onemli: bazi FK'ler `SetNull` (or. `Quote.formatId`,
- *  `LaborPrice.priceListId`, `UserLibrary.libraryListId`). Ust satiri once
+ *  `UserLibrary.libraryListId`; `LaborPrice.priceListId` 04.10'dan beri
+ *  CASCADE — L3/S1 goc `20261004120000`). Ust satiri once
  *  silersek DB alt satirin kolonunu null'lar — sonuc yine silinir ama
  *  SAYILAR yaniltici olur. Yapraktan koke gidince her `deleteMany` gercek
  *  sayisini dondurur ve denetim kaydi (§5.6) dogru olur.
