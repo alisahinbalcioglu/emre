@@ -510,9 +510,10 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
    *  · `capsiz-dusum`     : URUNUN capi yok (kolon bos) — VS/Ç vakasi.
    *  · `cap-cevrilemedi`  : SATIRIN capi cevrim tablosunda yok, suzgec hicbir
    *                         adayi dogrulayamadi (K2, 26.08).
-   * ⚠ Bu fren `auto-variant` yolunu kapatan TEK yerdir: o yol celiski
-   * zincirinden ONCE doner, yani `kapilar`/`uyariNot` eklemek parayi KESMEZ
-   * (olculdu: yalniz mesaj eklendiginde 500 TL yazilmaya devam ediyordu).
+   * ⚠ `auto-variant` yolu celiski zincirinden ONCE doner, yani `kapilar`/
+   * `uyariNot` eklemek parayi KESMEZ (olculdu: yalniz mesaj eklendiginde
+   * 500 TL yazilmaya devam ediyordu). O yolu kapatan frenler `otoVaryant`ta
+   * toplanir: bu cap freni + K1 akiskan freni (04.10).
    */
   /**
    * DN NOMINAL KOPRUSU IHLALI (27.08.2026, olculdu) — PARA KAPISI.
@@ -566,6 +567,43 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       kapilar: [capCevrilemedi && aday.urun.capTags.length > 0 ? 'cap-cevrilemedi' : 'capsiz-dusum'],
     };
   };
+  /**
+   * K1 (04.10) — AKISKAN KAPISI OTOMATIK-VARYANT YOLUNDA DA GECERLI.
+   *
+   * Olculdu (saf motor): su vanasi secimi asagi surulunce "DOĞALGAZ KÜRESEL
+   * VANA 1"" satirina @500 OTOMATIK yaziliyordu — surukleme YOKKEN ayni satir
+   * "Akışkan bilgisi doğrulanamadı" ile onay istiyordu. Daha agiri: gaz
+   * bilgisi urunun CINSINDE olan dogru vana kutuphanede DURURKEN, kurtarma
+   * havuzu cins suzgecinden ONCE alindigi icin su vanasini yaziyordu. Buhar da.
+   * Kok: otomatik-varyant donusleri yalniz `capAutoYasak`a bakiyordu; akiskan
+   * kapisi celiski zincirindedir ve bu donusler oraya HIC ulasmaz.
+   *
+   * Kural: satirin token'larinda (sozluk tukettikten SONRA kalan — dogalgaz
+   * alias'i "DOĞALGAZ BORUSU"nu celik boruya cevirdiyse kelime yoktur) akiskan
+   * varsa aday AYNI akiskani ad / cins / kategorisinde tasimali.
+   *   · kurtarma havuzlari bu suzgecten gecer (L6 birim kuraliyla ayni ilke:
+   *     kurtarma bu kurali DELEMEZ);
+   *   · dogrudan donuslerde aday tasimiyorsa surukleme YOKKEN uretilen notun
+   *     AYNISIYLA onay istenir (tek sozlesme).
+   * Kapi: test/surukleme-akiskan-test.ts
+   */
+  const akiskanTok = tokens.filter((t) => extractFluid(t) !== null);
+  const akiskanUyar = (r: IndexedRow): boolean => {
+    if (akiskanTok.length === 0) return true;
+    const urunAkiskan = extractFluid(`${r.urun.ad ?? ''} ${r.urun.cins ?? ''} ${r.urun.kategori ?? ''}`);
+    return akiskanTok.every((t) => extractFluid(t) === urunAkiskan);
+  };
+  const otoVaryant = (aday: IndexedRow, d: string | null): QueryOutcome => {
+    if (capAutoYasak(aday)) return capsizOnay(aday);
+    if (!akiskanUyar(aday)) {
+      return {
+        kind: 'ask', askColumn: 'urun', rows: [aday], bilinmeyen, donusum: d,
+        uyariNot: `Akışkan bilgisi doğrulanamadı ("${akiskanTok.join(' ')}") — kontrol edin`,
+        kapilar: ['bilinmeyen-kelime'],
+      };
+    }
+    return { kind: 'auto-variant', row: aday, donusum: d };
+  };
   const varyantTagUyar = (v: string[]) => (r: IndexedRow) => {
     const aday = urunVariantTags(r);
     return v.every((t) => aday.some((x) => varyantTagEsit(t, x)));
@@ -600,24 +638,16 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     let oncekiAday = 0;
     for (const havuz of [yuzeyGenis, varyantKurtarma]) {
       if (!havuz || havuz.length === 0) continue;
-      const kurtarilan = havuz.filter(birimUyar).filter(tagUyar);   // L6: birim SERT
+      const kurtarilan = havuz.filter(birimUyar).filter(akiskanUyar).filter(tagUyar);   // L6 birim + K1 akiskan SERT
       oncekiAday += kurtarilan.length;
-      if (kurtarilan.length === 1) {
-        return capAutoYasak(kurtarilan[0])
-          ? capsizOnay(kurtarilan[0])
-          : { kind: 'auto-variant', row: kurtarilan[0], donusum };
-      }
+      if (kurtarilan.length === 1) return otoVaryant(kurtarilan[0], donusum);
     }
     // TAM-AD SURGUNU — YALNIZ yazili-ad havuzlari SIFIR aday verdiyse.
     // ⚠ K7 KORUMASI: sifir kapisi olmasa, iki gecerli adayin (gercek
     // belirsizlik) oldugu vakada surgundeki ucuncu kayit yazilirdi.
     if (oncekiAday === 0 && adGenisKurtarma.length > 0) {
-      const kurtarilan = adGenisKurtarma.filter(birimUyar).filter(tagUyar);
-      if (kurtarilan.length === 1) {
-        return capAutoYasak(kurtarilan[0])
-          ? capsizOnay(kurtarilan[0])
-          : { kind: 'auto-variant', row: kurtarilan[0], donusum };
-      }
+      const kurtarilan = adGenisKurtarma.filter(birimUyar).filter(akiskanUyar).filter(tagUyar);
+      if (kurtarilan.length === 1) return otoVaryant(kurtarilan[0], donusum);
     }
     return null;
   };
@@ -681,24 +711,16 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     let oncekiAday = 0;   // SIFIR KAPISI — bkz. varyantKurtar
     for (const havuz of [yuzeyGenis, varyantKurtarma]) {
       if (!havuz || havuz.length === 0) continue;
-      const k = havuz.filter(birimUyar).filter(capSuz).filter(tagUyar);   // L6: birim SERT
+      const k = havuz.filter(birimUyar).filter(akiskanUyar).filter(capSuz).filter(tagUyar);   // L6 birim + K1 akiskan SERT
       oncekiAday += k.length;
-      if (k.length === 1) {
-        return capAutoYasak(k[0])
-          ? capsizOnay(k[0])
-          // Cap blogu kosmadigi icin `donusum` hala null; cevrim koprusunu
-          // (E4/E6) kaybetmemek icin rozeti buradan tasiyoruz.
-          : { kind: 'auto-variant', row: k[0], donusum: eq.rozet };
-      }
+      // Cap blogu kosmadigi icin `donusum` hala null; cevrim koprusunu
+      // (E4/E6) kaybetmemek icin rozeti buradan tasiyoruz.
+      if (k.length === 1) return otoVaryant(k[0], eq.rozet);
     }
     // TAM-AD SURGUNU — yalniz yazili-ad havuzlari SIFIR aday verdiyse.
     if (oncekiAday === 0 && adGenisKurtarma.length > 0) {
-      const k = adGenisKurtarma.filter(birimUyar).filter(capSuz).filter(tagUyar);
-      if (k.length === 1) {
-        return capAutoYasak(k[0])
-          ? capsizOnay(k[0])
-          : { kind: 'auto-variant', row: k[0], donusum: eq.rozet };
-      }
+      const k = adGenisKurtarma.filter(birimUyar).filter(akiskanUyar).filter(capSuz).filter(tagUyar);
+      if (k.length === 1) return otoVaryant(k[0], eq.rozet);
     }
     return null;
   };
@@ -1153,11 +1175,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     // de cagriliyor, tek tanim iki cagri yeri.
     const tagUyar = varyantTagUyar(v);
     const eslesen = rows.filter(tagUyar);
-    if (eslesen.length === 1) {
-      return capAutoYasak(eslesen[0])
-        ? capsizOnay(eslesen[0])
-        : { kind: 'auto-variant', row: eslesen[0], donusum };
-    }
+    if (eslesen.length === 1) return otoVaryant(eslesen[0], donusum);
 
     // ── V4.7 (CANLI BULGU 30.07): KULLANICI SECIMI IKINCIL NITELIKTEN ONCE ──
     // Vaka: kesif satiri "Dikişli SİYAH Çelik Boru, DN65"; kullanici KAYNAK
@@ -1208,11 +1226,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
           (t) => (t.startsWith('cins:') || t.startsWith('bag:') || t.startsWith('boy:'))
             && !v.some((vt) => varyantTagEsit(vt, t)),
         );
-        if (!conflict) {
-          return capAutoYasak(rows[0])
-            ? capsizOnay(rows[0])
-            : { kind: 'auto-variant', row: rows[0], donusum };
-        }
+        if (!conflict) return otoVaryant(rows[0], donusum);
       }
       return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, variantMissing: true };
     }
