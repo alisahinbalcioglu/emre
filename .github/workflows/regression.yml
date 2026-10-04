@@ -9,8 +9,13 @@ on:
     branches: [master]
 
 jobs:
+  # KOSUCU SABIT (04.10.2026, koordinator karari): `backend` ve `backend-saat-30`
+  # ubuntu-24.04'te. ubuntu-latest 19.10.2026'da Ubuntu 26.04'e geciyor ve gecis
+  # KADEMELI (19.11'e dek, actions/runner-images#14748): ayni kosumda iki is
+  # farkli imaja dusebilir, +30 isinin "tek fark saat" varsayimi bozulurdu.
+  # 26.04'e gecis AYRI ve olculu bir istir (iki is birlikte).
   backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run: { working-directory: backend }
     steps:
@@ -29,6 +34,81 @@ jobs:
       # Postgres servisi YOK (karar ve gerekcesi: para dogrulugu turu raporu, B1).
       - name: Tek regresyon paketi (Z1-Z5) + SKIP defteri
         run: npm run test:regression
+
+  # 04.10.2026 (Emre karari): AYNI regresyon paketi, saat 30 gun ILERIDE.
+  # Saatli bomba = sabit tarihli fikstur + gercek saati okuyan kod: bugun yesil,
+  # fikstur tarihi gecince kod degismeden kirmizi (0e5173f abonelik-erisim I
+  # blogu 02.10'da patladi; 3edc5e9 geri-donus 11.10'da patlayacakti). Bu is o
+  # gunu 30 gun once getirir. Mekanizma backend/test/yardimci/saat-kaydir.cjs:
+  # NODE_OPTIONS --require ile her Node alt surecine gecer; yol MUTLAK (alt
+  # surec baska dizinde acilabilir). Paketten once NOBETCI kaymanin gercekten
+  # etkin oldugunu olcer — kayma sessizce duserse is yalanci yesil verirdi.
+  # tsc / typecheck:test YOK: saatten bagimsizlar, `backend` isi kosuyor.
+  # KAPI TARIHI 21.10.2026: o gun asagidaki `continue-on-error` satiri SILINIR
+  # ve kirmizi +30 deploy'u durdurur. Neden 21.10 (koordinator 04.10): master'a
+  # giristen 14 gunun ustunde kalir; ubuntu-latest'in 19.10'daki gecisi de 2 gun
+  # gozlenmis olur — bu is 24.04'e sabit (yukari), ama ayni gun iki degisiklik
+  # olursa kirmizinin sebebi ayirt edilemez. O gune dek UYARI: kirmizi bu is
+  # kosumu kirmizi yapmaz, is listesinde gorunur (girissiz: runs/<id>/jobs);
+  # o gunden sonra nobetci her kosumda hatirlatma yazar.
+  # Kirmizida bomba DUZELTILIR (fikstur gercek saatten kurulur); kayma ya da
+  # esik gevsetilmez. ONCE SAAT KAYNAGINA BAK: kaymis Date.now()'u isletim
+  # sistemi saatiyle (dosya mtime'i) karsilastiran kod yalniz kaymada kirmizi
+  # verebilir (orn. dwg-gecici-depo supurmesi) — bomba degil, aracin siniri.
+  # Kararsiz test: CLAUDE.md 14.09 kurali (ADIYLA kayit).
+  backend-saat-30:
+    runs-on: ubuntu-24.04 # `backend` ile AYNI imaj (yukaridaki KOSUCU SABIT notu)
+    continue-on-error: true
+    # Is CI'da 7-12 dk (son 10 master kosusu, 04.10). Paket asagida 30 dk
+    # `timeout` ile sarili; bu tavan yalniz onun da takildigi durum icin.
+    timeout-minutes: 40
+    defaults:
+      run: { working-directory: backend }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: backend/package-lock.json }
+      - run: npm ci --legacy-peer-deps
+      - run: npx prisma generate
+      - name: Tek regresyon paketi, saat +30 gun (once kayma nobetcisi)
+        env:
+          SAAT_KAYMA_GUN: '30'
+          NODE_OPTIONS: "--require ${{ github.workspace }}/backend/test/yardimci/saat-kaydir.cjs"
+        run: |
+          # Nobetci: referans isletim sistemi saati (`date` kaymaz), tolerans 5 dk.
+          # Kosullar OLUMLU yazilir (`! [ ... ]`): `[` hata verirse (bos ya da
+          # sayi olmayan deger, cikis 2) nobetci GECTI demez, dusurur.
+          beklenen=$(( ${SAAT_KAYMA_GUN:?tanimsiz} * 86400 ))
+          if ! [ "$beklenen" -gt 0 ]; then
+            echo "::error::SAAT_KAYMA_GUN pozitif olmali: $SAAT_KAYMA_GUN"; exit 1
+          fi
+          gercek=$(date +%s)
+          simdi=$(node -p 'Math.floor(Date.now() / 1000)')
+          yeni=$(node -p 'Math.floor(new Date().getTime() / 1000)')
+          sabit=$(node -p 'new Date(0).getTime()')
+          echo "kayma: Date.now +$((simdi - gercek)) sn, new Date() +$((yeni - gercek)) sn, new Date(0) = $sabit (beklenen +$beklenen sn, 0)"
+          for fark in $((simdi - gercek)) $((yeni - gercek)); do
+            if ! { [ "$fark" -ge $((beklenen - 300)) ] && [ "$fark" -le $((beklenen + 300)) ]; }; then
+              echo "::error::Saat kaymasi etkin degil (+$fark sn) — paket kaymasiz kosup yalanci yesil verirdi"; exit 1
+            fi
+          done
+          if ! [ "$sabit" = "0" ]; then
+            echo "::error::Argumanli new Date(x) kaymamali (new Date(0) = $sabit)"; exit 1
+          fi
+          # Kapi tarihi hatirlaticisi — GERCEK takvim (`date` kaymaz).
+          if [ "$(date -u +%Y%m%d)" -ge 20261021 ]; then
+            echo "::warning::backend-saat-30 kapi tarihi (21.10.2026) gecti: is tanimindaki continue-on-error satirini sil"
+          fi
+          # Askida kalan test duz basarisizliga donsun (124/137): is duzeyi
+          # continue-on-error is IPTALINI (timeout-minutes) kapsamayabilir — o
+          # zaman uyari donemi deploy'u bekletirdi. Adim basarisizligi kapsanir.
+          set +e
+          timeout -k 1m 30m npm run test:regression
+          cikis=$?
+          if [ "$cikis" -eq 124 ] || [ "$cikis" -eq 137 ]; then
+            echo "::error::Paket 30 dk icinde bitmedi (askida test): kayma bir beklemeyi bitmez yapmis olabilir"
+          fi
+          exit "$cikis"
 
   frontend:
     runs-on: ubuntu-latest

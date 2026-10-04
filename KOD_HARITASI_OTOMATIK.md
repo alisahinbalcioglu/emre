@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 889
-Toplam satir: 247138
+Kod dosyasi: 890
+Toplam satir: 247195
 Uc nokta: 239
 test:* scripti: 144
 
@@ -458,6 +458,7 @@ test:* scripti: 144
 | `backend/test/webhook-tahsilat-dogrulama-test.ts` | 2162 |
 | `backend/test/yardimci/bellek-prisma.ts` | 651 |
 | `backend/test/yardimci/bitmezse-kirmizi.ts` | 64 |
+| `backend/test/yardimci/saat-kaydir.cjs` | 57 |
 | `backend/test/yardimci/sahte-oidc-saglayici.ts` | 244 |
 | `backend/test/yardimci/sahte-sahiplik.ts` | 39 |
 | `backend/test/yardimci/uc-envanteri.ts` | 162 |
