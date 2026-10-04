@@ -13,6 +13,8 @@ import { SATIR_YUKSEKLIGI } from './types';
 // S2: oneri kutusunun kesinlik/onay karari — IKI kutu da buradan okur
 import { oneriBasligi, cekinceSatiri } from './oneri-cekince';
 import { useFillHandle, FillHandleIndicator } from './useFillHandle';
+// D11: surukle-doldur alanlari iscilik YETKISINE bagli — kural tek yerde.
+import { fillAlanlari } from './fill-alanlari';
 import { clampDiscount, parseDiscountInput, parseDiscountPaste, iskontoHucresiOku } from './discount-utils';
 import { CustomDropdown } from './CustomDropdown';
 import { fillDown, karYayilimi } from './fill-down';
@@ -20,7 +22,7 @@ import { planYapistir, type PasteKolon, type PasteSatir } from './yapistir';
 import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, type Nokta } from './kopyala';
 import { isaretStili, isaretTooltip, secimBekliyor, kutuphaneFiyatAyrisimi, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
-import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, yukariYuvarla, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
+import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
 // FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
 import {
   FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
@@ -162,7 +164,11 @@ interface Props {
   onAutoVariantChange?: (on: boolean) => void;
   /** Duzeltme Talebi §3: yayilim/fill sonrasi "n satır güncellendi" bilgisi —
    *  parent toast gosterir. */
-  onAutoVariantApplied?: (info: { applied: number; waiting: number; missing: number; kaynak: string; hatali?: number }) => void;
+  onAutoVariantApplied?: (info: {
+    applied: number; waiting: number; missing: number; kaynak: string; hatali?: number;
+    /** Y4: hangi dal doldurdu — tost metni "markada yok" / "firmada yok" ayrimi icin. */
+    dal?: 'malzeme' | 'iscilik';
+  }) => void;
   /** PRD v3.0 Bolum A2: "kat" olarak isaretlenen sutunlar. Dolu ise MIK
    *  (columnRoles.quantityField) = bu sutunlarin satir-toplami; kat hucresi
    *  duzenlenince MIK otomatik yeniden hesaplanir. */
@@ -252,6 +258,36 @@ interface Props {
   onRowDelete?: (row: ExcelRowData) => Promise<boolean>;
   // Mod: 'quote' (teklif — brand/firma dropdown + kar %) veya 'library' (iskonto + net fiyat)
   mode?: 'quote' | 'library';
+  /**
+   * D9 + Y1 (30.09): SALT OKUNUR SECICI. Kaydedilmis teklifi GORUNTULEME
+   * sayfasi (`quotes/[id]`) acikca bunu gecer; satirin Marka / Isc. Firma
+   * hucreleri acilir liste yerine DUZ ETIKET cizilir.
+   *
+   * ⚠ Adi `saltOkunur` DEGIL: detay sayfasi o adi "kapatilmis hesap"
+   * anlaminda kullaniyor, karisirdi.
+   *
+   * NEDEN GEREKLI: sayfa `onBrandChange` olarak null donen bir stub veriyor ve
+   * `onFirmaChange`i HIC vermiyordu. Iki `handleChange` da satiri motora
+   * SORMADAN ONCE degistirdigi icin secim her iki dalda da satira sizardi:
+   * malzemede fiyat silinip satir kirmiziya boyanirdi (yikici ama gorunur),
+   * iscilikte firma degisip ESKI firmanin fiyati kalirdi (sessiz DOLU).
+   * Tiklanamayan hucre secim URETMEZ — en guvenli kaldirac budur.
+   */
+  seciciSaltOkunur?: boolean;
+  /**
+   * D5 (30.09): "SATIRA PARA YAZILDI" SINYALI — payload YOK, state YOK.
+   *
+   * Grid satirlari YERINDE degistiriyor (`node.data[alan] = x`); sayfanin taslak
+   * efekti REFERANS tabanli bagimlilik dizisine sahip oldugu icin HIC kosmuyor
+   * ve kullanici F5 atinca elle yazdigi fiyatlari KAYBEDIYOR (olculdu: gercek
+   * /quotes/new sayfasinda yazilan 250, yenileme sonrasi hucrede ve taslakta '').
+   *
+   * ⚠ `onRowDataChange` BU IS ICIN KULLANILAMAZ: her hucre yaziminda parent
+   * render ACIK EDITORU IPTAL EDER (sayfanin kendi gerekcesi). Bu sinyal
+   * BILEREK payload tasimaz ve cagiran tarafin setState yapmasini beklemez —
+   * sayfa onu bir ref + debounce ile karsilar, React render URETILMEZ.
+   */
+  onFiyatYazildi?: () => void;
   // library mode'da hangi fiyat alanini kullanir? (material veya labor)
   libraryPriceField?: 'materialUnitPriceField' | 'laborUnitPriceField';
   currencySymbol: string;
@@ -288,8 +324,13 @@ function BrandDropdown(props: ICellRendererParams & {
   groupVariants: React.MutableRefObject<GroupVariantMap>;
   autoVariantEnabled: boolean;
   onAutoVariantApplied?: Props['onAutoVariantApplied'];
+  seciciSaltOkunur?: boolean;
+  /** BANT: isaret alani yazildiginda "N satir secim bekliyor" sayacini tazeler. */
+  sayaciTazele?: () => void;
+  /** D5: satira para yazildi (taslak tetigi). */
+  paraYazildi?: () => void;
 }) {
-  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, unitField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, onAutoVariantApplied, api, node } = props;
+  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, unitField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, onAutoVariantApplied, seciciSaltOkunur, sayaciTazele, paraYazildi, api, node } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
   const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null);
   // HATA RAPORU FIX: popup konumu WRAPPER div'den alinir — onceki triggerRef
@@ -444,6 +485,11 @@ function BrandDropdown(props: ICellRendererParams & {
         }
       } catch { /* grid gitti */ }
     }
+    // BANT (30.09): isaret alani kolon olmadigi icin `cellValueChanged`
+    // ATESLEMEZ — "N satir secim bekliyor" sayaci bu yazimi GORMUYORDU.
+    // Cagri coalesce edilir (ayni tikteki birden cok yazim TEK sayim).
+    if (alan === '_matStatus') sayaciTazele?.();
+    paraYazildi?.(); // D5: yerinde yazim taslak efektini tetiklemiyor
   };
 
   const writePriceToNode = (targetNode: any, netPrice: number, isSuggestion = false, kaynakKur?: any) => {
@@ -469,15 +515,58 @@ function BrandDropdown(props: ICellRendererParams & {
   };
   const writePrice = (netPrice: number, isSuggestion = false, kaynakKur?: any) => writePriceToNode(node, netPrice, isSuggestion, kaynakKur);
 
+  /**
+   * D1 (30.09, P0) — FIYAT YAZMAYAN DAL ESKI FIYATI SILER (writePriceToNode'un tersi).
+   *
+   * Canli senaryo: satir marka A ile fiyatlanmis; kullanici marka B'yi secer,
+   * B'de urun yoktur (ya da coklu aday / alternatif marka doner, ya da secimi
+   * iptal eder). Eski hal: 'belirsiz'/'yok' isareti yazilir ama HUCREDE A'NIN
+   * FIYATI DURURDU — satir `brandId=B` + A'nin parasiyla KAYDEDILIYOR ve
+   * fiyatsiz-kalem uyarisi onu YAKALAMIYORDU (fiyat dolu gorunuyor).
+   *
+   * Ikinci kusur GORSEL: `_matAutoVariant` hala A'nin varyant etiketini
+   * tasidigi icin `isaretStili` MAVI ("⚡ otomatik") dondurup kirmizi 'yok'
+   * isaretini MASKELIYORDU (isaret.ts sirasi: otoVaryant > yok).
+   *
+   * Surukleme yolunun ikizi: fill-down.ts `fiyatiTemizle`. Genel toplam burada
+   * ELLE tazelenmez — `setDataValue(materialTotalField, ...)` zaten
+   * handleCellValueChanged'in recalcGrand dalini atesler.
+   *
+   * ⚠ DURUM/SEBEP YAZILMAZ: onlari cagiran dal kendi anlamiyla yazar.
+   */
+  const fiyatiTemizle = () => {
+    yazVeri(node, '_matNetPrice', 0);
+    node.data._matKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+    yazVeri(node, '_matSuggestion', false);
+    yazVeri(node, '_matAutoVariant', null);
+    node.data._matVariantLabel = null;
+    // Y3 (02.10): varyant KIMLIGI de gider — kimlik onu ureten markayla anlamli.
+    // Kalsaydi bu satirdan surukleyince eski markanin varyanti yeni markanin
+    // sorgularina sert filtre olarak giderdi (surukleme kaynak etiketini once
+    // `_matVariantTags`tan okur). Grid kolonu degil — dogrudan veri.
+    node.data._matVariantTags = null;
+    if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
+    if (materialTotalField) node.setDataValue(materialTotalField, '');
+  };
+
   const handleChange = async (brandId: string) => {
+    // D9 SAVUNMA KATMANI: satira DOKUNMADAN once. Bayrak aciksa hucre zaten
+    // duz etiket cizilir ve buraya hic gelinmez; bu satir o cizimin yanlislikla
+    // geri alinmasina karsi ikinci kapidir (tek kaldirac yeterli degil —
+    // "kaynak kapisi KULLANIMI olcer" dersi).
+    if (seciciSaltOkunur) return;
     node.setDataValue('_marka', brandId || null);
     setCandidates(null);
     setAlternatives(null);
     if (!brandId) {
-      yazVeri(node, '_matNetPrice', 0);
-      node.data._matKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
-      if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
-      if (materialTotalField) node.setDataValue(materialTotalField, '');
+      // D12 (30.09): "Seçimi kaldır" fiyati siliyordu ama ISARETI birakiyordu —
+      // markasiz satir kirmizi 'yok' / pembe 'belirsiz' boyali kaliyor, ust
+      // sayacta "N satır seçim bekliyor" olarak sayilmaya DEVAM ediyordu.
+      // Marka yoksa eslestirme sonucu da yoktur: isaret de gider.
+      fiyatiTemizle();
+      yazVeri(node, '_matStatus', '');
+      yazVeri(node, '_matSebep', null);
+      yazVeri(node, '_matAdaySayisi', null);
       return;
     }
 
@@ -525,13 +614,25 @@ function BrandDropdown(props: ICellRendererParams & {
 
     console.log(`[BrandDropdown] row=${data._rowIdx}, sorgu="${queryName}"${useVariant ? ` varyant=[${gv!.tags.join(',')}]` : ''}${escapeAuto ? ' (oto-kacis: tam liste)' : ''}`);
     const result = await onBrandChange(data._rowIdx, brandId, queryName, opts);
+    // D2 (30.09): GEC GELEN CEVAP YENI SECIMI EZMEZ. Kullanici yavas bir
+    // markayi secip beklemeden baskasina gecerse ikinci sorgu ONCE biter,
+    // sonra birincinin gec cevabi gelip UZERINE yazardi — ekranda marka B,
+    // hucrede A'nin fiyati. Satir artik bizim sordugumuz markada degilse
+    // cevap DUSER (surukleme yolunun ikizi: fill-down.ts 'devredildi').
+    if (data._marka !== brandId) return;
     lookupNameRef.current = queryName; // ogrenme imzasi bu adla uretilir
 
     // Multi case — kullaniciya secenek sun (Portal ile body'e render).
     // F1/B3: popupPos HER KOSULDA set edilir — eylemsiz uyari YASAK.
     if (result && result.candidates && result.candidates.length > 0) {
       setPopupPos(computePopupPos());
+      fiyatiTemizle(); // D1: onceki markanin fiyati secim beklerken DURAMAZ
       yazVeri(node, '_matStatus', 'belirsiz'); // secim bekleniyor (V4.5 dahil)
+      // D14 (02.10) — SD6 ISCILIK IKIZI: isaret EYLEMLI, sebep + kac aday
+      // satirda tasinir. Eskiden yalniz durum yaziliyordu: ipucu "N aday var"
+      // demiyor, ONCEKI markanin sebebini ("Bu markada 6" yok") gosteriyordu.
+      yazVeri(node, '_matAdaySayisi', result.candidates.length);
+      yazVeri(node, '_matSebep', (result as any).reason ?? null);
       setShowAllCandidates(false); // V7: yeni popup 8 adayla baslar
       setStage2(null); // K6: zincir bastan
       setFilterText(''); // F3: arama sifirlanir
@@ -602,7 +703,12 @@ function BrandDropdown(props: ICellRendererParams & {
     if (result && result.alternatives && result.alternatives.length > 0) {
       const marked = isaretleOneriler(result.alternatives);
       setPopupPos(computePopupPos());
+      fiyatiTemizle(); // D1: bu markada urun YOK — onceki markanin fiyati kalmaz
       yazVeri(node, '_matStatus', 'belirsiz');
+      // D14: bu dalin KENDI sebebi; aday sayisi YOK (secenekler baska markada)
+      // — onceki aday dalinin "N aday var"i burada kalirsa yanlis yonlendirir.
+      yazVeri(node, '_matSebep', (result as any).reason ?? null);
+      yazVeri(node, '_matAdaySayisi', null);
       setAlternatives(marked);
       return;
     }
@@ -612,16 +718,15 @@ function BrandDropdown(props: ICellRendererParams & {
     // KUR-01 (14.09): kur alinamadiysa 'hata' (turuncu, "tekrar deneyin") —
     // urun VAR, eksik olan kur. 'yok' YAZILMAZ: taslak geri yuklemesi 'yok'u
     // cevaplanmis sayar ve kur donunce satiri YENIDEN FIYATLAMAZDI.
-    yazVeri(node, '_matNetPrice', 0);
-    node.data._matKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
-    yazVeri(node, '_matSuggestion', false);
+    // D1 (30.09): eskiden burada net/kur/oneri elle sifirlaniyor ama
+    // `_matAutoVariant` BIRAKILIYORDU → onceki markanin mavi "⚡ otomatik"
+    // rozeti kirmizi 'yok' isaretini MASKELIYORDU (isaret.ts sirasi).
+    fiyatiTemizle();
     yazVeri(node, '_matStatus', result?.notProduct ? 'urun_degil' : (result?.kurAlinamadi ? 'hata' : 'yok'));
     // K3-FE (27.08): SEBEP hucreye de yazilir (SD6 — isaret EYLEMLI olmali).
     // Etkilesimli yol bugune kadar sebebi yalniz TOAST'ta gosteriyordu; toast
     // kaybolunca hucrede jenerik "Kütüphanede eşleşme yok" kaliyordu.
     yazVeri(node, '_matSebep', (result as any)?.reason ?? null);
-    if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, '');
-    if (materialTotalField) node.setDataValue(materialTotalField, '');
   };
 
   // ── V4 (PRD v1.3): GRUP ICI OTOMATIK VARYANT ATAMA — SORULMAZ ──────
@@ -748,6 +853,17 @@ function BrandDropdown(props: ICellRendererParams & {
     setPopupPos(null);
     setStage2(null);
     node.setDataValue('_marka', null);
+    // D1 (30.09): iptal marka'yi bosaltiyor ama ISARETI birakiyordu — satir
+    // MARKASIZ kalip 'belirsiz' (pembe) boyali duruyor ve ust sayacta
+    // "N satır seçim bekliyor" olarak sayilmaya devam ediyordu. Marka yoksa
+    // eslestirme sonucu da yoktur.
+    //
+    // ⚠ Burada `fiyatiTemizle()` YOK — olculdu (EG-M3 mutanti YASADI): bu
+    // popup yalnizca aday dalindan acilir, o dal fiyati ZATEN silmis olur.
+    // Ikinci cagri hicbir dali surmuyordu; olculemeyen savunma birakilmadi.
+    yazVeri(node, '_matStatus', '');
+    yazVeri(node, '_matSebep', null);
+    yazVeri(node, '_matAdaySayisi', null);
   };
 
   // M3: alternatif marka secimi — marka + fiyat BIRLIKTE atanir, satir manuel
@@ -765,6 +881,7 @@ function BrandDropdown(props: ICellRendererParams & {
     // Kullanici uyumsuz markada kalmayi secti — fiyat yok, hucre 'yok' isaretli
     setAlternatives(null);
     setPopupPos(null);
+    fiyatiTemizle(); // D1: "fiyat yok" demek eski fiyatin da gitmesi demektir
     yazVeri(node, '_matStatus', 'yok');
   };
 
@@ -1105,11 +1222,16 @@ function FirmaDropdown(props: ICellRendererParams & {
   laborUnitPriceField?: string;
   laborTotalField?: string;
   diameterField?: string;
+  seciciSaltOkunur?: boolean;
+  /** BANT ikizi: isaret alani yazildiginda sayaci tazeler. */
+  sayaciTazele?: () => void;
+  /** D5 ikizi: satira para yazildi. */
+  paraYazildi?: () => void;
 }) {
   const {
     data, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange,
     nameField, noField, brandField, quantityField, unitField, laborUnitPriceField, laborTotalField,
-    diameterField,
+    diameterField, seciciSaltOkunur, sayaciTazele, paraYazildi,
     api, node,
   } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
@@ -1164,6 +1286,10 @@ function FirmaDropdown(props: ICellRendererParams & {
   const yazVeriLab = (targetNode: any, alan: string, deger: any) => {
     if (targetNode?.data) targetNode.data[alan] = deger;
     try { targetNode?.setDataValue?.(alan, deger); } catch { /* kolon yok */ }
+    // BANT (30.09) IKIZI: malzeme tarafiyla ayni gerekce — isaret alani kolon
+    // olmadigi icin olay atesmez, sayac bu yazimi gormezdi.
+    if (alan === '_labStatus') sayaciTazele?.();
+    paraYazildi?.(); // D5 ikizi
   };
 
   const writeLaborPrice = (netPrice: number, kaynakKur?: any) => {
@@ -1187,20 +1313,33 @@ function FirmaDropdown(props: ICellRendererParams & {
     console.log(`[FirmaDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice}, qty=${qty}`);
   };
 
+  /** D1 IKIZI — fiyat yazmayan iscilik dali eski fiyati siler (writeLaborPrice'in tersi).
+   *  Malzeme ikizi: BrandDropdown `fiyatiTemizle`. Durum/sebep/aday YAZILMAZ —
+   *  onlari cagiran dal kendi anlamiyla yazar. Genel toplam recalcGrand'dan gelir. */
+  const fiyatiTemizleLab = () => {
+    yazVeriLab(node, '_labNetPrice', 0);
+    node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+    node.data._labVariantTags = null; // Y3 ikizi: eski firmanin kalem kimligi tohum olmaz
+    if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
+    if (laborTotalField) node.setDataValue(laborTotalField, '');
+  };
+
   const handleChange = async (firmaId: string) => {
+    // Y1 SAVUNMA KATMANI (malzeme ikizi): satira DOKUNMADAN once. Bu dal
+    // malzemeden DAHA tehlikeliydi — `onFirmaChange` yokken asagidaki
+    // `if (!currentName || !onFirmaChange) return;` kapisina FIRMA YAZILDIKTAN
+    // SONRA geliniyordu: firma B gorunup fiyat A'nin kaliyordu (sessiz DOLU).
+    if (seciciSaltOkunur) return;
     node.setDataValue('_firma', firmaId || null);
     setCandidates(null);
     setAlternatives(null);
     if (!firmaId) {
-      yazVeriLab(node, '_labNetPrice', 0);
-      node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+      fiyatiTemizleLab();
       // Firma kaldirildi: satir artik "secim bekleyen" degil — isaret de kalkar,
       // yoksa firmasiz satir kirmizi kalir ve guven sayacini sisirir.
       yazVeriLab(node, '_labStatus', '');
       yazVeriLab(node, '_labSebep', null);
       yazVeriLab(node, '_labAdaySayisi', null);
-      if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
-      if (laborTotalField) node.setDataValue(laborTotalField, '');
       return;
     }
 
@@ -1213,11 +1352,14 @@ function FirmaDropdown(props: ICellRendererParams & {
     // M1/M4: TEK SORGU — baslik+satir birlesimi (aile bilgisiz fallback yasak)
     const fullName = buildMaterialContext(api, node.rowIndex ?? 0, nameField, noField, brandField, quantityField, diameterField);
     const queryName = fullName || currentName;
-    lookupNameRef.current = queryName; // L4 ogrenme imzasi bu adla uretilir
     const result = await onFirmaChange(data._rowIdx, firmaId, queryName);
+    // D2 IKIZI: gec gelen firma cevabi satirin YENI firmasini ezmez.
+    if (data._firma !== firmaId) return;
+    lookupNameRef.current = queryName; // L4 ogrenme imzasi bu adla uretilir
 
     if (result && result.candidates && result.candidates.length > 0) {
       setPopupPos(computePopupPos()); // her kosulda acilir (F1)
+      fiyatiTemizleLab(); // D1: onceki firmanin fiyati secim beklerken DURAMAZ
       // SD6 ikizi: isaret EYLEMLI — sebep + kac aday oldugu satirda tasinir,
       // popup kapatilsa bile hucre kirmizi kalir ve tooltip ne yapilacagini der.
       yazVeriLab(node, '_labStatus', 'belirsiz');
@@ -1247,6 +1389,7 @@ function FirmaDropdown(props: ICellRendererParams & {
     // L5: bu firmada yok — kalemi sunan diger firmalar (fiyatli secenek)
     if (result && result.alternatives && result.alternatives.length > 0) {
       setPopupPos(computePopupPos());
+      fiyatiTemizleLab(); // D1: bu firmada kalem YOK — onceki firmanin fiyati kalmaz
       yazVeriLab(node, '_labStatus', 'belirsiz'); // malzeme ikizi: ExcelGrid.tsx:448
       yazVeriLab(node, '_labSebep', (result as any).reason ?? null);
       setAlternatives(result.alternatives);
@@ -1255,14 +1398,11 @@ function FirmaDropdown(props: ICellRendererParams & {
 
     // ALTIN KURAL: fiyat uretilmez — hucre bos + ISARETLI (malzeme ikizi).
     // 'urun_degil' (oran/hizmet, gri) vs 'yok' (eslesme yok, kirmizi).
-    yazVeriLab(node, '_labNetPrice', 0);
-    node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+    fiyatiTemizleLab();
     // KUR-01 ikizi: kur alinamadiysa 'hata' — kur donunce yeniden fiyatlanabilsin.
     yazVeriLab(node, '_labStatus', (result as any)?.notProduct ? 'urun_degil' : ((result as any)?.kurAlinamadi ? 'hata' : 'yok'));
     yazVeriLab(node, '_labSebep', (result as any)?.reason ?? null);
     yazVeriLab(node, '_labAdaySayisi', null);
-    if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
-    if (laborTotalField) node.setDataValue(laborTotalField, '');
   };
 
   const handleCandidateSelect = async (c: MatchCandidate) => {
@@ -1284,6 +1424,24 @@ function FirmaDropdown(props: ICellRendererParams & {
     }
   };
 
+  /** D15 (30.09): aday penceresinde KAPATMA YOKTU — pencere ancak bir aday
+   *  secilerek ya da firma degistirilerek kapaniyordu; "bu firmayi istemiyorum"
+   *  diyen kullanici istemedigi kalemi secmeye itiliyordu. Malzeme ikizi
+   *  (BrandDropdown `handleCancel`) ile AYNI sozlesme: firma bosalir, isaret
+   *  kalkar (firmasiz satir "secim bekliyor" sayilamaz).
+   *  `fiyatiTemizleLab` YOK: pencere yalniz aday dalindan acilir, o dal fiyati
+   *  ZATEN silmis olur (malzeme ikizinde EG-M3 mutanti bu yuzden yasadi).
+   *  Sebep/aday sayisi temizligi ESDEGER mutanttir (durum '' iken ipucu bos,
+   *  sonraki her yol sebebi yeniden yazar) — ikizle ayni kalsin diye durur. */
+  const handleCandidateCancel = () => {
+    setCandidates(null);
+    setPopupPos(null);
+    node.setDataValue('_firma', null);
+    yazVeriLab(node, '_labStatus', '');
+    yazVeriLab(node, '_labSebep', null);
+    yazVeriLab(node, '_labAdaySayisi', null);
+  };
+
   // L5: alternatif firma secimi — firma + fiyat BIRLIKTE atanir
   const handleAlternativeSelect = (a: BrandAlternative) => {
     node.setDataValue('_firma', a.brandId); // alan adi marka tasir, deger FIRMA
@@ -1293,8 +1451,14 @@ function FirmaDropdown(props: ICellRendererParams & {
     console.log(`[FirmaDropdown] L5 alternatif firma secildi: ${a.brandName} → "${a.materialName}" = ${a.netPrice}`);
   };
   const handleAlternativeCancel = () => {
+    // D1 IKIZI: kullanici uyumsuz firmada kalmayi secti — fiyat yok, hucre
+    // 'yok' isaretli. Malzeme ikizi bunu yapiyordu, iscilik dali HICBIR SEY
+    // yapmiyordu: popup kapaniyor, satir onceki firmanin fiyatiyla ISARETSIZ
+    // kaliyordu (SD2'nin "sessiz bos" yasaginin tersi — sessiz DOLU).
     setAlternatives(null);
     setPopupPos(null);
+    fiyatiTemizleLab();
+    yazVeriLab(node, '_labStatus', 'yok');
   };
 
   const firmaOptions = filteredFirms.map((f) => ({ value: f.id, label: f.name }));
@@ -1349,6 +1513,16 @@ function FirmaDropdown(props: ICellRendererParams & {
               {`Başka firmalarda ${alternatives.length} kalem var — göster`}
             </button>
           )}
+          <button
+            onClick={handleCandidateCancel}
+            style={{
+              display: 'block', width: '100%', textAlign: 'center', padding: '6px',
+              border: '1px solid #e5e7eb', background: '#f9fafb', cursor: 'pointer',
+              fontSize: 11, color: '#6b7280', borderRadius: 4, marginTop: 4,
+            }}
+          >
+            İptal
+          </button>
         </div>,
         document.body,
       )}
@@ -1667,6 +1841,8 @@ export interface ExcelGridHandle {
 export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   data, brands, onBrandChange,
   laborFirms = [], sheetDiscipline = null, laborEnabled = false, onFirmaChange,
+  seciciSaltOkunur = false, // D9 + Y1: salt okunur sayfada secici tiklanamaz
+  onFiyatYazildi, // D5: satira para yazildi sinyali (payload yok, state yok)
   onRowDataChange,
   onColumnWidthsChange,
   columnWidths,
@@ -2789,6 +2965,51 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     });
     setPendingCount(n);
   }, []);
+
+  /**
+   * BANT (30.09, P1) — ISARET YAZILDIYSA SAYAC TAZELENIR.
+   *
+   * `pendingCount` yalniz `recountPending` ile hesaplanir ve o da iki yerden
+   * cagrilir: `data.rowData` prop'u degisince, ve `handleCellValueChanged`in
+   * son satirinda — yani yalniz GERCEK bir grid kolonu degisince. Isaret
+   * alanlari (`_matStatus`/`_labStatus`) kolon DEGIL: `yazVeri`/`yazVeriLab`
+   * onlari yazarken AG Grid `cellValueChanged` ATESLEMEZ.
+   *
+   * Sira: marka secilir → `setDataValue('_marka')` olay ateşler → sayac
+   * ESKI durumla kosar → await → fiyat kolonlari ayni degeri alir (degisim yok,
+   * olay da yok) → EN SON `_matStatus='yok'` yazilir, olay YOK. Bant satiri
+   * HIC saymaz.
+   *
+   * ⚠ HIZLI CEVAP BU KUSURU MASKELIYOR — OLCULDU (tarayici, 30.09): taklit
+   * aninda cevap verdiginde React, kolon olayinin sayimini durum yazimiyla
+   * AYNI tike topluyor ve bant TESADUFEN dogru gorunuyor. 500 ms gecikmeli
+   * (gercek ag gibi) cevapta bant HIC gorunmedi. Bu yuzden kapi testi yavas
+   * dali surer.
+   *
+   * COALESCE SART: surukle-doldurda her satirin her isaret alani icin
+   * `forEachNode` taramasi acilirsa O(satir × alan) olur. Ayni sinifta
+   * olculmus regresyon var: `yazVeri`nin kolonsuz TAM tazelemesi 8 satirlik
+   * suruklemede paketi 22 sn'den 1.4 dk'ya cikarmisti. Burada cagrilar tek
+   * tike dusurulur.
+   */
+  // D5: sinyal REF'te tutulur — `columnDefs` kimligine baglanmaz, yoksa her
+  // prop degisiminde tum kolonlar yeniden kurulurdu.
+  const onFiyatYazildiRef = useRef(onFiyatYazildi);
+  onFiyatYazildiRef.current = onFiyatYazildi;
+  /** D5: para yazildi — cagrilar tek tike dusurulur (yazma firtinasi olmasin). */
+  const paraBekleyenRef = useRef(false);
+  const paraYazildi = useCallback(() => {
+    if (paraBekleyenRef.current) return;
+    paraBekleyenRef.current = true;
+    setTimeout(() => { paraBekleyenRef.current = false; onFiyatYazildiRef.current?.(); }, 0);
+  }, []);
+
+  const sayacBekleyenRef = useRef(false);
+  const sayaciTazele = useCallback(() => {
+    if (sayacBekleyenRef.current) return;
+    sayacBekleyenRef.current = true;
+    setTimeout(() => { sayacBekleyenRef.current = false; recountPending(); }, 0);
+  }, [recountPending]);
   React.useEffect(() => {
     // rowData degisince (sheet gecisi / yeni yukleme) sayaci tazele
     const t = setTimeout(recountPending, 100);
@@ -2919,9 +3140,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   }, [onColumnsChange, data.columnDefs, data.columnRoles]);
 
   // ── Fill Handle (surukle-doldur) ──
-  const FILLABLE_FIELDS = useMemo(() => new Set([
-    '_malzKar', '_marka', '_iscKar', '_firma', '_draftDiscount',
-  ]), []);
+  // D11 (02.10): kume iscilik YETKISINI okur. Eskiden bos bagimlilikli sabit
+  // kumeydi: yetki kapaliyken kilitli "İşç. Kâr %" yine surukleniyor, iscilik
+  // fiyati yeniden yaziliyor ve GENEL TOPLAM sessizce degisiyordu (olculdu:
+  // ₺650 → ₺750). ⚠ `laborEnabled` BAGIMLILIKTA: yetenekler asenkron gelir,
+  // ilk degerde (false) donmus kume Pro kullanicinin iscilik karini kilitlerdi
+  // (e2e `?iscilik=gec` kipi bu gerilemeyi olcer).
+  const FILLABLE_FIELDS = useMemo(() => fillAlanlari(laborEnabled), [laborEnabled]);
 
   const handleFillComplete = useCallback(async (resultHam: { field: string; value: any; sourceRowIndex: number; targetRowNodes: any[] }) => {
     const api = gridRef.current?.api;
@@ -2992,6 +3217,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         },
       });
 
+      // D10 (02.10): kaynakta marka YOKTU — fillDown hicbir sey yapmadi. Geri-alma
+      // yiginina BOS kayit itilmez (Ctrl+Z bir adimi "yutardi"), ozet tostu da
+      // cikmaz (yanlis "N markada yok" sayisi yazardi). Karar: Emre 02.10.
+      // ⚠ ODAK GRIDE DONER: dalin sonundaki `focus()` erken donuste atlaniyordu;
+      // odak BODY'de kaliyor ve sonraki Ctrl+Z HICBIR yere gitmiyordu (olculdu).
+      if (sonuc.bosSecim) { rootWrapperRef.current?.focus(); return; }
+
       // K19/SD7: doldurmanin TAMAMI tek Ctrl+Z ile geri alinir
       markaFillUndoStack.current.push({
         prevSwitch,
@@ -3009,6 +3241,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         missing: sonuc.ozet.yok + sonuc.ozet.urunDegil + sonuc.ozet.adYok,
         hatali: sonuc.ozet.hata,
         kaynak: srcLabel || 'marka',
+        dal: 'malzeme',
       });
       rootWrapperRef.current?.focus();
     } else if (result.field === '_firma' && onFirmaChange) {
@@ -3035,14 +3268,52 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           status: '_labStatus',
           kaynakRozeti: '_labKaynak',
         },
-        sorguMetni: (node: any) => lookupNameOf(node.data),
+        // D3 (30.09): BASLIK MIRASI — malzeme ikiziyle AYNI kurucu.
+        // Burasi `lookupNameOf` (duz ad + varsa cap kolonu) kullaniyordu: uc
+        // cagri yerinden ikisi (malzeme fill ve ELLE iscilik secimi) baglam
+        // kuruyor, yalniz bu kurmuyordu. Sonuc: ayni satir ELLE secilince
+        // esleşiyor, SURUKLEYINCE baslıksiz sorgulaniyordu.
+        //
+        // Olculdu (tarayici, yetim aile: baslik "Yükselen Milli Vana" + "DN 150"):
+        // giden sorgu `"DN 150"` idi. Yetim ad hangi aileye ait oldugunu
+        // soylemez; motorda iki kapi bosa duser — aile kapisi (yanlis aileden
+        // aday) ve SERT CAP kapisi (`line.capInfo` yoksa cap filtresi HIC
+        // kosmaz). Malzeme tarafinda bu sinifin canli vakasi kayitli
+        // (ExcelGrid.tsx yukarisi: yetim "DN 20" sorgusu BORU adaylari
+        // donduruyordu). `fill-down.ts` sozlesmesi de bunu yazili kiliyor:
+        // "sorguMetni: ... grup basligi mirasi dahil".
+        sorguMetni: (node: any) => {
+          const det = buildMaterialContextDetailed(
+            api, node.rowIndex ?? 0,
+            nameField, data.columnRoles.noField, data.columnRoles.brandField, quantityField,
+            data.columnRoles.diameterField,
+          );
+          return det.name || lookupNameOf(node.data);
+        },
       });
+
+      // D10 IKIZI: bos firmadan surukleme — hicbir sey yapilmadi, yigin temiz kalir.
+      if (sonuc.bosSecim) { rootWrapperRef.current?.focus(); return; }
 
       markaFillUndoStack.current.push({
         prevSwitch: autoVariantEnabled,
         entries: sonuc.geriAl.map((g) => ({ rowId: String(g.rowIdx), prev: g.oncekiDegerler })),
       });
       api.refreshCells({ force: true });
+      // Y4 = D13 (02.10): DOLDURMA OZETI GERI GELDI. d3402cd (SD1-SD10 yeniden
+      // yazimi) bu cagriyi isçilik dalindan SILMIS, yalniz malzeme dalina geri
+      // koymustu — commit'te boyle bir karar yok, gerileme. Sonuc: isçilik
+      // firmasi surukleyince kac satir fiyatlandi, kaci firmada yok ve en
+      // onemlisi kac satirda SUNUCU HATASI oldugu kullaniciya HIC soylenmiyordu.
+      // Sayilar malzeme ikiziyle AYNI kuraldan (`sonuc.ozet`).
+      onAutoVariantApplied?.({
+        applied: sonuc.ozet.fiyatli,
+        waiting: sonuc.ozet.aday,
+        missing: sonuc.ozet.yok + sonuc.ozet.urunDegil + sonuc.ozet.adYok,
+        hatali: sonuc.ozet.hata,
+        kaynak: 'işçilik firması',
+        dal: 'iscilik',
+      });
       rootWrapperRef.current?.focus();
     } else if (result.field === '_malzKar') {
       // Malzeme kar % fill → deger kopyala + fiyat recalc
@@ -3064,6 +3335,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         }
       }
     } else if (result.field === '_iscKar') {
+      // D11: bu dala yetki kapisi KONMADI — olculdu (mutant D11-M6 YASADI): dal
+      // yalniz tutamaktan gelir ve tutamak yetkisizken zaten BASLAMAZ
+      // (`fill-handle-cell` sarmalayicisi yok + FILLABLE_FIELDS'te alan yok —
+      // ikisi de mutasyonla olculu). Ayni yolda ikinci kapi saf tekrardi.
       // Iscilik kar % fill → deger kopyala + fiyat recalc
       // Malzeme ikiziyle AYNI suzgec (ikizi unutma).
       const iscKarVal = sayiAlani(result.value);
@@ -3093,6 +3368,16 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
     }
 
+    // BANT (30.09): doldurma isareti fill-down'in kendi `yaz`i ile yazar —
+    // kolon olmadigi icin olay ATESMEZ. Hic fiyatlanmamis satirda `fiyatiTemizle`
+    // de ayni (bos) degeri yazdigi icin AG Grid degisim gormez: TEK olay kaynagi
+    // da kapanir ve sayac doldurmayi HIC gormezdi (tarayicida olculdu — 8 satirlik
+    // suruklemede 2 fiyatsiz satir varken bant gorunmuyordu).
+    // Doldurma TAMAMLANDIKTAN sonra TEK sayim: dongu icinde cagirmak
+    // O(satir × alan) forEachNode taramasi acardi.
+    sayaciTazele();
+    paraYazildi(); // D5: doldurma da taslaga girsin
+
     // Pinned bottom yenile
     setTimeout(() => {
       updatePinnedBottom?.();
@@ -3106,7 +3391,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     console.log(`[FillHandle] Complete: ${result.targetRowNodes.length} rows filled, field=${result.field}`);
   }, [data.columnRoles, onBrandChange, onFirmaChange, onRowDataChange, applyDiscountBulk,
-      autoVariantEnabled, onAutoVariantChange, onAutoVariantApplied]);
+      autoVariantEnabled, onAutoVariantChange, onAutoVariantApplied, sayaciTazele, paraYazildi]);
 
   useFillHandle({
     gridRef,
@@ -3554,8 +3839,14 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           if (params.data?._fitting) return null;
           const val = params.value ?? 0;
           const hasVal = (sayiOku(val) ?? 0) > 0; // A2: makine okuyucusu (hayalet "35x240mm" dolu cip yakmaz)
+          // D11 (02.10): yetki kapaliyken iscilik karinin TUTAMAK SARMALAYICISI
+          // cizilmez — kilitli kolonda tutamak seridi + kose karesi yaniltici
+          // bir ipucuydu (firma ikizi yetkisizken zaten sarmalayici cizmiyor).
+          // `useFillHandle` yalniz `.fill-handle-cell` icinde baslar: sinifsiz
+          // kap surukleme ve cift-tik doldurmayi da kapatir.
+          const tutamakli = !(karField === '_iscKar' && !laborEnabled);
           return (
-            <div className="fill-handle-cell" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className={tutamakli ? 'fill-handle-cell' : undefined} style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {/* 18.08 HEDEF TASARIM (ikinci tur, "hucreler yine uygun degil"):
                   kutu artik hucreyi DOLDURMAYAN, ortalanmis kompakt bir CIP.
                   Hedef fotograf bos %0'i da GORUNUR gri cip olarak gosteriyor —
@@ -3619,11 +3910,19 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         base.cellRenderer = (params: ICellRendererParams) => (
           // Ozet satiri fiyatlandirilmaz — marka secimi gosterilmez
           params.data?._ozet || params.data?._fitting
-            ? <span style={{ color: '#94a3b8', fontSize: 11 }}>{params.data?._fitting ? 'fitting' : 'özet'}</span> : (
+            ? <span style={{ color: '#94a3b8', fontSize: 11 }}>{params.data?._fitting ? 'fitting' : 'özet'}</span>
+          // D9: SALT OKUNUR — kaydedilmis teklifi goruntuleme sayfasinda marka
+          // ADI gorunur ama tiklanamaz. Tiklanamayan hucre secim URETMEZ.
+          // Metin `valueFormatter` ile AYNI kaynaktan: iki yol ayrisamaz.
+          : seciciSaltOkunur
+            ? <span>{params.value ? (brands.find((b) => b.id === params.value)?.name ?? String(params.value)) : ''}</span> : (
           <BrandDropdown
             {...params}
             brands={brands}
             onBrandChange={onBrandChange}
+            seciciSaltOkunur={seciciSaltOkunur}
+            sayaciTazele={sayaciTazele}
+            paraYazildi={paraYazildi}
             nameField={data.columnRoles.nameField}
             noField={data.columnRoles.noField}
             brandField={data.columnRoles.brandField}
@@ -3649,9 +3948,15 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         base.cellRenderer = (params: ICellRendererParams) => (
           // Ozet satiri isciliklendirilmez
           params.data?._ozet || params.data?._fitting
-            ? <span style={{ color: '#94a3b8', fontSize: 11 }}>{params.data?._fitting ? 'fitting' : 'özet'}</span> : (
+            ? <span style={{ color: '#94a3b8', fontSize: 11 }}>{params.data?._fitting ? 'fitting' : 'özet'}</span>
+          // Y1 IKIZI: salt okunur sayfada firma ADI gorunur, secilemez.
+          : seciciSaltOkunur
+            ? <span>{params.value ? (laborFirms.find((f) => f.id === params.value)?.name ?? String(params.value)) : ''}</span> : (
           <FirmaDropdown
             {...params}
+            seciciSaltOkunur={seciciSaltOkunur}
+            sayaciTazele={sayaciTazele}
+            paraYazildi={paraYazildi}
             laborFirms={laborFirms}
             sheetDiscipline={sheetDiscipline}
             laborEnabled={laborEnabled}
@@ -4083,7 +4388,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // gelebilecegini soyluyor; kelepcesiz `data.columnDefs` o durumda
     // BAGIMLILIK DIZISINDE patlardi (govde hic kosmadan).
   }, [data?.columnDefs, data?.columnRoles, brands, onBrandChange, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange, mode, libraryPriceField, currencySymbol, conversionRate,
-      fittingDuzenlenebilir]);
+      fittingDuzenlenebilir,
+      // D9 + I1: bayrak burada OLMAZSA kolonlar yeniden kurulmaz ve salt okunur
+      // cizim HIC uygulanmaz (sessiz olu kod).
+      seciciSaltOkunur, sayaciTazele, paraYazildi]);
 
   // Ceviri kalemi gorunurlugu degisince ad kolonu yeniden cizilir: renderer
   // ref okuyor, AG Grid kendiliginden tazelemez (fitting tazelemesiyle ayni desen).
@@ -4224,7 +4532,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
       if (grandUnitPriceField) {
         // Miktar 0 veya bos olsa bile birim fiyat gosterilir
-        e.node.setDataValue(grandUnitPriceField, grandUnit > 0 ? yukariYuvarla(grandUnit).toFixed(1) : '');
+        // Y2: kural TEK yerde (pricing `kalemBirimFiyatMetni`) — doldurma ve geri
+        // yukleme ayni fonksiyonu cagirir; uc kopya ayrisamaz.
+        e.node.setDataValue(grandUnitPriceField, kalemBirimFiyatMetni(matUnit, labUnit));
       }
 
       // Grand total = matTotal + labTotal
@@ -4272,7 +4582,16 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     }
 
     // ── Iscilik kar % degisti ── (fitting satirinda kar yok)
-    if (e.colDef.field === '_iscKar' && laborUnitPriceField && laborTotalField && quantityField && !row._fitting) {
+    // D11 (02.10): PARA KAPISI — `setDataValue` AG Grid'de `editable`a BAKMAZ;
+    // bu dal iscilik birim/toplamini kar uygulanmis fiyatla YENIDEN yazar.
+    // Yetki yoksa iscilik fiyati yeniden HESAPLANMAZ.
+    // ⚠ OLCULMEMIS SAVUNMA — BILEREK TUTULDU: bugun `_iscKar`i yazan tek yol
+    // tutamak dolumu ve o yetkisizken baslamiyor (olculu); bu yuzden mutant
+    // D11-M4 YASIYOR. Ama bu kapi farkli bir sozlesmeyi korur ("hangi yazici
+    // olursa olsun") ve gercek bir senaryosu var: yetki, kar hucresinde editor
+    // ACIKKEN duserse (abonelik oturum icinde kapanir) Enter yazimi bu dala
+    // ulasir. Senaryo surulmedi — yasayan mutant "kod gereksiz" demek degil.
+    if (e.colDef.field === '_iscKar' && laborEnabled && laborUnitPriceField && laborTotalField && quantityField && !row._fitting) {
       const kar = sayiAlani(row._iscKar);
       // Malzeme ikiziyle AYNI duzeltme (bkz. yukaridaki gerekce).
       const oncekiKarLab = sayiAlani(e.oldValue);
@@ -4356,10 +4675,20 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       // yardimci zaten var (`yazVeriHucre`, bir ust satirda kullanilmis).
       // Bu yol yapistirmayi da tasiyor: Ctrl+V `setDataValue(..., 'edit')` ile
       // ayni daldan gecer.
+      //
+      // Y5 (02.10): ELLE FIYAT = MANUEL SATIR (aday/alternatif secimiyle ayni
+      // kural). `_matAutoVariant` kaliyordu: hucre MAVI, ipucu elle yazilan
+      // fiyati "⚡ otomatik" gosteriyordu (isaret.ts: otoVaryant en onde).
+      // ⚠ Kip de 'manual' OLMALI: grup atamasi (`applyVariantToGroup`) yalniz
+      // manuel OLMAYAN fiyatsiz satirlara yazar; menusu yeniden acilip fiyati
+      // silinen satira sessizce otomatik fiyat yaziyordu (olculdu, e2e Y5).
+      // Tazeleme (asagida) bu yazimlardan SONRA kalmali — boyama ancak onunla.
       yazVeriHucre(e.node, '_matStatus', '');
       yazVeriHucre(e.node, '_matSebep', null);
       yazVeriHucre(e.node, '_matAdaySayisi', null);
       yazVeriHucre(e.node, '_matSuggestion', false);
+      yazVeriHucre(e.node, '_matAutoVariant', null);
+      yazVeriHucre(e.node, '_matVariantMode', 'manual');
       // Isaret alanlari KOLON olmadigi icin dogrudan veriye yazilir; boyama
       // (cellStyle) ancak acik tazelemeyle yeniden kosar.
       e.api.refreshCells({ rowNodes: [e.node], force: true });
@@ -4469,8 +4798,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     // Guven kapisi sayaci tazele (PRD Bolum 9)
     recountPending();
+    // D5: ELLE yazilan/yapistirilan fiyat da taslaga girsin. Bu yol satir
+    // nesnesini YERINDE degistirir; sayfanin taslak efekti referans tabanli
+    // oldugu icin tetiklenmiyordu ve F5 emegi siliyordu (olculdu).
+    paraYazildi();
   }, [data.columnRoles, data.columnDefs, onRowDataChange, autoAppendRow, recountPending, floorFields,
-      mode, updatePinnedBottom, fittingDuzenlenebilir]);
+      mode, updatePinnedBottom, fittingDuzenlenebilir, paraYazildi, laborEnabled]);
 
   // getRowId — stabil row kimligi (re-render'da row'un durumunu korur)
   const getRowId = useCallback((params: GetRowIdParams<ExcelRowData>) => {

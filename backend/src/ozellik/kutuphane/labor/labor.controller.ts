@@ -49,19 +49,32 @@ export class LaborController {
   @Get('yonetici-katalog')
   @Roles('admin')
   yoneticiKatalogu(@Query('discipline') discipline?: string) {
+    // 30.09 (C2): YALNIZ katalog — kiracı kalemi yönetici ekranına düşmez.
     return this.laborService.findAll(discipline);
   }
 
+  /**
+   * YALNIZ YÖNETİCİ (Emre kararı 30.09.2026, Paket 1 / C2). Kiracı 403 alır;
+   * işçilik fiyatları kiracının KENDİ işçilik firması listelerindedir
+   * (`/labor-firms`). Eskiden filtresizdi: kiracı yüklemesinin açtığı kalem
+   * (ad + o kiracının birim fiyatı) her pro kiracıya dönüyordu. Liste
+   * `yonetici-katalog` ile AYNI kaynak (yalnız katalog). Paket kapıları
+   * (`RequireTier` + yetenek) bilerek KORUNDU: yönetici ekranı bu ucu değil,
+   * kapısız `yonetici-katalog`u kullanır; kapılar yalnız ek kilittir.
+   */
   @Get()
   @RequireTier('pro') // İşçilik kütüphanesi → minimum Pro
   @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
+  @Roles('admin')
   findAll(@Query('discipline') discipline?: string) {
     return this.laborService.findAll(discipline);
   }
 
+  /** Yalnız yönetici, yalnız katalog kalemi (kiracı kalemi 404). */
   @Get(':id')
   @RequireTier('pro')
   @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
+  @Roles('admin')
   findOne(@Param('id') id: string) {
     return this.laborService.findOne(id);
   }
@@ -79,12 +92,26 @@ export class LaborController {
     return this.laborService.create(body);
   }
 
+  /**
+   * YÖNETİCİ: katalog kalemlerini güncel indeks sürümüyle yeniden indeksler
+   * (01.10, inceleme W2). Kiracının `POST /labor-matching/reindex`i artık
+   * katalog kalemine yazmıyor; sürüm artışından sonra katalog bu uçla
+   * tazelenir. Paket kapısı YOK, yalnız `@Roles('admin')` (W5 gerekçesi).
+   */
+  @Post('yeniden-indeksle')
+  @Roles('admin')
+  yenidenIndeksle() {
+    return this.laborService.yenidenIndeksle();
+  }
+
+  /** Yalnız KATALOG kalemi; kiracı kalemi 404 (30.09, C2). Ad/birim değişirse yeniden indekslenir (W2). */
   @Put(':id')
   @Roles('admin')
   update(@Param('id') id: string, @Body() body: any) {
     return this.laborService.update(id, body);
   }
 
+  /** Yalnız KATALOG kalemi: kiracı kalemi silinseydi o kiracının fiyat satırları CASCADE giderdi. */
   @Delete(':id')
   @Roles('admin')
   remove(@Param('id') id: string) {

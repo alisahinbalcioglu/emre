@@ -127,3 +127,28 @@ describe('K2 — kutuphane fiyat suzgeci ikizi (TR para metni)', () => {
     }
   });
 });
+
+/**
+ * Y2 (02.10) — "Toplam Birim Fiyat" UC TUKETICIDE TEK KURALDAN.
+ * `recalcGrand` (etkilesimli), `fill-down` (surukleme) ve `restore-rematch`
+ * (geri yukleme) ayni hucreyi yaziyor. Kural eskiden yalniz recalcGrand'da
+ * satir-ici yaziliydi ve iki yol hucreyi HIC yazmiyordu. Biri kendi formulune
+ * donerse uc yol yine ayrisir — bu kapi o donusu yakalar. (recalcGrand'in bu
+ * dali harness'ta surulmuyor: harness'in rollerinde Toplam Birim Fiyat yok.)
+ */
+describe('Y2 — Toplam Birim Fiyat tek kuraldan', () => {
+  const kod = (p: string) => oku(p)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+
+  it('★ recalcGrand ortak kurali cagirir (satir-ici formul yok)', () => {
+    const src = kod(EXCEL_GRID);
+    expect(src).toContain('setDataValue(grandUnitPriceField, kalemBirimFiyatMetni(matUnit, labUnit))');
+    expect(src).not.toMatch(/yukariYuvarla\(grandUnit\)/);
+  });
+
+  it('★ surukle-doldur ve geri yukleme AYNI kurali cagirir', () => {
+    expect(kod('ozellik/tablo/excel-grid/fill-down.ts')).toMatch(/kalemBirimFiyatMetni\(/);
+    expect(kod('ozellik/teklif/restore-rematch.ts')).toMatch(/kalemBirimFiyatMetni\(/);
+  });
+});

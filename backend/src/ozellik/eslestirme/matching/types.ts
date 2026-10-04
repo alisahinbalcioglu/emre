@@ -18,12 +18,36 @@ export interface KaynakKur {
   tarih: string;
 }
 
+/**
+ * COKLU PARA BIRIMI F1 (Emre karari 04.10: dovizli kalem teklifte KENDI para
+ * biriminde kalir, ayri toplamlar). Fiyatin KAYNAK para birimindeki hali —
+ * TL'ye CEVRILMEDEN. TL alanlari (netPrice/listPrice/discount) DEGISMEZ; bu
+ * alan onlara EKTIR.
+ *
+ * Neden motordan gelmeli: TL net, doviz iskonto + yuvarlamadan ONCE TL'ye
+ * cevrilip uretiliyor (outcome-mapper `netFiyat`); TL'den geri hesap
+ * (net ÷ kur) iki kez yuvarlanmis sayidan kurus fakli doviz uretir.
+ *   - net = (custom ?? liste) × (1 − iskonto)
+ *   - TRY: 1 hane YUKARI (netPrice ile birebir) · USD/EUR: 2 hane YUKARI
+ * Taninmayan para biriminde URETILMEZ (KUR-02: fiyat da yok).
+ * Kapi: test/kaynak-fiyat-test.ts (`test:kaynak-fiyat`).
+ */
+export interface KaynakFiyat {
+  currency: 'TRY' | 'USD' | 'EUR';
+  net: number;
+  list: number;
+  /** Iskonto YUZDESI (0-100) — TL alanindaki `discount` ile ayni */
+  discount: number;
+}
+
 export interface MatchResult {
   netPrice: number;
   listPrice: number;
   discount: number;
   /** Dovizli kaynak satirda cevrimde kullanilan kur — bkz. KaynakKur */
   kaynakKur?: KaynakKur;
+  /** Fiyatin kaynak para birimindeki hali — bkz. KaynakFiyat (F1) */
+  kaynakFiyat?: KaynakFiyat;
   // 'high' = kesin (satir cap+tip+cins tasiyor, tek aday)
   // 'suggestion' = oneri (yalniz cap veya baslik-ipucu ile tek aday bulundu;
   //                fiyat doldurulur AMA gorsel isaretlenir — sessiz hata onlemi)
@@ -87,6 +111,8 @@ export interface BrandAlternative {
   discount: number;
   /** Kur donmasi: oneri secilirse FE bu kuru satira yazar (bkz. KaynakKur) */
   kaynakKur?: KaynakKur;
+  /** Onerinin kaynak para birimindeki fiyati — bkz. KaynakFiyat (F1) */
+  kaynakFiyat?: KaynakFiyat;
   /** S2 (06.08.2026): bu ONERI KESIN DEGIL — aday, ana ekranda otomatik
    *  yazilmasini engelleyen bir I6 kapisindan gecemedi ve o kapinin
    *  gerekcesini beraberinde tasiyor ("'paslanmaz' doğrulanamadı").
@@ -110,6 +136,8 @@ export interface MatchCandidate {
   discount: number;
   /** Kur donmasi: aday secilirse FE bu kuru satira yazar (bkz. KaynakKur) */
   kaynakKur?: KaynakKur;
+  /** Adayin kaynak para birimindeki fiyati — bkz. KaynakFiyat (F1) */
+  kaynakFiyat?: KaynakFiyat;
   tags: string[];
   popular: boolean;
   // Bu adayi digerlerinden ayiran ozellik (Galvanizli, Siyah, Kirmizi vb.)

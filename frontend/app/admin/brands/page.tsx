@@ -351,7 +351,7 @@ export default function AdminBrandsPage() {
           data.updated ? `${data.updated} güncellendi` : null,
           data.removed ? `${data.removed} eski kalem temizlendi` : null,
           resolvedAmbig
-            ? `${resolvedAmbig.count} belirsiz fiyat "${resolvedAmbig.choice === 'thousands' ? 'nokta = binlik' : 'nokta = ondalık'}" kararıyla çözüldü`
+            ? `${resolvedAmbig.count} belirsiz fiyat "${resolvedAmbig.choice === 'thousands' ? 'nokta binlik, virgül ondalık' : 'nokta ondalık, virgül binlik'}" kararıyla çözüldü`
             : null,
           data.adDuzeltilen ? `${data.adDuzeltilen} ürünün AD etiketi elle düzeltildi` : null,
           data.atlananSayisi ? `${data.atlananSayisi} satır atlandı` : null,
@@ -748,7 +748,8 @@ export default function AdminBrandsPage() {
                         className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-sm transition-colors hover:border-blue-400 hover:bg-blue-50 disabled:opacity-50"
                       >
                         <span className="font-semibold text-slate-900">
-                          {choice === 'thousands' ? 'Nokta binlik ayracı' : 'Nokta ondalık ayracı'}
+                          {/* C8 (P4a): soru virgüllü adayları da kapsar ("1,649") — biçimin TAMAMI söylenir. */}
+                          {choice === 'thousands' ? 'Nokta binlik, virgül ondalık (1.234,56)' : 'Nokta ondalık, virgül binlik (1,234.56)'}
                         </span>
                         <span className="mt-0.5 block text-xs text-slate-600">
                           {preview.formatQuestion!.samples.map((s) => {

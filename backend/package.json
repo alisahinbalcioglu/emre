@@ -109,6 +109,7 @@
     "test:deploy-olcum": "ts-node test/deploy-olcum-test.ts",
     "test:isc-sil": "ts-node test/iscilik-satir-silme-test.ts",
     "test:kur": "ts-node test/kur-donmasi-test.ts",
+    "test:kaynak-fiyat": "ts-node test/kaynak-fiyat-test.ts",
     "test:para-birimi-yazim": "ts-node test/para-birimi-yazim-test.ts",
     "test:alias-yutma": "ts-node test/alias-kelime-yutma-test.ts",
     "test:kb-liste": "ts-node test/kutuphane-liste-test.ts",
@@ -120,6 +121,7 @@
     "test:yonetim-epostalari": "ts-node test/yonetim-epostalari-test.ts",
     "test:musteri-epostalari": "ts-node test/musteri-epostalari-test.ts",
     "test:migration": "ts-node test/migration-zinciri-test.ts",
+    "test:teklif-no": "ts-node test/teklif-no-test.ts",
     "test:erisim": "ts-node test/erisim-kapisi-test.ts",
     "test:odeme-bekliyor-geri-sayim": "ts-node test/odeme-bekliyor-geri-sayim-test.ts",
     "test:guvenlik2": "ts-node test/guvenlik-turu-2-test.ts",
@@ -176,7 +178,9 @@
     "test:miras-erisimi": "ts-node test/miras-erisimi-test.ts",
     "test:miras-hakki": "ts-node test/miras-hakki-test.ts",
     "test:vitrin": "ts-node test/vitrin-test.ts",
-    "test:yonetici-paket": "ts-node test/yonetici-paket-test.ts"
+    "test:yonetici-paket": "ts-node test/yonetici-paket-test.ts",
+    "test:kiraci-siniri": "ts-node test/kiraci-siniri-test.ts",
+    "test:govde-dogrulama": "ts-node test/govde-dogrulama-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

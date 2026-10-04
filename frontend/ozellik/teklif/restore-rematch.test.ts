@@ -552,3 +552,189 @@ describe('restoreRematch — KUR-01 kur alinamadi', () => {
     expect(cagrilar).toHaveLength(0);
   });
 });
+
+/**
+ * D2 (30.09, P1) — RESTORE'UN GEÇ CEVABI KULLANICININ EMEĞİNİ EZMEZ
+ *
+ * `tarafEslestir` marka ve "fiyat kayıp mı" kontrolünü `await`ten ÖNCE yapar,
+ * dönüşte KOŞULSUZ yazar. Sayfa yenilendikten sonra restore ağa çıkarken
+ * kullanıcı boş durmuyor: satırın markasını değiştirebilir ya da fiyatı ELLE
+ * yazabilir. Geç gelen cevap ikisini de sessizce üzerine yazıyordu —
+ * kullanıcı yazdığı fiyatın birkaç saniye sonra değiştiğini fark etmez.
+ *
+ * KURAL: `await`ten dönen cevap, satır HÂLÂ aynı markadaysa VE fiyat HÂLÂ
+ * kayıpsa yazılır. Restore "kayıp fiyatı tamamlar", var olanı değiştirmez.
+ */
+describe('D2 — restore geç cevabı kullanıcının yeni durumunu ezmez', () => {
+  /** Poster ağa çıkarken satırı DEĞİŞTİREN taklit (gerçek gecikmeli). */
+  function gecPoster(cevap: Record<string, any>, aradaOlan: () => void) {
+    const poster: RematchPoster = async () => {
+      await new Promise((r) => setTimeout(r, 40));
+      aradaOlan(); // kullanıcı bu sırada satıra dokunur
+      await new Promise((r) => setTimeout(r, 10));
+      return cevap;
+    };
+    return poster;
+  }
+
+  it('★ MARKA değişti: eski markanın fiyatı yeni markanın satırına yazılmaz', async () => {
+    const r = satir({ _marka: 'marka-A' });
+    const poster = gecPoster({ [AD]: { netPrice: 100, confidence: 'high' } }, () => {
+      r._marka = 'marka-B'; // kullanıcı restore sürerken markayı değiştirdi
+    });
+    const n = await restoreRematch([sayfa([r])], { 0: [r] }, poster);
+    expect(r['Birim Fiyat'], 'A\'nın fiyatı B\'nin satırına yazılmaz').toBe('');
+    expect(r._matNetPrice).toBe(0);
+    expect(n, 'yazılan satır sayısı').toBe(0);
+  });
+
+  it('★ ELLE FİYAT: kullanıcı beklerken fiyat yazdıysa restore üzerine yazmaz', async () => {
+    const r = satir({ _marka: 'marka-A' });
+    const poster = gecPoster({ [AD]: { netPrice: 100, confidence: 'high' } }, () => {
+      r['Birim Fiyat'] = '999.0'; // kullanıcı elle yazdı
+    });
+    await restoreRematch([sayfa([r])], { 0: [r] }, poster);
+    expect(r['Birim Fiyat'], 'kullanıcının emeği DURUR').toBe('999.0');
+  });
+
+  it('★ İKİZ işçilik: firma değiştiyse geç cevap yazılmaz', async () => {
+    const r = satir({ _firma: 'firma-A' });
+    const poster = gecPoster({ [AD]: { netPrice: 100, confidence: 'high' } }, () => {
+      r._firma = 'firma-B';
+    });
+    await restoreRematch([sayfa([r])], { 0: [r] }, poster);
+    expect(r._labBirim).toBe('');
+    expect(r._labNetPrice).toBe(0);
+  });
+
+  it('★ KUR-01 işareti de ezmez: marka değiştiyse "hata" damgası basılmaz', async () => {
+    const r = satir({ _marka: 'marka-A' });
+    const poster = gecPoster({ [AD]: { kurAlinamadi: true, reason: 'Kur alınamadı' } }, () => {
+      r._marka = 'marka-B';
+    });
+    await restoreRematch([sayfa([r])], { 0: [r] }, poster);
+    expect(String(r._matStatus ?? ''), 'yeni marka turuncuya boyanmaz').toBe('');
+  });
+
+  it('DEĞİŞMEYEN satır bozulmadı: restore hâlâ kayıp fiyatı tamamlar', async () => {
+    const r = satir({ _marka: 'marka-A' });
+    const poster = gecPoster({ [AD]: { netPrice: 100, confidence: 'high' } }, () => { /* kullanıcı dokunmadı */ });
+    const n = await restoreRematch([sayfa([r])], { 0: [r] }, poster);
+    expect(r['Birim Fiyat']).toBe('110.0'); // 100 × (1 + %10) — LİTERAL
+    expect(n).toBe(1);
+  });
+});
+
+/**
+ * D7 (30.09, P1) — RESTORE FITTING SATIRINI "FİYATI KAYIP" SANIYOR
+ *
+ * Fitting satırı (CLAUDE.md "Fitting Satiri"): kullanıcı adı yazar, MİKTAR
+ * hücresine ORANI (35), birim hücresine "%" yazar; satırın para hücreleri
+ * KAPSAMDAN türetilir (`fittingHucreleri` birim fiyat hücresini bilerek
+ * BOŞALTIR, tutarı Σkapsam × oran / 100 yazar).
+ *
+ * `restoreRematch` o boş birim fiyat hücresini "kayıp fiyat" sanıyor ve satırı
+ * kütüphaneye soruyor. Cevap gelirse ORANI (35) MİKTAR sanıp çarpıyor:
+ * ölçüldü → Birim Fiyat '' → '110.0', Tutar '1050.0' → '3850.0'.
+ * Satır başına +2.800 ₺, SESSİZCE, sayfa yenilenince.
+ *
+ * KURAL: türetilmiş hücre yan etkiye bırakılmaz ve "boş" ≠ "kayıp".
+ * Fitting satırı restore'a HİÇ sorulmaz.
+ */
+describe('restoreRematch — fitting satırı sorguya GİRMEZ (türetilmiş hücre)', () => {
+  /** Fitting satırı: satırı fitting yapan TEK alan `_fitting` (fitting.ts:26). */
+  const fittingSatiri = (p: Partial<ExcelRowData> = {}): ExcelRowData => satir({
+    _rowIdx: 9,
+    'Malzeme Cinsi': 'Dişli fitting oranı', 'Çapı': '',
+    'Birim': '%', 'Miktar': '35',
+    'Birim Fiyat': '', 'Tutar': '1050.0', _labBirim: '', _labToplam: '', _toplam: '1050.00',
+    _fitting: { kapsam: [1, 2] },
+    ...p,
+  });
+
+  const CEVAP = { 'Dişli fitting oranı': { netPrice: 100, confidence: 'high' } };
+
+  it('R1 malzeme: markası dolu fitting satırı için kütüphaneye SORULMAZ', async () => {
+    const row = fittingSatiri({ _marka: 'marka-1' });
+    const { poster, cagrilar } = posterKur({ '/matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(cagrilar).toHaveLength(0);
+  });
+
+  it('R2 malzeme: birim fiyat hücresi BOŞ kalır (türetilmiş hücre)', async () => {
+    const row = fittingSatiri({ _marka: 'marka-1' });
+    const { poster } = posterKur({ '/matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(row['Birim Fiyat']).toBe('');
+  });
+
+  it('★ R3 malzeme PARA: tutar bozulmaz — oran MİKTAR sanılıp çarpılmaz', async () => {
+    // Kusurlu hâlde ölçülen: '3850.0' (110 × 35). Doğrusu kapsamın yazdığı 1050,0.
+    const row = fittingSatiri({ _marka: 'marka-1' });
+    const { poster } = posterKur({ '/matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(row['Tutar']).toBe('1050.0');
+  });
+
+  it('R4 malzeme: yazılan satır sayısına girmez', async () => {
+    const row = fittingSatiri({ _marka: 'marka-1' });
+    const { poster } = posterKur({ '/matching/bulk-match': CEVAP });
+    expect(await restoreRematch([sayfa([row])], { 0: [row] }, poster)).toBe(0);
+  });
+
+  it('R5 İKİZ işçilik: firması dolu fitting satırı için de SORULMAZ', async () => {
+    const row = fittingSatiri({ _firma: 'firma-1' });
+    const { poster, cagrilar } = posterKur({ '/labor-matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(cagrilar).toHaveLength(0);
+  });
+
+  it('R6 İKİZ işçilik: işçilik para hücreleri bozulmaz', async () => {
+    const row = fittingSatiri({ _firma: 'firma-1', _labToplam: '400.0' });
+    const { poster } = posterKur({ '/labor-matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(row._labBirim).toBe('');
+    expect(row._labToplam).toBe('400.0');
+  });
+
+  it('R7 GENEL TOPLAM fitting satırında tazelenmez (türetilmiş)', async () => {
+    const row = fittingSatiri({ _marka: 'marka-1' });
+    const { poster } = posterKur({ '/matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(row._toplam).toBe('1050.00');
+  });
+
+  it('★ R8 KONTROL GRUBU: fitting OLMAYAN satır hâlâ tamamlanır (kapı fazla kapatmıyor)', async () => {
+    // `_fitting` alanı olmayan, birimi de "%" olan ESKİ satırlar fitting DEĞİLDİR
+    // (CLAUDE.md: "yalniz bu alani tasiyan satir fitting sayilir").
+    const row = fittingSatiri({ _marka: 'marka-1', _fitting: undefined, 'Tutar': '' });
+    const { poster, cagrilar } = posterKur({ '/matching/bulk-match': CEVAP });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(cagrilar).toHaveLength(1);
+    expect(row['Birim Fiyat']).toBe('110.0'); // 100 × (1 + %10) — LİTERAL
+  });
+});
+
+/**
+ * Y2 (30.09, P2) — GERI YUKLEME "Toplam Birim Fiyat" HUCRESINI DE TAZELER.
+ * Restore genel TOPLAMI yaziyordu, genel BIRIM fiyati yazmiyordu.
+ */
+describe('Y2 — restore Toplam Birim Fiyat hucresini tazeler', () => {
+  const ROLLER_GB: ColumnRoles = { ...ROLLER, grandUnitPriceField: '_gBirim' };
+
+  it('★ restore malzeme fiyatini yazinca Toplam Birim Fiyat da yazilir', async () => {
+    const r = satir({ _marka: 'marka-A', _gBirim: '' });
+    const { poster } = posterKur({ '/matching/bulk-match': { [AD]: { netPrice: 100, confidence: 'high' } } });
+    await restoreRematch([sayfa([r], ROLLER_GB)], { 0: [r] }, poster);
+    expect(r['Birim Fiyat']).toBe('110.0'); // 100 × (1 + %10) — LITERAL
+    expect(r._gBirim).toBe('110.0');
+  });
+
+  it('★ IKIZ: iscilik restore edilince Toplam Birim Fiyat iki tarafi toplar', async () => {
+    const r = satir({ _firma: 'firma-A', 'Birim Fiyat': '110.0', 'Tutar': '2750.0', _gBirim: '110.0' });
+    const { poster } = posterKur({ '/labor-matching/bulk-match': { [AD]: { netPrice: 100, confidence: 'high' } } });
+    await restoreRematch([sayfa([r], ROLLER_GB)], { 0: [r] }, poster);
+    expect(r._labBirim).toBe('120.0'); // 100 × (1 + %20) — LITERAL
+    expect(r._gBirim).toBe('230.0');
+  });
+});

@@ -324,15 +324,24 @@ export class TerminologyService implements OnModuleInit {
     });
   }
 
-  /** Yonetim: alias sil/pasife al. Seed SILINMEZ, pasife alinir (S3). */
-  async deactivateAlias(userId: string, id: string) {
+  /**
+   * Yonetim: alias sil/pasife al. Seed SILINMEZ, pasife alinir (S3).
+   *
+   * ⚠ `yonetici` DENETLEYICIDEN gelir (`req.user.role`), ucun rol kapisi
+   * YOKTUR: uye KENDI kaydini silebilmeli (guvenlik-uclari KALKAN).
+   */
+  async deactivateAlias(userId: string, id: string, yonetici = false) {
     const p = this.prisma as any;
     const row = await p.terminologyAlias.findUnique({ where: { id } });
     if (!row) return { ok: false, reason: 'bulunamadi' };
     if (row.userId === null) {
-      // seed: sadece pasife alinabilir (kullanici bazli degil, global pasif —
-      // v1 sadeligi: global seed'i kapatmak admin isi; normal kullanici icin
-      // ayni alias'i bos kinds ile override etmesi yeterli)
+      // ORTAK kayit (seed ya da ogrenilmis): HERKESIN eslestirmesini
+      // etkiler — yalniz yonetici kapatir (C4, 30.09.2026). Onceden kutuphane
+      // duzenleme izni olan her uye tum kiracilar icin kapatabiliyordu ve
+      // seed() kapali kaydi geri acmiyordu. Uye icin yol: ayni alias'i kendi
+      // adina bos kinds ile ezmek (saveUserAlias).
+      if (!yonetici) return { ok: false, reason: 'yetki yok' };
+      // Pasif — kullanici bazli degil, global (v1 sadeligi).
       await p.terminologyAlias.update({ where: { id }, data: { active: false } });
       return { ok: true, deactivated: true };
     }

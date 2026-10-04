@@ -125,8 +125,11 @@ function fakeDb(formatBytes: Buffer, musteriBuf: Buffer, sheetsArr: any[]) {
   const exportlar: any[] = [];
   const prisma: any = {
     $transaction: async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma)),
+    // Teklif no kilitli atanir (teklif-no.ts): danisma kilidi + onekli numaralar.
+    $queryRaw: async () => [{ kilit: '' }],
     quote: {
       findFirst: async () => quote,
+      findMany: async () => [],
       count: async () => 0,
       update: async ({ data }: any) => { Object.assign(quote, data); return quote; },
     },

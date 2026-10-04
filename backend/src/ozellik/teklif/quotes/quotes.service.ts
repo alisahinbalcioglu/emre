@@ -4,13 +4,14 @@ import { CreateQuoteDto } from './dto/create-quote.dto';
 import { TekliflerSorgusuDto } from './dto/teklifler-sorgusu.dto';
 import { Kimlik, TeklifKimligi, teklifKosulu } from '../../../altyapi/auth/kimlik';
 import { hazirlayanGorunumu } from './hazirlayan';
+import { teklifNoAta } from './teklif-no';
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
 // PRD Teklif Formatim (v2.1): profesyonel cikti motoru
 import { buildExportWorkbook, ExportSonucu, ExportBirim } from './export-engine';
 import { standartCiktiUret } from './standart-cikti';
 import { buildSampleFormat, ExportOverrides, FillContext } from '../../cikti/quote-formats/format-engine';
-import { ExchangeRatesService } from '../../fiyat/exchange-rates/exchange-rates.service';
+import { ExchangeRatesService, kurGecerli } from '../../fiyat/exchange-rates/exchange-rates.service';
 import { CeviriService, KAYIT_INDIRGEME_UYARISI } from '../../giris/ai/ceviri.service';
 import { kaynakMetinleriniGeriYaz } from '../../giris/ai/ceviri-kurali';
 import { yukariYuvarla, kalemToplami } from '../../fiyat/matching/pricing';
@@ -554,9 +555,10 @@ export class QuotesService {
    *  ⚠ KUR YOKSA NOT YOK (13.09): servis TCMB'ye ve yedek kaynaga ulasamayinca
    *  1:1 doner (`source: 'fallback'`); eskiden musterinin ICMAL'ine
    *  "Kur: 1 USD = 1,00 TL (TCMB, …)" yaziliyordu. Esik `exportBirimi` ile
-   *  AYNI: 1 TL'yi gecmeyen kur alinamamis sayilir. */
+   *  AYNI: 1 TL'yi gecmeyen kur alinamamis sayilir. C10 (01.10.2026): kural
+   *  `kurGecerli` — 5 is gunundan bayat onbellek kuru da kur YOK sayilir. */
   private kurNotuUret(r: any | null): string {
-    if (!r || !(Number(r.usdTry) > 1) || !(Number(r.eurTry) > 1)) return '';
+    if (!kurGecerli(r, 'USD') || !kurGecerli(r, 'EUR')) return '';
     const tarih = r.date || new Date().toLocaleDateString('tr-TR');
     return `Kur: 1 USD = ${r.usdTry.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL · 1 EUR = ${r.eurTry.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL (TCMB, ${tarih})`;
   }
@@ -615,8 +617,9 @@ export class QuotesService {
   private exportBirimi(quote: any, r: any | null): ExportBirim | null {
     const kod = quote.displayCurrency;
     if (kod !== 'USD' && kod !== 'EUR') return null;
+    // kur alinamadi / servis hatasi / C10 5 is gunundan bayat → guvenli TL (kural kurGecerli)
+    if (!kurGecerli(r, kod)) return null;
     const tryPer = kod === 'USD' ? r?.usdTry : r?.eurTry;
-    if (!tryPer || tryPer <= 1) return null; // kur alinamadi (ya da servis hatasi) → guvenli TL
     const kur = Number(tryPer).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return {
       kod,
@@ -652,13 +655,19 @@ export class QuotesService {
     return [quote.title, quote.musteri, quote.proje].map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ');
   }
 
-  private async ciktiKur(k: Kimlik, quote: any, rev: number, dil: string | undefined, kur: any | null): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik'; birim: ExportBirim | null; antetNotu: string | null }> {
-    // Bulgu Raporu kok neden: grid'den uretim SILINDI — orijinal dosya ZORUNLU.
+  /** Bulgu Raporu kok neden: grid'den uretim SILINDI — orijinal dosya ZORUNLU.
+   *  Teklif no atamasindan ONCE de cagrilir: kesin reddedilecek cikti numara
+   *  YAKMAZ (R1-B6'nin ikizi). */
+  private orijinalDosyaZorunlu(quote: any): void {
     if (!quote.originalFile) {
       throw new BadRequestException(
         'Bu teklifte orijinal Excel dosyası kayıtlı değil — dışa aktarım için keşif Excel\'ini yükleyip teklifi yeniden kaydedin.',
       );
     }
+  }
+
+  private async ciktiKur(k: Kimlik, quote: any, rev: number, dil: string | undefined, kur: any | null): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik'; birim: ExportBirim | null; antetNotu: string | null }> {
+    this.orijinalDosyaZorunlu(quote);
     const { wb: formatWb, formatAdi, formatKaynak, sheetRoles } = await this.resolveFormatWb(k, quote);
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
     const birim = this.exportBirimi(quote, kur); // PANO 18 (KF7: iki yol ayni)
@@ -700,17 +709,14 @@ export class QuotesService {
       : this.turkceCikti(quote.sheets, secim);
     dil = ceviri.dil;
 
-    // Teklif no ILK aktarimda atanir, sonra SABIT (T10)
-    let quoteNo: string = quote.quoteNo;
-    if (!quoteNo) {
-      const yil = new Date().getFullYear();
-      const sayac = await this.prisma.quote.count({
-        // Teklif no sayaci FIRMA basina — ayni firmanin iki uyesi ortak
-        // numara dizisini paylasir (MP-2026-001, -002 ...).
-        where: { firmaId: k.firmaId, quoteNo: { not: null } } as any,
-      });
-      quoteNo = `MP-${yil}-${String(sayac + 1).padStart(3, '0')}`;
-    }
+    // Teklif no ILK aktarimda atanir, sonra SABIT (T10). Sayac FIRMA basina
+    // (ayni firmanin uyeleri ortak diziyi paylasir). Atama KILITLI ve dosya
+    // uretiminden ONCE kalici — kural `teklif-no.ts`. Kesin ret (orijinal
+    // dosya yok) numara ALMAZ; uretim gecici bir hatayla duserse numara bu
+    // teklifte kalir: yanmaz, baskasina da verilmez.
+    this.orijinalDosyaZorunlu(quote);
+    const quoteNo: string = quote.quoteNo
+      ?? await teklifNoAta(this.prisma, k.firmaId, id, new Date().getFullYear());
     const yeniRev = (quote.rev ?? 0) + 1;
 
     const sonuc = await this.ciktiKur(k, { ...quote, quoteNo }, yeniRev, dil, await this.kurOku());

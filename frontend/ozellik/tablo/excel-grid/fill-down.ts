@@ -25,7 +25,7 @@
  */
 // NOT: relative import — vitest.config.ts'te '@/' alias'i tanimli degil ve
 // bu modul birim testle sinaniyor (fill-down.test.ts).
-import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, kalemToplami, PARA_ONDALIK } from '../../fiyat/pricing';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, kalemToplami, kalemBirimFiyatMetni, PARA_ONDALIK } from '../../fiyat/pricing';
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil
 // ve bu modul vitest ile kosuyor (fill-down.test.ts).
 import { sayiAlani, sayiOku } from '../../fiyat/sayi-alani';
@@ -56,7 +56,9 @@ export interface MotorSonucu {
   reason?: string;
 }
 
-export type FillDurum = 'fiyat' | 'aday' | 'yok' | 'urun_degil' | 'hata' | 'ad-yok';
+export type FillDurum = 'fiyat' | 'aday' | 'yok' | 'urun_degil' | 'hata' | 'ad-yok'
+  /** D2: cevap donerken satir baska bir marka/firmaya gecmis — yazilmadi. */
+  | 'devredildi';
 
 export interface FillSatirSonucu {
   rowIdx: number;
@@ -70,9 +72,14 @@ export interface FillSatirSonucu {
 
 export interface FillSonuc {
   satirlar: FillSatirSonucu[];
-  ozet: { fiyatli: number; aday: number; yok: number; urunDegil: number; hata: number; adYok: number; atlanan: number };
+  ozet: { fiyatli: number; aday: number; yok: number; urunDegil: number; hata: number; adYok: number; atlanan: number;
+    /** D2: gec gelip dusurulen cevap sayisi (satir baska secime gecmisti). */
+    devredilen: number };
   /** SD7: doldurmanin TAMAMI tek Ctrl+Z ile geri alinsin diye anlik. */
   geriAl: Array<{ rowIdx: number; oncekiDegerler: Record<string, any> }>;
+  /** D10: kaynakta secim YOKTU — hicbir sey yapilmadi. Cagiran taraf geri-alma
+   *  yiginina BOS kayit itmemeli (yoksa Ctrl+Z bir adimi "yutar"). */
+  bosSecim?: boolean;
 }
 
 /** AG-Grid node'unun kullanilan yuzeyi (test edilebilirlik icin daraltildi). */
@@ -116,6 +123,71 @@ function genelToplamiTazele(
   // veriyi olaydan once degistirdigi icin recalcGrand bunu HIC duzeltmiyordu.
   // Tek yuvarlama fonksiyonu (orantili epsilon): pricing `yukariYuvarla`.
   yaz(node, genelAlan, kalemToplami(mat, lab).toFixed(PARA_ONDALIK));
+  // Y2 (02.10): rolun IKIZI — genel BIRIM fiyat. KD11 genel TOPLAMI eklemisti,
+  // bunu unutmustu: dosyasinda "TOPLAM BIRIM FIYAT" kolonu olan teklifte satir
+  // Malz. Birim 100 · Genel Toplam 1.000 iken bu hucre ONCEKI markanin degerinde
+  // kaliyordu. Kural `recalcGrand` ile TEK kaynaktan (`kalemBirimFiyatMetni`).
+  if (roller.grandUnitPriceField) {
+    yaz(node, roller.grandUnitPriceField,
+      kalemBirimFiyatMetni(oku(roller.materialUnitPriceField), oku(roller.laborUnitPriceField)));
+  }
+}
+
+/** `fiyatiTemizle` icin dal alanlari — fillDown icinde bir kez turetilir. */
+interface TemizAlanlar {
+  birimFiyat?: string;
+  toplam?: string;
+  net: string;
+  kur: string;
+  /** Y3: varyant kimligi (`_matVariantTags` / `_labVariantTags`). */
+  tag: string;
+  iscilikMi: boolean;
+}
+
+/**
+ * D1 (30.09, P0) — FIYAT YAZMAYAN DAL ESKI FIYATI SILER.
+ *
+ * Canli senaryo: kullanici bir grubu marka A ile fiyatlar, sonra ayni grubu
+ * marka B ile YENIDEN surukler; B'de o urun yoktur. Eski hal: satirin markasi
+ * B olur, isaret 'yok' yazilir — ama HUCREDE A'NIN FIYATI DURUR. Satir
+ * `brandId=B` + `100 ₺` olarak KAYDEDILIR ve fiyatsiz-kalem uyarisi onu
+ * YAKALAMAZ (fiyat dolu gorunuyor): musteriye, B'de var OLMAYAN bir urun
+ * A'nin fiyatiyla teklif edilir. Ikinci kusur GORSEL: `_matAutoVariant` hala
+ * A'nin etiketini tasidigi icin `isaretStili` MAVI ("⚡ otomatik") dondurup
+ * kirmizi 'yok' isaretini MASKELIYORDU.
+ *
+ * KURAL: fiyat yazan dal ne yaziyorsa (net · kur · birim · toplam · genel
+ * toplam · rozetler) fiyat YAZMAYAN dal onu geri alir. Durum/sebep/aday
+ * alanlarina DOKUNULMAZ — onlari cagiran dal kendi anlamiyla yazar.
+ *
+ * ⚠ "Satiri sifirla" DEGILDIR: yalnizca DOLDURULAN dal temizlenir. Genel
+ * toplam `genelToplamiTazele` ile YENIDEN HESAPLANIR, sifirlanmaz — karsi
+ * dalda (iscilik/malzeme) fiyat varsa satir onunla dolu kalir.
+ */
+function fiyatiTemizle(
+  node: FillNode,
+  roller: FillRoller,
+  alanlar: TemizAlanlar,
+  yaz: (n: FillNode, alan: string, deger: unknown) => void,
+): void {
+  yaz(node, alanlar.net, 0);
+  // Kolon degil veri alani — fiyat yazan dal da dogrudan yaziyor (KUR DONMASI).
+  node.data[alanlar.kur] = null;
+  // Y3 (02.10): VARYANT KIMLIGI de gider. D1'de bilerek birakilmisti ("kimlik
+  // tohumu") — yanlisti: kimlik YALNIZ onu ureten markayla anlamlidir. Kalsaydi
+  // bu satirdan surukleyince A'nin varyanti B'nin sorgularina SERT FILTRE olarak
+  // gidiyordu: ya sahte "yok", ya kullanicinin secmedigi varyantin fiyati.
+  // Anlikta (SNAP + tagAlan) oldugu icin Ctrl+Z geri getirir.
+  node.data[alanlar.tag] = null;
+  if (alanlar.birimFiyat) yaz(node, alanlar.birimFiyat, '');
+  if (alanlar.toplam) yaz(node, alanlar.toplam, '');
+  if (!alanlar.iscilikMi) {
+    // Malzemeye OZGU rozetler (iscilik dalinda dolduran yol bunlari yazmaz).
+    yaz(node, '_matSuggestion', false);
+    yaz(node, '_matAutoVariant', null);
+    node.data._matVariantLabel = null;
+  }
+  genelToplamiTazele(node, roller, yaz);
 }
 
 /**
@@ -161,6 +233,10 @@ export interface FillRoller {
    *  ama Genel Toplam bos kaliyordu (kalem 54, Yol C). */
   laborTotalField?: string;
   grandTotalField?: string;
+  /** Y2: "Toplam Birim Fiyat" — etkilesimli yol (`recalcGrand`) yaziyordu,
+   *  doldurma yolu YAZMIYORDU; satir kendi icinde celisiyordu. */
+  laborUnitPriceField?: string;
+  grandUnitPriceField?: string;
 }
 
 export interface FillDownArgs {
@@ -219,12 +295,36 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
   const sebepAlan = iscilikMi ? '_labSebep' : '_matSebep';
   const adayAlan = iscilikMi ? '_labAdaySayisi' : '_matAdaySayisi';
   const kurAlan = iscilikMi ? '_labKurBilgi' : '_matKurBilgi';
+  // D1: fiyat YAZMAYAN her dalin kullandigi ortak "eski fiyati sil" kumesi.
+  const temizAlanlar: TemizAlanlar = {
+    birimFiyat: bfAlan, toplam: totAlan, net: netAlan, kur: kurAlan, tag: tagAlan, iscilikMi,
+  };
 
   const sonuc: FillSonuc = {
     satirlar: [],
-    ozet: { fiyatli: 0, aday: 0, yok: 0, urunDegil: 0, hata: 0, adYok: 0, atlanan: 0 },
+    ozet: { fiyatli: 0, aday: 0, yok: 0, urunDegil: 0, hata: 0, adYok: 0, atlanan: 0, devredilen: 0 },
     geriAl: [],
   };
+
+  // ── D10 (02.10): BOS KAYNAKTAN SURUKLEME HICBIR SEY YAPMAZ ─────────────
+  // Kaynak satirin marka/firma hucresi BOSKEN surukleme yapilinca bu dongu her
+  // hedef icin ONCE hedefin secimini null'a cekiyor, sonra motora BOS kimlikle
+  // soruyordu (satir basina bir istek). Cevap ne olursa olsun fiyat yazilmadigi
+  // icin D1 temizligi kosuyor — fiyat ve toplam SILINIYOR — ve satir "bu markada
+  // yok" diye KIRMIZIYA boyaniyordu, satirda marka YOKKEN (yanlis suclama:
+  // kullanici kutuphanesinde eksik malzeme aramaya yonlendiriliyordu).
+  //
+  // KARAR (Emre, 02.10): reddedilir — istek gitmez, hedeflere DOKUNULMAZ. Tek
+  // satir temizleme icin "Secimi kaldir" var. Etkilesimli yolun ikizi:
+  // BrandDropdown/FirmaDropdown `handleChange` bos secimde motoru cagirmaz.
+  //
+  // Erken donus SD2 assert'ine (dongu sonu) GIRMEZ: SD2 "secim UYGULANDIYSA her
+  // satir sonuc alir" sozlesmesidir; burada uygulanan bir secim yok.
+  if (!markaId) {
+    sonuc.ozet.atlanan = hedefler.length;
+    sonuc.bosSecim = true;
+    return sonuc;
+  }
 
   const SNAP = ['_marka', '_firma', '_matNetPrice', '_labNetPrice', '_matSuggestion',
     '_matStatus', '_matVariantMode', '_matAutoVariant', '_matVariantTags', '_matVariantLabel',
@@ -271,6 +371,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
 
     if (!ad) {
       // SD2c: sessiz atlama YASAK — isaretlenir
+      fiyatiTemizle(node, roller, temizAlanlar, yaz); // D1
       yaz(node, statusAlan, 'ad-yok');
       sonuc.satirlar.push({ rowIdx, durum: 'ad-yok' });
       sonuc.ozet.adYok++;
@@ -288,9 +389,31 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
       hataMesaji = String(e?.message ?? e ?? 'bilinmeyen hata');
     }
 
+    // ── D2 (30.09): GEC GELEN CEVAP YENI SECIMI EZMEZ ────────────────────
+    // `await` sirasinda kullanici baska bir marka/firma secmis (ya da secimi
+    // kaldirmis) olabilir: yavas A + hizli B'de B once biter, sonra A'nin gec
+    // cevabi gelip UZERINE yazardi — ekranda marka B, hucrede A'nin fiyati.
+    // Kullanici B yazdigini gordugu icin farki yakalayamaz.
+    //
+    // Satir hala BIZIM sordugumuz secimdeyse yazariz; degilse cevap DUSER.
+    // Hata dali da buraya tabidir: gec gelen ag hatasi, B'nin az once yazdigi
+    // fiyatli satiri 'hata' diye TURUNCU boyardi.
+    //
+    // ⚠ Fiyat temizleme (D1) de bu kapinin ARKASINDA kalmali — yoksa gec
+    // gelen 'yok' cevabi B'nin fiyatini siler ve D1'in kendisi silaha doner.
+    if (node.data[secimAlan] !== markaId) {
+      sonuc.satirlar.push({ rowIdx, durum: 'devredildi' });
+      sonuc.ozet.devredilen++;
+      continue;
+    }
+
     if (hataMesaji) {
       // SD2b: motor hatasi SESSIZCE yutulmaz
+      fiyatiTemizle(node, roller, temizAlanlar, yaz); // D1
       yaz(node, statusAlan, 'hata');
+      // D14b (04.10): ONCEKI sorgunun sebebi kalirsa ipucu "Eşleştirme hatası:
+      // Bu markada bu ürün ailesi yok." der (olculdu) — hata o degil.
+      yaz(node, sebepAlan, null);
       sonuc.satirlar.push({ rowIdx, durum: 'hata', hata: hataMesaji });
       sonuc.ozet.hata++;
       continue;
@@ -353,13 +476,17 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     // davranip sessiz ikame yapmadi ama ekranda yalniz pembe hucre gorundu →
     // kullanici "otomatik varyant calismiyor" olarak yasadi. Sebep ve aday
     // sayisi gorunur olmadan isaret EYLEMLI degildir.
-    if (r?.reason) yaz(node, sebepAlan, r.reason);
+    // D14b (04.10): sebep HER ZAMAN yazilir — sebepsiz cevapta (isçilik
+    // sarmalayicisi motor kaydi yoksa `null` doner) eski sebep kaliyordu:
+    // 'yok' ipucu onceki sorgunun "2 seçenek" metnini gosteriyordu (olculdu).
+    yaz(node, sebepAlan, r?.reason ?? null);
 
     // KUR-01 (14.09): urun VAR, dovizli fiyat TL'ye cevrilemedi. Etkilesimli
     // yol ile AYNI isaret: 'hata' (turuncu, "tekrar deneyin"). 'yok' YAZILMAZ —
     // taslak geri yuklemesi 'yok'u cevaplanmis sayar, kur donunce satiri
     // yeniden FIYATLAMAZDI (donmus fiyatsiz satir).
     if (r?.kurAlinamadi) {
+      fiyatiTemizle(node, roller, temizAlanlar, yaz); // D1
       yaz(node, statusAlan, 'hata');
       sonuc.satirlar.push({ rowIdx, durum: 'hata', hata: r.reason ?? 'Kur alınamadı' });
       sonuc.ozet.hata++;
@@ -376,6 +503,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     // Fiyat YAZILMAZ (netPrice 0) — degisen yalniz isaret ve sebep metni.
     const adaylar = r?.candidates?.length ? r.candidates : (r?.alternatives?.length ? r.alternatives : null);
     if (adaylar) {
+      fiyatiTemizle(node, roller, temizAlanlar, yaz); // D1
       yaz(node, statusAlan, 'belirsiz');
       yaz(node, adayAlan, adaylar.length);
       sonuc.satirlar.push({ rowIdx, durum: 'aday', adaySayisi: adaylar.length, sebep: r?.reason });
@@ -384,6 +512,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     }
 
     const durum: FillDurum = r?.notProduct ? 'urun_degil' : 'yok';
+    fiyatiTemizle(node, roller, temizAlanlar, yaz); // D1
     yaz(node, statusAlan, durum === 'urun_degil' ? 'urun_degil' : 'yok');
     sonuc.satirlar.push({ rowIdx, durum, sebep: r?.reason });
     if (durum === 'urun_degil') sonuc.ozet.urunDegil++; else sonuc.ozet.yok++;

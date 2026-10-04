@@ -288,11 +288,16 @@ async function main() {
     const kalan = (await terminology.listAliases(userId)).filter((a: any) => a.alias?.includes('denetim') && (a as any).active !== false);
     check('S4 alias sil/pasif', kalan.length === 0 || (kalan[0] as any).active === false, `kalan=${kalan.length}`);
 
-    // S3: seed alias SILINEMEZ — yalniz pasife alinir (sonra durum geri acilir)
+    // S3: seed alias SILINEMEZ — yalniz YONETICI pasife alir (C4, 30.09:
+    // uye ORTAK kaydi kapatamaz); sonra durum geri acilir.
     const seedRow = await (prisma as any).terminologyAlias.findFirst({ where: { userId: null, active: true } });
     if (seedRow) {
-      const sonuc = await terminology.deactivateAlias(userId, seedRow.id);
-      check('S3 seed silinmez, pasife alinir', (sonuc as any).deactivated === true && !(sonuc as any).deleted,
+      const uye = await terminology.deactivateAlias(userId, seedRow.id);
+      const uyeSonra = await (prisma as any).terminologyAlias.findUnique({ where: { id: seedRow.id } });
+      check('S3 uye ortak seed kaydini kapatamaz (yetki yok, kayit aktif)',
+        (uye as any).ok === false && uyeSonra?.active === true, JSON.stringify(uye));
+      const sonuc = await terminology.deactivateAlias(userId, seedRow.id, true);
+      check('S3 seed silinmez, yonetici pasife alir', (sonuc as any).deactivated === true && !(sonuc as any).deleted,
         JSON.stringify(sonuc));
       await (prisma as any).terminologyAlias.update({ where: { id: seedRow.id }, data: { active: true } }); // durumu geri al
     }

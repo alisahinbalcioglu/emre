@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { Kimlik } from '../../../altyapi/auth/kimlik';
 import { CreateLibraryItemDto } from './dto/create-library-item.dto';
@@ -15,6 +15,19 @@ import {
 } from '../../eslestirme/matching/index/product-index';
 import { TerminologyService } from '../../eslestirme/matching/terminology.service';
 import { paraBirimleriniDogrula, satirAdi } from '../../fiyat/exchange-rates/exchange-rates.service';
+import { GECERSIZ_SATIR_KIMLIGI, satirHatalari, satirKimligiGecerli } from '../satir-hatalari';
+
+const GECERSIZ_SATIR_VERISI = 'Geçersiz satır verisi (fiyat ve iskonto sayı, ad ve birim metin olmalı).';
+
+/** Izgara kaydi satirinin alan turleri (P4a): sayi alanlari sonlu sayi, metin
+ *  alanlari dize ya da HIC yok (undefined) — yoksa DB'ye gitmez. `null` de
+ *  reddedilir: on yuz gondermez, kod onu "fiyati sil" (listPrice/customPrice
+ *  null), "iskonto 0" ve `trim` hatasi diye isliyordu (inceleme P4a). */
+function kutuphaneSatiriGecerli(row: { listPrice?: unknown; discountRate?: unknown; materialName?: unknown; unit?: unknown }): boolean {
+  const sayiMi = (v: unknown) => v === undefined || (typeof v === 'number' && Number.isFinite(v));
+  const metinMi = (v: unknown) => v === undefined || typeof v === 'string';
+  return sayiMi(row.listPrice) && sayiMi(row.discountRate) && metinMi(row.materialName) && metinMi(row.unit);
+}
 
 /**
  * Kutuphane gorunumunun (sheet) UserLibrary join'leri — iki cagiran AYNI icerik.
@@ -29,6 +42,8 @@ const KUTUPHANE_GORUNUM_ICERIGI = {
 
 @Injectable()
 export class LibraryService {
+  private readonly logger = new Logger(LibraryService.name);
+
   constructor(
     private prisma: PrismaService,
     private terminology: TerminologyService,
@@ -859,9 +874,23 @@ export class LibraryService {
     }
 
     let updated = 0;
-    const errors: Array<{ id: string; error: string }> = [];
+    const errors: Array<{ id: unknown; error: string }> = [];
+    // P4a ikiz (01.10.2026): satir hatalari iscilik ikiziyle AYNI kuralda
+    // (`../satir-hatalari.ts`) — beklenmeyen hata genel metin + istek basina
+    // TEK gunluk satiri; kimlik ve alan turleri DB'den once denetlenir. Eskiden
+    // ham `e.message` yanita gidiyordu (Prisma sorgu ayrintisi, "trim is not a
+    // function"); bicimsiz kimlik DB'ye ulasiyordu.
+    const hatalar = satirHatalari(this.logger, 'library save-sheets', 'kütüphane satırı');
 
     for (const row of dirtyRows) {
+      if (!satirKimligiGecerli(row?.libraryItemId)) {
+        errors.push({ id: row?.libraryItemId, error: GECERSIZ_SATIR_KIMLIGI });
+        continue;
+      }
+      if (!kutuphaneSatiriGecerli(row)) {
+        errors.push({ id: row.libraryItemId, error: GECERSIZ_SATIR_VERISI });
+        continue;
+      }
       try {
         const item = await this.prisma.userLibrary.findFirst({
           where: { id: row.libraryItemId, firmaId: k.firmaId, brandId },
@@ -910,10 +939,11 @@ export class LibraryService {
 
         await this.prisma.userLibrary.update({ where: { id: item.id }, data });
         updated++;
-      } catch (e: any) {
-        errors.push({ id: row.libraryItemId, error: e?.message ?? 'Bilinmeyen' });
+      } catch (e: unknown) {
+        errors.push(hatalar.ekle(row.libraryItemId, e));
       }
     }
+    hatalar.gunlukle();
 
     // Sheets'i yeniden olustur (guncel iskontolar dahil)
     await this.rebuildUserBrandLibrary(k, brandId);

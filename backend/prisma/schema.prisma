@@ -856,6 +856,10 @@ model Quote {
   /// kolonlu `[firmaId]` bulunuyor, siralama sonra bellekte yapiliyordu.
   /// Durum suzgeci de ayni sorguya bindigi icin dogru bilesik indeks bu:
   @@index([firmaId, createdAt])
+  /// 30.09.2026 — teklif no FIRMA icinde tekil. Atama kilitli
+  /// (`src/ozellik/teklif/quotes/teklif-no.ts`); bu kisit son savunmadir.
+  /// NULL `quoteNo` (hic disa aktarilmamis teklif) sinirsiz tekrarlanabilir.
+  @@unique([firmaId, quoteNo])
 }
 
 /// TEKLIF SATIS DURUMU (FAZ 4.6). Enum degerleri UPPER_SNAKE + Turkce —
@@ -957,6 +961,17 @@ model LaborItem {
   updatedAt      DateTime     @updatedAt
   laborPrices    LaborPrice[]
 
+  // ── 30.09.2026 — KIRACI KALEMI (Paket 1 / C2-C1) ──────────────────────
+  // null = YONETICI KATALOGU (platform verisi, herkes okur, yalniz yonetici
+  // yazar). Dolu = kalemi o KIRACININ yuklemesi acti: yalniz o firma gorur
+  // ve yalniz o firmanin islemleri yazar. Eskiden her kiraci yuklemesi
+  // `isGlobal: true` kalem aciyordu (ad + kiracinin fiyati) ve GET /labor
+  // filtresizdi — her kiraci baskasinin kalemini ve fiyatini goruyordu.
+  // `isGlobal` bu alandan TURER (sahipli satirda false); yetki kurali
+  // YALNIZ bu alana bakar. ProductIndex.ownerFirmaId'nin ikizi (FK yok).
+  // Kural yeri: `labor/iscilik-kalemi-kapsami.ts`.
+  ownerFirmaId   String?
+
   // ── PRD Iscilik L2: 7-kolon kaynak sadakati (ProductIndex deseni) ──
   // AD = name (mevcut). Cins/Cap/Boy/Not asagida; Birim = unit (mevcut);
   // Fiyat/ParaBirimi LaborPrice'ta (firma bazli).
@@ -996,6 +1011,7 @@ model LaborItem {
   @@index([name])
   @@index([tags], type: Gin)
   @@index([adSlug])
+  @@index([ownerFirmaId])
 }
 
 // LaborFirm KULLANICIYA AIT — her kullanici kendi firmalarini olusturur
@@ -1039,7 +1055,7 @@ model LaborPrice {
   laborItemId  String
   firma        LaborFirm       @relation(fields: [firmaId], references: [id], onDelete: Cascade)
   firmaId      String
-  priceList    LaborPriceList? @relation(fields: [priceListId], references: [id], onDelete: SetNull)
+  priceList    LaborPriceList? @relation(fields: [priceListId], references: [id], onDelete: Cascade)
   priceListId  String?
   unitPrice    Float // liste fiyat
   discountRate Float           @default(0) // iskonto %

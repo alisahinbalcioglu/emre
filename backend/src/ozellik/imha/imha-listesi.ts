@@ -107,7 +107,8 @@ export interface KorumaKurali {
  *  SILINECEKLER — SIRA ONEMLI: YAPRAKTAN KOKE.
  * ───────────────────────────────────────────────────────────────────────────
  *  Sira neden onemli: bazi FK'ler `SetNull` (or. `Quote.formatId`,
- *  `LaborPrice.priceListId`, `UserLibrary.libraryListId`). Ust satiri once
+ *  `UserLibrary.libraryListId`; `LaborPrice.priceListId` 04.10'dan beri
+ *  CASCADE — L3/S1 goc `20261004120000`). Ust satiri once
  *  silersek DB alt satirin kolonunu null'lar — sonuc yine silinir ama
  *  SAYILAR yaniltici olur. Yapraktan koke gidince her `deleteMany` gercek
  *  sayisini dondurur ve denetim kaydi (§5.6) dogru olur.
@@ -235,6 +236,20 @@ export const SILINECEKLER: readonly SilmeKurali[] = [
     eksen: 'firma',
     mirasFirmasizDaAl: true,
     neden: 'Firmanin tanimladigi iscilik firmalari. §5.2 "iscilik firmalari".',
+  },
+  {
+    // LaborPrice'tan SONRA (yaprak → kok): kalemin CASCADE cocugu fiyat
+    // satiridir, once silinseydi fiyat sayilari yaniltici olurdu.
+    model: 'LaborItem',
+    erisimci: 'laborItem',
+    kolon: 'ownerFirmaId',
+    eksen: 'firma',
+    neden:
+      'Firmanin yuklemesinin actigi iscilik kalemleri (ad + ilk birim fiyati; ' +
+      '30.09 sahiplik kolonu). ⚠ TUZAK 3: `ownerFirmaId` null = YONETICI ' +
+      'KATALOGU — `{ equals }` null eslemez, katalog KORUNUR. Kiracinin kalemine ' +
+      'yalniz kendi fiyat satirlari baglanir (baska kiraci o kalemi bulamaz). ' +
+      '`mirasFirmasizDaAl` YOK: kisi kolonu yok.',
   },
 
   // ── Eslestirme hafizasi / sozluk (kullanici ekseni) ──────────────────────
@@ -505,11 +520,6 @@ export const SILINMEZLER: readonly KorumaKurali[] = [
     neden:
       'Havuz fiyati. Firmaya ait `PriceList` silinince `priceListId` CASCADE ' +
       'ile zaten gider; havuz listelerininki KALIR.',
-  },
-  {
-    model: 'LaborItem',
-    neden:
-      'GLOBAL iscilik kalemi katalogu (`isGlobal`), firma/kullanici kolonu YOK.',
   },
   {
     model: 'Paket',

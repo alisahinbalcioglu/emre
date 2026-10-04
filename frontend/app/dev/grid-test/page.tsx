@@ -45,9 +45,72 @@ export default function GridTestPage() {
   // orada AYRI cellClassRules ile bagli oldugu icin elle/e2e ancak boyle
   // olculebiliyor.
   const [mod, setMod] = useState<'quote' | 'library'>('quote');
+  // D9 + Y1 (30.09): SALT OKUNUR SECICI bayragi. `quotes/[id]` goruntuleme
+  // sayfasinin gectigi `seciciSaltOkunur` burada `?salt=1` ile surulur —
+  // tiklanamayan hucrenin gercekten secim URETMEDIGI ancak gercek tarayicida
+  // olculebilir (ExcelGrid jsdom'suz kosmuyor). Bayragin KENDI sayfada
+  // gecirildigini olcen ayri bir kaynak kapisi var:
+  // ozellik/teklif/salt-okunur-secici.test.ts ("mekanizma var, baglanti yok").
+  // Varsayilan KAPALI — mevcut tum e2e paketleri etkilenmez.
+  //
+  // ⚠ RENDER SIRASINDA `window` OKUNMAZ: ilk hali boyle yazilmisti ve SSR'de
+  // false / istemcide true vererek HYDRATION UYUSMAZLIGI uretiyordu; React
+  // grid altagacini yeniden kuruyor ve KP17'nin ok-tusu ritmi tam e2e
+  // kosumunda duzenli olarak DUSUYORDU (olculdu). Bayrak mount'tan SONRA
+  // yazilir — sunucu ve istemci ilk cizimde ayni seyi gorur.
+  // D11 (30.09): ISCILIK YETKISI bayragi. `?iscilik=kapali` → yetki mount'tan
+  // SONRA kapanir; `?iscilik=gec` → yetki KAPALI baslar, 300 ms sonra ACILIR.
+  // Ikincisi gercek dunyayi taklit eder: yetenekler `/auth/me` ile ASENKRON
+  // gelir (CapabilitiesContext once EMPTY ile acilir). Duzeltmede `laborEnabled`
+  // bir useCallback/useMemo bagimliligina YAZILMAZSA kapi ilk degerde (false)
+  // TAKILI kalir ve Pro kullanicinin iscilik kari SESSIZCE calismaz — bu kip o
+  // gerilemeyi olcer. Varsayilan: acik (mevcut tum e2e'ler etkilenmez).
+  const [iscilikAcik, setIscilikAcik] = useState(true);
+  // ⚠ GRID BAYRAKLAR OKUNDUKTAN SONRA MOUNT EDILIR. Ilk halinde grid ilk
+  // render'da `iscilikAcik=true` goruyordu; `?iscilik=gec` boylece gercek
+  // dunyanin TERSINI (once acik, sonra kapali, sonra acik) suruyordu ve
+  // "ilk degerde FALSE'a takili kapi" mutanti o testte HAYATTA kalirdi —
+  // test olcmedigi bir seyi iddia ediyordu. Bayrak render'da okunamaz
+  // (SSR/istemci hydration uyusmazligi); cozum grid'i bir tik geciktirmek.
+  const [gridHazir, setGridHazir] = useState(false);
+  React.useEffect(() => {
+    const arama = new URLSearchParams(window.location.search);
+    const kip = arama.get('iscilik');
+    if (kip === 'kapali' || kip === 'gec') setIscilikAcik(false);
+    // Y5 (02.10): `?oto=acik` → oto-varyant anahtari grid KURULMADAN once acik.
+    // ExcelGrid sozlesmesi (`autoVariantEnabled` varsayilani TRUE) grup varyanti
+    // sorgusunu canli tutar; ama marka hucresi anahtari columnDefs memo'sundan
+    // okur ve memo onu BAGIMLILIK olarak tasimaz — sonradan acilan anahtari
+    // hucre GORMEZ. Uretim sayfasi sabit `false` gecirir (PRD v3.0 B), yani bu
+    // yalniz harness'ta gorunur; sozlesmeyi olcmenin yolu baslangicta acmak.
+    if (arama.get('oto') === 'acik') setAutoVariant(true);
+    setGridHazir(true); // ayni tikte toplanir → grid ilk render'da DOGRU degeri gorur
+    if (kip === 'gec') {
+      const t = setTimeout(() => setIscilikAcik(true), 300);
+      return () => clearTimeout(t);
+    }
+  }, []);
+  const [saltOkunurSecici, setSaltOkunurSecici] = useState(false);
+  React.useEffect(() => {
+    setSaltOkunurSecici(new URLSearchParams(window.location.search).get('salt') === '1');
+  }, []);
   const cagriSayisi = useRef(0);
   const log = kaydet;
 
+  // ⚠ HOOK'LAR GOVDEDE: bunlar eskiden JSX prop'unun ICINDE `useMemo` idi —
+  // grid KOSULLU (`gridHazir &&`) render edilince hook sirasi degisti ve sayfa
+  // "Rendered more hooks than during the previous render" ile COKTU (olculdu,
+  // D11 harness duzeltmesi). Hook her render'da AYNI sirada cagrilmali.
+  // D14 (02.10): ÇAYIROVA = "bu markada yok, baska markada var" (alternatif dal)
+  const markalar = useMemo(() => [{ id: 'b-ayvaz', name: 'AYVAZ' }, { id: 'b-sardogan', name: 'SARDOĞAN' }, { id: 'b-cayirova', name: 'ÇAYIROVA' }], []);
+  const firmalar = useMemo(() => [
+    { id: 'f-yasin', name: 'YASİN USTA', discipline: 'mechanical' as const },
+    { id: 'f-hakan', name: 'HAKAN USTA', discipline: 'mechanical' as const },
+    // D14b (04.10): OZKAN = motor bu kalem icin KAYIT DONDURMEDI → sarmalayici
+    // `null` doner (quotes/new isçilik dali `if (!match) return null`). Sebepsiz
+    // sonuc ancak boyle uretilir; surukle-doldur bayat sebep olcumu icin.
+    { id: 'f-ozkan', name: 'ÖZKAN USTA', discipline: 'mechanical' as const },
+  ], []);
   const data: ExcelGridData = useMemo(() => {
     const sys = {
       _malzKar: 0, _iscKar: 0, _marka: null, _firma: null, _matNetPrice: 0, _merges: {},
@@ -62,10 +125,12 @@ export default function GridTestPage() {
       const c = Object.keys(CAP_FIYAT).sort((x, y) => y.length - x.length).find((k) => ad.includes(k));
       return c ? String(CAP_FIYAT[c]) : '';
     };
-    const satir = (i: number, no: string, ad: string, mik: string, veri = true, baslik = false) => ({
+    const satir = (i: number, no: string, ad: string, mik: string, veri = true, baslik = false,
+      ek: Record<string, unknown> = {}) => ({
       _rowIdx: i, _isDataRow: veri, _isHeaderRow: baslik, ...sys,
       _matBirim: veri && mod === 'library' ? listeFiyati(ad) : '',
       col0: no, col1: ad, col2: mik, col3: veri ? 'mt' : '',
+      ...ek,
     });
     return {
       columnDefs: [
@@ -104,6 +169,34 @@ export default function GridTestPage() {
         // cevaplanmis sayar, kur donunce satiri yeniden fiyatlamazdi).
         // ⚠ SONA eklendi: mevcut satir indeksleri KAYMASIN (tum e2e onlara bagli).
         satir(11, '10', "KURSUZ 10'' Boru", '7'),
+        // ── D3 (30.09): YETIM SATIR AILESI — baslik mirasi olculebilsin ──
+        // Yukaridaki 12 satirin ADI "Boru" iceriyor; `isSelfSufficientRow`
+        // (build-material-context.ts TYPE_WORD_RE) onlari KENDI KENDINE YETERLI
+        // sayiyor ve baslik mirasini HIC eklemiyor. Yani harness, "sorgu
+        // basligi tasiyor mu?" sorusunu bugune kadar AYIRT EDEMIYORDU.
+        // "DN 100" / "DN 150" tip sozcugu tasimaz → baslik GERCEKTEN eklenir
+        // (build-material-context.test.ts:24 ile ayni sinif).
+        // ⚠ SONA eklendi: satir 10 ve 11 baska testlerde SABIT yazili
+        // (grid.spec, isaret-yazimi, secim-duzenleme) — araya girmek onlari
+        // kaydirirdi. KP29'un kimlik assert'i bu yuzden guncellendi; sessiz
+        // kaymayi o kapi yakaladi (tasarlandigi gibi).
+        satir(12, '11', 'Yükselen Milli Vana (OS&Y Valve)', '', false, true),
+        satir(13, '12', 'DN 100', '5'),
+        satir(14, '13', 'DN 150', '3'),
+        // ── D11 (30.09): ISCILIK YETKISI KAPALIYKEN Isc. Kar TUTAMAGI ─────────
+        // Kaynak %25 kar tasir, hedefler %0 kar + 100'luk iscilik birim fiyati.
+        // Kapali yetkide surukleme hedeflere 25 YAZARSA handleCellValueChanged
+        // iscilik birim/toplamini YENIDEN yazar (100 → 125) ve GENEL TOPLAM
+        // sessizce degisir — olculecek para etkisi bu. Degerler FARKLI olmali:
+        // ayni deger yazilsa AG Grid olay ATESMEZ (vakum olcum olurdu).
+        // ⚠ SONA eklendi (satir indeksleri baska testlerde sabit); KP29 kimligi
+        // bu yuzden guncellendi.
+        satir(15, '14', 'KAR KAYNAK Boru', '2', true, false,
+          { _iscKar: 25, _labBirim: '125.0', _labToplam: '250.0', _labNetPrice: 100 }),
+        satir(16, '15', 'KAR HEDEF A Boru', '2', true, false,
+          { _iscKar: 0, _labBirim: '100.0', _labToplam: '200.0' }),
+        satir(17, '16', 'KAR HEDEF B Boru', '2', true, false,
+          { _iscKar: 0, _labBirim: '100.0', _labToplam: '200.0' }),
       ],
       columnRoles: {
         nameField: 'col1', noField: 'col0', quantityField: 'col2', unitField: 'col3',
@@ -121,12 +214,62 @@ export default function GridTestPage() {
     log(`#${cagriSayisi.current} sorgu: satir=${rowIdx} "${materialName.slice(0, 30)}" varyant=[${vt}]`);
 
     // D14 (denetim): ag hatasi simulasyonu — sorgu FIRLATIR (fetch reject esdegeri)
-    if (materialName.includes('HATALI')) { log('AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
+    // D14b (04.10): CAYIROVA HARIC — satira once bir SEBEP yazilabilsin (alternatif
+    // dali), sonra surukleme hatasi o sebebi bayat birakiyor mu olculsun.
+    if (materialName.includes('HATALI') && brandId !== 'b-cayirova') { log('AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
 
     // KUR-01 (29.09): urun VAR ama doviz kuru alinamadi → 'hata' (turuncu)
     if (materialName.includes('KURSUZ')) {
       log('KUR ALINAMADI dondu');
       return { netPrice: 0, confidence: 'none', kurAlinamadi: true, reason: 'Döviz kuru alınamadı.' } as any;
+    }
+
+    // D14 (02.10): ALTERNATIF-MARKA DALI — urun bu markada yok, AYVAZ'da var.
+    // Mock bugune kadar bu cevabi HIC uretmiyordu; dalin isaret yazimi
+    // olculemiyordu. Satir EKLENMEDI (indeksler kaymaz) — yalniz markaya bagli.
+    if (brandId === 'b-cayirova') {
+      log('CAYIROVA: bu markada yok, AYVAZ\'da var');
+      return {
+        netPrice: 0, confidence: 'none', reason: 'Bu markada bu ürün ailesi yok.',
+        alternatives: [{ brandId: 'b-ayvaz', brandName: 'AYVAZ', materialName: 'Çelik boru · siyah', netPrice: 100, listPrice: 100, discount: 0 }],
+      } as any;
+    }
+
+    // Y5 (02.10): BASLIKLI AILE (satir 12-14) FIYATLANIR. Grup varyanti
+    // (`groupVariants[baslik]`) yalniz BASLIK baglami olan satirda kaydedilir;
+    // yukaridaki boru satirlari kendi kendine yeterli (baslik yok), bu yuzden
+    // "grup varyantiyla sorgu" yolu harness'ta HIC surulmuyordu. Ilk secim iki
+    // aday sorar; varyant verilince kendi DN'inin fiyati otomatik doner.
+    if (materialName.includes('Milli Vana')) {
+      const dn = materialName.includes('DN 150') ? 150 : 100;
+      const fiyatDn = dn * 10;
+      if (opts?.variantTags?.length) {
+        return { netPrice: fiyatDn, confidence: 'suggestion', autoVariant: true, matchedName: `OS&Y vana · flanşlı · DN ${dn}` } as any;
+      }
+      return {
+        netPrice: 0, confidence: 'multi',
+        candidates: [
+          aday(`OS&Y vana · flanşlı · DN ${dn}`, 'flanşlı', fiyatDn, ['v:flansli']),
+          aday(`OS&Y vana · yivli · DN ${dn}`, 'yivli', fiyatDn - 100, ['v:yivli']),
+        ],
+        reason: '2 seçenek',
+      } as any;
+    }
+
+    // D1 (30.09): MARKAYA GORE AYRISAN cevap. "Satir A ile fiyatlandi, sonra
+    // B secildi ve B'de urun YOK" senaryosu ancak boyle uretilebilir — mock
+    // bugune kadar yalnizca ADA bakiyordu, marka degistirmek cevabi
+    // degistirmiyordu. SARDOGAN'da 6'' yoktur; diger caplarda normal davranir
+    // (1'' hala aday sorar), boylece 'yok' ve 'belirsiz' dallari ayri olculur.
+    if (brandId === 'b-sardogan' && materialName.includes("6''")) {
+      // D2 (30.09): SARDOGAN bu sorguda YAVAS. Yaris ancak cevaplar FARKLI
+      // HIZDA donerse kurulur — kullanici yavas markayi secip beklemeden
+      // baskasina gecer, hizli olan once biter, sonra yavasin gec cevabi
+      // gelip UZERINE yazar. Sifir gecikmeli taklit iki async adimi tek tike
+      // toplar ve bu sinifi hic uretmez.
+      await new Promise((r) => setTimeout(r, 500));
+      log('SARDOGAN (gec): bu markada 6\'\' YOK');
+      return { netPrice: 0, confidence: 'none', reason: 'Bu markada 6" yok.' } as any;
     }
 
     // K16: 2'' bu markada YOK
@@ -171,6 +314,31 @@ export default function GridTestPage() {
     const vt = opts?.variantTags?.join(',') ?? '-';
     log(`#${cagriSayisi.current} ISC sorgu: satir=${rowIdx} "${laborName.slice(0, 30)}" varyant=[${vt}]`);
     if (laborName.includes('HATALI')) { log('ISC AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
+    if (firmaId === 'f-ozkan') { log('OZKAN: motor kaydi yok (null)'); return null as any; }
+
+    // D2 IKIZI (30.09): HAKAN USTA bu sorguda YAVAS ve FARKLI fiyat doner.
+    // Malzeme tarafindaki SARDOGAN gecikmesinin iscilik karsiligi — yaris
+    // ancak cevaplar hem FARKLI HIZDA hem FARKLI DEGERDE donerse olculebilir
+    // (iki firma ayni fiyati verseydi gec cevabin ezip ezmedigi gorulmezdi).
+    // ⚠ YAVAS FIRMA HAKAN SECILDI, YASİN DEGIL: grid.spec.ts DL testi kaynak
+    // satirda (satir 2 = 6'') YASİN USTA secip 60 bekliyor — yavasligi oraya
+    // koymak o testi kirmizi yapti (olculdu, tam e2e kosumunda yakalandi).
+    if (firmaId === 'f-hakan' && laborName.includes("6''")) {
+      await new Promise((r) => setTimeout(r, 500));
+      log('HAKAN (gec): 6\'\' icin 999');
+      return { netPrice: 999, confidence: 'high', matchedName: 'Kaynak işçiliği · 6"' } as any;
+    }
+
+    // BANT (30.09): YAVAS "bu firmada yok". Hizli cevap bant kusurunu MASKELIYOR
+    // — React, kolon olayinin sayimini durum yazimiyla ayni tike topluyor ve
+    // bant TESADUFEN dogru gorunuyor (olculdu: hizli dalda yesil, 500 ms'lik
+    // dalda bant HIC gorunmedi). Iscilik sayac kapisi ancak bu dalla olculur
+    // (mutant BANT-M2 hizli dalda YASIYORDU).
+    if (firmaId === 'f-hakan' && laborName.includes("2''")) {
+      await new Promise((r) => setTimeout(r, 500));
+      log('HAKAN (gec): bu firmada 2\'\' YOK');
+      return { netPrice: 0, confidence: 'none', reason: 'Bu firmada 2" yok.' } as any;
+    }
     if (laborName.includes("2''")) return { netPrice: 0, confidence: 'none', reason: 'Bu firmada 2" yok.' } as any;
     if (laborName.includes("1''")) {
       return {
@@ -189,8 +357,11 @@ export default function GridTestPage() {
     setAutoVariant(v);
     kaydet(`ANAHTAR → ${v ? 'AÇIK' : 'KAPALI'}`);
   }, []);
-  const onAutoVariantApplied = useCallback(({ applied, waiting, missing, kaynak }: { applied: number; waiting: number; missing: number; kaynak: string }) => {
-    kaydet(`YAYILIM: ${applied} yazıldı · ${waiting} seçim bekliyor · ${missing} yok (kaynak: ${kaynak})`);
+  // Y4 (02.10): `hatali` ve `dal` da loglanir — isçilik doldurma ozeti
+  // d3402cd yeniden yaziminda kaybolmustu ve hata sayisi kullaniciya hic
+  // ulasmiyordu; olcut bu sayilarin GERCEKTEN geldigidir.
+  const onAutoVariantApplied = useCallback(({ applied, waiting, missing, kaynak, hatali, dal }: { applied: number; waiting: number; missing: number; kaynak: string; hatali?: number; dal?: string }) => {
+    kaydet(`YAYILIM: ${applied} yazıldı · ${waiting} seçim bekliyor · ${missing} yok · ${hatali ?? 0} hata (kaynak: ${kaynak}, dal: ${dal ?? '-'})`);
   }, []);
 
   if (process.env.NODE_ENV === 'production') {
@@ -212,17 +383,18 @@ export default function GridTestPage() {
           moda geç
         </button>
       </div>
-      <ExcelGrid
+      {gridHazir && <ExcelGrid
         key={mod}
         data={data}
-        brands={useMemo(() => [{ id: 'b-ayvaz', name: 'AYVAZ' }, { id: 'b-sardogan', name: 'SARDOĞAN' }], [])}
+        brands={markalar}
         onBrandChange={onBrandChange as any}
+        seciciSaltOkunur={saltOkunurSecici}
         autoVariantEnabled={autoVariant}
         onAutoVariantChange={onAutoVariantChange}
         onAutoVariantApplied={onAutoVariantApplied}
         // ISCILIK firma fill testi: laborEnabled + firma listesi + onFirmaChange
-        laborEnabled
-        laborFirms={useMemo(() => [{ id: 'f-yasin', name: 'YASİN USTA', discipline: 'mechanical' as const }, { id: 'f-hakan', name: 'HAKAN USTA', discipline: 'mechanical' as const }], [])}
+        laborEnabled={iscilikAcik}
+        laborFirms={firmalar}
         sheetDiscipline="mechanical"
         onFirmaChange={onFirmaChange as any}
         mode={mod}
@@ -236,7 +408,7 @@ export default function GridTestPage() {
         // olculemiyordu. Sag tik menusunu de acar; hicbir E2E sag tik
         // kullanmiyor (olculdu), mevcut senaryolar etkilenmez.
         enableStructureEdit
-      />
+      />}
       <div style={{ marginTop: 10, fontSize: 11, color: '#64748b' }}>
         Olay logu: konsolda <code>[GridTest]</code> ve <code>window.__olay</code> içinde.
       </div>

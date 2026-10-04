@@ -52,6 +52,8 @@ import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/ozellik/teklif/dwg-tekli
 import { kalemUret } from '@/ozellik/teklif/teklif-kalem';
 import { restoreRematch } from '@/ozellik/teklif/restore-rematch';
 import { TASLAK_ANAHTARI, TASLAK_SURUMU } from '@/ozellik/teklif/taslak';
+// Y4: doldurma ozeti tost metni tek yerde (isçilik "firmada yok").
+import { doldurmaOzetMetni } from '@/ozellik/teklif/doldurma-ozeti';
 import { ceviriUygula, ceviriGeriAl, cevrilmisSatirVarMi } from '@/ozellik/teklif/ceviri';
 import { ceviriAnahtari, duzeltmeyiSatirlaraUygula, satirKaynagi } from '@/ozellik/teklif/ceviri';
 import { duzeltmeHataMetni, duzeltmeKaldir, duzeltmeKaydet, duzeltmeleriGetir, type DuzeltmeGorunumu } from '@/ozellik/teklif/ceviri-duzeltme';
@@ -745,7 +747,25 @@ export default function NewQuotePage() {
             async (url, body) => (await api.post(url, body)).data,
           );
           if (reMatched > 0) {
-            setLiveRowDataBySheet({ ...live });
+            // D8 (30.09): IC DIZILER DE YENI REFERANS OLMALI.
+            // `restoreRematch` fiyati satir NESNELERINE yerinde yaziyor. Eskiden
+            // burada `{ ...live }` vardi: DIS obje yeni, IC DIZI AYNI referans.
+            // ExcelGrid'in alt sabit seridini (GENEL TOPLAM + KAR) tazeleyen tek
+            // efekt `[data.rowData]`a bagli ve ic dizi degismedigi icin KOSMUYORDU
+            // — satirlarda yeni fiyat gorunurken serit mount anindaki fiyatsiz
+            // rakamda donuyordu (olculdu, gercek /quotes/new: satir ₺1.000,
+            // GENEL TOPLAM ₺0,00).
+            // Satir NESNELERI ayni kalir (grid `getRowId` ile tanir, delta
+            // gunceller); yalniz DIZI kimligi yenilenir. Restore aninda acik
+            // editor yoktur (yukleme + 500 ms), editor iptali riski yok.
+            setLiveRowDataBySheet(() => {
+              const yeni: Record<number, ExcelRowData[]> = {};
+              for (const k of Object.keys(live)) {
+                const i = Number(k);
+                yeni[i] = [...live[i]];
+              }
+              return yeni;
+            });
             console.log(`[quotes/new] Re-matched ${reMatched} rows after restore`);
           }
         }, 500);
@@ -755,9 +775,67 @@ export default function NewQuotePage() {
     }
   }, []);
 
+  // D5 (30.09): TASLAGI YAZAN IS, REF'TE DE TUTULUR.
+  //
+  // Asagidaki efekt taslagi yaziyor ama bagimlilik dizisi TAMAMEN REFERANS
+  // TABANLI. ExcelGrid satirlari YERINDE degistiriyor (`node.data[alan] = x`),
+  // dizi referansi DEGISMIYOR → efekt HIC kosmuyor. Kullanici fiyatlari elle
+  // yazar, sekme degistirmez, satir eklemez; sonra F5 atar ve EMEGININ TAMAMI
+  // GIDER (olculdu: gercek /quotes/new sayfasinda elle yazilan 250, yenileme
+  // sonrasi hucrede ve taslakta '' oluyordu).
+  //
+  // ⚠ ICERIK ZATEN DOGRU: satir nesneleri grid ile PAYLASILIYOR, yani efekt
+  // ne zaman kosarsa guncel degerleri serilestirir. Eksik olan yalniz TETIK.
+  //
+  // ⚠ NEDEN YENI BIR STATE/PROP DEGIL: `onRowDataChange` BILEREK verilmiyor
+  // (asagidaki grid yorumu) — her hucre yaziminda parent render ACIK EDITORU
+  // IPTAL EDERDI. Bu yuzden cozum React render'i HIC uretmiyor: ayni yazma isi
+  // bir ref'te tutulur ve sayfa gizlenirken/kapanirken (`pagehide`,
+  // `visibilitychange`) dogrudan cagrilir. F5, sekme kapatma ve sekme degistirme
+  // kapsanir; tarayici cokmesi kapsanmaz (bugun HICBIRI kapsanmiyordu).
+  const taslagiYazRef = useRef<() => void>(() => {});
+
+  // D5: GECIKMELI TASLAK YAZIMI — React render URETMEZ.
+  //
+  // `pagehide`/`beforeunload` TEK BASINA YETMEDI: olaylar ATESLENIYOR (olculdu:
+  // tarayicida bagimsiz dinleyici ikisini de gordu) ama o anda yapilan
+  // sessionStorage yazimi yenilemede TUTMADI — taslak bos kaldi. Bu yuzden asil
+  // yol gecikmeli yazim: grid "para yazildi" deyince, son yazimdan 600 ms sonra
+  // taslak bir kez yazilir. setState YOK, yani acik editor IPTAL EDILMEZ
+  // (`onRowDataChange`in bilerek verilmeme gerekcesi korunur).
+  const taslakZamanlayiciRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const taslagiGecikmeliYaz = useCallback(() => {
+    if (taslakZamanlayiciRef.current) clearTimeout(taslakZamanlayiciRef.current);
+    taslakZamanlayiciRef.current = setTimeout(() => taslagiYazRef.current(), 600);
+  }, []);
+  useEffect(() => () => {
+    if (taslakZamanlayiciRef.current) clearTimeout(taslakZamanlayiciRef.current);
+  }, []);
+
+  useEffect(() => {
+    const yaz = () => taslagiYazRef.current();
+    const gizlenince = () => { if (document.visibilityState === 'hidden') yaz(); };
+    // ⚠ UC OLAY DA GEREKLI — OLCULDU:
+    // `pagehide` tek basina YETMEDI: tarayici YENILEMESINDE (F5) atesmedi,
+    // taslak bos kaldi ve test kirmizi yandi. `beforeunload` yenilemede ve
+    // sekme kapatmada atesler. `visibilitychange` ise mobil/arka plana alma
+    // halini kapsar (orada `beforeunload` cogu tarayicida CALISMAZ).
+    // Hicbiri `preventDefault`/`returnValue` yazmiyor — "siteden ayrilmak
+    // istediginize emin misiniz?" uyarisi CIKMAZ.
+    window.addEventListener('beforeunload', yaz);
+    window.addEventListener('pagehide', yaz);
+    document.addEventListener('visibilitychange', gizlenince);
+    return () => {
+      window.removeEventListener('beforeunload', yaz);
+      window.removeEventListener('pagehide', yaz);
+      document.removeEventListener('visibilitychange', gizlenince);
+    };
+  }, []);
+
   // Save: onemli state degisimlerinde sessionStorage'a yaz
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const yaz = () => {
     if (!multiSheet) {
       sessionStorage.removeItem(DRAFT_KEY);
       return;
@@ -794,6 +872,13 @@ export default function NewQuotePage() {
       sessionStorage.removeItem(DRAFT_KEY);
       console.warn('[quotes/new] Draft save failed, eski draft temizlendi:', e);
     }
+    };
+    // D5: AYNI is `pagehide`/`visibilitychange` icin de erisilebilir olmali —
+    // yerinde (in-place) hucre yazimlari bu efekti TETIKLEMEZ, sayfa gizlenirken
+    // son hali yazan tek yol budur. Ref React render'i URETMEZ, yani acik
+    // editor iptal edilmez (`onRowDataChange`in bilerek verilmeme gerekcesi).
+    taslagiYazRef.current = yaz;
+    yaz();
     // ⚠ `revizyonId` bagimliliga DAHIL: eksik olsaydi bu efekt kimlik
     // set edilmeden once kapanan closure'i tasir, taslaga `undefined` yazar
     // ve revizyon SESSIZCE kopyaya donerdi.
@@ -2002,13 +2087,11 @@ export default function NewQuotePage() {
           // PRD v3.0 A2: "kat" isaretli sutunlar → MIK = katlarin satir-toplami
           floorFields={activeFloorFields}
           // §3: yayilim bilgisi — "n satır güncellendi"
-          onAutoVariantApplied={({ applied, waiting, missing, hatali }) => {
-            const parca: string[] = [];
-            if (applied > 0) parca.push(`${applied} satır güncellendi`);
-            if (waiting > 0) parca.push(`${waiting} seçim bekliyor`);
-            if (missing > 0) parca.push(`${missing} markada yok`);
-            if ((hatali ?? 0) > 0) parca.push(`${hatali} sorgu hatası — tekrar deneyin`);
-            if (parca.length > 0) toast({ title: '⚡ Otomatik varyant atama', description: parca.join(' · ') });
+          // Y4 (02.10): metin saf yardimcidan — isçilik doldurma ozeti geri geldi
+          // ve eksikleri "markada yok" diye yazmak yanlis yonlendirirdi.
+          onAutoVariantApplied={(ozet) => {
+            const aciklama = doldurmaOzetMetni(ozet);
+            if (aciklama) toast({ title: '⚡ Otomatik varyant atama', description: aciklama });
           }}
           // Excel-vari "en altta hep bos satir" — DWG metraj grid'inde aktif
           // (Excel yolunda backend kolonlari cok genis, davranis degismesin)
@@ -2024,6 +2107,8 @@ export default function NewQuotePage() {
           // siliyordu). Grid'in guncel listesi yazilir → kayit + taslak gorur.
           // `onRowDataChange` BILEREK verilmiyor: her hucre yaziminda parent
           // render acik editoru iptal ederdi; bu kanca yalniz yapisal olayda.
+          // D5: "para yazildi" sinyali — payload YOK, setState YOK.
+          onFiyatYazildi={taslagiGecikmeliYaz}
           onStructureChange={(rows) => {
             setLiveRowDataBySheet((prev) => ({ ...prev, [activeSheetKey]: rows }));
           }}

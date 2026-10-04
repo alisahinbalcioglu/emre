@@ -92,3 +92,25 @@ describe('etkinMiktar (UY2)', () => {
     expect(etkinMiktar({ col4: 'mt', col5: 'ad' }, 'col4', 'col5')).toBe(0);
   });
 });
+
+/**
+ * Y2 (30.09, P2) — KALEM BIRIM FIYATI ("Toplam Birim Fiyat" hucresi) TEK KURAL.
+ * `recalcGrand` (etkilesimli yol) bu hucreyi `yukariYuvarla(mat+lab).toFixed(1)`
+ * ile yaziyordu; surukle-doldur ve geri yukleme HIC yazmiyordu. Ayni kural uc
+ * yerde yasamasin diye pricing'e alindi.
+ */
+describe('kalemBirimFiyatMetni — Toplam Birim Fiyat hucresi', () => {
+  it('★ malzeme + iscilik birim fiyati, 1 haneye YUKARI', async () => {
+    const { kalemBirimFiyatMetni } = await import('../ozellik/fiyat/pricing');
+    expect(kalemBirimFiyatMetni(100, 50)).toBe('150.0');
+    expect(kalemBirimFiyatMetni(99.95, 0.1)).toBe('100.1'); // 100.05 → yukari
+  });
+  it('★ ikisi de 0 → BOS metin (recalcGrand ile ayni: 0 yazilmaz)', async () => {
+    const { kalemBirimFiyatMetni } = await import('../ozellik/fiyat/pricing');
+    expect(kalemBirimFiyatMetni(0, 0)).toBe('');
+  });
+  it('tek taraf: yalniz iscilik', async () => {
+    const { kalemBirimFiyatMetni } = await import('../ozellik/fiyat/pricing');
+    expect(kalemBirimFiyatMetni(0, 80)).toBe('80.0');
+  });
+});

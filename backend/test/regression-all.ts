@@ -175,6 +175,8 @@ const SUITES: Suite[] = [
   //    FE satira yazar → teklif JSON'uyla donar. TRY'de ve kur metaverisi
   //    olmayan ceviricide alan HIC uretilmez (uydurma kur yasak).
   { ad: 'Kur donması (kaynakKur sözleşmesi)', script: 'test:kur', zincir: 'Z2' },
+  // 04.10.2026: coklu para birimi F1 — eslestirme cevabi KAYNAK para biriminde net/liste/iskonto tasir.
+  { ad: 'Kaynak fiyat (çoklu para birimi F1)', script: 'test:kaynak-fiyat', zincir: 'Z2' },
   // ── 14.09.2026 (tur 3 A3): KUR-02 YAZMA YOLLARI. Alti yazma ucunun hicbiri
   //    400 donmuyordu ('EURO', '$', 'GBP', 'xyz' 201 ile ham); admin onizlemesi
   //    Para Birimi kolonundaki GBP'yi TRY yapiyordu. Tanınmayan kod gerekceli
@@ -356,6 +358,12 @@ const SUITES: Suite[] = [
   //    seviyesi doğrulanır. B6 idempotensi ölçer (aynı SQL iki kez).
   //    KIRMIZIYA DÖNERSE DEPLOY KIRILIR — bu paket deploy'un ön provasıdır.
   { ad: 'Migration zinciri + backfill sözü (Z1-Z3/B1-B6)', script: 'test:migration', zincir: 'Z0' },
+  // ── 30.09.2026 — TEKLİF NO (ekip/yetki A bloğu). DB GEREKTİRMEZ: firma başına
+  //    danışma kilidi sahte DB'de muteksle taklit edilir (30 ms gecikme,
+  //    tekillik kısıtı taklitte de var); eş zamanlı iki ilk çıktı farklı numara,
+  //    ortadan silme var olan numarayı tekrarlatmaz, yıl öneki, R1-B6 korunur.
+  //    Şema kısıtının kendisi `test:migration` TN bloğunda (PGlite).
+  { ad: 'Teklif no: kilitli atama + firma içi tekillik (S/K/B/E)', script: 'test:teklif-no', zincir: 'Z0' },
   // ── 28.08.2026 — ERİŞİM KAPISI (K/L/W). DB GEREKTİRMEZ: karar matrisi saf
   //    fonksiyonla, uç kablolaması dekoratör metadata'sıyla ölçülür.
   //    ADIM 2'nin ürün sözü tek cümledir: "veriyi göstermeye devam et, DEĞER
@@ -957,6 +965,24 @@ const SUITES: Suite[] = [
   // denetimi AYNI işlemde (geri alma gerçek), kurtarmada "ekip düşürdü"
   // e-postası YOK, eski uçlar kaldırıldı. DB/AĞ/iyzico GEREKTİRMEZ.
   { ad: 'Yönetici paket işlemleri: karar · düşürme · panel · bağlantı (K/D/P/B)', script: 'test:yonetici-paket', zincir: 'Z0' },
+  // ── 30.09.2026 — PAKET 1 KİRACI SINIRI (eşleştirme denetimi C2·C1·C4·C5).
+  //    Kiracının yüklediği işçilik kalemi ona ait (GET /labor'da başkasına
+  //    görünmez, yönetici ekranına düşmez); ad değişikliği yalnız o satırın
+  //    bağını taşır (ortak kalem yerinde adlanmaz); ortak sözlük kaydını yalnız
+  //    yönetici kapatır; yeniden indeksleme sahipli ürünü ortak sözlüğe
+  //    öğretmez; kiracının yeniden indekslemesi ortak kaleme yazmaz. GERÇEK
+  //    denetleyiciler HTTP üzerinden; veri `yardimci/bellek-prisma.ts`
+  //    (sorgu koşulları Prisma anlamıyla). Her blokta eşleştirme BAĞLANTISI.
+  //    DB/AĞ GEREKTİRMEZ.
+  { ad: 'Kiracı sınırı: işçilik kalemi · ad değişikliği · ortak sözlük · yeniden indeksleme (K2/K1/K4/K5/KB)', script: 'test:kiraci-siniri', zincir: 'Z0' },
+  // ── 01.10.2026 — PAKET 4a GÖVDE DOĞRULAMA (eşleştirme denetimi C11 + P1
+  //    malzeme ikizi). Eşleştirme uçlarının (bulk-match, remember) gövdesi
+  //    sınıf DTO ile doğrulanır (biçimsiz gövde 400, servise ulaşmaz; geçerli
+  //    gövde alanlarıyla ulaşır); malzeme kütüphanesi ızgara kaydı satır
+  //    hatasında ham metin döndürmez, istek başına tek günlük satırı yazar,
+  //    biçimsiz kimliği DB'ye göndermez. GERÇEK denetleyiciler HTTP üzerinden,
+  //    ValidationPipe main.ts ile aynı. DB/AĞ GEREKTİRMEZ.
+  { ad: 'Gövde doğrulama: eşleştirme uçları DTO · kütüphane ızgara kaydı satır hataları (G/S)', script: 'test:govde-dogrulama', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

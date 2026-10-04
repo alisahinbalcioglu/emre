@@ -140,7 +140,9 @@ function servis(sheets: any[], ek: { displayCurrency?: string; fx?: any; firma?:
   };
   const prisma: any = {
     $transaction: async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma)),
-    quote: { findFirst: async () => quote, count: async () => 0, update: async ({ data }: any) => Object.assign(quote, data) },
+    // Teklif no kilitli atanir (teklif-no.ts): danisma kilidi + onekli numaralar.
+    $queryRaw: async () => [{ kilit: '' }],
+    quote: { findFirst: async () => quote, findMany: async () => [], count: async () => 0, update: async ({ data }: any) => Object.assign(quote, data) },
     quoteFormat: { findFirst: async () => null }, // → yerlesik ornek format (T8)
     quoteExport: { create: async () => ({}) },
     firma: { findUnique: async () => ek.firma ?? null },

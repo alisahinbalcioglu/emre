@@ -450,6 +450,9 @@ async function main() {
   await k1DonmusOzelFiyat(db, klasorler);
   await denemeHakkiDoldurmasi(db, klasorler);
   await mirasHakkiDoldurmasi(db, klasorler);
+  await iscilikKalemiSahipligi(db, klasorler);
+  await teklifNoTekilligi(db, klasorler);
+  await iscilikListeCascade(db, klasorler);
 
   await db.close();
 
@@ -898,6 +901,229 @@ async function mirasHakkiDoldurmasi(db: PGlite, klasorler: string[]): Promise<vo
   check('MH5-OLCUT örnek kümede önekli DA öneksiz de var', kodlar.some((r) => r.sql) && kodlar.some((r) => !r.sql), JSON.stringify(kodlar));
   check(`MH5 ⭐ ${kodlar.length} paket kodunda SQL öneki = mirasPaketiMi (büyük harf · yalın önek · tiresiz dahil)`,
     farklar.length === 0, farklar.join(' | '));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  IK — İŞÇİLİK KALEMİ SAHİPLİĞİ GERİYE DÖNÜK DOLDURMA (göç 20260930100000)
+//    Kiracı yüklemesinin açtığı kalem (fiyatlarının HEPSİ tek kiracıda, kalem
+//    o kiracının İLK fiyatıyla ≤120 sn içinde oluşmuş) o kiracıya yazılır,
+//    `isGlobal` false olur. Katalog (fiyatsız), sonradan bağlanmış, çok
+//    kiracılı ve kiracısız işçilik firmasına bağlı kalem KATALOGDA kalır.
+//    Doldurma bloğu DOSYADAN okunup fikstürde yeniden koşulur: dolu sahip
+//    EZİLMEZ, satır SİLİNMEZ, ikinci koşum değiştirmez; 120 sn sınırı iki
+//    yönden sabitlenir.
+// ═════════════════════════════════════════════════════════════════════════
+async function iscilikKalemiSahipligi(db: PGlite, klasorler: string[]): Promise<void> {
+  console.log('\n── IK · İŞÇİLİK KALEMİ SAHİPLİĞİ GERİYE DÖNÜK DOLDURMA ──');
+  const klasor = klasorler.find((k) => k.includes('iscilik_kalemi_sahipligi'));
+  check('IK-OLCUT sahiplik göçü zincirde', !!klasor, JSON.stringify(klasorler.slice(-2)));
+  if (!klasor) return;
+  const tamSql = fs.readFileSync(path.join(MIGRATIONS, klasor, 'migration.sql'), 'utf8');
+  const ayrac = '-- ═══ GERIYE DONUK DOLDURMA (kiraci kalemleri)';
+  check('IK-OLCUT doldurma bloğu dosyada bulundu', tamSql.includes(ayrac));
+  const doldurma = tamSql.slice(tamSql.indexOf(ayrac));
+
+  const sutun = await db.query<{ is_nullable: string; column_default: string | null }>(
+    `SELECT is_nullable, column_default FROM information_schema.columns WHERE table_name = 'LaborItem' AND column_name = 'ownerFirmaId'`,
+  );
+  check('IK0 sütun var, NULL olabilir, varsayılanı yok (NULL = katalog)',
+    sutun.rows.length === 1 && sutun.rows[0].is_nullable === 'YES' && sutun.rows[0].column_default === null, JSON.stringify(sutun.rows));
+  const indeks = await db.query(`SELECT 1 FROM pg_indexes WHERE tablename = 'LaborItem' AND indexname = 'LaborItem_ownerFirmaId_idx'`);
+  check('IK0b sahip sütununda indeks var (kiracı listesi süzgeci)', indeks.rows.length === 1);
+
+  const T0 = '2026-09-01 10:00:00';
+  const t = (ek: string) => `timestamp '${T0}' + interval '${ek}'`;
+  await db.exec(`
+    INSERT INTO "Firma" ("id","ad") VALUES ('ik-A','IK A'), ('ik-B','IK B');
+    INSERT INTO "User" ("id","email","password","firmaId") VALUES
+      ('ik-ua','ika@x.com','h','ik-A'), ('ik-ub','ikb@x.com','h','ik-B'), ('ik-u0','ik0@x.com','h',NULL);
+    INSERT INTO "LaborFirm" ("id","name","discipline","userId","firmaId") VALUES
+      ('ik-lfa1','A1','mechanical','ik-ua','ik-A'), ('ik-lfa2','A2','mechanical','ik-ua','ik-A'),
+      ('ik-lfb','B1','mechanical','ik-ub','ik-B'), ('ik-lf0','Kiracisiz','mechanical','ik-u0',NULL);
+    INSERT INTO "LaborPriceList" ("id","name","firmaId") VALUES
+      ('ik-pla1','L','ik-lfa1'), ('ik-pla2','L','ik-lfa2'), ('ik-plb','L','ik-lfb'), ('ik-pl0','L','ik-lf0');
+    INSERT INTO "LaborItem" ("id","name","unitPrice","discipline","createdAt","updatedAt","ownerFirmaId") VALUES
+      ('ik-t1','Yukleme kalemi',777,'mechanical','${T0}',now(),NULL),
+      ('ik-t2','Iki iscilik firmasi',210,'mechanical','${T0}',now(),NULL),
+      ('ik-k1','Katalog fiyatsiz',50,'mechanical',${t('-30 days')},now(),NULL),
+      ('ik-k2','Katalog sonradan bagli',50,'mechanical',${t('-30 days')},now(),NULL),
+      ('ik-s1','Iki kiracida',100,'mechanical','${T0}',now(),NULL),
+      ('ik-n1','Kiracisiz firmada',30,'mechanical','${T0}',now(),NULL),
+      ('ik-n2','Kiraci + kiracisiz',30,'mechanical','${T0}',now(),NULL),
+      ('ik-o1','Sahibi dolu',40,'mechanical','${T0}',now(),'ik-B'),
+      ('ik-b120','Sinir 120',60,'mechanical','${T0}',now(),NULL),
+      ('ik-b121','Sinir 121',61,'mechanical','${T0}',now(),NULL);
+    INSERT INTO "LaborPrice" ("id","laborItemId","firmaId","priceListId","unitPrice","createdAt") VALUES
+      ('ik-p1','ik-t1','ik-lfa1','ik-pla1',777,${t('200 milliseconds')}),
+      ('ik-p2a','ik-t2','ik-lfa1','ik-pla1',200,${t('1 second')}),
+      ('ik-p2b','ik-t2','ik-lfa2','ik-pla2',210,${t('5 days')}),
+      ('ik-pk2','ik-k2','ik-lfa1','ik-pla1',85,'${T0}'),
+      ('ik-ps1a','ik-s1','ik-lfa1','ik-pla1',100,${t('100 milliseconds')}),
+      ('ik-ps1b','ik-s1','ik-lfb','ik-plb',120,${t('2 days')}),
+      ('ik-pn1','ik-n1','ik-lf0','ik-pl0',30,${t('300 milliseconds')}),
+      ('ik-pn2a','ik-n2','ik-lfa1','ik-pla1',30,${t('100 milliseconds')}),
+      ('ik-pn2b','ik-n2','ik-lf0','ik-pl0',31,${t('1 day')}),
+      ('ik-po1','ik-o1','ik-lfa1','ik-pla1',40,${t('100 milliseconds')}),
+      ('ik-pb120','ik-b120','ik-lfa1','ik-pla1',60,${t('120 seconds')}),
+      ('ik-pb121','ik-b121','ik-lfa1','ik-pla1',61,${t('121 seconds')});
+  `);
+  const sayim = async () => (await db.query<{ k: number; f: number }>(
+    `SELECT (SELECT count(*) FROM "LaborItem")::int AS k, (SELECT count(*) FROM "LaborPrice")::int AS f`,
+  )).rows[0];
+  const once = await sayim();
+
+  await db.exec(doldurma);
+
+  const durum = async () => Object.fromEntries((await db.query<{ id: string; ownerFirmaId: string | null; isGlobal: boolean }>(
+    `SELECT "id","ownerFirmaId","isGlobal" FROM "LaborItem" WHERE "id" LIKE 'ik-%' ORDER BY "id"`,
+  )).rows.map((r) => [r.id, `${r.ownerFirmaId ?? '-'}|${r.isGlobal}`]));
+  const d = await durum();
+  check('IK1 ⭐ yüklemenin açtığı kalem kiracıya yazıldı, isGlobal=false', d['ik-t1'] === 'ik-A|false', JSON.stringify(d));
+  check('IK2 aynı kiracının İKİ işçilik firmasındaki kalem de kiracının (kiracı = Firma, işçilik firması değil)',
+    d['ik-t2'] === 'ik-A|false', JSON.stringify(d));
+  check('IK3 ⭐ yönetici kataloğu DEĞİŞMEDİ (fiyatsız + sonradan bağlanmış)',
+    d['ik-k1'] === '-|true' && d['ik-k2'] === '-|true', JSON.stringify(d));
+  check('IK4 iki kiracıya bağlı kalem katalogda kaldı (sahip tahmin edilmez)', d['ik-s1'] === '-|true', JSON.stringify(d));
+  check('IK5 kiracısız işçilik firmasına bağlı kalem katalogda kaldı (tek başına ya da karışık)',
+    d['ik-n1'] === '-|true' && d['ik-n2'] === '-|true', JSON.stringify(d));
+  check('IK6 dolu sahip EZİLMEDİ', d['ik-o1'] === 'ik-B|true', JSON.stringify(d));
+  check('IK7 120 sn sınırı: 120 sn → kiracı · 121 sn → katalog', d['ik-b120'] === 'ik-A|false' && d['ik-b121'] === '-|true', JSON.stringify(d));
+  const sonra = await sayim();
+  check('IK8 SİLME YOK: kalem ve fiyat satırı sayısı aynı', sonra.k === once.k && sonra.f === once.f,
+    `${JSON.stringify(once)} → ${JSON.stringify(sonra)}`);
+  const ilk = JSON.stringify(await durum());
+  await db.exec(doldurma);
+  check('IK9 IDEMPOTENT: ikinci koşum hiçbir satırı değiştirmedi', JSON.stringify(await durum()) === ilk);
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  TN — TEKLİF NO TEKİLLİĞİ (göç 20260930180000)
+//    `@@unique([firmaId, quoteNo])`: aynı firmada aynı numara İKİNCİ kez
+//    yazılamaz; başka firmada aynı numara serbest; NULL numara (hiç dışa
+//    aktarılmamış teklif) sınırsız. Göç P1'in göçünden SONRA sıralanır
+//    (Prisma ad sırasıyla uygular).
+// ═════════════════════════════════════════════════════════════════════════
+async function teklifNoTekilligi(db: PGlite, klasorler: string[]): Promise<void> {
+  console.log('\n── TN · TEKLİF NO TEKİLLİĞİ ──');
+  const klasor = klasorler.find((k) => k.endsWith('_teklif_no_tekilligi'));
+  check('TN-OLCUT teklif no göçü zincirde', !!klasor, JSON.stringify(klasorler.slice(-2)));
+  if (!klasor) return;
+  const p1 = klasorler.find((k) => k.includes('iscilik_kalemi_sahipligi'));
+  check('TN-OLCUT göç P1\'in göçünden SONRA sıralanıyor (ad sırası = uygulama sırası)',
+    !!p1 && klasorler.indexOf(klasor) > klasorler.indexOf(p1), `${p1} · ${klasor}`);
+
+  const indeks = await db.query<{ indexdef: string }>(
+    `SELECT indexdef FROM pg_indexes WHERE tablename = 'Quote' AND indexname = 'Quote_firmaId_quoteNo_key'`,
+  );
+  check('TN0 tekil indeks var: (firmaId, quoteNo)',
+    indeks.rows.length === 1 && /UNIQUE/.test(indeks.rows[0].indexdef) && /"firmaId", "quoteNo"/.test(indeks.rows[0].indexdef),
+    JSON.stringify(indeks.rows));
+
+  await db.exec(`
+    INSERT INTO "Firma" ("id","ad") VALUES ('tn-A','TN A'), ('tn-B','TN B');
+    INSERT INTO "User" ("id","email","password","firmaId") VALUES
+      ('tn-ua','tna@x.com','h','tn-A'), ('tn-ub','tnb@x.com','h','tn-B');
+    INSERT INTO "Quote" ("id","userId","firmaId","quoteNo") VALUES
+      ('tn-q1','tn-ua','tn-A','MP-2026-001');
+  `);
+  const yaz = async (sql: string): Promise<string | null> => {
+    try {
+      await db.exec(sql);
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+  };
+  const ayniFirma = await yaz(`INSERT INTO "Quote" ("id","userId","firmaId","quoteNo") VALUES ('tn-q2','tn-ua','tn-A','MP-2026-001')`);
+  check('TN1 ⭐ aynı firmada aynı numara İKİNCİ kez yazılamaz', !!ayniFirma && /unique|duplicate/i.test(ayniFirma), String(ayniFirma));
+  const baskaFirma = await yaz(`INSERT INTO "Quote" ("id","userId","firmaId","quoteNo") VALUES ('tn-q3','tn-ub','tn-B','MP-2026-001')`);
+  check('TN2 başka firmada aynı numara serbest (sayaç firma başına)', baskaFirma === null, String(baskaFirma));
+  const numarasiz = await yaz(`INSERT INTO "Quote" ("id","userId","firmaId") VALUES ('tn-q4','tn-ua','tn-A'), ('tn-q5','tn-ua','tn-A')`);
+  check('TN3 numarasız (NULL) teklif aynı firmada birden çok olabilir', numarasiz === null, String(numarasiz));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  LC — İŞÇİLİK FİYAT LİSTESİ SİLİNİNCE FİYATLARI DA GİDER (göç *_iscilik_liste_silme_cascade)
+//    `LaborPrice.priceList` `SetNull → Cascade` (L3/S1, 04.10.2026). Eskiden
+//    liste silinince satırlar priceListId=NULL kalıyor, eşleştirme (`firmaId`
+//    ile çeker) SİLİNEN LİSTENİN FİYATINI kullanmaya devam ediyordu; kod
+//    düzeyinde ayrı silme ise eşzamanlı yazımla yarışırdı. DB tek ifadede siler.
+// ═════════════════════════════════════════════════════════════════════════
+async function iscilikListeCascade(db: PGlite, klasorler: string[]): Promise<void> {
+  console.log('\n── LC · İŞÇİLİK FİYAT LİSTESİ SİLİNİNCE FİYATLARI DA GİDER ──');
+  const klasor = klasorler.find((k) => k.endsWith('_iscilik_liste_silme_cascade'));
+  check('LC-OLCUT liste silme göçü zincirde', !!klasor, JSON.stringify(klasorler.slice(-3)));
+  if (!klasor) return;
+  const tn = klasorler.find((k) => k.endsWith('_teklif_no_tekilligi'));
+  check('LC-OLCUT göç teklif no göçünden SONRA sıralanıyor (ad sırası = uygulama sırası)',
+    !!tn && klasorler.indexOf(klasor) > klasorler.indexOf(tn), `${tn} · ${klasor}`);
+  const sql = fs.readFileSync(path.join(MIGRATIONS, klasor, 'migration.sql'), 'utf8');
+  check('LC-OLCUT göç dosyasında GERİ ALMA satırı var (SET NULL dönüşü, yorum olarak)',
+    /^--.*GERI ALMA/m.test(sql) && /^--.*ON DELETE SET NULL/m.test(sql), sql.slice(0, 300));
+
+  const fk = await db.query<{ confdeltype: string }>(
+    `SELECT confdeltype FROM pg_constraint WHERE conname = 'LaborPrice_priceListId_fkey'`,
+  );
+  check('LC0 ⭐ yabancı anahtar silmede CASCADE (confdeltype c)', fk.rows[0]?.confdeltype === 'c', JSON.stringify(fk.rows));
+  // Aynı sütunda ikinci (eski adlı SET NULL) bir FK kalsaydı tetikleyiciler ad
+  // sırasıyla koşar ve CASCADE sessizce etkisiz kalabilirdi (DB incelemesi).
+  const fkTum = await db.query<{ conname: string; confupdtype: string }>(
+    `SELECT conname, confupdtype FROM pg_constraint
+      WHERE conrelid = '"LaborPrice"'::regclass AND contype = 'f' AND pg_get_constraintdef(oid) LIKE '%"priceListId"%'`,
+  );
+  check('LC0b priceListId üzerinde TEK yabancı anahtar, güncellemede de CASCADE (confupdtype c)',
+    fkTum.rows.length === 1 && fkTum.rows[0].conname === 'LaborPrice_priceListId_fkey' && fkTum.rows[0].confupdtype === 'c',
+    JSON.stringify(fkTum.rows));
+  // SQL METNİ SABİT: göç `prisma migrate diff` çıktısıyla BİREBİR olmalı (drift
+  // olmasın) — yalnız yorum dışı satırlar karşılaştırılır.
+  const govde = sql.split('\n').filter((l) => l.trim() && !l.trim().startsWith('--')).join('\n');
+  check('LC-SQL göçün yorum dışı SQL metni migrate diff çıktısıyla BİREBİR (yalnız FK değişikliği)',
+    govde === [
+      'ALTER TABLE "LaborPrice" DROP CONSTRAINT "LaborPrice_priceListId_fkey";',
+      'ALTER TABLE "LaborPrice" ADD CONSTRAINT "LaborPrice_priceListId_fkey" FOREIGN KEY ("priceListId") REFERENCES "LaborPriceList"("id") ON DELETE CASCADE ON UPDATE CASCADE;',
+    ].join('\n'),
+    govde);
+  // GERİ ALMA satırları gerçekten çalışır mı: işlem içinde koş, SET NULL'a
+  // döndüğünü ölç, işlemi geri al (aşağıdaki LC1/LC2 CASCADE ile koşar).
+  const geriAlma = sql.split('\n').filter((l) => /^--\s+ALTER TABLE/.test(l)).map((l) => l.replace(/^--\s+/, '')).join('\n');
+  let geriAlmaSonucu = '';
+  await db.exec('BEGIN');
+  try {
+    await db.exec(geriAlma);
+    geriAlmaSonucu = (await db.query<{ confdeltype: string }>(
+      `SELECT confdeltype FROM pg_constraint WHERE conname = 'LaborPrice_priceListId_fkey'`,
+    )).rows[0]?.confdeltype ?? 'yok';
+  } catch (e) {
+    geriAlmaSonucu = `HATA: ${e instanceof Error ? e.message : String(e)}`;
+  } finally {
+    await db.exec('ROLLBACK');
+  }
+  const geriAlmaSonrasi = (await db.query<{ confdeltype: string }>(
+    `SELECT confdeltype FROM pg_constraint WHERE conname = 'LaborPrice_priceListId_fkey'`,
+  )).rows[0]?.confdeltype;
+  check('LC-GERI dosyadaki GERİ ALMA satırları çalışır (işlem içinde SET NULL = n), işlem geri alınınca CASCADE kalır',
+    geriAlma.split('\n').length === 2 && geriAlmaSonucu === 'n' && geriAlmaSonrasi === 'c',
+    `satir=${geriAlma.split('\n').length} islemde=${geriAlmaSonucu} sonra=${geriAlmaSonrasi}`);
+
+  await db.exec(`
+    INSERT INTO "Firma" ("id","ad") VALUES ('lc-F','LC');
+    INSERT INTO "User" ("id","email","password","firmaId") VALUES ('lc-u','lc@x.com','h','lc-F');
+    INSERT INTO "LaborFirm" ("id","name","discipline","userId","firmaId") VALUES ('lc-LF','Usta LC','mechanical','lc-u','lc-F');
+    INSERT INTO "LaborItem" ("id","name","unitPrice","discipline","updatedAt") VALUES
+      ('lc-i1','Vana montajı DN50',100,'mechanical',NOW()), ('lc-i2','Boru montajı DN25',50,'mechanical',NOW());
+    INSERT INTO "LaborPriceList" ("id","name","firmaId") VALUES ('lc-L1','Liste 1','lc-LF'), ('lc-L2','Liste 2','lc-LF');
+    INSERT INTO "LaborPrice" ("id","laborItemId","firmaId","priceListId","unitPrice") VALUES
+      ('lc-p1','lc-i1','lc-LF','lc-L1',777), ('lc-p2','lc-i1','lc-LF','lc-L2',800), ('lc-p3','lc-i2','lc-LF','lc-L2',50);
+  `);
+  await db.exec(`DELETE FROM "LaborPriceList" WHERE id = 'lc-L1'`);
+  const kalan = await db.query<{ id: string; priceListId: string | null }>(
+    `SELECT id, "priceListId" FROM "LaborPrice" WHERE id LIKE 'lc-%' ORDER BY id`,
+  );
+  check('LC1 ⭐ liste silinince ONUN satırı da gider (listesiz NULL satır kalmaz)',
+    !kalan.rows.some((r) => r.id === 'lc-p1') && !kalan.rows.some((r) => r.priceListId === null), JSON.stringify(kalan.rows));
+  check('LC2 başka listenin satırları duruyor (kapsam yalnız silinen liste)',
+    JSON.stringify(kalan.rows) === JSON.stringify([{ id: 'lc-p2', priceListId: 'lc-L2' }, { id: 'lc-p3', priceListId: 'lc-L2' }]),
+    JSON.stringify(kalan.rows));
 }
 
 bitmezseKirmizi(main().catch((e) => {

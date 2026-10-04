@@ -34,6 +34,30 @@ export function gosterimParaBirimi(secili: Currency, ratesLoaded: boolean): Curr
   return ratesLoaded ? secili : 'TRY';
 }
 
+/** `GET /exchange-rates` yanitinin gosterimde okunan alanlari. */
+export interface KurYaniti {
+  usdTry: number;
+  eurTry: number;
+  /** Backend `kurGecerli` karari (C10); eski backend gondermez. */
+  gecerli?: boolean;
+}
+
+/**
+ * KUR KULLANILABILIR MI — kanca (`use-currency.ts`) ve ust cubuk kur kutusu
+ * (`app/(protected)/layout.tsx`) AYNI kurali cagirir.
+ *
+ * ⚠ C10 (Paket 4a, 01.10.2026 — Emre karari): 5 is gununden eski kur
+ * GECERSIZDIR; karar backend'in `kurGecerli` kuralidir ve yanitta `gecerli`
+ * alaniyla gelir — esik burada TUTULMAZ. Gecersizken eslestirme doviz satirina
+ * fiyat yazmaz, teklif ciktisi TL iner; ekran da TL gosterir (inceleme: bayat
+ * kurla "ekran $, dosya ₺"). Alan yoksa (eski backend) yalniz KUR-01 denetimi:
+ * kur > 1 (1:1 geri dusus kullanilmaz).
+ */
+export function kurKullanilabilir(r: Partial<KurYaniti> | null | undefined): r is KurYaniti {
+  return !!r && typeof r.usdTry === 'number' && r.usdTry > 1 &&
+    typeof r.eurTry === 'number' && r.eurTry > 1 && r.gecerli !== false;
+}
+
 /** TRY → hedef para birimi carpani. Kur tablosu USD-bazlidir (TRY = TL/USD, EUR = EUR/USD). */
 export function donusumCarpani(hedef: Currency, rates: ExchangeRates): number {
   if (hedef === 'TRY') return 1;

@@ -25,6 +25,7 @@
  */
 import { LaborFirmsService } from '../src/ozellik/kutuphane/labor-firms/labor-firms.service';
 import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
+import { sahiplikSorgusu } from './yardimci/sahte-sahiplik';
 
 let passed = 0;
 const failures: string[] = [];
@@ -52,13 +53,15 @@ function sheetKur() {
 
 function sahte(sheet: any) {
   const kayit = { silinenId: null as string | null, guncellenenSheet: null as any };
+  const satir = {
+    id: SILINECEK, priceListId: LISTE_ID,
+    firma: { userId: 'u1', firmaId: 'u1' },
+    laborItem: { name: 'Vana Montaji DN50' },
+  };
   const client: any = {
     laborPrice: {
-      findUnique: async () => ({
-        id: SILINECEK, priceListId: LISTE_ID,
-        firma: { userId: 'u1', firmaId: 'u1' },
-        laborItem: { name: 'Vana Montaji DN50' },
-      }),
+      findUnique: async () => satir,
+      findFirst: sahiplikSorgusu(satir), // sahiplik SORGUDA (02.10, P1 takibi)
       delete: async ({ where }: any) => { kayit.silinenId = where.id; return { id: where.id }; },
     },
     laborPriceList: {
