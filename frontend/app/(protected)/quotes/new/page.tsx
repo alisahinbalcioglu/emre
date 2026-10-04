@@ -2224,7 +2224,7 @@ export default function NewQuotePage() {
                     : `🔧 ${displayPrice(netPrice)} (iscilik)`,
                   description: `Eşleşti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}`,
                 });
-                return { netPrice, matchedName: match.matchedName, reason: match.reason, confidence: match.confidence, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz, variantTags: match.variantTags, kaynakKur: (match as any).kaynakKur };
+                return { netPrice, matchedName: match.matchedName, reason: match.reason, confidence: match.confidence, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz, variantTags: match.variantTags, kaynakKur: (match as any).kaynakKur, kaynakFiyat: (match as any).kaynakFiyat };
               }
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari
               if (match.confidence === 'high' && match.matchedName) {
@@ -2332,7 +2332,7 @@ export default function NewQuotePage() {
                 });
                 // hafizaOtoyaz (I6 rozeti): fiyat GECMIS SECIMDEN atandi — grid
                 // hucrede "Geçmiş seçiminizden atandı" rozeti gosterir.
-                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence, donusum: match.donusum, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz, variantTags: match.variantTags, kaynakKur: (match as any).kaynakKur };
+                return { netPrice, matchedName: match.matchedName, candidates: match.candidates, reason: match.reason, confidence: match.confidence, donusum: match.donusum, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz, variantTags: match.variantTags, kaynakKur: (match as any).kaynakKur, kaynakFiyat: (match as any).kaynakFiyat };
               }
 
               // Eslesme bulundu ama fiyat 0 — kullaniciya uyari

@@ -66,6 +66,7 @@ export default function GridTestPage() {
   // TAKILI kalir ve Pro kullanicinin iscilik kari SESSIZCE calismaz — bu kip o
   // gerilemeyi olcer. Varsayilan: acik (mevcut tum e2e'ler etkilenmez).
   const [iscilikAcik, setIscilikAcik] = useState(true);
+  const [paraKipi, setParaKipi] = useState<'tl' | 'karisik'>('tl');
   // ⚠ GRID BAYRAKLAR OKUNDUKTAN SONRA MOUNT EDILIR. Ilk halinde grid ilk
   // render'da `iscilikAcik=true` goruyordu; `?iscilik=gec` boylece gercek
   // dunyanin TERSINI (once acik, sonra kapali, sonra acik) suruyordu ve
@@ -84,6 +85,9 @@ export default function GridTestPage() {
     // hucre GORMEZ. Uretim sayfasi sabit `false` gecirir (PRD v3.0 B), yani bu
     // yalniz harness'ta gorunur; sozlesmeyi olcmenin yolu baslangicta acmak.
     if (arama.get('oto') === 'acik') setAutoVariant(true);
+    // COKLU PARA BIRIMI F2 (05.10): `?para=karisik` → izgara karisik kipte
+    // (taraf para birimi). Uretim sayfasi F6'ya dek GECIRMEZ.
+    if (arama.get('para') === 'karisik') setParaKipi('karisik');
     setGridHazir(true); // ayni tikte toplanir → grid ilk render'da DOGRU degeri gorur
     if (kip === 'gec') {
       const t = setTimeout(() => setIscilikAcik(true), 300);
@@ -102,7 +106,7 @@ export default function GridTestPage() {
   // "Rendered more hooks than during the previous render" ile COKTU (olculdu,
   // D11 harness duzeltmesi). Hook her render'da AYNI sirada cagrilmali.
   // D14 (02.10): ÇAYIROVA = "bu markada yok, baska markada var" (alternatif dal)
-  const markalar = useMemo(() => [{ id: 'b-ayvaz', name: 'AYVAZ' }, { id: 'b-sardogan', name: 'SARDOĞAN' }, { id: 'b-cayirova', name: 'ÇAYIROVA' }], []);
+  const markalar = useMemo(() => [{ id: 'b-ayvaz', name: 'AYVAZ' }, { id: 'b-sardogan', name: 'SARDOĞAN' }, { id: 'b-cayirova', name: 'ÇAYIROVA' }, { id: 'b-dolar', name: 'DOLAR MARKA' }], []);
   const firmalar = useMemo(() => [
     { id: 'f-yasin', name: 'YASİN USTA', discipline: 'mechanical' as const },
     { id: 'f-hakan', name: 'HAKAN USTA', discipline: 'mechanical' as const },
@@ -110,6 +114,8 @@ export default function GridTestPage() {
     // `null` doner (quotes/new isçilik dali `if (!match) return null`). Sebepsiz
     // sonuc ancak boyle uretilir; surukle-doldur bayat sebep olcumu icin.
     { id: 'f-ozkan', name: 'ÖZKAN USTA', discipline: 'mechanical' as const },
+    // F2 (05.10): DOLAR USTA — isçilik fiyat listesi USD (kaynakFiyat doner).
+    { id: 'f-dolar', name: 'DOLAR USTA', discipline: 'mechanical' as const },
   ], []);
   const data: ExcelGridData = useMemo(() => {
     const sys = {
@@ -235,6 +241,28 @@ export default function GridTestPage() {
       } as any;
     }
 
+    // F2 (05.10): DOLAR MARKA — fiyat listesi USD. Motor (F1) TL alanlarina EK
+    // olarak `kaynakFiyat` doner; kur 40. 6'' tek eslesme $10,50 · 1'' iki
+    // aday ($9,25 / $11,125) · digerleri cap basina $ fiyat. Tl kipinde
+    // izgara TL alanlarini yazar (bugunku davranis).
+    if (brandId === 'b-dolar') {
+      const usd = (n: number) => ({ currency: 'USD', net: n, list: n, discount: 0 });
+      const kur = { currency: 'USD', kur: 40, tarih: '2026-10-05' };
+      if (materialName.includes("1''")) {
+        return {
+          netPrice: 0, confidence: 'multi', reason: '2 seçenek',
+          candidates: [
+            { ...aday('Dolar boru · vidalı · 1"', 'vidalı $', 370, ['v:usd-vid']), kaynakKur: kur, kaynakFiyat: usd(9.25) },
+            { ...aday('Dolar boru · düz uçlu · 1"', 'düz uçlu $', 445, ['v:usd-duz']), kaynakKur: kur, kaynakFiyat: usd(11.13) },
+          ],
+        } as any;
+      }
+      const capU = Object.keys(CAP_FIYAT).sort((a, b) => b.length - a.length).find((c) => materialName.includes(c));
+      const net = capU === "6''" ? 10.5 : capU ? CAP_FIYAT[capU] / 40 : 0;
+      if (!net) return { netPrice: 0, confidence: 'none', reason: 'Bu markada yok.' } as any;
+      return { netPrice: Math.round(net * 40 * 100) / 100, confidence: opts?.variantTags?.length ? 'suggestion' : 'high', autoVariant: !!opts?.variantTags?.length, matchedName: `Dolar boru · ${capU}`, variantTags: ['v:usd'], kaynakKur: kur, kaynakFiyat: usd(net) } as any;
+    }
+
     // Y5 (02.10): BASLIKLI AILE (satir 12-14) FIYATLANIR. Grup varyanti
     // (`groupVariants[baslik]`) yalniz BASLIK baglami olan satirda kaydedilir;
     // yukaridaki boru satirlari kendi kendine yeterli (baslik yok), bu yuzden
@@ -315,6 +343,13 @@ export default function GridTestPage() {
     log(`#${cagriSayisi.current} ISC sorgu: satir=${rowIdx} "${laborName.slice(0, 30)}" varyant=[${vt}]`);
     if (laborName.includes('HATALI')) { log('ISC AG HATASI firlatildi'); throw new Error('ağ hatası (mock)'); }
     if (firmaId === 'f-ozkan') { log('OZKAN: motor kaydi yok (null)'); return null as any; }
+    if (firmaId === 'f-dolar') {
+      const capI = Object.keys(LAB_FIYAT).sort((a, b) => b.length - a.length).find((c) => laborName.includes(c));
+      const net = capI ? LAB_FIYAT[capI] / 40 : 0;
+      if (!net) return { netPrice: 0, confidence: 'none', reason: 'Bu firmada yok.' } as any;
+      return { netPrice: Math.round(net * 40 * 100) / 100, confidence: 'high', matchedName: `Dolar işçilik · ${capI}`, variantTags: ['v:usd'],
+        kaynakKur: { currency: 'USD', kur: 40, tarih: '2026-10-05' }, kaynakFiyat: { currency: 'USD', net, list: net, discount: 0 } } as any;
+    }
 
     // D2 IKIZI (30.09): HAKAN USTA bu sorguda YAVAS ve FARKLI fiyat doner.
     // Malzeme tarafindaki SARDOGAN gecikmesinin iscilik karsiligi — yaris
@@ -389,6 +424,7 @@ export default function GridTestPage() {
         brands={markalar}
         onBrandChange={onBrandChange as any}
         seciciSaltOkunur={saltOkunurSecici}
+        paraBirimiKipi={paraKipi}
         autoVariantEnabled={autoVariant}
         onAutoVariantChange={onAutoVariantChange}
         onAutoVariantApplied={onAutoVariantApplied}

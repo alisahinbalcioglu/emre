@@ -738,3 +738,38 @@ describe('Y2 — restore Toplam Birim Fiyat hucresini tazeler', () => {
     expect(r._gBirim).toBe('230.0');
   });
 });
+
+// ── COKLU PARA BIRIMI F2: KARISIK KIP (Emre karari 04.10) ──────────────────
+describe('F2 — geri yukleme karisik kipte KAYNAK para biriminde yazar', () => {
+  const USD_MATCH = {
+    netPrice: 420, confidence: 'high',
+    kaynakKur: { currency: 'USD', kur: 40, tarih: '2026-10-05' },
+    kaynakFiyat: { currency: 'USD', net: 10.5, list: 10.5, discount: 0 },
+  };
+
+  it('★★ malzeme: $ birim (2 hane, %10 kar → 11,55) + toplam 11,55 × 25 = 288,75 + taraf birimi', async () => {
+    const row = satir({ _marka: 'b-dolar' });
+    const { poster } = posterKur({ '/matching/bulk-match': { [AD]: USD_MATCH } });
+    expect(await restoreRematch([sayfa([row])], { 0: [row] }, poster, { karisik: true })).toBe(1);
+    expect(row['Birim Fiyat']).toBe('11.55');
+    expect(row['Tutar']).toBe('288.75');
+    expect(row._matNetPrice).toBe(10.5);
+    expect(row._matPB).toBe('USD');
+  });
+
+  it('★ iscilik ikizi: $ birim + _labPB', async () => {
+    const row = satir({ _firma: 'f-dolar' });
+    const { poster } = posterKur({ '/labor-matching/bulk-match': { [AD]: { ...USD_MATCH, kaynakFiyat: { currency: 'USD', net: 2, list: 2, discount: 0 } } } });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster, { karisik: true });
+    expect(row._labBirim).toBe('2.40'); // 2 × 1,20
+    expect(row._labPB).toBe('USD');
+  });
+
+  it('★★ KONTROL: kip verilmezse (tl) bugunku gibi TL yazar, birim alani YAZILMAZ', async () => {
+    const row = satir({ _marka: 'b-dolar' });
+    const { poster } = posterKur({ '/matching/bulk-match': { [AD]: USD_MATCH } });
+    await restoreRematch([sayfa([row])], { 0: [row] }, poster);
+    expect(row['Birim Fiyat']).toBe('462.0'); // 420 × 1,10
+    expect('_matPB' in row).toBe(false);
+  });
+});

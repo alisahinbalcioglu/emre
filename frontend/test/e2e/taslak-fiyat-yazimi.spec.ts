@@ -220,6 +220,21 @@ test.describe('D5 — elle yazılan fiyat taslağa girer', () => {
   // işçilik için AYRI dal yok — yani aşağıdaki malzeme ölçümü ikizi de kapsar.
   // Ayrıca `yazVeri` ve `yazVeriLab` ikisi de sinyali veriyor (ExcelGrid.tsx).
 
+  test('★ ÇOKLU PARA BİRİMİ F2 KONTROLÜ: tl kipinde elle fiyat taraf birimi YAZMAZ (kayıt verisi değişmez)', async ({ page }) => {
+    // Üretim sayfası F6'ya dek karışık kipi açmaz; yalnız-TL teklifin satır
+    // verisine `_matPB` sızarsa kayıt baytları değişir. Taslak, satırın tam
+    // halini taşıdığı için ölçüt burada.
+    await ac(page);
+    const h = await hucre(page, 0, '_matBirim');
+    await h.dblclick();
+    await page.keyboard.type('250');
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => String((await taslakSatirlari(page, TASLAK_ANAHTARI))?.[0]?._matBirim ?? ''), { timeout: 10_000 }).toMatch(/250/);
+    const satir = (await taslakSatirlari(page, TASLAK_ANAHTARI))?.[0] ?? {};
+    expect('_matPB' in satir, 'tl kipinde _matPB yazildi').toBe(false);
+    expect(String(satir._matToplam)).toBe('2500.0'); // ₺ kurali: 1 hane metni
+  });
+
   test('★ TÜRETİLEN hücre de taşınır: satır toplamı taslakta', async ({ page }) => {
     // Birim fiyat × miktar satır toplamını üretir; o da yerinde yazılır.
     await ac(page);

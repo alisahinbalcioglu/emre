@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, PARA_SEMBOLU,
+  paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, PARA_SEMBOLU, paraIsaretiniAyikla,
 } from './taraf-para-birimi';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam } from './pricing';
 
@@ -91,5 +91,17 @@ describe('elleGirilenPB — Emre karari 3', () => {
   });
   it('birden cok birim yazilmissa SECMEZ (tahmin yok)', () => {
     expect(elleGirilenPB('$12 TL')).toBeNull();
+  });
+});
+
+describe('paraIsaretiniAyikla — elle girisin sayi kismi', () => {
+  it('★ sembol ve kod ayiklanir, sayi yazimi KORUNUR', () => {
+    expect(paraIsaretiniAyikla('$12')).toBe('12');
+    expect(paraIsaretiniAyikla('12,5 TL')).toBe('12,5');
+    expect(paraIsaretiniAyikla('€ 1.250,50')).toBe('1.250,50');
+    expect(paraIsaretiniAyikla('USD 9.99')).toBe('9.99');
+  });
+  it('isaretsiz metin aynen', () => {
+    expect(paraIsaretiniAyikla('15')).toBe('15');
   });
 });

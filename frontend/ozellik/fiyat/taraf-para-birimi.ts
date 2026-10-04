@@ -68,3 +68,12 @@ export function elleGirilenPB(metin: string): ParaBirimi | null {
   const bulunan = YAZIM.filter(([re]) => re.test(s)).map(([, pb]) => pb);
   return bulunan.length === 1 ? bulunan[0] : null;
 }
+
+/**
+ * Elle yazilan fiyat metninden para ISARETINI ayiklar ("$12" → "12",
+ * "12,5 TL" → "12,5") — sayi ayristiricisi (`hucreGirdisiCoz`) isaretli metni
+ * "sayi degil" diye reddederdi. Birim `elleGirilenPB` ile AYRICA okunur.
+ */
+export function paraIsaretiniAyikla(metin: string): string {
+  return String(metin ?? '').replace(/[$€₺]|\b(USD|EUR|EURO|AVRO|TRY|TL|DOLAR)\b/gi, '').trim();
+}

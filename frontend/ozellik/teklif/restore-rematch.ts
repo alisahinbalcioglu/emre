@@ -66,6 +66,7 @@ import {
   PARA_ONDALIK,
 } from '../fiyat/pricing';
 import { sayiAlani, sayiOku } from '../fiyat/sayi-alani';
+import { paraHanesi, type ParaBirimi } from '../fiyat/taraf-para-birimi';
 // D7: fitting olcutu TEK YERDE — surukle-doldur yolu da ayni fonksiyonu kullanir.
 import { fittingSatiriMi } from '../tablo/excel-grid/fitting';
 
@@ -91,6 +92,8 @@ interface Taraf {
   karAlani: '_malzKar' | '_iscKar';
   netAlani: '_matNetPrice' | '_labNetPrice';
   kurAlani: '_matKurBilgi' | '_labKurBilgi';
+  /** F2: karisik kipte taraf para birimi alani. */
+  pbAlani: '_matPB' | '_labPB';
   durumAlani: '_matStatus' | '_labStatus';
   sebepAlani: '_matSebep' | '_labSebep';
   birimRolu: 'materialUnitPriceField' | 'laborUnitPriceField';
@@ -103,13 +106,13 @@ interface Taraf {
 const TARAFLAR: readonly Taraf[] = [
   {
     atamaAlani: '_marka', karAlani: '_malzKar',
-    netAlani: '_matNetPrice', kurAlani: '_matKurBilgi', durumAlani: '_matStatus', sebepAlani: '_matSebep',
+    netAlani: '_matNetPrice', kurAlani: '_matKurBilgi', pbAlani: '_matPB', durumAlani: '_matStatus', sebepAlani: '_matSebep',
     birimRolu: 'materialUnitPriceField', toplamRolu: 'materialTotalField',
     url: '/matching/bulk-match', idAnahtari: 'brandId', adAnahtari: 'materialNames',
   },
   {
     atamaAlani: '_firma', karAlani: '_iscKar',
-    netAlani: '_labNetPrice', kurAlani: '_labKurBilgi', durumAlani: '_labStatus', sebepAlani: '_labSebep',
+    netAlani: '_labNetPrice', kurAlani: '_labKurBilgi', pbAlani: '_labPB', durumAlani: '_labStatus', sebepAlani: '_labSebep',
     birimRolu: 'laborUnitPriceField', toplamRolu: 'laborTotalField',
     url: '/labor-matching/bulk-match', idAnahtari: 'firmaId', adAnahtari: 'laborNames',
   },
@@ -131,6 +134,7 @@ async function tarafEslestir(
   roles: ColumnRoles,
   taraf: Taraf,
   poster: RematchPoster,
+  karisik = false,
 ): Promise<0 | 1> {
   const atanan = row[taraf.atamaAlani];
   const birimAlan = roles[taraf.birimRolu];
@@ -182,14 +186,22 @@ async function tarafEslestir(
     // ⚠ TEK SUZGEC: ham parseFloat kullanilirsa "12,5" → 12 olur ve ekranda
     // gorunen kar ile restore'un yazdigi fiyat ayrisir (kar-tek-suzgec kapisi).
     const kar = sayiAlani(row[taraf.karAlani]);
-    const satis = hesaplaSatisBirimFiyat(match.netPrice, kar);
-    row[birimAlan] = satis.toFixed(1);
+    // F2 (coklu para birimi): karisik kipte KAYNAK para birimi — ExcelGrid
+    // `writePriceToNode` ve fill-down ile ayni kural; doviz 2 hane. tl kipinde
+    // birim alani YAZILMAZ, hane 1 (bugunku davranis birebir).
+    const kf = karisik && match.kaynakFiyat && Number.isFinite(match.kaynakFiyat.net) ? match.kaynakFiyat : null;
+    const net: number = kf ? kf.net : match.netPrice;
+    const pb: ParaBirimi = kf ? kf.currency : 'TRY';
+    const hane = karisik ? paraHanesi(pb) : 1;
+    const satis = hesaplaSatisBirimFiyat(net, kar, hane);
+    row[birimAlan] = satis.toFixed(hane);
     // UY2 — ExcelGrid yazim yollari ile AYNI kural: MIKTAR/BIRIM basliklari
     // ters persist edilmis satirlarda gercek sayi birim hucresindedir.
     const miktar = etkinMiktar(row, roles.quantityField, roles.unitField);
     const toplamAlan = roles[taraf.toplamRolu];
-    if (toplamAlan) row[toplamAlan] = hesaplaSatirToplam(satis, miktar).toFixed(1);
-    row[taraf.netAlani] = match.netPrice;
+    if (toplamAlan) row[toplamAlan] = hesaplaSatirToplam(satis, miktar, hane).toFixed(hane);
+    row[taraf.netAlani] = net;
+    if (karisik) row[taraf.pbAlani] = pb;
     row[taraf.kurAlani] = match.kaynakKur ?? null; // kur donmasi
     row[taraf.durumAlani] = ''; // fiyat geldi — bekleme isareti kalkar
     return 1;
@@ -233,6 +245,8 @@ export async function restoreRematch(
   sheets: RematchSheet[],
   live: Record<number, ExcelRowData[]>,
   poster: RematchPoster,
+  /** F2: karisik kip — fiyat kaynak para biriminde (varsayilan tl). */
+  secenek: { karisik?: boolean } = {},
 ): Promise<number> {
   let yazilan = 0;
   for (const sheet of sheets) {
@@ -260,7 +274,7 @@ export async function restoreRematch(
       if (fittingSatiriMi(row)) continue;
       let satirdaYazim = 0;
       for (const taraf of TARAFLAR) {
-        satirdaYazim += await tarafEslestir(row, roles, taraf, poster);
+        satirdaYazim += await tarafEslestir(row, roles, taraf, poster, secenek.karisik === true);
       }
       // Genel toplam SATIR BAZINDA, iki taraf da islendikten SONRA tazelenir —
       // aksi halde ilk tarafin yazimindan sonra ikinci taraf hentiz yazilmamis
