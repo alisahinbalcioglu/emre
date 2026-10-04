@@ -60,6 +60,14 @@ export function hesaplaNetFiyat(listeFiyat: number, iskontoYuzde: number): numbe
   return yukariYuvarla(listeFiyat * (1 - oran));
 }
 
+/** COKLU PARA BIRIMI F1 (Emre karari 04.10): DOVIZ (USD/EUR) net fiyati —
+ *  ayni formul, 2 hane YUKARI (sent alti asagi atilmaz; ₺'nin 1 hanesi
+ *  dovizde 10 sente kadar fark yaratirdi). ₺ kurali `hesaplaNetFiyat`. */
+export function hesaplaNetFiyatDoviz(listeFiyat: number, iskontoYuzde: number): number {
+  const oran = clamp(iskontoYuzde, 0, 100) / 100;
+  return yukariYuvarla(listeFiyat * (1 - oran), 2);
+}
+
 // NOT (denetim 22.07): hesaplaSatisBirimFiyat + hesaplaSatirToplam BE
 // kopyalari SILINDI — satis/satir hesabi yalniz FE'de yapilir
 // (frontend/ozellik/fiyat/pricing.ts, testli canli kopya). BE yalniz NET fiyat hesaplar.

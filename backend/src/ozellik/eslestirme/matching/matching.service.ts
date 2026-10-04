@@ -26,7 +26,7 @@ import { TerminologyService } from './terminology.service';
 // TEK MOTOR (Faz 2b): indeksli + Ad-kilitli cekirdek (saf — test:index K1-K7)
 import { parseLine } from './index/line-parser';
 import { runQuery, guclutekAday, aileUyusmazligiTeshisi } from './index/query-engine';
-import { toMatchResult, gorunenAd, kurOf } from '../../fiyat/matching/index/outcome-mapper';
+import { toMatchResult, gorunenAd, kurOf, kaynakFiyatOf } from '../../fiyat/matching/index/outcome-mapper';
 import type { TryCevirici } from '../../fiyat/matching/index/outcome-mapper';
 import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields, iscilikAdCekirdegi, malzemeEtiketleri } from './index/product-index';
 import type { ProductColumns } from './index/product-index';
@@ -620,6 +620,7 @@ export class MatchingService {
         // (secimde satira yazar) ama bu uretici HIC doldurmuyordu — oneriden
         // secilen dovizli fiyatin kuru kayit disi kaliyordu (14.09 olculdu).
         kaynakKur: kurOf(tekAday, toTry),
+        kaynakFiyat: kaynakFiyatOf(tekAday), // F1: onerinin kaynak para birimindeki fiyati
         // S2: cekince ADAYLA BIRLIKTE tasinir — FE kesinlik basligi yerine
         // "onay gerekiyor" tonunu bu alanlara BAKARAK secer.
         uyariNot: secim.uyariNot, bilinmeyen: secim.bilinmeyen,
@@ -824,6 +825,7 @@ export class MatchingService {
         materialName: gorunenAd(tek),
         netPrice: hesaplaNetFiyat(list, isk), listPrice: list, discount: isk,
         kaynakKur: kurOf(tek, toTry), // kur donmasi ikizi (malzeme onerisiyle ayni)
+        kaynakFiyat: kaynakFiyatOf(tek), // F1 ikizi
         // S2: cekince burada da tasinir (ikiz sozlesme ayrismaz).
         uyariNot: secim.uyariNot, bilinmeyen: secim.bilinmeyen,
       });
@@ -1004,6 +1006,7 @@ export class MatchingService {
               // orada kur yok — adayin kuru tasinmazsa dovizli kalem gecmis
               // secimden yazildiginda "hangi kurla?" bilgisi kaybolur.
               kaynakKur: c.kaynakKur,
+              kaynakFiyat: c.kaynakFiyat, // F1: ayni gerekce — coklu sonucta yok, aday tasir
               confidence: 'high',
               matchedName: c.materialName,
               candidates: undefined,

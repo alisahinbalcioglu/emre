@@ -12,12 +12,12 @@
 // her alani doldurmak ZORUNDA.
 // ════════════════════════════════════════════════════════════════════
 
-import { hesaplaNetFiyat } from '../pricing';
+import { hesaplaNetFiyat, hesaplaNetFiyatDoviz } from '../pricing';
 import { paraBirimiKodu } from '../../exchange-rates/exchange-rates.service';
 import { extractAttrTags, extractFluid } from '../../../eslestirme/matching/normalizer';
 import { buildAttrUyari } from '../../../eslestirme/matching/shared-tag-matcher';
 import { urunVariantTags } from '../../../eslestirme/matching/index/query-engine';
-import type { MatchResult, MatchCandidate, KaynakKur } from '../../../eslestirme/matching/types';
+import type { MatchResult, MatchCandidate, KaynakKur, KaynakFiyat } from '../../../eslestirme/matching/types';
 import type { IndexedRow, QueryOutcome, AskColumn, LineQuery } from '../../../eslestirme/matching/index/types';
 
 /**
@@ -116,6 +116,24 @@ function netFiyat(r: IndexedRow, toTry: (v: number, cur: string) => number): { n
 }
 
 /**
+ * COKLU PARA BIRIMI F1 (04.10) — fiyatin KAYNAK para birimindeki hali, TL'ye
+ * CEVRILMEDEN (bkz. `KaynakFiyat`). Formul `netFiyat` ile AYNI (custom tabani
+ * degistirir, iskonto her zaman uygulanir); fark yalniz cevrim ve yuvarlama:
+ * TRY 1 hane yukari (= netPrice), USD/EUR 2 hane yukari. Taninmayan para
+ * biriminde uretilmez. Oneri yollari da (matching.service) bunu cagirir —
+ * tek formul, ayrisma yok.
+ */
+export function kaynakFiyatOf(r: IndexedRow): KaynakFiyat | undefined {
+  const kod = paraBirimiKodu(r.currency);
+  if (kod !== 'TRY' && kod !== 'USD' && kod !== 'EUR') return undefined;
+  const list = r.listPrice ?? r.urun.price;
+  const isk = r.discountRate ?? 0;
+  const taban = r.customPrice != null && r.customPrice > 0 ? r.customPrice : list;
+  const net = kod === 'TRY' ? hesaplaNetFiyat(taban, isk) : hesaplaNetFiyatDoviz(taban, isk);
+  return { currency: kod, net, list, discount: isk };
+}
+
+/**
  * `label` = SORULAN kolonun o adaydaki degeri.
  * FE (ExcelGrid.tsx:487-492) adaylari label'a gore grupluyor; ayni label'da
  * >1 kayit kalirsa stage2 (2. kademe soru) aciliyor. Yani kademeli soru
@@ -146,6 +164,7 @@ function adayla(r: IndexedRow, kolon: AskColumn, toTry: (v: number, cur: string)
     discount: isk,
     // Kur donmasi: aday secilirse FE bu kuru satira yazar
     kaynakKur: kurOf(r, toTry as TryCevirici),
+    kaynakFiyat: kaynakFiyatOf(r), // F1: adayin kaynak para birimindeki fiyati
     // Geriye uyum: FE (ExcelGrid.tsx:358) tags'ten baslik→alias onerisi
     // uretiyor — ciplak cins token'lari korunur, yoksa o ozellik susar.
     tags: [
@@ -197,6 +216,7 @@ export function toMatchResult(
       return {
         netPrice: net, listPrice: list, discount: isk,
         kaynakKur: kurOf(outcome.row, toTry as TryCevirici),
+        kaynakFiyat: kaynakFiyatOf(outcome.row), // F1
         confidence: 'high',
         matchedName: gorunenAd(outcome.row),
         // R18 asserti bu substring'i ariyor — contract-test.ts C2 de.
@@ -218,6 +238,7 @@ export function toMatchResult(
       return {
         netPrice: net, listPrice: list, discount: isk,
         kaynakKur: kurOf(outcome.row, toTry as TryCevirici),
+        kaynakFiyat: kaynakFiyatOf(outcome.row), // F1
         confidence: 'suggestion',
         autoVariant: true,
         matchedName: gorunenAd(outcome.row),

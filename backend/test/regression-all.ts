@@ -165,6 +165,8 @@ const SUITES: Suite[] = [
   //    FE satira yazar → teklif JSON'uyla donar. TRY'de ve kur metaverisi
   //    olmayan ceviricide alan HIC uretilmez (uydurma kur yasak).
   { ad: 'Kur donması (kaynakKur sözleşmesi)', script: 'test:kur', zincir: 'Z2' },
+  // 04.10.2026: coklu para birimi F1 — eslestirme cevabi KAYNAK para biriminde net/liste/iskonto tasir.
+  { ad: 'Kaynak fiyat (çoklu para birimi F1)', script: 'test:kaynak-fiyat', zincir: 'Z2' },
   // ── 14.09.2026 (tur 3 A3): KUR-02 YAZMA YOLLARI. Alti yazma ucunun hicbiri
   //    400 donmuyordu ('EURO', '$', 'GBP', 'xyz' 201 ile ham); admin onizlemesi
   //    Para Birimi kolonundaki GBP'yi TRY yapiyordu. Tanınmayan kod gerekceli
