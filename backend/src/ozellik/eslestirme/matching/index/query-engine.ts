@@ -250,17 +250,36 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // kaliyordu. FARKLI aci (45°/135°) SERT kalir (gercekten farkli urun).
   // Uygulama: (1) aci-uyumsuz urunler elenir; (2) aci token'i isim
   // daraltmasindan CIKARILIR ki yalin adlar kalsin. YALNIZ fitting ailesi.
+  // ── A3 (02.10 olculdu, gercek Pimtas listesi) ─────────────────────────
+  // Eski okuyucu: /(\d{2,3})\s*(?:°|derece)/ ve YALNIZ urunun ADI. Uc bosluk:
+  //   (1) ONDALIK okunmuyordu  — "22,5°" → null (ve "22.5°")
+  //   (2) TEK HANE okunmuyordu — "5°"    → null
+  //   (3) CINS okunmuyordu     — aci `cins` kolonundaysa gorulmuyordu
+  // (1) kullanici-gorunur: okunmayan aci "acisi YOK" demektir ve asagidaki
+  // `urunAci === null && satirAci === '90'` kurali o urunu 90° satirina ADAY
+  // yapar — "90° dirsek" satirina 22,5° dirsek eslesiyordu. Gercek listede
+  // kapinin KOSTUGU 138 satirin 6'si tam olarak bu (hepsi "U-PVC 22,5° …").
+  // Deger NOKTAYA normalize edilir ki "22,5°" ile "22.5°" AYNI aci sayilsin.
   const aciOku = (text: string): string | null => {
-    const mm = (text ?? '').match(/(\d{2,3})\s*(?:°|derece)/i);
-    return mm ? mm[1] : null;
+    const mm = (text ?? '').match(/(\d{1,3}(?:[.,]\d+)?)\s*(?:°|derece)/i);
+    return mm ? mm[1].replace(',', '.') : null;
   };
+  /** Urunun acisi ADda da CINSte de yazili olabilir — ikisi de ayni urundur. */
+  const urunAciOku = (r: IndexedRow): string | null =>
+    aciOku(`${r.urun.ad ?? ''} ${r.urun.cins ?? ''}`);
+  // ⚠ ONDALIK TANINMIYOR, BILEREK (02.10 olculdu): `/^\d{1,3}([.,]\d+)?°$/`
+  // denendi ve GERI ALINDI — hicbir senaryoda davranis degismedi. Sebep
+  // tokenizer: "22,5°" IKI token olur ("22" + "5°"), yani aci token'ini atmak
+  // geriye "22"yi birakir ve ad cekirdegi zaten aci tasimaya devam eder. Bu
+  // serit ondalik acilarda YARIM kalir; duzeltilecekse tokenizer tarafindan
+  // duzeltilmeli. Olculemeyen genisletme tutulmadi.
   const aciTokenMi = (t: string) => /^\d{2,3}°$/.test(t);
   let adCekirdekAci = adCekirdek;
   if (familySlug === 'fitting') {
     const satirAci = aciOku(line.raw);
     if (satirAci) {
       rows = rows.filter((r) => {
-        const urunAci = aciOku(r.urun.ad);
+        const urunAci = urunAciOku(r);
         return urunAci === satirAci || (urunAci === null && satirAci === '90');
       });
       if (rows.length === 0) return { kind: 'none', reason: 'kriter-yok', detail: `${satirAci}°` };
@@ -282,6 +301,14 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     // Tam eslesme = token kumeleri ESIT (alt-kume + ayni sayida).
     const tam = rows.filter(
       (r) => {
+        // A3 NOTU — "tam ad kiyasinda aci sozcugunu URUN tarafindan da at"
+        // maddesi DENENDI ve GERI ALINDI (02.10, olculdu): hicbir senaryoda
+        // davranis degistirmedi. Sebep: aci suzgeci uyumsuz urunleri bu
+        // kiyastan ONCE eliyor, dolayisiyla kiyasa kalan urunlerin acisi
+        // satirinkiyle zaten ayni. Ustelik tokenizer "22,5°"yi IKI token'a
+        // boluyor ("22" + "5°"); yalniz aci token'ini atmak geriye "22"yi
+        // birakir, yani ondalik acili urun kume ESITLIGINE yine giremez —
+        // yarim bir duzeltme olurdu. Olculemeyen kod tutulmadi.
         const urunCekirdek = r.urun.adTokens.filter((x) => !(familySlug && tokenEsit(x, familySlug)));
         return urunCekirdek.length === adTest.length && altKume(adTest, urunCekirdek);
       },

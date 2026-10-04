@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 861
-Toplam satir: 239404
+Kod dosyasi: 862
+Toplam satir: 239577
 Uc nokta: 238
-test:* scripti: 144
+test:* scripti: 145
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -138,7 +138,7 @@ test:* scripti: 144
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 448 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 231 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 721 |
-| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1623 |
+| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1650 |
 | `backend/src/ozellik/eslestirme/matching/index/types.ts` | 283 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 111 |
@@ -307,6 +307,7 @@ test:* scripti: 144
 | `backend/test/a1-silme-etkisi-test.ts` | 331 |
 | `backend/test/abonelik-erisim-test.ts` | 377 |
 | `backend/test/abonelik-olcum-sorgu-test.ts` | 575 |
+| `backend/test/aci-okuma-test.ts` | 145 |
 | `backend/test/admin-import-test.ts` | 326 |
 | `backend/test/aile-oncelik-simulasyon.ts` | 292 |
 | `backend/test/aile-oncelik-test.ts` | 182 |
@@ -433,7 +434,7 @@ test:* scripti: 144
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 1027 |
+| `backend/test/regression-all.ts` | 1028 |
 | `backend/test/s45-malzeme-aile-test.ts` | 441 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 901 |
@@ -1135,6 +1136,7 @@ test:* scripti: 144
 | `backend/test/a1-silme-etkisi-test.ts` | `@prisma/client` `@nestjs/common` `../src/ozellik/kutuphane/admin/admin.service` `../src/ozellik/kutuphane/admin/admin.controller` `../src/ozellik/kutuphane/brands/brands.service` `../src/ozellik/kutuphane/brands/brands.controller` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/abonelik-erisim-test.ts` | `fs` `path` `@nestjs/core` `../src/altyapi/auth/seviye` `../src/altyapi/auth/capabilities.helper` `../src/altyapi/auth/guards/tier.guard` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/kutuphane/labor/labor.controller` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/abonelik-olcum-sorgu-test.ts` | `node:fs` `node:path` `./yardimci/bitmezse-kirmizi` |
+| `backend/test/aci-okuma-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/index/types` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/admin-import-test.ts` | `../src/ozellik/eslestirme/utils/etiket-display` `./yardimci/bitmezse-kirmizi` `xlsx` `../src/ozellik/giris/excel-grid/excel-grid.service` `../src/ozellik/kutuphane/admin/admin.service` `../src/ozellik/kutuphane/utils/import-fidelity` |
 | `backend/test/aile-oncelik-simulasyon.ts` | `fs` `path` `../src/ozellik/eslestirme/matching/ad-cins-sozlugu` `../src/ozellik/eslestirme/matching/ad-resolver` `../src/ozellik/eslestirme/matching/index/product-index` `xlsx` |
 | `backend/test/aile-oncelik-test.ts` | `../src/ozellik/eslestirme/matching/ad-cins-sozlugu` `../src/ozellik/eslestirme/matching/index/product-index` |
@@ -1904,6 +1906,7 @@ test:* scripti: 144
 | `backend/package.json` | `test:iscilik-bayat` | `ts-node test/iscilik-bayat-indeks-test.ts` |
 | `backend/package.json` | `test:olcu-sinifi` | `ts-node test/olcu-sinifi-test.ts` |
 | `backend/package.json` | `test:cap-belirsizligi` | `ts-node test/cap-belirsizligi-test.ts` |
+| `backend/package.json` | `test:aci-okuma` | `ts-node test/aci-okuma-test.ts` |
 | `backend/package.json` | `test:grid` | `ts-node test/excel-grid-test.ts` |
 | `backend/package.json` | `test:labor-sheet` | `ts-node test/labor-sheet-test.ts` |
 | `backend/package.json` | `test:kl` | `ts-node test/kl-liste-ekleme-test.ts` |
