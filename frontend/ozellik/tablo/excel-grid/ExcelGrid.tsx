@@ -4675,10 +4675,20 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       // yardimci zaten var (`yazVeriHucre`, bir ust satirda kullanilmis).
       // Bu yol yapistirmayi da tasiyor: Ctrl+V `setDataValue(..., 'edit')` ile
       // ayni daldan gecer.
+      //
+      // Y5 (02.10): ELLE FIYAT = MANUEL SATIR (aday/alternatif secimiyle ayni
+      // kural). `_matAutoVariant` kaliyordu: hucre MAVI, ipucu elle yazilan
+      // fiyati "⚡ otomatik" gosteriyordu (isaret.ts: otoVaryant en onde).
+      // ⚠ Kip de 'manual' OLMALI: grup atamasi (`applyVariantToGroup`) yalniz
+      // manuel OLMAYAN fiyatsiz satirlara yazar; menusu yeniden acilip fiyati
+      // silinen satira sessizce otomatik fiyat yaziyordu (olculdu, e2e Y5).
+      // Tazeleme (asagida) bu yazimlardan SONRA kalmali — boyama ancak onunla.
       yazVeriHucre(e.node, '_matStatus', '');
       yazVeriHucre(e.node, '_matSebep', null);
       yazVeriHucre(e.node, '_matAdaySayisi', null);
       yazVeriHucre(e.node, '_matSuggestion', false);
+      yazVeriHucre(e.node, '_matAutoVariant', null);
+      yazVeriHucre(e.node, '_matVariantMode', 'manual');
       // Isaret alanlari KOLON olmadigi icin dogrudan veriye yazilir; boyama
       // (cellStyle) ancak acik tazelemeyle yeniden kosar.
       e.api.refreshCells({ rowNodes: [e.node], force: true });
