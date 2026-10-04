@@ -15,7 +15,7 @@
 
 import { sizeEquivalents, SizeClass, capImzasi, extractSizeInfo } from '../conversion';
 import { extractFluid } from '../normalizer';
-import { altKumeMi, tokenEsit } from './product-index';
+import { altKumeMi, tokenEsit, malzemeEtiketleri } from './product-index';
 import { EQUIPMENT_TYPE_TAGS } from '../shared-tag-matcher';
 import { buildFamilyVocab, distinctSayisi } from './vocab';
 import { classifyTokens, resolveLineFamily } from './line-parser';
@@ -1221,10 +1221,37 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   // Sebep taban kuralindakiyle ayni: etiketsizlik bir kanit degildir, onu
   // celiski saymak binlerce notr urunu gereksiz onaya dusururdu (I6 kapilari
   // gurultuye bogulunca kimse okumaz — kapinin degeri seyrekliginde).
+  //
+  // B3 (04.10): satirin KENDI yazdigi malzeme de bir beklentidir. Kisa kok
+  // onek toleransi (`KISA_KOKLER`) pp ile ppr'yi token duzeyinde esit sayar —
+  // KALDE "PP Boru / PP-R" onun sayesinde bulundugu icin tolerans KALIR; ama
+  // malzeme etiketi ikisini ayirt eder. Olculdu: havuzda yalniz PP atik su
+  // borusu varken "PPR BORU 25 mm" ona SESSIZCE yaziliyordu (ters yon de).
+  // ⚠ Satir malzemesi YALNIZ bu kapiya baglanir, yukaridaki SIRALAMAYA
+  // baglanmaz: Pimtas sorgu derleminde 1915 satirin 1698'i malzeme etiketi
+  // tasiyor — siralamaya girse binlerce coklu-aday sorusunun sirasi oynardi.
+  //
+  // PP CINS, PPR TUR (olculdu, test:matching C1 kirmizisi): piyasada "PP vana /
+  // PP boru" cogu zaman PPR'nin halk dilidir — "PP KÜRESEL VANA" satirinda
+  // KALDE'nin PPR-C vanasi DOGRU adaydir. Bu yuzden satir yalniz cinsi (pp)
+  // yazdiysa tur (ppr) de kabul edilir; satir TURU yazdiysa ("PPR", "PP-R" —
+  // ikincisi metinde iki etiket birden uretir) cins beklenti SAYILMAZ, yoksa
+  // "pp" etiketi duz PP adayini aklar ve kusur "PP-R" yaziminda yasardi.
+  const satirEtiket = rows.length === 1 ? malzemeEtiketleri(line.raw) : [];
+  const satirMalzeme = satirEtiket.includes('ppr')
+    ? satirEtiket.filter((m) => m !== 'pp')
+    : satirEtiket.includes('pp') ? [...satirEtiket, 'ppr'] : satirEtiket;
   const malzemeConflict =
     opts?.hintMalzeme?.length && rows.length === 1 && malzemeSirasi(rows[0], opts.hintMalzeme) === 2
       ? `Tek adayın malzemesi (${(rows[0].urun.malzemeler ?? []).join('/')}) beklenenle (${opts.hintMalzeme.join('/')}) çelişiyor`
       : null;
+  // Notu ZINCIRIN SONUNDADIR (asagida): hedef, BASKA HICBIR kapinin acilmadigi
+  // sessiz yazimdir. Satirin malzeme kelimesi adayda yoksa `bilinmeyen-kelime`
+  // zaten acilir ve kendi notunu gosterir — onu golgelemek istenmemis bir
+  // gosterim degisikligi olurdu (olculdu: test:oneri G4b "paslanmaz").
+  const satirMalzemeNotu = satirMalzeme.length && malzemeSirasi(rows[0], satirMalzeme) === 2
+    ? `Satır ${satirEtiket.join('/')} diyor, tek adayın malzemesi ${(rows[0].urun.malzemeler ?? []).join('/')}`
+    : null;
 
   // ── BORU YUZEY GENISLETMESI — merge (yalniz POPUP acilacaksa) ─────
   // Yazili yuzey havuzu >1 kayda biraktiysa (soru zaten acilacak), yuzey-
@@ -1321,7 +1348,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   if (yuzeyCeliskiNotu) kapilar.push('yuzey-celiskisi');
   if (unitConflict) kapilar.push('birim-celiskisi');
   if (surfaceConflict) kapilar.push('taban-celiskisi');
-  if (malzemeConflict) kapilar.push('malzeme-celiskisi');
+  if (malzemeConflict || satirMalzemeNotu) kapilar.push('malzeme-celiskisi');
   if (aileZayifNotu) kapilar.push('aile-zayif');
   if (capsizNotu) kapilar.push('capsiz-dusum');
   if (capCevrilemediNotu) kapilar.push('cap-cevrilemedi');
@@ -1333,7 +1360,7 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
 
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
   if (rows.length === 1) {
-    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? capBelirsizNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu;
+    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? capBelirsizNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu ?? satirMalzemeNotu;
     if (celiski) {
       return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: celiski, kapilar };
     }
