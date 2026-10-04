@@ -111,7 +111,7 @@ jobs:
           exit "$cikis"
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # 26.04'e gecis ayri ve olculu is (KOSUCU SABIT notu, 04.10)
     defaults:
       run: { working-directory: frontend }
     steps:
