@@ -164,7 +164,11 @@ interface Props {
   onAutoVariantChange?: (on: boolean) => void;
   /** Duzeltme Talebi §3: yayilim/fill sonrasi "n satır güncellendi" bilgisi —
    *  parent toast gosterir. */
-  onAutoVariantApplied?: (info: { applied: number; waiting: number; missing: number; kaynak: string; hatali?: number }) => void;
+  onAutoVariantApplied?: (info: {
+    applied: number; waiting: number; missing: number; kaynak: string; hatali?: number;
+    /** Y4: hangi dal doldurdu — tost metni "markada yok" / "firmada yok" ayrimi icin. */
+    dal?: 'malzeme' | 'iscilik';
+  }) => void;
   /** PRD v3.0 Bolum A2: "kat" olarak isaretlenen sutunlar. Dolu ise MIK
    *  (columnRoles.quantityField) = bu sutunlarin satir-toplami; kat hucresi
    *  duzenlenince MIK otomatik yeniden hesaplanir. */
@@ -3200,6 +3204,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         missing: sonuc.ozet.yok + sonuc.ozet.urunDegil + sonuc.ozet.adYok,
         hatali: sonuc.ozet.hata,
         kaynak: srcLabel || 'marka',
+        dal: 'malzeme',
       });
       rootWrapperRef.current?.focus();
     } else if (result.field === '_firma' && onFirmaChange) {
@@ -3258,6 +3263,20 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         entries: sonuc.geriAl.map((g) => ({ rowId: String(g.rowIdx), prev: g.oncekiDegerler })),
       });
       api.refreshCells({ force: true });
+      // Y4 = D13 (02.10): DOLDURMA OZETI GERI GELDI. d3402cd (SD1-SD10 yeniden
+      // yazimi) bu cagriyi isçilik dalindan SILMIS, yalniz malzeme dalina geri
+      // koymustu — commit'te boyle bir karar yok, gerileme. Sonuc: isçilik
+      // firmasi surukleyince kac satir fiyatlandi, kaci firmada yok ve en
+      // onemlisi kac satirda SUNUCU HATASI oldugu kullaniciya HIC soylenmiyordu.
+      // Sayilar malzeme ikiziyle AYNI kuraldan (`sonuc.ozet`).
+      onAutoVariantApplied?.({
+        applied: sonuc.ozet.fiyatli,
+        waiting: sonuc.ozet.aday,
+        missing: sonuc.ozet.yok + sonuc.ozet.urunDegil + sonuc.ozet.adYok,
+        hatali: sonuc.ozet.hata,
+        kaynak: 'işçilik firması',
+        dal: 'iscilik',
+      });
       rootWrapperRef.current?.focus();
     } else if (result.field === '_malzKar') {
       // Malzeme kar % fill → deger kopyala + fiyat recalc

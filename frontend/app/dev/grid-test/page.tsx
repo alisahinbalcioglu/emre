@@ -309,8 +309,11 @@ export default function GridTestPage() {
     setAutoVariant(v);
     kaydet(`ANAHTAR → ${v ? 'AÇIK' : 'KAPALI'}`);
   }, []);
-  const onAutoVariantApplied = useCallback(({ applied, waiting, missing, kaynak }: { applied: number; waiting: number; missing: number; kaynak: string }) => {
-    kaydet(`YAYILIM: ${applied} yazıldı · ${waiting} seçim bekliyor · ${missing} yok (kaynak: ${kaynak})`);
+  // Y4 (02.10): `hatali` ve `dal` da loglanir — isçilik doldurma ozeti
+  // d3402cd yeniden yaziminda kaybolmustu ve hata sayisi kullaniciya hic
+  // ulasmiyordu; olcut bu sayilarin GERCEKTEN geldigidir.
+  const onAutoVariantApplied = useCallback(({ applied, waiting, missing, kaynak, hatali, dal }: { applied: number; waiting: number; missing: number; kaynak: string; hatali?: number; dal?: string }) => {
+    kaydet(`YAYILIM: ${applied} yazıldı · ${waiting} seçim bekliyor · ${missing} yok · ${hatali ?? 0} hata (kaynak: ${kaynak}, dal: ${dal ?? '-'})`);
   }, []);
 
   if (process.env.NODE_ENV === 'production') {

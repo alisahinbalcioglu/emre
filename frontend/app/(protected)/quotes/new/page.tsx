@@ -52,6 +52,8 @@ import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/ozellik/teklif/dwg-tekli
 import { kalemUret } from '@/ozellik/teklif/teklif-kalem';
 import { restoreRematch } from '@/ozellik/teklif/restore-rematch';
 import { TASLAK_ANAHTARI, TASLAK_SURUMU } from '@/ozellik/teklif/taslak';
+// Y4: doldurma ozeti tost metni tek yerde (isçilik "firmada yok").
+import { doldurmaOzetMetni } from '@/ozellik/teklif/doldurma-ozeti';
 import { ceviriUygula, ceviriGeriAl, cevrilmisSatirVarMi } from '@/ozellik/teklif/ceviri';
 import { ceviriAnahtari, duzeltmeyiSatirlaraUygula, satirKaynagi } from '@/ozellik/teklif/ceviri';
 import { duzeltmeHataMetni, duzeltmeKaldir, duzeltmeKaydet, duzeltmeleriGetir, type DuzeltmeGorunumu } from '@/ozellik/teklif/ceviri-duzeltme';
@@ -2085,13 +2087,11 @@ export default function NewQuotePage() {
           // PRD v3.0 A2: "kat" isaretli sutunlar → MIK = katlarin satir-toplami
           floorFields={activeFloorFields}
           // §3: yayilim bilgisi — "n satır güncellendi"
-          onAutoVariantApplied={({ applied, waiting, missing, hatali }) => {
-            const parca: string[] = [];
-            if (applied > 0) parca.push(`${applied} satır güncellendi`);
-            if (waiting > 0) parca.push(`${waiting} seçim bekliyor`);
-            if (missing > 0) parca.push(`${missing} markada yok`);
-            if ((hatali ?? 0) > 0) parca.push(`${hatali} sorgu hatası — tekrar deneyin`);
-            if (parca.length > 0) toast({ title: '⚡ Otomatik varyant atama', description: parca.join(' · ') });
+          // Y4 (02.10): metin saf yardimcidan — isçilik doldurma ozeti geri geldi
+          // ve eksikleri "markada yok" diye yazmak yanlis yonlendirirdi.
+          onAutoVariantApplied={(ozet) => {
+            const aciklama = doldurmaOzetMetni(ozet);
+            if (aciklama) toast({ title: '⚡ Otomatik varyant atama', description: aciklama });
           }}
           // Excel-vari "en altta hep bos satir" — DWG metraj grid'inde aktif
           // (Excel yolunda backend kolonlari cok genis, davranis degismesin)
