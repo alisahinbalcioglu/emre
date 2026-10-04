@@ -74,8 +74,16 @@ export default function GridTestPage() {
   // (SSR/istemci hydration uyusmazligi); cozum grid'i bir tik geciktirmek.
   const [gridHazir, setGridHazir] = useState(false);
   React.useEffect(() => {
-    const kip = new URLSearchParams(window.location.search).get('iscilik');
+    const arama = new URLSearchParams(window.location.search);
+    const kip = arama.get('iscilik');
     if (kip === 'kapali' || kip === 'gec') setIscilikAcik(false);
+    // Y5 (02.10): `?oto=acik` → oto-varyant anahtari grid KURULMADAN once acik.
+    // ExcelGrid sozlesmesi (`autoVariantEnabled` varsayilani TRUE) grup varyanti
+    // sorgusunu canli tutar; ama marka hucresi anahtari columnDefs memo'sundan
+    // okur ve memo onu BAGIMLILIK olarak tasimaz — sonradan acilan anahtari
+    // hucre GORMEZ. Uretim sayfasi sabit `false` gecirir (PRD v3.0 B), yani bu
+    // yalniz harness'ta gorunur; sozlesmeyi olcmenin yolu baslangicta acmak.
+    if (arama.get('oto') === 'acik') setAutoVariant(true);
     setGridHazir(true); // ayni tikte toplanir → grid ilk render'da DOGRU degeri gorur
     if (kip === 'gec') {
       const t = setTimeout(() => setIscilikAcik(true), 300);
@@ -218,6 +226,27 @@ export default function GridTestPage() {
       return {
         netPrice: 0, confidence: 'none', reason: 'Bu markada bu ürün ailesi yok.',
         alternatives: [{ brandId: 'b-ayvaz', brandName: 'AYVAZ', materialName: 'Çelik boru · siyah', netPrice: 100, listPrice: 100, discount: 0 }],
+      } as any;
+    }
+
+    // Y5 (02.10): BASLIKLI AILE (satir 12-14) FIYATLANIR. Grup varyanti
+    // (`groupVariants[baslik]`) yalniz BASLIK baglami olan satirda kaydedilir;
+    // yukaridaki boru satirlari kendi kendine yeterli (baslik yok), bu yuzden
+    // "grup varyantiyla sorgu" yolu harness'ta HIC surulmuyordu. Ilk secim iki
+    // aday sorar; varyant verilince kendi DN'inin fiyati otomatik doner.
+    if (materialName.includes('Milli Vana')) {
+      const dn = materialName.includes('DN 150') ? 150 : 100;
+      const fiyatDn = dn * 10;
+      if (opts?.variantTags?.length) {
+        return { netPrice: fiyatDn, confidence: 'suggestion', autoVariant: true, matchedName: `OS&Y vana · flanşlı · DN ${dn}` } as any;
+      }
+      return {
+        netPrice: 0, confidence: 'multi',
+        candidates: [
+          aday(`OS&Y vana · flanşlı · DN ${dn}`, 'flanşlı', fiyatDn, ['v:flansli']),
+          aday(`OS&Y vana · yivli · DN ${dn}`, 'yivli', fiyatDn - 100, ['v:yivli']),
+        ],
+        reason: '2 seçenek',
       } as any;
     }
 
