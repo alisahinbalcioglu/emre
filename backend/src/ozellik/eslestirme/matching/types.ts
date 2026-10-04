@@ -16,6 +16,13 @@ export interface KaynakKur {
   kur: number;
   /** Kurun ait oldugu gun (TCMB Tarih) */
   tarih: string;
+  /** C10 (P4 notu 3, Emre karari 01.10): kur son basarili cekimden bu yana
+   *  > 2 is gunu eski (`BAYAT_KUR_IS_GUNU`). P4a yalniz sunucuda WARN
+   *  yaziyordu; isaret artik eslestirme SONUCUNDA. Taze kurda alan YOK.
+   *  (> 5 is gununde kur gecersiz → satir "kur alinamadi", bu alana gelinmez.) */
+  bayat?: true;
+  /** C10: son basarili cekimden bu yana gecen is gunu (yalniz bayatken). */
+  yasIsGunu?: number;
 }
 
 /**

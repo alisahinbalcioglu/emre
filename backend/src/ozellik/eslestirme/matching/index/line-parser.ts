@@ -88,7 +88,11 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
     glvz: 'galvaniz',
     galv: 'galvaniz',
   };
-  const adaylar = Array.from(new Set(tokenize(parantezsiz).map((t) => KISALTMALAR[t] ?? t)));
+  // P4 notu 2'nin IKINCI KOKU (04.10, olculdu): duz nesne aramasi prototipi
+  // okur — "CONSTRUCTOR" yazan satirin belirteci Object.prototype.constructor
+  // FONKSIYONUNA donusup TUM toplu istegi dusuruyordu. Yalniz KENDI anahtari.
+  const adaylar = Array.from(new Set(tokenize(parantezsiz).map((t) =>
+    (Object.prototype.hasOwnProperty.call(KISALTMALAR, t) ? KISALTMALAR[t] : t))));
 
   // Cap: kaynak-farkinda (DN mi, inc mi, mm mi yazilmis?) — cevrim tablosu
   // secimi buna bagli (PPR'de DN=mm, celikte DN≠mm). v1 ile ayni primitif.

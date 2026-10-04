@@ -30,7 +30,8 @@ import type { IndexedRow, QueryOutcome, AskColumn, LineQuery } from '../../../es
  * URETILMEZ — kur bilinmiyorken tarih/kur uydurmak yasak (kapi D1).
  */
 export type TryCevirici = ((v: number, cur: string) => number) & {
-  kur?: { usdTry: number; eurTry: number; tarih: string };
+  /** C10 (P4 notu 3): `bayat` + `yasIsGunu` yalniz kur > 2 is gunu eskiyse */
+  kur?: { usdTry: number; eurTry: number; tarih: string; bayat?: true; yasIsGunu?: number };
   /**
    * KUR-01 (14.09): bu para birimi TL'ye CEVRILEMIYOR mu? (kur alinamadi ya da
    * para birimi taninmadi). `buildTryConverter` atar; yoksa her satir
@@ -52,6 +53,9 @@ export function kurOf(r: IndexedRow, toTry: (v: number, cur: string) => number):
     currency: kod,
     kur: kod === 'USD' ? t.kur.usdTry : t.kur.eurTry,
     tarih: t.kur.tarih,
+    // C10 (P4 notu 3, Emre karari): bayat kur isareti kurla BIRLIKTE akar —
+    // sonuc, aday ve oneri ayni yerden alir. Taze kurda alan YOK.
+    ...(t.kur.bayat ? { bayat: true as const, yasIsGunu: t.kur.yasIsGunu } : {}),
   };
 }
 
