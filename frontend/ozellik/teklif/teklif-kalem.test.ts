@@ -285,3 +285,61 @@ describe('kalemUret — G1 özet (İcmal / ara toplam) satırı', () => {
     expect(kalemUret({ ...icmalSatiri, _ozet: false }, roller)).not.toBeNull();
   });
 });
+
+// ── COKLU PARA BIRIMI F4 (Emre karari 04.10) ─────────────────────────────────
+// Karisik kipte satir dovizli taraf tasir; ILISKISEL kalem alanlari (liste/pano
+// toplami) TL karsiligi tasir: once satirin DONDURULMUS kuru, yoksa kayit anindaki
+// kur. sheets JSON satirin kendi birimini AYNEN tasir (gosterim/cikti oradan).
+import { kalemUret as kalemUretF4 } from './teklif-kalem';
+import { karisikKipMi } from '../fiyat/taraf-para-birimi';
+
+describe('F4 — karisik kip kalemi TL karsiligi tasir', () => {
+  const ROL = { nameField: 'ad', quantityField: 'q', materialUnitPriceField: 'mb', materialTotalField: 'mt', laborUnitPriceField: 'lb', laborTotalField: 'lt' };
+  const KUR = { tlKuru: { USD: 50, EUR: 55 } };
+
+  it('★★ dovizli taraf SATIRIN dondurulmus kuruyla cevrilir ($10,50 × 40 = ₺420)', () => {
+    const r = { _isDataRow: true, ad: 'Vana', q: '10', mb: '10.50', mt: '105.00', _matPB: 'USD',
+      _matKurBilgi: { currency: 'USD', kur: 40, tarih: '2026-10-05' } };
+    const k = kalemUretF4(r, ROL, KUR)!;
+    expect(k.materialUnitPrice).toBe(420);
+    expect(k.materialTotalPrice).toBe(4200);
+  });
+
+  it('★ dondurulmus kur yoksa (elle $ fiyat) KAYIT ANINDAKI kur ($12 × 50)', () => {
+    const r = { _isDataRow: true, ad: 'Vana', q: '2', mb: '12', mt: '24.00', _matPB: 'USD', _matKurBilgi: null };
+    const k = kalemUretF4(r, ROL, KUR)!;
+    expect(k.materialTotalPrice).toBe(1200);
+  });
+
+  it('★ ₺ taraf olduğu gibi; karma satirda iscilik ₺ cevrilmez', () => {
+    const r = { _isDataRow: true, ad: 'Vana', q: '2', mb: '10', mt: '20', _matPB: 'USD', lb: '40', lt: '80', _labPB: 'TRY' };
+    const k = kalemUretF4(r, ROL, KUR)!;
+    expect(k.materialTotalPrice).toBe(1000);
+    expect(k.laborTotalPrice).toBe(80);
+  });
+
+  it('★★ fitting satiri birim basina tutarlarini TL karsiligina toplar (₺20 + $2,10 × 50)', () => {
+    const r = { _isDataRow: true, ad: 'Fitting bedeli', q: '10', mb: '', mt: '', _fitting: { kapsam: [1, 2] },
+      _fittingBirimli: { mat: [{ pb: 'TRY', toplam: 20 }, { pb: 'USD', toplam: 2.1 }], lab: [] } };
+    const k = kalemUretF4(r, ROL, KUR)!;
+    expect(k.materialTotalPrice).toBe(125);
+  });
+
+  it('★★ KONTROL: secenek verilmezse (tl) bugunku gibi — birim alanlarina bakilmaz', () => {
+    const r = { _isDataRow: true, ad: 'Vana', q: '10', mb: '10.50', mt: '105.00', _matPB: 'USD' };
+    const k = kalemUretF4(r, ROL)!;
+    expect(k.materialTotalPrice).toBe(105);
+  });
+});
+
+describe('F4 — karisikKipMi: kip kayittan TURETILIR (sema alani yok)', () => {
+  it('★ taraf birimi tasiyan satir varsa karisik', () => {
+    expect(karisikKipMi([{ rowData: [{ _isDataRow: true, _matPB: 'TRY' }] }])).toBe(true);
+    expect(karisikKipMi([{ rowData: [{}] }, { rowData: [{ _isDataRow: true, _labPB: 'USD' }] }])).toBe(true);
+  });
+  it('★ yalniz-TL teklif tl (eski kayitlar degismez)', () => {
+    expect(karisikKipMi([{ rowData: [{ _isDataRow: true, mb: '10' }] }])).toBe(false);
+    expect(karisikKipMi([])).toBe(false);
+    expect(karisikKipMi(null)).toBe(false);
+  });
+});

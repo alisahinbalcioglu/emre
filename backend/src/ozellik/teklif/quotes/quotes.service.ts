@@ -10,6 +10,7 @@ import * as ExcelJS from 'exceljs';
 // PRD Teklif Formatim (v2.1): profesyonel cikti motoru
 import { buildExportWorkbook, ExportSonucu, ExportBirim } from './export-engine';
 import { standartCiktiUret } from './standart-cikti';
+import { karisikKipMi } from './cikti-karisik';
 import { buildSampleFormat, ExportOverrides, FillContext } from '../../cikti/quote-formats/format-engine';
 import { ExchangeRatesService, kurGecerli } from '../../fiyat/exchange-rates/exchange-rates.service';
 import { CeviriService, KAYIT_INDIRGEME_UYARISI } from '../../giris/ai/ceviri.service';
@@ -666,6 +667,21 @@ export class QuotesService {
     }
   }
 
+  /**
+   * F5 (coklu para birimi, 05.10): "Teklif formatında aktar" İCMAL'i TEK birimli
+   * yer tutuculara (GENEL TOPLAM …) yazar — karisik teklifte (taraf birimi
+   * tasiyan satir, `karisikKipMi`) doları liraya toplardi. Kesin ret: ceviriden,
+   * numaradan ve revizyondan ONCE (R1-B6 ikizi: reddedilen indirme numara
+   * yakmaz). Fiyatli Excel birim basina ayri toplar (`cikti-karisik.ts`).
+   */
+  private formatYoluKarisikReddi(quote: any): void {
+    if (karisikKipMi(Array.isArray(quote.sheets) ? quote.sheets : [])) {
+      throw new BadRequestException(
+        'Bu teklif para birimi başına toplanan (çoklu para birimi) düzende; teklif formatının İCMAL\'i tek para birimlidir. Şimdilik "Fiyatlandırılmış Excel" ile indirin — her para birimi ayrı toplanır.',
+      );
+    }
+  }
+
   private async ciktiKur(k: Kimlik, quote: any, rev: number, dil: string | undefined, kur: any | null): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik'; birim: ExportBirim | null; antetNotu: string | null }> {
     this.orijinalDosyaZorunlu(quote);
     const { wb: formatWb, formatAdi, formatKaynak, sheetRoles } = await this.resolveFormatWb(k, quote);
@@ -698,6 +714,7 @@ export class QuotesService {
   /** .xlsx uret + REV artir + arsivle (T10). */
   async exportXlsx(k: TeklifKimligi, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string; ozet?: string }> {
     const quote = await this.quoteGetir(k, id);
+    this.formatYoluKarisikReddi(quote); // F5: ceviri ve numaradan ONCE
     // 13.08: parametre yoksa teklifin KAYITLI dili konusur (bayat istemci
     // korumasi — bkz. exportDili).
     const secim = this.exportDili(quote, dil);

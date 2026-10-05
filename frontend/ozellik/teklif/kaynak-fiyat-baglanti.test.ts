@@ -23,3 +23,24 @@ describe('kaynakFiyat sarmalayicidan izgaraya tasinir', () => {
     for (const l of kurlu) expect(l).toMatch(/kaynakFiyat: \(match as any\)\.kaynakFiyat/);
   });
 });
+
+// ── F4 (05.10): kip KAYITTAN turetilir, kayit ve geri yukleme kipi tasir ──────
+const detay = readFileSync(join(__dirname, '..', '..', 'app', '(protected)', 'quotes', '[id]', 'page.tsx'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .split(/\r?\n/).filter((l) => !l.trim().startsWith('//')).join('\n');
+
+describe('F4 BAGLANTI — karisik kip sayfalara ve kayda ulasir', () => {
+  it('★★ duzenleme sayfasi izgaraya kayittan turetilen kipi verir', () => {
+    expect(sayfa).toMatch(/karisikKipMi\(/);
+    expect(sayfa).toMatch(/paraBirimiKipi=\{karisikKip \? 'karisik' : 'tl'\}/);
+  });
+  it('★★ kayit kalemleri karisik kipte TL karsiligi secenegiyle uretilir', () => {
+    expect(sayfa).toMatch(/kalemUret\(r, roles as any, karisikKip \? \{ tlKuru: tlKurlari \} : undefined\)/);
+  });
+  it('★ taslak geri yuklemesi karisik kipi iletir', () => {
+    expect(sayfa).toMatch(/restoreRematch\([\s\S]{0,400}?\{ karisik: karisikKipMi\(/);
+  });
+  it('★★ goruntuleme sayfasi da kipi kayittan turetir', () => {
+    expect(detay).toMatch(/paraBirimiKipi=\{karisikKipMi\(sheets\) \? 'karisik' : 'tl'\}/);
+  });
+});

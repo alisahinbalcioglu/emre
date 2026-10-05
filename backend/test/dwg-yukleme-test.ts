@@ -669,13 +669,22 @@ async function aBlogu(): Promise<void> {
   const onceMotor = motorKayitlari.length;
   const ac = new AbortController();
   const istek = yukle({ firma: 'firma-k', adet: 60, blokArasiMs: 25, sinyal: ac.signal });
-  // Parca belirince ~0,4 sn beklenir, boyutu TEK kez okunur (yazilan dosyaya sik stat
-  // Windows'ta yazimi yavaslatiyor — S blogu notu).
+  // Parca belirince boyut 5 MB'a ulasana dek SEYREK yoklanir: 200 ms aralik, 5 sn
+  // tavan (yazilan dosyaya sik stat Windows'ta yazimi yavaslatiyor — S blogu notu).
+  // Eskiden SABIT 0,4 sn bekleyip TEK kez okurdu: yazim o an 12,5 MB/sn'nin altina
+  // inince 5 MB'a yetmiyordu (04.10 tam regresyonda 1,7 MB'ta dustu; istemci
+  // bloklari 120 ms arayla gelince her kosuda duser). On kosul artik zamana degil
+  // OLAYA bagli; olcut gevsemedi (yine >= 5 MB, parca ve yer tutuluyor).
   const belirdi = await bekle(() => parcalar().length === 1, 10_000);
-  await uyu(400);
-  const p = parcalar();
+  let p: string[] = [];
   let yazilanMb = 0;
-  try { yazilanMb = p.length === 1 ? statSync(join(dwgGeciciDizin(), p[0])).size / MB : 0; } catch { /* asagida raporlanir */ }
+  const yoklamaSonu = Date.now() + 5_000;
+  while (belirdi) {
+    p = parcalar();
+    try { yazilanMb = p.length === 1 ? statSync(join(dwgGeciciDizin(), p[0])).size / MB : 0; } catch { yazilanMb = 0; /* asagida raporlanir */ }
+    if (yazilanMb >= 5 || Date.now() >= yoklamaSonu) break;
+    await uyu(200);
+  }
   check('A0-OLCUT kopma ANINDA yukleme diske yaziliyordu (≥ 5 MB parca, yer tutuluyor)',
     belirdi && yazilanMb >= 5 && firmaYuklemeleri.sayi('firma-k') === 1,
     `parca=${JSON.stringify(p)} yazilan=${yazilanMb.toFixed(1)} MB sayi=${firmaYuklemeleri.sayi('firma-k')}`);

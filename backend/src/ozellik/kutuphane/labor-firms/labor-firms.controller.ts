@@ -5,6 +5,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { LaborFirmsService, CreateLaborFirmDto, SheetInput } from './labor-firms.service';
+import { IscilikTopluKayitDto } from './dto/iscilik-toplu-kayit.dto';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../altyapi/auth/decorators/current-user.decorator';
 import { ExcelGridService } from '../../giris/excel-grid/excel-grid.service';
@@ -165,14 +166,9 @@ export class LaborFirmsController {
   saveBulkPrices(
     @CurrentUser() user: any,
     @Param('id') firmaId: string,
-    @Body() body: {
-      priceListId: string;
-      items: { laborName: string; unit: string; unitPrice: number; category?: string; discountRate?: number; currency?: string }[];
-      // P2-3: `exchangeRate` alani KALDIRILDI (bkz. servis yorumu).
-      // Sabit-format HAM grid (InlineFirmEntry) — Cinsi/Çap/Para/Not sutunlari
-      // burada saklanir (LaborPrice birlesik ad tutar, bu sutunlar DB'de yok).
-      sheet?: { columnDefs: any[]; rowData: any[]; columnRoles: any; headerEndRow?: number };
-    },
+    // P4b (05.10): sinif DTO — satir ici tip ValidationPipe'i atliyordu.
+    // P2-3: `exchangeRate` alani KALDIRILDI (bkz. servis yorumu).
+    @Body() body: IscilikTopluKayitDto,
   ) {
     // ⚠ `sheet` 6. slottan 5. slota GECTI. Kayarsa InlineFirmEntry'nin ham
     // 8-sutun grid'i sessizce kaydedilmez → `npm run test:labor-sheet` kapisi.

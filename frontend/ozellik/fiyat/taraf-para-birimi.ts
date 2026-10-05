@@ -138,3 +138,38 @@ export function cokluTutarMetni(parcalar: Array<{ pb: ParaBirimi; tutar: number 
     .map((pb) => `${PARA_SEMBOLU[pb]}${paraBicim(K.get(pb)! / 100, 1)}`);
   return yazi.length ? yazi.join(' + ') : null;
 }
+
+// ══ F4 — KAYIT: kip kayittan turetilir, iliskisel kalem TL karsiligi tasir ═══
+
+/**
+ * Teklif karisik kipte mi? Kayitta AYRI alan yok: karisik kip her fiyat
+ * yaziminda tarafin birimini (`_matPB`/`_labPB`, ₺ dahil) yazar; tl kipi hic
+ * yazmaz. Yani birim alani tasiyan satir = karisik teklif; eski / yalniz-TL
+ * kayitlar tl kalir.
+ */
+export function karisikKipMi(sayfalar: Array<{ rowData?: Record<string, any>[] | null }> | null | undefined): boolean {
+  for (const s of sayfalar ?? []) {
+    for (const r of s?.rowData ?? []) {
+      if (typeof r?._matPB === 'string' || typeof r?._labPB === 'string') return true;
+    }
+  }
+  return false;
+}
+
+/** Kayit anindaki TL kurlari (1 birim = kac TL). */
+export type TlKurlari = Partial<Record<'USD' | 'EUR', number>>;
+
+/**
+ * Dovizli tutarin TL karsiligi (kurus): once satirin DONDURULMUS kuru (kur
+ * donmasi — tutarin dogdugu kur), yoksa kayit anindaki kur. Kur hic yoksa 0:
+ * iliskisel kalem (liste/pano toplami) bilgi amaclidir, teklifin kendi rakami
+ * sheets JSON'unda birimiyle durur — uydurma kur YAZILMAZ.
+ */
+export function tlKarsiligi(v: number, pb: ParaBirimi, satirKuru: unknown, tlKuru: TlKurlari): number {
+  if (pb === 'TRY') return v;
+  const sk = satirKuru as { currency?: unknown; kur?: unknown } | null | undefined;
+  const donuk = sk && sk.currency === pb && typeof sk.kur === 'number' && sk.kur > 0 ? sk.kur : null;
+  const kur = donuk ?? tlKuru[pb];
+  if (!kur || !Number.isFinite(kur) || kur <= 0) return 0;
+  return kurusTamsayi(v * kur) / 100;
+}

@@ -51,6 +51,7 @@ import { indeksUyarilari } from '@/lib/indeks-sagligi';
 import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/ozellik/teklif/dwg-teklif-sema';
 import { kalemUret } from '@/ozellik/teklif/teklif-kalem';
 import { restoreRematch } from '@/ozellik/teklif/restore-rematch';
+import { karisikKipMi, type TlKurlari } from '@/ozellik/fiyat/taraf-para-birimi';
 import { TASLAK_ANAHTARI, TASLAK_SURUMU, taslakUyarisiGerekirMi, TASLAK_YAZILAMADI_UYARISI, type TaslakYazimDurumu } from '@/ozellik/teklif/taslak';
 // Y4: doldurma ozeti tost metni tek yerde (isçilik "firmada yok").
 import { doldurmaOzetMetni } from '@/ozellik/teklif/doldurma-ozeti';
@@ -441,6 +442,12 @@ export default function NewQuotePage() {
   const [multiSheet, setMultiSheet] = useState<MultiSheetData | null>(null);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const [liveRowDataBySheet, setLiveRowDataBySheet] = useState<Record<number, ExcelRowData[]>>({});
+  // COKLU PARA BIRIMI F4: kip KAYITTAN turetilir (taraf birimi tasiyan satir =
+  // karisik; eski/yalniz-TL teklif tl). Yeni teklifin varsayilani F6'da.
+  const karisikKip = useMemo(
+    () => karisikKipMi(multiSheet?.sheets.map((s) => ({ rowData: liveRowDataBySheet[s.index] ?? s.rowData })) ?? []),
+    [multiSheet, liveRowDataBySheet],
+  );
   const [sheetMatchCounts, setSheetMatchCounts] = useState<Record<number, { total: number; matched: number }>>({});
   // PRD v3.0 Bolum B: "Otomatik varyant atama" toggle KALDIRILDI (global gate yok);
   // yayilim yalniz SURUKLE/CIFT-TIK ile. Motor korunur.
@@ -745,6 +752,8 @@ export default function NewQuotePage() {
             multi.sheets,
             live,
             async (url, body) => (await api.post(url, body)).data,
+            // F4: karisik taslak dovizli tarafi KAYNAK biriminde yeniden fiyatlar.
+            { karisik: karisikKipMi(multi.sheets.map((s: any) => ({ rowData: live[s.index] ?? s.rowData }))) },
           );
           if (reMatched > 0) {
             // D8 (30.09): IC DIZILER DE YENI REFERANS OLMALI.
@@ -899,6 +908,8 @@ export default function NewQuotePage() {
 
   // Currency (TRY/USD/EUR) hook — state + exchange rate + conversion
   const { currency, gosterimCurrency, setCurrency, ratesLoaded, conversionRate, displayPrice, exchangeRates } = useCurrency();
+  // F4: kayit anindaki TL kurlari (ic temsil USD tabanli: TRY = TL/USD, EUR = EUR/USD).
+  const tlKurlari: TlKurlari = ratesLoaded ? { USD: exchangeRates.TRY, EUR: exchangeRates.TRY / exchangeRates.EUR } : {};
 
   /* ---------- Step 1: Upload ---------- */
 
@@ -1546,7 +1557,8 @@ export default function NewQuotePage() {
             // yazilinca `materialMargin`/`laborMargin` parseFloat SUZGECI
             // ALMAMISTI: Kar % hucresine elle yazilan "50" STRING olarak
             // gidiyor ve backend @IsNumber() reddedip HTTP 400 veriyordu.
-            const kalem = kalemUret(r, roles as any);
+            // F4: karisik kipte iliskisel kalem TL karsiligi (liste/pano toplami).
+            const kalem = kalemUret(r, roles as any, karisikKip ? { tlKuru: tlKurlari } : undefined);
             if (!kalem) return;
             multiItems.push(kalem);
             if (uyariyaGirerMi(r)) uyariAdaylari.push(kalem);
@@ -2164,6 +2176,7 @@ export default function NewQuotePage() {
           onColumnWidthsChange={(w) => setColWidthsBySheet((prev) => ({ ...prev, [activeSheetKey]: w }))}
           currencySymbol={paraSimgesi(gosterimCurrency)}
           conversionRate={conversionRate}
+          paraBirimiKipi={karisikKip ? 'karisik' : 'tl'}
           laborFirms={laborFirms}
           sheetDiscipline={(() => {
             const idx = activeSheetIndex;

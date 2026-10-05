@@ -152,26 +152,43 @@ export class TerminologyService implements OnModuleInit {
     }
   }
 
-  /** Global + kullanici alias'lari (aktif). Uzunluk sirali (en uzun once). */
+  /** Global + kullanici alias'lari (aktif). Uzunluk sirali (en uzun once).
+   *  HATA (C9, P4b 05.10): yalniz tablo YOKSA (Prisma P2021 — db push oncesi
+   *  kurulum) bos liste + bir kez WARN; baska her hata (baglanti, yetki, sema
+   *  kaymasi) WARN + FIRLATIR. Eskiden her hata sessizce [] donuyordu: alias
+   *  ipuclari dusuyor (pis su PP elemesi, "temiz su → PPR"), eslestirme
+   *  hatasiz ama YANLIS sonuc veriyordu. Kapi: `test:p4b-motor` T. */
   async loadAliases(userId: string): Promise<AliasHint[]> {
+    let rows: any[];
     try {
-      const rows = await (this.prisma as any).terminologyAlias.findMany({
+      rows = await (this.prisma as any).terminologyAlias.findMany({
         where: { active: true, OR: [{ userId: null }, { userId }] },
       });
-      return rows
-        .map((r: any): AliasHint => ({
-          alias: r.alias,
-          canonical: r.canonical,
-          kinds: r.kinds ?? [],
-          impliedType: r.impliedType ?? null,
-          sizeClass: (r.sizeClass as SizeClass) ?? null,
-          stripTags: r.stripTags ?? [],
-        }))
-        .sort((a: AliasHint, b: AliasHint) => b.alias.length - a.alias.length);
-    } catch {
-      return []; // tablo yoksa: cagiran taraf koddaki fallback'i kullanir
+    } catch (e) {
+      if ((e as { code?: string })?.code === 'P2021') {
+        if (!this.aliasTablosuYokUyarildi) {
+          this.aliasTablosuYokUyarildi = true;
+          console.warn('[Terminology] Alias tablosu yok (P2021) — alias ipuclari olmadan eslestiriliyor');
+        }
+        return [];
+      }
+      console.warn('[Terminology] Alias yuklenemedi:', (e as Error)?.message ?? e);
+      throw e;
     }
+    return rows
+      .map((r: any): AliasHint => ({
+        alias: r.alias,
+        canonical: r.canonical,
+        kinds: r.kinds ?? [],
+        impliedType: r.impliedType ?? null,
+        sizeClass: (r.sizeClass as SizeClass) ?? null,
+        stripTags: r.stripTags ?? [],
+      }))
+      .sort((a: AliasHint, b: AliasHint) => b.alias.length - a.alias.length);
   }
+
+  /** P2021 uyarisi surec basina BIR kez (her istekte ayni satiri basmasin). */
+  private aliasTablosuYokUyarildi = false;
 
   /** Metinde geçen EN UZUN alias'i bul (S2 contains + longest-wins). */
   resolveAlias(text: string, aliases: AliasHint[]): AliasHint | null {

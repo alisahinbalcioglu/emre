@@ -19,6 +19,7 @@
 // bugune kadar sorun cikarmadi. Bu RUNTIME import, goreli olmali.
 import { etkinMiktar } from '../fiyat/pricing';
 import { sayiAlani } from '../fiyat/sayi-alani';
+import { tarafPB, tlKarsiligi, type TlKurlari, type ParaBirimi } from '../fiyat/taraf-para-birimi';
 
 // Süzgeç `ozellik/fiyat/sayi-alani.ts`e TAŞINDI — ekran yolları (ExcelGrid, fill-down,
 // sayfaToplamlari) da aynı fonksiyonu çağırabilsin diye. Buradan yeniden
@@ -86,6 +87,9 @@ export interface TeklifKalemi {
 export function kalemUret(
   r: Record<string, any>,
   roles: KalemRolleri,
+  /** COKLU PARA BIRIMI F4: karisik kipte ILISKISEL alanlar TL karsiligi tasir
+   *  (once satirin dondurulmus kuru, yoksa `tlKuru`). Verilmezse (tl) bugunku gibi. */
+  karisik?: { tlKuru: TlKurlari },
 ): TeklifKalemi | null {
   if (r?._ozet) return null;
   const baseName = roles.nameField ? String(r[roles.nameField] ?? '').trim() : '';
@@ -93,7 +97,15 @@ export function kalemUret(
   const materialName = [diaVal, baseName].filter(Boolean).join(' ');
   if (!materialName) return null;
 
-  const matBirim = roles.materialUnitPriceField ? sayiAlani(r[roles.materialUnitPriceField]) : 0;
+  // F4: karisik kipte dovizli taraf TL karsiligina cevrilir; ₺ taraf aynen.
+  const tl = (v: number, dal: 'malzeme' | 'iscilik') => (karisik
+    ? tlKarsiligi(v, tarafPB(r, dal), r[dal === 'iscilik' ? '_labKurBilgi' : '_matKurBilgi'], karisik.tlKuru)
+    : v);
+  // F3/F4: karisik kipte fitting toplam hucreleri BOS; tutar birim basina
+  // `_fittingBirimli`de — TL karsiliklari toplanir (kayit anindaki kur).
+  const fb = karisik && r._fitting && r._fittingBirimli ? r._fittingBirimli as { mat?: Array<{ pb: ParaBirimi; toplam: number }>; lab?: Array<{ pb: ParaBirimi; toplam: number }> } : null;
+  const fitTL = (l?: Array<{ pb: ParaBirimi; toplam: number }>) => (l ?? []).reduce((s, x) => s + tlKarsiligi(x.toplam, x.pb, null, karisik!.tlKuru), 0);
+  const matBirim = roles.materialUnitPriceField ? tl(sayiAlani(r[roles.materialUnitPriceField]), 'malzeme') : 0;
 
   return {
     materialName,
@@ -111,11 +123,11 @@ export function kalemUret(
     quantity: sayiAlani(etkinMiktar(r, roles.quantityField, roles.unitField)),
     unitPrice: matBirim,
     materialUnitPrice: matBirim,
-    laborUnitPrice: roles.laborUnitPriceField ? sayiAlani(r[roles.laborUnitPriceField]) : 0,
+    laborUnitPrice: roles.laborUnitPriceField ? tl(sayiAlani(r[roles.laborUnitPriceField]), 'iscilik') : 0,
     // KL P1-b (kalem 64): EKRANDAKI toplam da gönderilir — backend onu yeniden
     // türetmesin. Birim fiyat alanları zaten SATIŞ fiyatıdır (kâr uygulanmış).
-    materialTotalPrice: roles.materialTotalField ? sayiAlani(r[roles.materialTotalField]) : undefined,
-    laborTotalPrice: roles.laborTotalField ? sayiAlani(r[roles.laborTotalField]) : undefined,
+    materialTotalPrice: roles.materialTotalField ? (fb ? fitTL(fb.mat) : tl(sayiAlani(r[roles.materialTotalField]), 'malzeme')) : undefined,
+    laborTotalPrice: roles.laborTotalField ? (fb ? fitTL(fb.lab) : tl(sayiAlani(r[roles.laborTotalField]), 'iscilik')) : undefined,
     // ⚠ BURASI 400'ÜN KÖKÜYDÜ: eskiden `r._malzKar || 0` idi (süzgeçsiz).
     materialMargin: sayiAlani(r._malzKar),
     laborMargin: sayiAlani(r._iscKar),

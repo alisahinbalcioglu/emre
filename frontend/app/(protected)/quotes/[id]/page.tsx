@@ -26,6 +26,7 @@ import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/ozellik/tablo/excel-grid/SheetTabs';
 import type { ExcelGridData } from '@/ozellik/tablo/excel-grid/types';
 import { useCurrency, paraSimgesi } from '@/ozellik/fiyat/use-currency';
+import { karisikKipMi } from '@/ozellik/fiyat/taraf-para-birimi';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { adDisiplinTahmini } from '@/ozellik/tablo/disiplin';
 import type { Currency, LaborFirm } from '@/ortak/types/quotes';
@@ -715,6 +716,9 @@ export default function QuoteDetailPage() {
               // KUR-01 ikizi: simge GOSTERIM biriminden — kur yuklenmeden TL rakam "$" ile basilmaz
               currencySymbol={paraSimgesi(gosterimCurrency)}
               conversionRate={conversionRate}
+              // COKLU PARA BIRIMI F4: kip KAYITTAN turetilir — karisik teklif
+              // dovizli tarafi kendi biriminde, toplamlari birim basina gosterir.
+              paraBirimiKipi={karisikKipMi(sheets) ? 'karisik' : 'tl'}
               onBrandChange={SALT_OKUNUR_MARKA}
               // D9 + Y1 (30.09): BU SAYFA GORUNTULEME SAYFASIDIR. Marka ve
               // Isc. Firma hucreleri gercek acilir listeydi ve secim satir

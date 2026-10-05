@@ -923,6 +923,27 @@ async function bolumC(): Promise<void> {
     varMi(veri4, 'laborItem', 'id', 'liA') && varMi(veri4, 'laborFirm', 'id', 'lfA'));
   check('C9 B\'nin fiyat satiri yerinde (A\'nin kalemine bagli kaldi)',
     satir(veri4, 'laborPrice', 'lpB2')?.laborItemId === 'liA');
+
+  // 05.10.2026 (P4b, S1 incelemesi): BASKA firmanin fiyat satiri A'nin iscilik
+  // FIYAT LISTESINE bagliysa liste silinirken 04.10 CASCADE'i onu goturur.
+  // Bugunku yazim bu bagi URETEMIYOR (liste ve satiri ayni iscilik firmasinda
+  // acilir) — kapi ikinci kilit. Olumsuz durum C6: A'nin kendi listesindeki
+  // kendi satiri (lpA → lplA) imhayi engellemiyor.
+  const veri5 = fixture();
+  veri5['laborPrice'].push({ id: 'lpB3', firmaId: 'lfB', priceListId: 'lplA', unitPrice: 7 });
+  const p5 = sahtePrisma(veri5);
+  let hata5: any = null;
+  try {
+    await servisYap(p5).firmaImhaEt('A');
+  } catch (e) {
+    hata5 = e;
+  }
+  check('C10 baska firmanin fiyat satiri A\'nin iscilik fiyat listesine bagliysa IMHA DURUR',
+    hata5 instanceof CaprazFirmaBagiHatasi && hata5.bag === 'LaborPrice.priceListId' && hata5.sayi === 1, String(hata5));
+  check('C11 durdurulan imhada A\'nin listesi ve iscilik firmasi SILINMEDI',
+    varMi(veri5, 'laborPriceList', 'id', 'lplA') && varMi(veri5, 'laborFirm', 'id', 'lfA'));
+  check('C12 B\'nin fiyat satiri yerinde (A\'nin listesine bagli kaldi)',
+    satir(veri5, 'laborPrice', 'lpB3')?.priceListId === 'lplA');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
