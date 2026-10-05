@@ -15,6 +15,7 @@ import {
   KENDI_KALEMI_ONCE, adEsit, kiraciKalemiAlanlari, kiraciKapsaminda, kiracininKalemiMi,
 } from '../labor/iscilik-kalemi-kapsami';
 import { GECERSIZ_SATIR_KIMLIGI, satirHatalari, satirKimligiGecerli } from '../satir-hatalari';
+import type { IscilikFiyatSatiriDto } from './dto/iscilik-toplu-kayit.dto';
 
 const AYNI_AD_LISTEDE = 'Bu listede aynı adlı işçilik kalemi zaten var — önce o satırı düzenleyin ya da silin.';
 
@@ -1016,7 +1017,9 @@ export class LaborFirmsService {
     priceListId: string,
     // PRD Iscilik 7-kolon: discountRate + currency (para birimi CEVRILMEZ,
     // ham saklanir — teklif aninda toTry) ManualFirmModal'dan gelir.
-    items: { laborName: string; unit: string; unitPrice: number; category?: string; discountRate?: number; currency?: string }[],
+    // Alanlar ISTEGE BAGLI (DTO ile ayni sozlesme, P4b 05.10): yarim satir
+    // asagida suzulur, birim yoksa 'Adet', para birimi KUR-02 ile dogrulanir.
+    items: IscilikFiyatSatiriDto[],
     // P2-3: `exchangeRate` KALDIRILDI — hemen ustteki yorumun ("para birimi
     // CEVRILMEZ, ham saklanir") tam tersini yapiyordu. admin.service'teki
     // ikizin aynisi; hicbir cagiran deger gecmiyordu, canli davranis degismez.
@@ -1082,9 +1085,11 @@ export class LaborFirmsService {
       });
       if (!priceList) priceList = await yeniListeOlustur();
     } else {
-      // Govde satir ici tipte (ValidationPipe yok): bicimsiz kimlik (eksik,
-      // nesne `{ not: '' }`) findFirst kosulunu DUSURUR ve kayit firmanin
-      // RASTGELE bir listesine yazilirdi (inceleme LOW-1) → 400, yazim yok.
+      // Bicimsiz kimlik (eksik, nesne `{ not: '' }`, bos metin) findFirst
+      // kosulunu DUSURUR ve kayit firmanin RASTGELE bir listesine yazilirdi
+      // (inceleme LOW-1) → 400, yazim yok. 05.10'dan beri sinif DTO
+      // (`dto/iscilik-toplu-kayit.dto.ts`) metin olmayani zaten reddeder; bu
+      // denetim ikinci kilit (bos metin ve servisin dogrudan cagrilmasi).
       if (!satirKimligiGecerli(priceListId)) throw new BadRequestException('Gecersiz fiyat listesi kimligi');
       // Sahiplik SORGUDA (bu iscilik firmasinin listesi): baska firmanin
       // listesi DB'den donmez — yanit ve sure olmayan listeyle ayni.

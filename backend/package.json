@@ -63,6 +63,10 @@
     "test:fiyat-birimi": "ts-node test/fiyat-birimi-test.ts",
     "test:doviz-net-yuvarlama": "ts-node test/doviz-net-yuvarlama-test.ts",
     "test:reindex-gunlugu": "ts-node test/reindex-gunlugu-test.ts",
+    "test:etiket-katmani": "ts-node test/etiket-katmani-test.ts",
+    "test:birim-sira-cekim": "ts-node test/birim-sira-cekim-test.ts",
+    "test:satir-olcu-yazimi": "ts-node test/satir-olcu-yazimi-test.ts",
+    "test:urun-indeksi-v20": "ts-node test/urun-indeksi-v20-test.ts",
     "test:grid": "ts-node test/excel-grid-test.ts",
     "test:labor-sheet": "ts-node test/labor-sheet-test.ts",
     "test:kl": "ts-node test/kl-liste-ekleme-test.ts",
@@ -189,6 +193,7 @@
     "test:kiraci-siniri": "ts-node test/kiraci-siniri-test.ts",
     "test:govde-dogrulama": "ts-node test/govde-dogrulama-test.ts",
     "test:ci-ek-notu": "ts-node test/ci-ek-notu-test.ts",
+    "test:p4b-motor": "ts-node test/p4b-motor-test.ts",
     "test:ex-karisik": "ts-node test/cikti-karisik-test.ts"
   },
   "dependencies": {

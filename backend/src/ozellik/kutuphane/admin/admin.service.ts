@@ -2182,8 +2182,10 @@ export class AdminService {
     // GUNLUK DOGRULUGU (05.10, koordinator notu): eskiden "N aile ogrenildi"
     // yazilan N, sozluge SUNULAN aile sayisiydi — cogu zaten kayitli oldugu
     // icin yazilmaz (idempotens). v18 yeniden indekslemesinde gunluk yuzlerce
-    // "ogrenildi" derken sozluge 2 alias eklenmisti (seed 30→32). Iki sayi
-    // ayri: denenen (sunulan) ve yeni (learnFamilyAliases'in yazdigi).
+    // "ogrenildi" derken sozluge HIC alias eklenmemisti (learned satir sayisi
+    // degismedi — koordinator olcumu; 30→32 artisi acilis seed'indendi). v19
+    // yeni bicimle: "211 aile denendi (0 yeni)". Iki sayi ayri: denenen
+    // (sunulan) ve yeni (learnFamilyAliases'in yazdigi).
     let aileDenenen = 0;
     let aileYeni = 0;
     for (const [kapsam, aileler] of ogrenilecekAileler) {

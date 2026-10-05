@@ -165,6 +165,10 @@ export class MatchingService {
     const libRows = await this.prisma.userLibrary.findMany({
       // G8: havuz FIRMAYA ait (UserLibrary ADIM 1'de firmaya gecti).
       where: { firmaId: k.firmaId, brandId },
+      // FAZ C A12 (05.10): SIRA SABIT — orderBy'siz Postgres sirasi tanimsizdir;
+      // ayni teklif iki kosumda farkli aday sirasi / esitlikte farkli ilk aday
+      // verebilirdi. Kaynak liste sirasi (sortOrder), esitlikte id.
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       include: {
         material: {
           select: { id: true, name: true, tags: true, normalizedName: true, materialType: true },
@@ -176,7 +180,7 @@ export class MatchingService {
 
     if (libRows.length === 0) {
       console.log(`[Matching] Kutuphane bos: firma=${gunlukDegeri(k.firmaId)}, brand=${gunlukDegeri(brandId)}`);
-      const empty: Record<string, MatchResult> = {};
+      const empty: Record<string, MatchResult> = Object.create(null); // prototipsiz: bkz. `out`
       const reason =
         'Kütüphanenizde bu markaya ait malzeme yok. Malzeme Havuzu\'ndan "Kütüphaneme Aktar" ile ekleyin.';
       for (const n of materialNames) {
@@ -394,7 +398,10 @@ export class MatchingService {
     // Istek basina 1 kez yuklenir; hint'ler QueryOpts ile motora gecer.
     const aliases = await this.terminology.loadAliases(k.userId);
 
-    const out: Record<string, MatchResult> = {};
+    // P4b (05.10, P4 notu 2'nin YAZMA yani): sonuc nesnesi PROTOTIPSIZ. Duz
+    // `{}`te "__proto__" adli satirin sonucu prototipi degistiriyor, kendi
+    // anahtari olmadigi icin yanittan SESSIZCE dusuyordu. Kapi: `test:p4b-motor` P.
+    const out: Record<string, MatchResult> = Object.create(null);
     // P4 notu 4 (04.10, C12): sonuc ADA baglidir (`out[name]`) — ayni ad
     // 50.000 kez gelirse 50.000 kez islenmez. Oneri havuzu da istek basina
     // BIR KEZ hazirlanir (bkz. `OneriHavuzu`): eskiden "bu markada yok" diyen
@@ -603,6 +610,10 @@ export class MatchingService {
     const others = await this.prisma.userLibrary.findMany({
       // G8: capraz-marka alternatif havuzu da FIRMAYA ait.
       where: { firmaId: k.firmaId, brandId: { not: brandId } },
+      // FAZ C A12 (05.10): SIRA SABIT — orderBy'siz Postgres sirasi tanimsizdir;
+      // ayni teklif iki kosumda farkli aday sirasi / esitlikte farkli ilk aday
+      // verebilirdi. Kaynak liste sirasi (sortOrder), esitlikte id.
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       include: {
         brand: { select: { id: true, name: true } },
         product: true,
@@ -719,11 +730,14 @@ export class MatchingService {
   ): Promise<Record<string, MatchResult>> {
     const prices = await (this.prisma as any).laborPrice.findMany({
       where: { firmaId },
+      // FAZ C A12 ikizi: iscilik havuzu da sabit sirada — firma ekraniyla ayni
+      // (kalem adi), esitlikte id.
+      orderBy: [{ laborItem: { name: 'asc' } }, { id: 'asc' }],
       include: { laborItem: true },
     });
 
     if (prices.length === 0) {
-      const empty: Record<string, MatchResult> = {};
+      const empty: Record<string, MatchResult> = Object.create(null); // prototipsiz: bkz. matchV2 `out`
       const reason = 'Bu firmanın işçilik fiyat listesi boş. Firma detayından liste yükleyin.';
       for (const n of laborNames) {
         if (!n?.trim()) continue;
@@ -850,6 +864,9 @@ export class MatchingService {
     const others = await (this.prisma as any).laborPrice.findMany({
       where: { firma: { firmaId: k.firmaId, id: { not: iscilikFirmaId } } },
       include: { laborItem: true, firma: { select: { id: true, name: true } } },
+      // FAZ C A12 ikizi: iscilik havuzu da sabit sirada — firma ekraniyla ayni
+      // (kalem adi), esitlikte id.
+      orderBy: [{ laborItem: { name: 'asc' } }, { id: 'asc' }],
     });
     if (others.length === 0) return null;
     const pool = this.hazirlaLaborPool(others);

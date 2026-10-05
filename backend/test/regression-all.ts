@@ -122,6 +122,10 @@ const SUITES: Suite[] = [
   { ad: 'Fiyat birimi kapısı: kg/boy/paket fiyatı metre/adet satırına otomatik yazılmaz (B10)', script: 'test:fiyat-birimi', zincir: 'Z2' },
   { ad: 'Döviz net yuvarlaması: önce kaynak birimde net, sonra çevrim (C6, karar c)', script: 'test:doviz-net-yuvarlama', zincir: 'Z2' },
   { ad: 'Yeniden indeksleme günlüğü: aile denendi / yeni (FAZ B parti 2b)', script: 'test:reindex-gunlugu', zincir: 'Z1' },
+  { ad: 'Etiket katmanı: PN/SDR/PE sınıfı çap değil · DKP/pres/manşonu/basınçlı/PE-X · Ø mm\'siz · başlık bağlamı (FAZ C1)', script: 'test:etiket-katmani', zincir: 'Z2' },
+  { ad: 'Büyük harf birim · havuz sırası · çekim eki borusu↔borular (FAZ C1)', script: 'test:birim-sira-cekim', zincir: 'Z2' },
+  { ad: 'Satır ölçü yazımı: 110\'LUK · izolasyon kalınlığı çap değil (FAZ C2)', script: 'test:satir-olcu-yazimi', zincir: 'Z2' },
+  { ad: 'Ürün indeksi v20: steel≠tee · DN 6/8 ve 4 hane · inç öneki/parmak (FAZ C3)', script: 'test:urun-indeksi-v20', zincir: 'Z1' },
   // ── S2+S3 (06.08.2026): ÖNERİ KUTUSU. Çapraz-marka/firma önerisi ana
   //    motoru çağırıyor ve motorun "onaylat" dediği tek adayı KESİN gibi
   //    sunuyordu. İki kural mühürlendi: kanıt gücü yetmeyen aday (çapı ya da
@@ -1002,6 +1006,11 @@ const SUITES: Suite[] = [
   //    dosyanın KIRPILMIŞ kopyasıyla bağlantı (kapı kodu bayt bayt aynı).
   //    DB/AĞ GEREKTİRMEZ.
   { ad: 'CI ek notu: düşen paketin adı ::error ile girişsiz okunur · kırpılmış koşucuyla bağlantı (S/B)', script: 'test:ci-ek-notu', zincir: 'Z0' },
+  // ── 05.10.2026 — P4b PARTİ 1 (motor). C9: alias tablosu okunamazsa
+  //    eşleştirme ipuçsuz YANLIŞ sonuç yerine hata verir (yalnız P2021 = tablo
+  //    yok sessiz geçer). Prototip: "__proto__" adlı satırın sonucu yanıtta
+  //    kalır (P4 notu 2'nin yazma yanı). Gerçek motor, sahte Prisma. DB/AĞ YOK.
+  { ad: 'P4b motor: alias yükleme hatası yutulmaz (C9) · "__proto__" satırı yanıtta kalır (T/P)', script: 'test:p4b-motor', zincir: 'Z2' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

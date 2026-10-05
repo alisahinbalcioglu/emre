@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { sizeEquivalents, SizeClass, capImzasi, extractSizeInfo } from '../conversion';
-import { extractFluid } from '../normalizer';
+import { extractFluid, normalizeText } from '../normalizer';
 import { altKumeMi, tokenEsit, malzemeEtiketleri } from './product-index';
 import { EQUIPMENT_TYPE_TAGS } from '../shared-tag-matcher';
 import { buildFamilyVocab, distinctSayisi } from './vocab';
@@ -1485,11 +1485,14 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
  * (kanit yok, suclama yok; PRD yalniz ACIK celiskiyi yasaklar).
  */
 export function birimKanonik(u: string | null | undefined): string | null {
-  const s = (u ?? '').trim().toLocaleLowerCase('tr');
+  // FAZ C A11 (05.10 olculdu): toLocaleLowerCase('tr') ASCII buyuk I'yi ı
+  // yapar — "PIECE" → "pıece" taninmiyor, L6 metre fiyatli kalemi ELEMIYORDU.
+  // normalizeText (I → i, ü → u, ı → i) iki yazimi da ayni bicime indirir.
+  const s = normalizeText(u ?? '');
   if (!s) return null;
-  if (/^(mt|m|mtul|mtül|metre|meter)\.?$/.test(s)) return 'metre';
+  if (/^(mt|m|mtul|metre|meter)\.?$/.test(s)) return 'metre';
   if (/^(ad|adet|pcs|pc|piece)\.?$/.test(s)) return 'adet';
-  if (/^(tk|takim|takım|set)\.?$/.test(s)) return 'takim';
+  if (/^(tk|takim|set)\.?$/.test(s)) return 'takim';
   return null;
 }
 
@@ -1502,9 +1505,9 @@ export function birimKanonik(u: string | null | undefined): string | null {
  * Kapi: test/fiyat-birimi-test.ts (S1)
  */
 const FIYAT_BIRIMI_TABANLARI: ReadonlyArray<readonly [RegExp, string]> = [
-  [/^(m|mt|mtl|mtul|mtül|metre|meter)$/, 'metre'],
-  [/^(ad|adet|pcs|pc|piece|tk|takim|takım|set)$/, 'sayi'],
-  [/^(cift|çift)$/, 'cift'],
+  [/^(m|mt|mtl|mtul|metre|meter)$/, 'metre'],
+  [/^(ad|adet|pcs|pc|piece|tk|takim|set)$/, 'sayi'],
+  [/^cift$/, 'cift'],
   [/^(kg|kilo|kilogram)$/, 'kg'],
   [/^(ton|tn)$/, 'ton'],
   [/^boy$/, 'boy'],
@@ -1512,11 +1515,13 @@ const FIYAT_BIRIMI_TABANLARI: ReadonlyArray<readonly [RegExp, string]> = [
   [/^(paket|pk|pkt)$/, 'paket'],
   [/^(kutu|koli)$/, 'kutu'],
   [/^(m2|m²|mt2|metrekare)$/, 'm2'],
-  [/^(m3|m³|mt3|metreküp|metrekup)$/, 'm3'],
+  [/^(m3|m³|mt3|metrekup)$/, 'm3'],
   [/^(lt|litre)$/, 'lt'],
 ];
 export function fiyatBirimiSinifi(u: string | null | undefined): string | null {
-  const s = (u ?? '').trim().toLocaleLowerCase('tr').replace(/\.+$/, '').replace(/\s+/g, '');
+  // A11 ikizi (05.10): toLocaleLowerCase('tr') "KILO"yu "kılo" yapiyordu —
+  // normalizeText (I → i, ç → c, ü → u) ile birimKanonik ayni yoldan gecer.
+  const s = normalizeText(u ?? '').replace(/\.+$/, '').replace(/\s+/g, '');
   if (!s) return null;
   for (const [re, taban] of FIYAT_BIRIMI_TABANLARI) if (re.test(s)) return taban;
   return null;
