@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 926
-Toplam satir: 254469
+Kod dosyasi: 928
+Toplam satir: 254928
 Uc nokta: 239
-test:* scripti: 169
+test:* scripti: 170
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -435,6 +435,7 @@ test:* scripti: 169
 | `backend/test/mutabakat-deneme-test.ts` | 665 |
 | `backend/test/mutabakat-faturasiz-tahsilat-test.ts` | 1489 |
 | `backend/test/mutabakat-kayip-tahsilat-test.ts` | 1412 |
+| `backend/test/net-fiyat-ikiz-test.ts` | 58 |
 | `backend/test/odeme-bekliyor-geri-sayim-test.ts` | 749 |
 | `backend/test/odeme-imha-test.ts` | 875 |
 | `backend/test/odeme-onyukleme-test.ts` | 425 |
@@ -459,7 +460,7 @@ test:* scripti: 169
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 1094 |
+| `backend/test/regression-all.ts` | 1097 |
 | `backend/test/reindex-gunlugu-test.ts` | 91 |
 | `backend/test/s45-malzeme-aile-test.ts` | 462 |
 | `backend/test/s45-olcum.ts` | 188 |
@@ -529,7 +530,7 @@ test:* scripti: 169
 | `frontend/app/admin/users/page.tsx` | 647 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
 | `frontend/app/davet-kabul/page.tsx` | 483 |
-| `frontend/app/dev/grid-test/page.tsx` | 454 |
+| `frontend/app/dev/grid-test/page.tsx` | 459 |
 | `frontend/app/fiyatlar/page.tsx` | 174 |
 | `frontend/app/forgot-password/page.tsx` | 92 |
 | `frontend/app/gizlilik/page.tsx` | 13 |
@@ -618,7 +619,7 @@ test:* scripti: 169
 | `frontend/lib/kar-satiri.test.ts` | 174 |
 | `frontend/lib/kaynak-kolon.test.ts` | 49 |
 | `frontend/lib/marj-tek-kaynak.test.ts` | 80 |
-| `frontend/lib/merge-multisheet.test.ts` | 143 |
+| `frontend/lib/merge-multisheet.test.ts` | 340 |
 | `frontend/lib/metraj-excel.ts` | 98 |
 | `frontend/lib/ondalik-kurali.test.ts` | 70 |
 | `frontend/lib/parse-material-text.test.ts` | 86 |
@@ -710,14 +711,14 @@ test:* scripti: 169
 | `frontend/ozellik/fiyat/kur-geri-dusus.test.ts` | 140 |
 | `frontend/ozellik/fiyat/para-gosterim.ts` | 68 |
 | `frontend/ozellik/fiyat/para-sutun-genisligi.ts` | 243 |
-| `frontend/ozellik/fiyat/pricing.ts` | 745 |
+| `frontend/ozellik/fiyat/pricing.ts` | 753 |
 | `frontend/ozellik/fiyat/sayi-alani.ts` | 385 |
 | `frontend/ozellik/fiyat/sayi-kurali.test.ts` | 289 |
 | `frontend/ozellik/fiyat/sayi-oku.test.ts` | 72 |
 | `frontend/ozellik/fiyat/sayi-tek-suzgec.test.ts` | 175 |
 | `frontend/ozellik/fiyat/sayi-yollari.test.ts` | 366 |
-| `frontend/ozellik/fiyat/taraf-para-birimi.test.ts` | 108 |
-| `frontend/ozellik/fiyat/taraf-para-birimi.ts` | 176 |
+| `frontend/ozellik/fiyat/taraf-para-birimi.test.ts` | 129 |
+| `frontend/ozellik/fiyat/taraf-para-birimi.ts` | 187 |
 | `frontend/ozellik/fiyat/use-currency.ts` | 88 |
 | `frontend/ozellik/giris/kaynak-kolon.ts` | 34 |
 | `frontend/ozellik/hukuki/HukukiSayfa.tsx` | 110 |
@@ -816,12 +817,12 @@ test:* scripti: 169
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5357 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5310 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
-| `frontend/ozellik/tablo/excel-grid/build-material-context.test.ts` | 65 |
-| `frontend/ozellik/tablo/excel-grid/build-material-context.ts` | 61 |
+| `frontend/ozellik/tablo/excel-grid/build-material-context.test.ts` | 96 |
+| `frontend/ozellik/tablo/excel-grid/build-material-context.ts` | 116 |
 | `frontend/ozellik/tablo/excel-grid/cap-sorguda.test.ts` | 130 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.test.ts` | 65 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 66 |
@@ -846,7 +847,7 @@ test:* scripti: 169
 | `frontend/ozellik/tablo/excel-grid/useFillHandle.tsx` | 286 |
 | `frontend/ozellik/tablo/excel-grid/yapistir.test.ts` | 222 |
 | `frontend/ozellik/tablo/excel-grid/yapistir.ts` | 185 |
-| `frontend/ozellik/tablo/merge-multisheet.ts` | 195 |
+| `frontend/ozellik/tablo/merge-multisheet.ts` | 281 |
 | `frontend/ozellik/tablo/parse-material-text.ts` | 69 |
 | `frontend/ozellik/tablo/quotes/ColumnManagerPanel.tsx` | 146 |
 | `frontend/ozellik/teklif/CeviriDuzeltmeDialog.tsx` | 115 |
@@ -910,6 +911,7 @@ test:* scripti: 169
 | `frontend/test/e2e/iscilik-fill-baglam.spec.ts` | 124 |
 | `frontend/test/e2e/iscilik-kapali-tutamak.spec.ts` | 121 |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | 373 |
+| `frontend/test/e2e/kutuphane-doviz-neti.spec.ts` | 31 |
 | `frontend/test/e2e/malzeme-aday-ipucu.spec.ts` | 90 |
 | `frontend/test/e2e/restore-ozet.spec.ts` | 122 |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
@@ -1327,6 +1329,7 @@ test:* scripti: 169
 | `backend/test/mutabakat-deneme-test.ts` | `node:crypto` `@nestjs/common` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/odeme/abonelik/satinalma.servisi` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/mutabakat-faturasiz-tahsilat-test.ts` | `node:crypto` `@nestjs/common` `@nestjs/config` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/odeme/abonelik/satinalma.servisi` `../src/ozellik/odeme/webhook/webhook.isleyici` `../src/ozellik/odeme/fatura/fatura.servisi` `../src/ozellik/odeme/dunning/dunning.servisi` `../src/ozellik/odeme/dunning/dunning.metinleri` `../src/ozellik/odeme/fatura/fatura-kesim-epostasi` `../src/ozellik/odeme/fatura/muhasebe.adaptor` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/mutabakat-kayip-tahsilat-test.ts` | `node:crypto` `@nestjs/common` `@nestjs/config` `../src/ozellik/odeme/iyzico/iyzico-tarihi` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/odeme/abonelik/paket-degisimi` `../src/ozellik/odeme/webhook/webhook.isleyici` `../src/ozellik/odeme/fatura/fatura.servisi` `../src/ozellik/odeme/dunning/dunning.servisi` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
+| `backend/test/net-fiyat-ikiz-test.ts` | `../src/ozellik/fiyat/matching/pricing` `./yardimci/bitmezse-kirmizi` `../../frontend/ozellik/fiyat/pricing` `../../frontend/ozellik/fiyat/taraf-para-birimi` |
 | `backend/test/odeme-bekliyor-geri-sayim-test.ts` | `node:crypto` `../src/altyapi/auth/abonelik-erisim` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/abonelik/mutabakat.job` `../src/ozellik/odeme/dunning/dunning.servisi` `../src/ozellik/odeme/abonelik/satinalma.servisi` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/odeme-imha-test.ts` | `node:fs` `node:path` `@nestjs/config` `@prisma/client` `../src/ozellik/odeme/abonelik/satinalma.servisi` `../src/ozellik/odeme/abonelik/deneme-hakki.servisi` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/odeme-onyukleme-test.ts` | `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
@@ -1733,6 +1736,7 @@ test:* scripti: 169
 | `frontend/test/e2e/iscilik-fill-baglam.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/iscilik-kapali-tutamak.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/kopyala-yapistir.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/kutuphane-doviz-neti.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/malzeme-aday-ipucu.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/restore-ozet.spec.ts` | `@playwright/test` `../../ozellik/teklif/taslak` |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | `@playwright/test` |
@@ -2163,6 +2167,7 @@ test:* scripti: 169
 | `backend/package.json` | `test:ci-ek-notu` | `ts-node test/ci-ek-notu-test.ts` |
 | `backend/package.json` | `test:p4b-motor` | `ts-node test/p4b-motor-test.ts` |
 | `backend/package.json` | `test:ex-karisik` | `ts-node test/cikti-karisik-test.ts` |
+| `backend/package.json` | `test:net-fiyat-ikiz` | `ts-node test/net-fiyat-ikiz-test.ts` |
 | `frontend/package.json` | `test:e2e` | `playwright test` |
 | `frontend/package.json` | `test:e2e-golden` | `node test/e2e-golden/run.mjs` |
 

@@ -22,8 +22,8 @@ import { planYapistir, type PasteKolon, type PasteSatir } from './yapistir';
 import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, type Nokta } from './kopyala';
 import { isaretStili, isaretTooltip, secimBekliyor, kutuphaneFiyatAyrisimi, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
-import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
-import { paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, paraIsaretiniAyikla, PARA_SEMBOLU, birimliToplamlar, fittingBirimli, cokluTutarMetni, type ParaBirimi } from '@/ozellik/fiyat/taraf-para-birimi';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
+import { paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, paraIsaretiniAyikla, PARA_SEMBOLU, birimliToplamlar, fittingBirimli, cokluTutarMetni, netFiyatBiriminde, type ParaBirimi } from '@/ozellik/fiyat/taraf-para-birimi';
 // FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
 import {
   FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
@@ -43,7 +43,7 @@ import { sayiAlani, sayiOku } from '@/ozellik/fiyat/sayi-alani';
 import { hucreGirdisiCoz, hucreGosterimMetni, insanSayiOku, makineMetni, miktarGosterimMetni, sayiUyarisi, type SayiAlanTuru } from '@/ozellik/fiyat/sayi-alani';
 import { sutunGenisligi } from '@/ozellik/fiyat/para-sutun-genisligi';
 import { yapistirmaSayiUyarilari } from './yapistir';
-import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
+import { extractCapFromText, hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 import { niteliklerdenBaglam, adayEtiketleri, popupGenisligiOku, popupGenisligiYaz } from './aday-ayirt-edicilik';
 import httpApi from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
@@ -1607,54 +1607,6 @@ function FirmaDropdown(props: ICellRendererParams & {
 // Helpers
 // ────────────────────────────────────────────
 
-// Bir metinden cap (DN) kodu cikarir — frontend sanity check icin
-function extractCapFromText(text: string): string | null {
-  if (!text) return null;
-  // Unicode kesirleri ASCII'ye cevir
-  let normalized = text
-    .replace(/2½/g, '2 1/2').replace(/1½/g, '1 1/2').replace(/1¼/g, '1 1/4')
-    .replace(/½/g, '1/2').replace(/¼/g, '1/4').replace(/¾/g, '3/4')
-    .toLowerCase();
-
-  const inchToDn: Record<string, string> = {
-    '1/2': 'dn15', '3/4': 'dn20', '1': 'dn25',
-    '1 1/4': 'dn32', '1 1/2': 'dn40', '2': 'dn50',
-    '2 1/2': 'dn65', '3': 'dn80', '4': 'dn100',
-    '5': 'dn125', '6': 'dn150', '8': 'dn200',
-  };
-
-  // DN kodu varsa direkt kullan
-  const dnMatch = normalized.match(/dn\s*(\d+)/);
-  if (dnMatch) return `dn${dnMatch[1]}`;
-
-  // Tum inc olculeri bul, EN SON kullaniyani al (gercek malzeme cap'i sonda olur)
-  const matches: { value: string; index: number }[] = [];
-  // 2 1/2", 1 1/4" gibi bilesik kesirler
-  const compoundRegex = /(\d+)\s+(\d+)\/(\d+)/g;
-  let m;
-  while ((m = compoundRegex.exec(normalized)) !== null) {
-    matches.push({ value: `${m[1]} ${m[2]}/${m[3]}`, index: m.index });
-  }
-  // 1/2", 3/4" gibi tek kesirler (ama compound'un parcasi olmamali)
-  const fractionRegex = /(?<!\d\s)(\d+)\/(\d+)/g;
-  while ((m = fractionRegex.exec(normalized)) !== null) {
-    // Compound'un icindeyse atla
-    const overlap = matches.some(x => x.index <= m!.index && x.index + x.value.length >= m!.index + m![0].length);
-    if (!overlap) matches.push({ value: `${m[1]}/${m[2]}`, index: m.index });
-  }
-  // 1", 2", 3" gibi tam sayilar
-  const intRegex = /(\d+)"/g;
-  while ((m = intRegex.exec(normalized)) !== null) {
-    const overlap = matches.some(x => x.index <= m!.index && x.index + x.value.length >= m!.index + m![0].length);
-    if (!overlap) matches.push({ value: m[1], index: m.index });
-  }
-
-  if (matches.length === 0) return null;
-  // En son bulunan cap (en yuksek index) — gercek malzeme adi sonda olur
-  matches.sort((a, b) => b.index - a.index);
-  const lastCap = matches[0].value;
-  return inchToDn[lastCap] ?? null;
-}
 
 // PRD v1.1 §4 — build-material-context.ts ile SENKRON tutulur (ikiz mantik):
 // H4 olculu satir baslik olamaz, H1/H2 miktar-bos sinyali, C3 kendi kendine
@@ -4472,8 +4424,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           // 12 okuyordu. Hucre MAKINE sinirinda (ayristirici/yapistirma yazdi).
           const listPrice = sayiOku(row[priceField ?? '']) ?? 0;
           const discount = Number(row._draftDiscount ?? 0);
-          // SPEC ASAMA A: net = liste×(1-iskonto), YUKARI 1 hane
-          return hesaplaNetFiyat(listPrice, discount);
+          // SPEC ASAMA A: net = liste×(1-iskonto), satirin KENDI biriminde yukari
+          // (₺ 1 hane, USD/EUR 2 hane — kural `netFiyatBiriminde`, 05.10)
+          return netFiyatBiriminde(listPrice, discount, row._currency);
         },
         valueFormatter: (p: any) => {
           const v = sayiOku(p.value) ?? NaN; // A2: getter sayisi — tek makine okuyucusu

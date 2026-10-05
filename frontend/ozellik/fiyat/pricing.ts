@@ -158,6 +158,14 @@ export function hesaplaNetFiyat(listeFiyat: number, iskontoYuzde: number): numbe
   return yukariYuvarla(listeFiyat * (1 - oran));
 }
 
+/** COKLU PARA BIRIMI (05.10): DOVIZ (USD/EUR) net fiyati — ayni formul, 2 hane
+ *  YUKARI. IKIZ: arka uc `fiyat/matching/pricing.ts` hesaplaNetFiyatDoviz (F1);
+ *  esitlik kapisi `test:net-fiyat-ikiz`. Satira gore secim `netFiyatBiriminde`. */
+export function hesaplaNetFiyatDoviz(listeFiyat: number, iskontoYuzde: number): number {
+  const oran = clamp(iskontoYuzde, 0, 100) / 100;
+  return yukariYuvarla(listeFiyat * (1 - oran), 2);
+}
+
 /** ASAMA B: Net (teklif biriminde) + kar% → SATIS birim.
  *  Kar 0 → satis = net (1 haneye yukari). Cevrim yapmaz. */
 export function hesaplaSatisBirimFiyat(netTeklifParaBirimi: number, karYuzde: number, hane = ONDALIK): number {

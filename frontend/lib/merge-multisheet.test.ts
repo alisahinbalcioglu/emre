@@ -139,4 +139,201 @@ describe('mergeMultiSheet — Excel yeniden yukleme veri korumasi', () => {
     expect(r['Birim Fiyat']).toBe('420');
     expect(r._sayiUyari, 'eski miktar isareti tasinmaz, korunan fiyatin isareti duser').toBeUndefined();
   });
+  // ── D6 (koordinator karari 05.10; canli olcum: 12 teklifin 7'sinde tekrar, 458 risk
+  // satiri %35, hepsinde No BOS) ─────────────────────────────────────────────
+  // Anahtar yalniz "no|ad" idi ve her anahtarin YALNIZ ILK eski satiri tutuluyordu:
+  // ayni ad farkli bolumlerde tekrar edince ikinci kopya kullanicinin fiyatini
+  // kaybediyor, yeni bir bolum eklenince fiyat YANLIS satira gidiyor, eslesmeyen
+  // eski tekrarlar sona da tasinmadan SESSIZCE dusuyordu.
+  // KARAR: anahtara en yakin bolum basligi eklenir, tekrarlar sirayla eslenir,
+  // eslesmeyen eski satir korunur.
+  const baslik = (metin: string): ExcelRowData => ({ _rowIdx: 0, _isDataRow: false, _isHeaderRow: false, No: '', Ad: metin, Miktar: '' });
+  const fiyatlar = (rows: ExcelRowData[]) => rows.filter((r) => r._isDataRow).map((r) => `${r.Ad}/${r.Miktar}=${r['Birim Fiyat']}`);
+
+  it('D6-1 ★ ayni ad farkli bolumlerde: her kopya KENDI fiyatini korur', () => {
+    const prev = sheet('S1', [
+      baslik('KAT 1'), row('', 'KÜRESEL VANA 1"', '5', { 'Birim Fiyat': '100', _malzKar: 10 }),
+      baslik('KAT 2'), row('', 'KÜRESEL VANA 1"', '3', { 'Birim Fiyat': '200', _malzKar: 20 }),
+    ]);
+    const inc = sheet('S1', [
+      baslik('KAT 1'), row('', 'KÜRESEL VANA 1"', '6'),
+      baslik('KAT 2'), row('', 'KÜRESEL VANA 1"', '4'),
+    ]);
+    const { merged, stats } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    const rows = merged.sheets[0].rowData;
+    expect(fiyatlar(rows)).toEqual(['KÜRESEL VANA 1"/6=100', 'KÜRESEL VANA 1"/4=200']);
+    expect(rows.filter((r) => r._isDataRow).map((r) => r._malzKar)).toEqual([10, 20]);
+    expect(stats).toMatchObject({ matchedRows: 2, newRows: 0, preservedRows: 0 });
+  });
+
+  it('D6-2 ★ revizyon ONE yeni bolum ekler: fiyat yanlis satira GITMEZ', () => {
+    const prev = sheet('S1', [
+      baslik('KAT 1'), row('', 'KÜRESEL VANA 1"', '5', { 'Birim Fiyat': '100' }),
+      baslik('KAT 2'), row('', 'KÜRESEL VANA 1"', '3', { 'Birim Fiyat': '200' }),
+    ]);
+    const inc = sheet('S1', [
+      baslik('BODRUM'), row('', 'KÜRESEL VANA 1"', '9'),
+      baslik('KAT 1'), row('', 'KÜRESEL VANA 1"', '5'),
+      baslik('KAT 2'), row('', 'KÜRESEL VANA 1"', '3'),
+    ]);
+    const { merged, stats } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    expect(fiyatlar(merged.sheets[0].rowData)).toEqual(['KÜRESEL VANA 1"/9=', 'KÜRESEL VANA 1"/5=100', 'KÜRESEL VANA 1"/3=200']);
+    expect(stats).toMatchObject({ matchedRows: 2, newRows: 1, preservedRows: 0 });
+  });
+
+  it('D6-3 ★ ayni bolumde tekrarlar SIRAYLA eslenir, eslesmeyen eski kopya KORUNUR', () => {
+    const prev = sheet('S1', [
+      baslik('KAT 1'),
+      row('', 'DİRSEK 1"', '1', { 'Birim Fiyat': '10' }),
+      row('', 'DİRSEK 1"', '2', { 'Birim Fiyat': '20' }),
+      row('', 'DİRSEK 1"', '3', { 'Birim Fiyat': '30', _marka: 'm3' }),
+      row('', '', '', { _isSpareRow: true }), // ekranin bos yedek satiri korunmaz (anahtarsiz)
+    ]);
+    const inc = sheet('S1', [baslik('KAT 1'), row('', 'DİRSEK 1"', '1'), row('', 'DİRSEK 1"', '2')]);
+    const { merged, stats } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    const rows = merged.sheets[0].rowData;
+    expect(fiyatlar(rows)).toEqual(['DİRSEK 1"/1=10', 'DİRSEK 1"/2=20', 'DİRSEK 1"/3=30']);
+    expect(rows[rows.length - 1]._marka, 'ucuncu kopya sona tasindi, kaybolmadi').toBe('m3');
+    expect(stats).toMatchObject({ matchedRows: 2, newRows: 0, preservedRows: 1 });
+  });
+
+  it('D6-4 bolum adi degisti, ad TEK: eski eslesme korunur (yedek kural)', () => {
+    const prev = sheet('S1', [baslik('KAT 1'), row('', 'POMPA', '1', { 'Birim Fiyat': '5000' })]);
+    const inc = sheet('S1', [baslik('1. KAT'), row('', 'POMPA', '1')]);
+    const { merged, stats } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    expect(fiyatlar(merged.sheets[0].rowData)).toEqual(['POMPA/1=5000']);
+    expect(stats).toMatchObject({ matchedRows: 1, newRows: 0, preservedRows: 0 });
+  });
+
+  it('D6-5 bolum adi degisti, ad TEKRARLI: kalan kopyalar ESIT sayida → sirayla eslenir', () => {
+    const prev = sheet('S1', [
+      baslik('KAT 1'), row('', 'VANA', '1', { 'Birim Fiyat': '100' }),
+      baslik('KAT 2'), row('', 'VANA', '2', { 'Birim Fiyat': '200' }),
+    ]);
+    const inc = sheet('S1', [
+      baslik('ZEMİN'), row('', 'VANA', '1'),
+      baslik('KAT 2'), row('', 'VANA', '2'),
+    ]);
+    const { merged, stats } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    expect(fiyatlar(merged.sheets[0].rowData)).toEqual(['VANA/1=100', 'VANA/2=200']);
+    expect(stats).toMatchObject({ matchedRows: 2, newRows: 0, preservedRows: 0 });
+  });
+
+  it('D6-6 kullanicinin grup bandi (_isGroupRow) bolum SAYILMAZ', () => {
+    const grup: ExcelRowData = { _rowIdx: 0, _isDataRow: false, _isHeaderRow: false, _isGroupRow: true, _groupLabel: 'Hat A', No: '', Ad: '', Miktar: '' };
+    const prev = sheet('S1', [baslik('KAT 1'), grup, row('', 'VANA', '1', { 'Birim Fiyat': '100' }), row('', 'VANA', '2', { 'Birim Fiyat': '200' })]);
+    const inc = sheet('S1', [baslik('KAT 1'), row('', 'VANA', '1'), row('', 'VANA', '2')]);
+    const { merged, stats } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    expect(fiyatlar(merged.sheets[0].rowData)).toEqual(['VANA/1=100', 'VANA/2=200']);
+    expect(stats).toMatchObject({ matchedRows: 2, newRows: 0, preservedRows: 0 });
+  });
+
+  it('D6-7 bolum basligi buyuk/kucuk harf ve bosluk farki ayni bolumdur (one bolum eklenmisken)', () => {
+    // One eklenen bolum kalan kopya sayisini esitsizlestirir: yedek kural devreye
+    // giremez, eslesme YALNIZ bolum adinin ayni sayilmasiyla kurulur.
+    const prev = sheet('S1', [baslik('KAT 1  TESİSATI'), row('', 'VANA', '1', { 'Birim Fiyat': '100' }), baslik('Kat 2'), row('', 'VANA', '2', { 'Birim Fiyat': '200' })]);
+    const inc = sheet('S1', [baslik('BODRUM'), row('', 'VANA', '9'), baslik('kat 1 tesisatı'), row('', 'VANA', '1'), baslik('KAT 2'), row('', 'VANA', '2')]);
+    const { merged } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    expect(fiyatlar(merged.sheets[0].rowData)).toEqual(['VANA/9=', 'VANA/1=100', 'VANA/2=200']);
+  });
+  it('D6-8 bolum adi degisti, ad YENI dosyada TEKRARLI: tek eski satir tahminle verilmez', () => {
+    const prev = sheet('S1', [baslik('KAT 1'), row('', 'VANA', '1', { 'Birim Fiyat': '100' })]);
+    const inc = sheet('S1', [baslik('ZEMİN'), row('', 'VANA', '1'), baslik('KAT 9'), row('', 'VANA', '2')]);
+    const { merged, stats } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    expect(fiyatlar(merged.sheets[0].rowData)).toEqual(['VANA/1=', 'VANA/2=', 'VANA/1=100']);
+    expect(stats).toMatchObject({ matchedRows: 0, newRows: 2, preservedRows: 1 });
+  });
+
+  it('D6-9 bolum adi degisti, ad ESKI dosyada TEKRARLI: hangi kopya oldugu tahmin edilmez', () => {
+    const prev = sheet('S1', [baslik('KAT 1'), row('', 'VANA', '1', { 'Birim Fiyat': '100' }), baslik('KAT 2'), row('', 'VANA', '2', { 'Birim Fiyat': '200' })]);
+    const inc = sheet('S1', [baslik('ZEMİN'), row('', 'VANA', '2')]);
+    const { merged, stats } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    expect(fiyatlar(merged.sheets[0].rowData)).toEqual(['VANA/2=', 'VANA/1=100', 'VANA/2=200']);
+    expect(stats).toMatchObject({ matchedRows: 0, newRows: 1, preservedRows: 2 });
+  });
+
+  it('D6-10 kolon basligi revizyonda degisti: ilk bolumun tekrarlari yine sirayla eslenir', () => {
+    const kolonBasligi = (ad: string): ExcelRowData => ({ _rowIdx: 0, _isDataRow: false, _isHeaderRow: true, No: 'No', Ad: ad, Miktar: 'Miktar' });
+    // Sona eklenen bolum kalan kopya sayisini esitsizlestirir (yedek kural giremez)
+    const prev = sheet('S1', [kolonBasligi('Malzeme Adı'), row('', 'VANA', '1', { 'Birim Fiyat': '100' }), row('', 'VANA', '2', { 'Birim Fiyat': '200' })]);
+    const inc = sheet('S1', [kolonBasligi('Malzemenin Adı'), row('', 'VANA', '1'), row('', 'VANA', '2'), baslik('KAT 3'), row('', 'VANA', '4')]);
+    const { merged, stats } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    expect(fiyatlar(merged.sheets[0].rowData)).toEqual(['VANA/1=100', 'VANA/2=200', 'VANA/4=']);
+    expect(stats).toMatchObject({ matchedRows: 2, newRows: 1, preservedRows: 0 });
+  });
+  it('D6-11 eski kayit (colN): bolum basligi rol DISI bir dosya hucresinde — yine bolum sayilir', () => {
+    const solBaslik = (metin: string): ExcelRowData => ({ _rowIdx: 0, _isDataRow: false, _isHeaderRow: false, No: '', Ad: '', Aciklama: metin, Miktar: '' });
+    const prev = sheet('S1', [
+      solBaslik('A- KAT 1'), row('', 'KÜRESEL VANA 1"', '5', { 'Birim Fiyat': '100' }),
+      solBaslik('B- KAT 2'), row('', 'KÜRESEL VANA 1"', '3', { 'Birim Fiyat': '200' }),
+    ]);
+    const inc = sheet('S1', [
+      solBaslik('0- BODRUM'), row('', 'KÜRESEL VANA 1"', '9'),
+      solBaslik('A- KAT 1'), row('', 'KÜRESEL VANA 1"', '5'),
+      solBaslik('B- KAT 2'), row('', 'KÜRESEL VANA 1"', '3'),
+    ]);
+    const { merged } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    expect(fiyatlar(merged.sheets[0].rowData)).toEqual(['KÜRESEL VANA 1"/9=', 'KÜRESEL VANA 1"/5=100', 'KÜRESEL VANA 1"/3=200']);
+  });
+  it('D6-12 bolum ortasindaki not satiri revizyonda VERI oldu: sonraki tekrarlar fiyatini korur', () => {
+    const prev = sheet('S1', [
+      baslik('KAT 1'), row('', 'VANA', '1', { 'Birim Fiyat': '100' }),
+      baslik('UL listeli'), row('', 'VANA', '2', { 'Birim Fiyat': '200' }), row('', 'VANA', '3', { 'Birim Fiyat': '300' }),
+    ]);
+    const inc = sheet('S1', [
+      baslik('KAT 1'), row('', 'VANA', '1'),
+      row('', 'UL listeli', '1'), row('', 'VANA', '2'), row('', 'VANA', '3'),
+    ]);
+    const { merged, stats } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    expect(fiyatlar(merged.sheets[0].rowData)).toEqual(['VANA/1=100', 'UL listeli/1=', 'VANA/2=200', 'VANA/3=300']);
+    expect(stats).toMatchObject({ matchedRows: 3, newRows: 1, preservedRows: 0 });
+  });
+
+  // ── GERCEK YUKLEME SEKLI (inceleme 05.10): sabit semada dosya kolonlari ALT
+  // CIZGILI alanlarda (`_no`, `_ad`, `_kaynak`). `No`/`Ad` alanli testler bunu
+  // temsil etmiyordu: basligi Sira No kolonuna yazilmis dosyada bolum acilmiyordu.
+  const SABIT = { noField: '_no', nameField: '_ad', quantityField: '_miktar', materialUnitPriceField: '_matBirim' };
+  const sabitSatir = (ad: string, miktar: string, fiyat = ''): ExcelRowData =>
+    ({ _rowIdx: 0, _isDataRow: true, _isHeaderRow: false, _no: '', _ad: ad, _miktar: miktar, _matBirim: fiyat });
+  const sabitSayfa = (rows: ExcelRowData[]): MultiSheetData => ({
+    sheets: [{ name: 'S1', index: 0, isEmpty: false, columnDefs: [], rowData: rows.map((r, i) => ({ ...r, _rowIdx: i })), columnRoles: SABIT, headerEndRow: 0 }],
+    brands: [],
+  });
+  const sabitFiyatlar = (rows: ExcelRowData[]) => rows.filter((r) => r._isDataRow).map((r) => `${r._ad}/${r._miktar}=${r._matBirim}`);
+  const sonra = (bas: (m: string) => ExcelRowData) => {
+    const prev = sabitSayfa([bas('A- KAT 1'), sabitSatir('VANA', '5', '100'), bas('B- KAT 2'), sabitSatir('VANA', '3', '200')]);
+    const inc = sabitSayfa([bas('0- BODRUM'), sabitSatir('VANA', '9'), bas('A- KAT 1'), sabitSatir('VANA', '5'), bas('B- KAT 2'), sabitSatir('VANA', '3')]);
+    return sabitFiyatlar(mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc).merged.sheets[0].rowData);
+  };
+  const BEKLENEN = ['VANA/9=', 'VANA/5=100', 'VANA/3=200'];
+
+  it('D6-13 ★ sabit sema: baslik ad hucresinde (_ad)', () => {
+    expect(sonra((m) => ({ _rowIdx: 0, _isDataRow: false, _isHeaderRow: false, _no: '', _ad: m }))).toEqual(BEKLENEN);
+  });
+  it('D6-14 ★ sabit sema: baslik Sira No kolonunda (_no dolu, _ad bos)', () => {
+    expect(sonra((m) => ({ _rowIdx: 0, _isDataRow: false, _isHeaderRow: false, _no: m, _ad: '' }))).toEqual(BEKLENEN);
+  });
+  it('D6-15 ★ sabit sema: baslik yalniz kaynak metninde (_kaynak)', () => {
+    expect(sonra((m) => ({ _rowIdx: 0, _isDataRow: false, _isHeaderRow: false, _no: '', _ad: '', _kaynak: { col3: m } }))).toEqual(BEKLENEN);
+  });
+  // Inceleme (05.10, D6'dan ONCE de vardi): fitting kapsami ayni sayfadaki satirlarin
+  // `_rowIdx` listesidir; birlestirme satirlari YENIDEN numaralar. Kapsam eski
+  // numarada kalinca fitting tutari BASKA satirlardan hesaplaniyordu.
+  it('D6-16 ★ fitting kapsami yeni satir numaralarina cevrilir', () => {
+    const prev = sheet('S1', [
+      baslik('KAT 1'),
+      row('', 'VANA', '2', { 'Birim Fiyat': '100' }),
+      row('', 'BORU', '10', { 'Birim Fiyat': '50' }),
+      row('', 'Fitting', '5', { _fitting: { kapsam: [1, 2, 4, 5] } }),
+      row('', 'MANUEL', '1', { 'Birim Fiyat': '30' }), // dosyada yok → sona korunur, kapsamda KALIR
+      row('', '', '1'), // anahtarsiz → tabloya tasinmaz, kapsamdan DUSER
+    ]);
+    const inc = sheet('S1', [baslik('BODRUM'), row('', 'POMPA', '1'), baslik('KAT 1'), row('', 'VANA', '2'), row('', 'BORU', '10')]);
+    const { merged } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    const rows = merged.sheets[0].rowData;
+    const fit = rows.find((r) => r.Ad === 'Fitting')!;
+    const kapsamAdlari = (fit._fitting as { kapsam: number[] }).kapsam.map((i) => rows.find((r) => r._rowIdx === i)?.Ad);
+    expect(kapsamAdlari).toEqual(['VANA', 'BORU', 'MANUEL']);
+    expect(prev.sheets[0].rowData[3]._fitting, 'eski satir nesnesi degismez').toEqual({ kapsam: [1, 2, 4, 5] });
+  });
 });

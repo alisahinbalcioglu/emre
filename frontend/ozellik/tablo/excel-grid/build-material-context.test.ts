@@ -2,7 +2,7 @@
 // reimplementasyon testleri fonksiyonlarla birlikte silindi (canli kopya
 // ExcelGrid.tsx icinde, e2e ile dogrulanir).
 import { describe, it, expect } from 'vitest';
-import { hasSizeExpression, isSelfSufficientRow } from './build-material-context';
+import { extractCapFromText, hasSizeExpression, isSelfSufficientRow } from './build-material-context';
 
 describe('hasSizeExpression (H4)', () => {
   it('baslik metinlerinde olcu yok', () => {
@@ -60,5 +60,36 @@ describe('B2 IKIZ — tipografik tirnakli olcu (arka ucun normalizer kurali)', (
   it('KARSI: tirnak olcu disi baglamda satiri bozmaz', () => {
     // Turkce ek kesmesi olcu DEGILDIR; tip kelimesi tasiyan satir yine yeterli
     expect(isSelfSufficientRow(`Ayvaz${SAG}in celik borusu`)).toBe(true);
+  });
+});
+
+// ── CAP OKUYUCU SOL SINIRI (P2 bulgusu 05.10; arka uc ikizi P2 FAZ C B17) ──
+// Tam sayi inc kalibi `(\d+)"` sol sinir tasimiyordu ve ortusme denetimi
+// eslesmenin degil DEGERIN uzunluguna bakiyordu: tirnakli her kesirde kesrin
+// paydasi tam sayi inc sanilip "en sondaki cap" seciliyordu — 3/4" dn100,
+// 1/2" dn50, 1 1/4" dn100. Bu cap baslik baglaminin sanity check'ini
+// (parent/current cap karsilastirmasi) yanlis karara goturuyordu.
+describe('extractCapFromText — kesrin paydasi tam sayi inc DEGILDIR', () => {
+  it.each([
+    ['3/4"', 'dn20'],
+    ['1/2"', 'dn15'],
+    ['1 1/4"', 'dn32'],
+    ['2 1/2"', 'dn65'],
+    ['Küresel Vana 3/4"', 'dn20'],
+    ['¾"', 'dn20'],
+    ['1¼"', 'dn32'],
+    ['TE 1" x 3/4"', 'dn20'],
+  ])('%s → %s', (metin, cap) => {
+    expect(extractCapFromText(metin)).toBe(cap);
+  });
+  it('KONTROL: tam sayi inc, DN ve tirnaksiz kesir eskisi gibi', () => {
+    expect(extractCapFromText('Boru 2"')).toBe('dn50');
+    expect(extractCapFromText('Vana 1"')).toBe('dn25');
+    expect(extractCapFromText('DN 25 vana')).toBe('dn25');
+    expect(extractCapFromText('Dirsek 3/4')).toBe('dn20');
+    expect(extractCapFromText('3/4" x 1"')).toBe('dn25');
+    expect(extractCapFromText('olcusuz satir')).toBeNull();
+    // cok haneli payda: 5/16"nin 6"si (dn150) okunmaz — tabloda 5/16 yok, cap YOK
+    expect(extractCapFromText('Civata 5/16"')).toBeNull();
   });
 });
