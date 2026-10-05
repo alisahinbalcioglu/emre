@@ -15,6 +15,7 @@
  *   20 kosumda 3). Ayrinti: CLAUDE.md.
  */
 import { spawnSync } from 'child_process';
+import { CiEkNotu, dususNedeni, kesintiNotu } from './yardimci/ci-ek-notu';
 
 interface Suite { ad: string; script: string; zincir: string; db?: boolean }
 
@@ -984,6 +985,12 @@ const SUITES: Suite[] = [
   //    biçimsiz kimliği DB'ye göndermez. GERÇEK denetleyiciler HTTP üzerinden,
   //    ValidationPipe main.ts ile aynı. DB/AĞ GEREKTİRMEZ.
   { ad: 'Gövde doğrulama: eşleştirme uçları DTO · kütüphane ızgara kaydı satır hataları (G/S)', script: 'test:govde-dogrulama', zincir: 'Z0' },
+  // ── 04.10.2026 — CI EK NOTU (koordinatör). Actions günlüğü girişsiz 403;
+  //    kırmızı işin tek ek notu "exit code 1" idi. Bu koşucu GITHUB_ACTIONS
+  //    iken düşen paketi `::error` notu olarak yazar. Saf kurallar + bu
+  //    dosyanın KIRPILMIŞ kopyasıyla bağlantı (kapı kodu bayt bayt aynı).
+  //    DB/AĞ GEREKTİRMEZ.
+  { ad: 'CI ek notu: düşen paketin adı ::error ile girişsiz okunur · kırpılmış koşucuyla bağlantı (S/B)', script: 'test:ci-ek-notu', zincir: 'Z0' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────
@@ -1009,6 +1016,8 @@ function dbErisilebilir(): boolean {
 
 const sonuclar: Array<{ ad: string; script: string; zincir: string; durum: 'PASS' | 'FAIL' | 'SKIP'; sure: string; not?: string }> = [];
 const dbVar = dbErisilebilir();
+// CI ek notu (04.10.2026): GitHub Actions'ta dusen paketin adi girissiz okunur.
+const ciNotu = new CiEkNotu(process.env.GITHUB_ACTIONS === 'true');
 
 for (const s of SUITES) {
   if (s.db && !dbVar) {
@@ -1031,6 +1040,8 @@ for (const s of SUITES) {
   console.log(`${durum === 'PASS' ? '✅' : durum === 'SKIP' ? '⚪' : '❌'} [${s.zincir}] ${s.ad} (${sure})`);
   if (durum === 'FAIL') {
     console.log((r.stdout ?? '').split('\n').filter((l: string) => l.includes('FAIL')).slice(0, 10).join('\n'));
+    ciNotu.paketDustu(s.script, s.ad, `[${s.zincir}] (${sure})${kesintiNotu(r.status, r.signal, r.error)}`,
+      dususNedeni(r.stdout ?? '', r.stderr ?? ''));
   }
   if (durum === 'SKIP') {
     console.log((r.stderr ?? '').split('\n').filter((l: string) => /ON KOSUL|marka fiyat|farkli cap|ProductIndex|→/.test(l)).slice(0, 6).join('\n'));
@@ -1057,4 +1068,6 @@ const skipSapmasi = beklenmeyenSkip.length + kosanBeklenenSkip.length > 0;
 console.log(`SKIP DEFTERİ: beklenen ${beklenenSkip.size} · gerçek ${gercekSkip.size}${dbVar ? ' (PG_REGRESSION=1: hepsi koşmalı)' : ''}`);
 for (const s of beklenmeyenSkip) console.log(`  🔴 BEKLENMEYEN SKIP: ${s} — atlanan paket geçti sayılmaz; ön koşulu düzelt ya da defteri BİLİNÇLİ güncelle`);
 for (const s of kosanBeklenenSkip) console.log(`  🔴 DEFTER BAYAT: ${s} atlanmadı (koştu ya da SUITES'te yok) — BEKLENEN_SKIP_DB_YOK güncellenmeli`);
+ciNotu.ozet(`${sonuclar.length - fail - skip} PASS · ${fail} FAIL · ${skip} SKIP`,
+  sonuclar.filter((r) => r.durum === 'FAIL').map((r) => r.script), beklenmeyenSkip, kosanBeklenenSkip);
 process.exit(fail > 0 || skipSapmasi ? 1 : 0);
