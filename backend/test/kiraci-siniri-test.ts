@@ -1420,13 +1420,21 @@ async function kvBlogu(): Promise<void> {
     const kalem = [{ laborName: 'Sızma kalemi montajı', unitPrice: 9, unit: 'adet' }];
     const eksik = await d.istek('a1', 'POST', `/labor-firms/${aF}/save-bulk`, { items: kalem });
     const nesne = await d.istek('a1', 'POST', `/labor-firms/${aF}/save-bulk`, { priceListId: { not: '' }, items: kalem });
+    const bos = await d.istek('a1', 'POST', `/labor-firms/${aF}/save-bulk`, { priceListId: '', items: kalem });
     // Metin de olculur: daha erken donen BASKA bir 400 kaldirilmis bir
-    // denetimi gizleyemesin (kod incelemesi).
+    // denetimi gizleyemesin (kod incelemesi). 05.10 (P4b): eksik/nesne kimlik
+    // artik DTO'da (IscilikTopluKayitDto) reddedilir — ValidationPipe mesaji
+    // DIZI doner, metin ayni. Bos METIN DTO'yu gecer, servis kapisina takilir:
+    // iki kilit ayri ayri olculur.
     const KIMLIK_400 = 'Gecersiz fiyat listesi kimligi';
-    check('KV.19 save-bulk: liste kimligi eksik ya da nesneyse 400 ("Gecersiz fiyat listesi kimligi"), HICBIR listeye yazilmaz',
-      eksik.durum === 400 && nesne.durum === 400 && eksik.veri?.message === KIMLIK_400 && nesne.veri?.message === KIMLIK_400 &&
+    const yalnizKimlikMesaji = (v: any) => { const m = [v?.message].flat(); return m.length > 0 && m.every((x) => x === KIMLIK_400); };
+    check('KV.19 save-bulk: liste kimligi eksik ya da nesneyse 400 (DTO, "Gecersiz fiyat listesi kimligi"), HICBIR listeye yazilmaz',
+      eksik.durum === 400 && nesne.durum === 400 && yalnizKimlikMesaji(eksik.veri) && yalnizKimlikMesaji(nesne.veri) &&
         satirSayisi() === oncekiSatir,
       `${eksik.durum} ${eksik.metin} | ${nesne.durum} ${nesne.metin} | satir ${oncekiSatir}→${satirSayisi()}`);
+    check('KV.19b save-bulk: bos liste kimligi DTO\'yu gecer, SERVIS kapisi 400 verir (ayni metin), yazilmaz',
+      bos.durum === 400 && bos.veri?.message === KIMLIK_400 && satirSayisi() === oncekiSatir,
+      `${bos.durum} ${bos.metin} | satir ${oncekiSatir}→${satirSayisi()}`);
   } finally {
     await d.app.close();
   }

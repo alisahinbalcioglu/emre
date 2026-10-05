@@ -991,6 +991,11 @@ const SUITES: Suite[] = [
   //    dosyanın KIRPILMIŞ kopyasıyla bağlantı (kapı kodu bayt bayt aynı).
   //    DB/AĞ GEREKTİRMEZ.
   { ad: 'CI ek notu: düşen paketin adı ::error ile girişsiz okunur · kırpılmış koşucuyla bağlantı (S/B)', script: 'test:ci-ek-notu', zincir: 'Z0' },
+  // ── 05.10.2026 — P4b PARTİ 1 (motor). C9: alias tablosu okunamazsa
+  //    eşleştirme ipuçsuz YANLIŞ sonuç yerine hata verir (yalnız P2021 = tablo
+  //    yok sessiz geçer). Prototip: "__proto__" adlı satırın sonucu yanıtta
+  //    kalır (P4 notu 2'nin yazma yanı). Gerçek motor, sahte Prisma. DB/AĞ YOK.
+  { ad: 'P4b motor: alias yükleme hatası yutulmaz (C9) · "__proto__" satırı yanıtta kalır (T/P)', script: 'test:p4b-motor', zincir: 'Z2' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

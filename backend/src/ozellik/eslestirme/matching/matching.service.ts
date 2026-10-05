@@ -177,7 +177,7 @@ export class MatchingService {
 
     if (libRows.length === 0) {
       console.log(`[Matching] Kutuphane bos: firma=${gunlukDegeri(k.firmaId)}, brand=${gunlukDegeri(brandId)}`);
-      const empty: Record<string, MatchResult> = {};
+      const empty: Record<string, MatchResult> = Object.create(null); // prototipsiz: bkz. `out`
       const reason =
         'Kütüphanenizde bu markaya ait malzeme yok. Malzeme Havuzu\'ndan "Kütüphaneme Aktar" ile ekleyin.';
       for (const n of materialNames) {
@@ -395,7 +395,10 @@ export class MatchingService {
     // Istek basina 1 kez yuklenir; hint'ler QueryOpts ile motora gecer.
     const aliases = await this.terminology.loadAliases(k.userId);
 
-    const out: Record<string, MatchResult> = {};
+    // P4b (05.10, P4 notu 2'nin YAZMA yani): sonuc nesnesi PROTOTIPSIZ. Duz
+    // `{}`te "__proto__" adli satirin sonucu prototipi degistiriyor, kendi
+    // anahtari olmadigi icin yanittan SESSIZCE dusuyordu. Kapi: `test:p4b-motor` P.
+    const out: Record<string, MatchResult> = Object.create(null);
     // P4 notu 4 (04.10, C12): sonuc ADA baglidir (`out[name]`) — ayni ad
     // 50.000 kez gelirse 50.000 kez islenmez. Oneri havuzu da istek basina
     // BIR KEZ hazirlanir (bkz. `OneriHavuzu`): eskiden "bu markada yok" diyen
@@ -726,7 +729,7 @@ export class MatchingService {
     });
 
     if (prices.length === 0) {
-      const empty: Record<string, MatchResult> = {};
+      const empty: Record<string, MatchResult> = Object.create(null); // prototipsiz: bkz. matchV2 `out`
       const reason = 'Bu firmanın işçilik fiyat listesi boş. Firma detayından liste yükleyin.';
       for (const n of laborNames) {
         if (!n?.trim()) continue;
