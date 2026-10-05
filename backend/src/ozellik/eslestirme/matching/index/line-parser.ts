@@ -74,9 +74,23 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   // sprinkler-aksesuar'a KACIRIYORDU. Parantez blogu aile cozumune ve kisit
   // token'larina GIRMEZ (cap/boy cikarimi ham metinden calismaya devam eder —
   // "(73 mm) (DN65)" gibi capli notlar kaybolmaz).
-  const parantezsiz = raw.replace(/\([^)]*\)/g, ' ');
-
-  const familySlug = resolveLineFamily(parantezsiz);
+  // FAZ B B8 (04.10 olculdu): tek harf "T" belirtec uretmiyordu (tokenize
+  // <2 harfi atar) → "T 1\"" ailesiz onay listesi; "TE/TEE 1\"" otomatik.
+  // Te = Tee = T (14.08 kullanici karari). ⚠ 't' TON da olabilir ("5 t
+  // celik"): sayidan HEMEN sonra gelen t (kesir/inc isaretinden sonraki
+  // haric) cevrilmez; "T tipi" ve "T-25" gibi kod parcalari da cevrilmez.
+  // ⚠ YALNIZ satir BASKA bir urun ailesine cozulemiyorsa: Pimtas adlarinda T
+  // TIP belirtecidir ("Tek Taraf İç Dişli T Çekvalf") — kosulsuz ceviri bu
+  // 12 satira "te bulunamadi" notu ekliyordu (once/sonra karsilastirmasi).
+  // T ancak satirin bas ismiyse te'dir: aile yalniz te ile cozuluyorsa.
+  let parantezsiz = raw.replace(/\([^)]*\)/g, ' ');
+  let familySlug = resolveLineFamily(parantezsiz);
+  if (!familySlug) {
+    const teMetni = parantezsiz
+      .replace(/(?<![\p{L}\p{N}\-])(?<!(?:^|[^\d/.,"'])\d+(?:[.,]\d+)?\s*)[Tt](?![\p{L}\p{N}\-])(?!\s*[tT][iİıI][pP])/gu, 'te');
+    const teAilesi = teMetni !== parantezsiz ? resolveLineFamily(teMetni) : null;
+    if (teAilesi) { parantezsiz = teMetni; familySlug = teAilesi; }
+  }
 
   // SAHA KISALTMALARI (18.07, Trakya "Glvz." vakasi): satir SERBEST metindir,
   // yaygin kisaltmalar ACILIR ki cins filtresi calisabilsin — "Glvz. Nipel"

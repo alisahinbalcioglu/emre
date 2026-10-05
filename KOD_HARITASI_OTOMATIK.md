@@ -4,9 +4,9 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 903
-Toplam satir: 249933
+Toplam satir: 249996
 Uc nokta: 239
-test:* scripti: 157
+test:* scripti: 158
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -139,9 +139,9 @@ test:* scripti: 157
 | `backend/src/ozellik/eslestirme/matching/conversion.ts` | 477 |
 | `backend/src/ozellik/eslestirme/matching/dto/eslestirme-govdesi.dto.ts` | 79 |
 | `backend/src/ozellik/eslestirme/matching/gunluk-degeri.ts` | 28 |
-| `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 275 |
+| `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 289 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 723 |
-| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1741 |
+| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1789 |
 | `backend/src/ozellik/eslestirme/matching/index/types.ts` | 294 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 116 |
@@ -449,7 +449,7 @@ test:* scripti: 157
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 1062 |
+| `backend/test/regression-all.ts` | 1063 |
 | `backend/test/s45-malzeme-aile-test.ts` | 462 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 901 |
@@ -1994,6 +1994,7 @@ test:* scripti: 157
 | `backend/package.json` | `test:hafiza-kimlik-kapisi` | `ts-node test/hafiza-kimlik-kapisi-test.ts` |
 | `backend/package.json` | `test:p4-motor-notlari` | `ts-node test/p4-motor-notlari-test.ts` |
 | `backend/package.json` | `test:olcu-okuyucu` | `ts-node test/olcu-okuyucu-test.ts` |
+| `backend/package.json` | `test:kimlik-suzgecleri` | `ts-node test/kimlik-suzgecleri-test.ts` |
 | `backend/package.json` | `test:grid` | `ts-node test/excel-grid-test.ts` |
 | `backend/package.json` | `test:labor-sheet` | `ts-node test/labor-sheet-test.ts` |
 | `backend/package.json` | `test:kl` | `ts-node test/kl-liste-ekleme-test.ts` |
