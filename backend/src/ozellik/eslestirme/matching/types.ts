@@ -42,6 +42,9 @@ export interface KaynakKur {
 export interface KaynakFiyat {
   currency: 'TRY' | 'USD' | 'EUR';
   net: number;
+  /** `currency` biriminde liste fiyati. Ozel fiyat liste fiyatindan BASKA
+   *  birimdeyse (C3, P4b 2b) o birimde liste yoktur → tabanin kendisi (ozel
+   *  fiyat). On yuz yalniz `currency`/`net` okur. */
   list: number;
   /** Iskonto YUZDESI (0-100) — TL alanindaki `discount` ile ayni */
   discount: number;

@@ -1,12 +1,16 @@
-import { IsString, IsNumber, IsOptional, Min, Max } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Min, Max, MaxLength } from 'class-validator';
+import { MALZEME_ADI_AZAMI } from './create-manual-brand.dto';
 
 export class CreateLibraryItemDto {
   @IsOptional()
   @IsString()
   materialId?: string;
 
+  // P4b 2b guvenlik incelemesi: indekssiz satirin adi eslestirmede HER istekte
+  // indekslenir (karesel) — urun olusturma ve ad duzeltmesiyle AYNI sinir.
   @IsOptional()
   @IsString()
+  @MaxLength(MALZEME_ADI_AZAMI)
   materialName?: string;
 
   @IsString()

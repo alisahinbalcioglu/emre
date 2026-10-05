@@ -17,6 +17,7 @@
 //  test:conversion + test:contract (C1-C10).
 // ════════════════════════════════════════════════════════════════════
 import { Injectable } from '@nestjs/common';
+import { performance } from 'node:perf_hooks';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { generateTags } from './tag-generator';
 import { extractMaterialKind, extractFluid } from './normalizer';
@@ -27,7 +28,7 @@ import { gunlukDegeri } from './gunluk-degeri';
 // TEK MOTOR (Faz 2b): indeksli + Ad-kilitli cekirdek (saf — test:index K1-K7)
 import { parseLine } from './index/line-parser';
 import { runQuery, guclutekAday, aileUyusmazligiTeshisi, HAFIZA_OTOYAZ_ENGELI } from './index/query-engine';
-import { toMatchResult, gorunenAd, kurOf, kaynakFiyatOf, tlNetFiyat } from '../../fiyat/matching/index/outcome-mapper';
+import { toMatchResult, gorunenAd, kurOf, kaynakFiyatOf, tlNetFiyat, cevrilemezMi, listeTl } from '../../fiyat/matching/index/outcome-mapper';
 import type { TryCevirici } from '../../fiyat/matching/index/outcome-mapper';
 import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields, iscilikAdCekirdegi, malzemeEtiketleri } from './index/product-index';
 import type { ProductColumns } from './index/product-index';
@@ -35,6 +36,11 @@ import type { IndexedRow, LineQuery, QueryOpts, QueryOutcome, KanitKapisi } from
 import type { AliasHint } from './terminology.service';
 import { ExchangeRatesService, paraBirimiKodu, kurGecerli } from '../../fiyat/exchange-rates/exchange-rates.service';
 import type { MatchResult, BrandAlternative } from './types';
+
+/** Kur ceviricisinin okudugu alanlar (C3, P4b 2b): liste birimi + ozel fiyat (> 0) ve KENDI birimi. */
+type KurSatiri = { currency?: string | null; customPrice?: number | null; customPriceCurrency?: string | null };
+/** Istek basina duzeltilmis ad yeniden indeksleme suresi bu esigi asarsa gunluge yazilir (ms). */
+const DUZELTME_UYARI_MS = 250;
 import { KIND_TAGS, SURFACE_TAGS, CONNECTION_TAGS } from './shared-tag-matcher';
 import { Kimlik } from '../../../altyapi/auth/kimlik';
 import { katalogda, kiracininKalemleri } from '../../kutuphane/labor/iscilik-kalemi-kapsami';
@@ -80,10 +86,15 @@ export class MatchingService {
   // `cevrilemez(currency)` bunu soyler; cagiranlar (outcome-mapper, oneri
   // yollari) o satira fiyat YAZMAZ. TRY satirlar etkilenmez.
   // Taninmayan para birimi (GBP, "£") da cevrilemez — 1:1 TL sayilmaz (KUR-02).
-  private async buildTryConverter(
-    rows: { currency?: string | null }[],
-  ): Promise<TryCevirici> {
-    const kodlar = new Set(rows.map((r) => paraBirimiKodu(r.currency)));
+  private async buildTryConverter(rows: KurSatiri[]): Promise<TryCevirici> {
+    const kodlar = new Set(rows.flatMap((r) => [
+      paraBirimiKodu(r.currency),
+      // C3 (P4b 2b): ozel fiyatin KENDI birimi de — liste TRY, ozel fiyat USD
+      // olan satirda kur cekilmezse ozel fiyat sahte "kur alinamadi" olurdu.
+      // Kosul `fiyatTabani` ile AYNI (ozel fiyat > 0): taban olmayan birim icin kur cekilmez.
+      ...(r.customPrice != null && r.customPrice > 0 && r.customPriceCurrency != null
+        ? [paraBirimiKodu(r.customPriceCurrency)] : []),
+    ]));
     const dovizVar = kodlar.has('USD') || kodlar.has('EUR');
     const rates = dovizVar ? await this.exchangeRates.getRates() : null;
     const gecerli = { USD: kurGecerli(rates, 'USD'), EUR: kurGecerli(rates, 'EUR') };
@@ -191,7 +202,7 @@ export class MatchingService {
     }
 
     // Z4: dovizli satirlar teklif aninda TRY tabanina cevrilir.
-    const toTry = await this.buildTryConverter(libRows as { currency?: string | null }[]);
+    const toTry = await this.buildTryConverter(libRows as KurSatiri[]);
 
     // ══ TEK MOTOR (Faz 2b SOKUM — 17.07): v1 skor motoru SILINDI ══════
     // PRD Bolum 7: fallback YASAK — uc sonuc vardir (yaz / fiyatli sec / yok).
@@ -218,10 +229,21 @@ export class MatchingService {
   private hazirlaPool(libRows: any[]): IndexedRow[] {
     let bayatSayisi = 0;
     let indekssizSayisi = 0;
+    let duzeltmeSayisi = 0;
+    let duzeltmeMs = 0;
     const pool: IndexedRow[] = libRows.map((li) => {
       let urun: IndexedRow['urun'];
+      // C7 (P4b 2b): firmanin ad duzeltmesi (sahipli urunde NULL — duzeltme
+      // orada indeksin kendisine yazilir; bkz. library.service saveBrandSheets)
+      const kullaniciAdi: string | null =
+        typeof li.kullaniciAdi === 'string' && li.kullaniciAdi.trim() ? li.kullaniciAdi.trim() : null;
       if (li.productIndexId && li.product) {
-        if ((li.product.indexVersion ?? 1) !== INDEX_VERSION) {
+        if (kullaniciAdi) {
+          const t0 = performance.now();
+          urun = this.duzeltilmisUrun(li.product, kullaniciAdi);
+          duzeltmeMs += performance.now() - t0;
+          duzeltmeSayisi++;
+        } else if ((li.product.indexVersion ?? 1) !== INDEX_VERSION) {
           bayatSayisi++;
           const cols: ProductColumns = {
             kategori: li.product.kategori, ad: li.product.ad, cins: li.product.cins,
@@ -235,7 +257,8 @@ export class MatchingService {
         }
       } else {
         indekssizSayisi++;
-        const name: string = li.material?.name ?? li.materialName ?? '';
+        // C7: duzeltme once — yeniden aktarim materialName'i havuz adina dondurur, duzeltme kalir
+        const name: string = kullaniciAdi ?? li.material?.name ?? li.materialName ?? '';
         urun = this.manuelUrunIndeksle({
           name,
           price: li.listPrice ?? 0,
@@ -251,9 +274,17 @@ export class MatchingService {
         customPrice: li.customPrice ?? null,
         discountRate: li.discountRate ?? 0,
         currency: li.currency ?? 'TRY',
+        customPriceCurrency: li.customPriceCurrency ?? null, // C3 (P4b 2b): okuyan fiyatTabani
         urun,
       };
     });
+    // C7 (P4b 2b incelemesi): duzeltilmis adli satir HER istekte yeniden
+    // indekslenir (reindex bunu temizlemez); suresi tek olay dongusunde tum
+    // kiracilari bekletir — bayat/indekssiz satir gibi SESSIZ kalmaz (PK9).
+    if (duzeltmeMs >= DUZELTME_UYARI_MS) {
+      console.warn(`[Matching] ⚠ AD DUZELTMESI: ${duzeltmeSayisi} satir istek aninda yeniden indekslendi (${Math.round(duzeltmeMs)} ms). `
+        + `Firma ad duzeltmeleri (kullaniciAdi) her istekte hesaplanir.`);
+    }
     if (bayatSayisi > 0) {
       console.warn(`[Matching] ⚠ BAYAT INDEKS: ${bayatSayisi} satir istek aninda yeniden uretildi (v${INDEX_VERSION}). ` +
         `KALICI COZUM: POST /admin/reindex-products (her istekte yeniden hesap = gereksiz yuk).`);
@@ -278,6 +309,23 @@ export class MatchingService {
         + `Fiyat listesini yeniden yukleyin veya POST /admin/reindex-products calistirin.`);
     }
     return pool;
+  }
+
+  /**
+   * C7 (P4b 2b, Emre karari 01.10): firmanin ORTAK urune verdigi ad
+   * (`UserLibrary.kullaniciAdi`) — aday alanlari O addan, istek aninda.
+   * Sahipli urunun yeniden adlandirilmasiyla AYNI kural: `buildProductIndex`
+   * dogrudan (`rebuildIndexFields`in "belirsizse eski slug" kurtarmasi eski
+   * ailenin adini yeni ada yapistirirdi). Kimlik (id/rowKey) indeksindir;
+   * baska firma ayni indeksi kendi (duzeltmesiz) adiyla gorur.
+   */
+  private duzeltilmisUrun(p: any, ad: string): IndexedRow['urun'] {
+    const cols: ProductColumns = {
+      kategori: p.kategori, ad, cins: p.cins, baglanti: p.baglanti, cap: p.capRaw, boy: p.boyMm,
+      birim: p.birim, price: p.price, paraBirimi: p.currency, urunKodu: p.urunKodu, not: p.not,
+      sheetName: p.sheetName, sourceRow: p.sourceRow, sortOrder: p.sortOrder,
+    };
+    return { ...p, ...buildProductIndex(cols), rowKey: p.rowKey, ad };
   }
 
   /**
@@ -623,7 +671,7 @@ export class MatchingService {
     // Faz 2b: diger markalarin manuel/bayat satirlari da ayni yoldan gecer
     const pool = this.hazirlaPool(others as any[]);
     if (pool.length === 0) return null;
-    const toTry = await this.buildTryConverter(others as { currency?: string | null }[]);
+    const toTry = await this.buildTryConverter(others as KurSatiri[]);
     const sahipOf = new Map<string, { id: string; name: string }>(
       (others as any[]).map((r) => [r.id, r.brand]),
     );
@@ -664,9 +712,10 @@ export class MatchingService {
       const tekAday = secim.row;
       // KUR-01: kur alinamayan (ya da taninmayan) dovizli oneri SUNULMAZ —
       // on yuz oneriyi secince fiyati kontrolsuz yazar (1:1 TL).
-      if (toTry.cevrilemez?.(tekAday.currency)) continue;
+      // C3 (P4b 2b): kapi ve liste gosterimi tabanin birimiyle (outcome-mapper ile AYNI yardimcilar)
+      if (cevrilemezMi(tekAday, toTry)) continue;
       const m = markaOf.get(tekAday.id)!;
-      const list = toTry(tekAday.listPrice, tekAday.currency);
+      const list = listeTl(tekAday, toTry);
       const isk = tekAday.discountRate ?? 0;
       // Kutuphane ekrani formulu (outcome-mapper.netFiyat ile AYNI kaynak):
       // custom TABANI degistirir, iskonto HER ZAMAN uygulanir, doviz ONCE
@@ -903,10 +952,11 @@ export class MatchingService {
       const secim = this.caprazAdaySec(outcome);
       if (!secim) continue;
       const tek = secim.row;
-      // KUR-01 ikizi: kur alinamayan dovizli firma onerisi SUNULMAZ.
-      if (toTry.cevrilemez?.(tek.currency)) continue;
+      // KUR-01 ikizi: kur alinamayan dovizli firma onerisi SUNULMAZ. Malzeme
+      // yoluyla AYNI yardimcilar (iscilikte ozel fiyat yok — davranis ayni).
+      if (cevrilemezMi(tek, toTry)) continue;
       const f = firmaOf.get(tek.id)!;
-      const list = toTry(tek.listPrice, tek.currency);
+      const list = listeTl(tek, toTry);
       const isk = tek.discountRate ?? 0;
       out.push({
         // Mevcut BrandAlternative sozlesmesi yeniden kullanilir (FE ayni

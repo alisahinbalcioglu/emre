@@ -16,7 +16,12 @@ export interface IndexedRow {
   listPrice: number;
   customPrice: number | null;
   discountRate: number;
+  /** `listPrice`in birimi. */
   currency: string;
+  /** C3 (P4b 2b): `customPrice`in KENDI birimi (NULL/yok → `currency`). YALNIZ
+   *  `fiyatTabani` (outcome-mapper) okur — baska yer dogrudan okumaz.
+   *  Opsiyonel: iscilik ve eski fikstur satirlarinda ozel fiyat yok. */
+  customPriceCurrency?: string | null;
   // ── URUN: indekse ait (11 kolon + on-hesap) ──
   urun: ProductIndexFields & {
     ad: string;
