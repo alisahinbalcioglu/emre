@@ -102,6 +102,11 @@ function dosyalar(dizin: string, biriken: string[] = []): string[] {
   return biriken;
 }
 
+// Kaynak taramasi (app/ozellik/ortak agaci) G/C'ye bagli: tek basina ~0,3 sn, ama tam
+// vitest paketi paralel kosarken 5 sn varsayilanini astigi olculdu (05.10: 6 kosuda 1
+// zaman asimi, mantik belirlenimci). Sure siniri dogruluk sinyali degil.
+const TARAMA_SURESI = 30_000;
+
 describe('B · kaynak kapısı', () => {
   it('⭐ hiçbir ekranda `href="/api/…"` YOK (başlık taşımayan çağrı)', () => {
     const suclular: string[] = [];
@@ -114,7 +119,7 @@ describe('B · kaynak kapısı', () => {
       }
     }
     expect(suclular).toEqual([]);
-  });
+  }, TARAMA_SURESI);
 
   it('⭐ KVKK indirme ucu YALNIZ yardımcıda çağrılıyor (profil de yardımcıyı kullanır)', () => {
     const cagiranlar: string[] = [];
@@ -130,7 +135,7 @@ describe('B · kaynak kapısı', () => {
     // `api.get` kopyasını taşıyor ve bağlantıyı belgeye EKLEMEDEN tıklıyordu;
     // yardımcı ekleyip çıkarır ve nesne adresini serbest bırakır.
     expect(cagiranlar.sort()).toEqual(['ozellik/kimlik/verileri-indir.ts']);
-  });
+  }, TARAMA_SURESI);
 
   it('⭐ Hesabım › Veriler sekmesi indirmeyi YARDIMCIDAN yapıyor', () => {
     const kod = fs
