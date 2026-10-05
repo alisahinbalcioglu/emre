@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 920
-Toplam satir: 253645
+Toplam satir: 253691
 Uc nokta: 239
 test:* scripti: 164
 
@@ -612,7 +612,7 @@ test:* scripti: 164
 | `frontend/lib/kar-satiri.test.ts` | 174 |
 | `frontend/lib/kaynak-kolon.test.ts` | 49 |
 | `frontend/lib/marj-tek-kaynak.test.ts` | 80 |
-| `frontend/lib/merge-multisheet.test.ts` | 276 |
+| `frontend/lib/merge-multisheet.test.ts` | 320 |
 | `frontend/lib/metraj-excel.ts` | 98 |
 | `frontend/lib/ondalik-kurali.test.ts` | 70 |
 | `frontend/lib/parse-material-text.test.ts` | 86 |
@@ -840,7 +840,7 @@ test:* scripti: 164
 | `frontend/ozellik/tablo/excel-grid/useFillHandle.tsx` | 286 |
 | `frontend/ozellik/tablo/excel-grid/yapistir.test.ts` | 222 |
 | `frontend/ozellik/tablo/excel-grid/yapistir.ts` | 185 |
-| `frontend/ozellik/tablo/merge-multisheet.ts` | 269 |
+| `frontend/ozellik/tablo/merge-multisheet.ts` | 271 |
 | `frontend/ozellik/tablo/parse-material-text.ts` | 69 |
 | `frontend/ozellik/tablo/quotes/ColumnManagerPanel.tsx` | 146 |
 | `frontend/ozellik/teklif/CeviriDuzeltmeDialog.tsx` | 115 |

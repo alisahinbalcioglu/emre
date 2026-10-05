@@ -50,14 +50,18 @@ function rowKey(row: ExcelRowData, roles: ColumnRoles): string {
  * Bolum basligi: dosyanin VERI OLMAYAN metinli satiri ("KAT 1 TESİSATI").
  * Kolon basligi bolum DEGILDIR: revizyonda basligi degisen dosyada ilk bolumun
  * tekrarlari eslesmesini kaybederdi. (Grup bandi etiketi `_groupLabel`da,
- * dosya hucreleri bos — metni olmadigi icin bolum acmaz.) Metin ad hucresinden,
- * yoksa satirin ilk dolu dosya hucresinden; buyuk/kucuk harf (TR) ve bosluk
- * farki ayni bolumdur.
+ * dosya hucreleri bos — metni olmadigi icin bolum acmaz.) Metin sirasiyla ad
+ * hucresinden, sira no hucresinden, satirin kaynak metinlerinden (`_kaynak` —
+ * sabit semada dosya kolonlari ALT CIZGILI alanlarda durur; basligi Sira No
+ * kolonuna yazilmis dosyada `_ad` bostur, inceleme 05.10) ve en son eski
+ * kayittaki (colN) dosya hucrelerinden; buyuk/kucuk harf (TR) ve bosluk farki
+ * ayni bolumdur.
  */
 function bolumMetni(row: ExcelRowData, roles: ColumnRoles): string | null {
   if (row._isDataRow || row._isHeaderRow) return null;
-  const adaylar = [roles.nameField ? row[roles.nameField] : undefined,
-    ...Object.keys(row).filter((k) => !k.startsWith('_')).map((k) => row[k])];
+  const kaynak = row._kaynak && typeof row._kaynak === 'object' ? Object.values(row._kaynak as Record<string, unknown>) : [];
+  const adaylar = [roles.nameField ? row[roles.nameField] : undefined, roles.noField ? row[roles.noField] : undefined,
+    ...kaynak, ...Object.keys(row).filter((k) => !k.startsWith('_')).map((k) => row[k])];
   const metin = adaylar.map((v) => String(v ?? '').replace(/\s+/g, ' ').trim()).find(Boolean);
   return metin ? metin.toLocaleLowerCase('tr') : null;
 }
@@ -65,7 +69,7 @@ function bolumMetni(row: ExcelRowData, roles: ColumnRoles): string | null {
 interface Anahtar {
   /** bolum + no|ad + bolumdeki sira — tekrarlar SIRAYLA eslenir */
   tam: string;
-  /** no|ad — bolum adi degismis TEK satir icin yedek */
+  /** no|ad — tam eslesmeyen kalan kopyalarin yedek eslesmesi */
   temel: string;
 }
 
@@ -96,9 +100,11 @@ function anahtarla(rows: ExcelRowData[], roles: ColumnRoles): Map<ExcelRowData, 
 
 /**
  * Gelen satir → eski satir eslesmesi. Once TAM anahtar (ayni bolum, ayni sira).
- * Sonra YEDEK: bolum adi degismis satir, adi iki dosyada da TEK ise eski
- * eslesmesini korur; tekrarli adda tahmin YOK (yanlis fiyat yerine yeni satir +
- * korunan eski satir).
+ * Sonra YEDEK, ad (no|ad) basina: tam eslesmeyen KALAN kopyalarin sayisi iki
+ * dosyada ESITSE sirayla eslenir — bolum adi degisti, bolum ortasina not satiri
+ * girdi ya da bir satir miktar kazanip veri oldu (inceleme 05.10: kalan
+ * tekrarlar fiyatini kaybediyordu). Sayilar farkliysa hangi kopyanin hangisi
+ * oldugu bilinemez: tahmin YOK (yeni satir + korunan eski satir).
  */
 function eslestir(prev: Map<ExcelRowData, Anahtar>, gelen: Map<ExcelRowData, Anahtar>): Map<ExcelRowData, ExcelRowData> {
   const eslesme = new Map<ExcelRowData, ExcelRowData>();
@@ -108,21 +114,17 @@ function eslestir(prev: Map<ExcelRowData, Anahtar>, gelen: Map<ExcelRowData, Ana
     const p = prevByTam.get(a.tam);
     if (p) eslesme.set(inc, p);
   });
-  const say = (m: Map<ExcelRowData, Anahtar>) => {
-    const c = new Map<string, number>();
-    m.forEach((a) => c.set(a.temel, (c.get(a.temel) ?? 0) + 1));
-    return c;
+  const kullanilan = new Set<ExcelRowData>(eslesme.values());
+  /** Eslesmemis satirlar ad basina, satir sirasiyla. */
+  const kalanlar = (m: Map<ExcelRowData, Anahtar>, eslesmis: (r: ExcelRowData) => boolean) => {
+    const k = new Map<string, ExcelRowData[]>();
+    m.forEach((a, r) => { if (!eslesmis(r)) k.set(a.temel, [...(k.get(a.temel) ?? []), r]); });
+    return k;
   };
-  const prevSay = say(prev);
-  const gelenSay = say(gelen);
-  const prevByTemel = new Map<string, ExcelRowData>();
-  prev.forEach((a, r) => { if (prevSay.get(a.temel) === 1) prevByTemel.set(a.temel, r); });
-  // Iki dosyada da TEK olan ad: tam eslesmeyle kullanilmis olamaz (kullanilsaydi
-  // ayni adli ikinci gelen satir tekilligi bozardi).
-  gelen.forEach((a, inc) => {
-    if (eslesme.has(inc) || gelenSay.get(a.temel) !== 1) return;
-    const p = prevByTemel.get(a.temel);
-    if (p) eslesme.set(inc, p);
+  const prevKalan = kalanlar(prev, (r) => kullanilan.has(r));
+  kalanlar(gelen, (r) => eslesme.has(r)).forEach((liste, temel) => {
+    const eski = prevKalan.get(temel);
+    if (eski && eski.length === liste.length) liste.forEach((inc, i) => eslesme.set(inc, eski[i]));
   });
   return eslesme;
 }
