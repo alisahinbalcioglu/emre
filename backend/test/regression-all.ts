@@ -122,6 +122,10 @@ const SUITES: Suite[] = [
   { ad: 'Fiyat birimi kapısı: kg/boy/paket fiyatı metre/adet satırına otomatik yazılmaz (B10)', script: 'test:fiyat-birimi', zincir: 'Z2' },
   { ad: 'Döviz net yuvarlaması: önce kaynak birimde net, sonra çevrim (C6, karar c)', script: 'test:doviz-net-yuvarlama', zincir: 'Z2' },
   { ad: 'Yeniden indeksleme günlüğü: aile denendi / yeni (FAZ B parti 2b)', script: 'test:reindex-gunlugu', zincir: 'Z1' },
+  { ad: 'Etiket katmanı: PN/SDR/PE sınıfı çap değil · DKP/pres/manşonu/basınçlı/PE-X · Ø mm\'siz · başlık bağlamı (FAZ C1)', script: 'test:etiket-katmani', zincir: 'Z2' },
+  { ad: 'Büyük harf birim · havuz sırası · çekim eki borusu↔borular (FAZ C1)', script: 'test:birim-sira-cekim', zincir: 'Z2' },
+  { ad: 'Satır ölçü yazımı: 110\'LUK · izolasyon kalınlığı çap değil (FAZ C2)', script: 'test:satir-olcu-yazimi', zincir: 'Z2' },
+  { ad: 'Ürün indeksi v20: steel≠tee · DN 6/8 ve 4 hane · inç öneki/parmak (FAZ C3)', script: 'test:urun-indeksi-v20', zincir: 'Z1' },
   // ── S2+S3 (06.08.2026): ÖNERİ KUTUSU. Çapraz-marka/firma önerisi ana
   //    motoru çağırıyor ve motorun "onaylat" dediği tek adayı KESİN gibi
   //    sunuyordu. İki kural mühürlendi: kanıt gücü yetmeyen aday (çapı ya da
@@ -223,6 +227,11 @@ const SUITES: Suite[] = [
   // Yerine gelen sozlesmeler:
   { ad: 'Standart grid şeması (GS/MF)', script: 'test:gs', zincir: 'Z1' },
   { ad: 'Standart çıktı (EX1-EX8)', script: 'test:ex', zincir: 'Z4' },
+  // 05.10.2026: coklu para birimi F5 — karisik teklifin fiyatli Excel'i birim basina
+  //    (hucre bicimi tarafin birimi, gizli J/K + SUMIF sayfa toplamlari, fitting
+  //    birim basina satir, GENEL TOPLAM birim basina, cevrim yok); format yolu
+  //    karisik teklifi numara yakmadan reddeder. Yalniz-TL duzeni test:ex'te.
+  { ad: 'Karışık para birimli çıktı (F5)', script: 'test:ex-karisik', zincir: 'Z4' },
   { ad: 'Teklif formatı kabul (T/KF2)', script: 'test:export', zincir: 'Z5' },
   { ad: 'Canlı simülasyon (SIM/G)', script: 'test:livesim', zincir: 'Z5' },
   // ── KAPATMA TURU ADIM 2 (31.07.2026): pakette OLMAYAN 4 suite eklendi.

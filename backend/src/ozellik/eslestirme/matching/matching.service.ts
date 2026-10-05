@@ -165,6 +165,10 @@ export class MatchingService {
     const libRows = await this.prisma.userLibrary.findMany({
       // G8: havuz FIRMAYA ait (UserLibrary ADIM 1'de firmaya gecti).
       where: { firmaId: k.firmaId, brandId },
+      // FAZ C A12 (05.10): SIRA SABIT — orderBy'siz Postgres sirasi tanimsizdir;
+      // ayni teklif iki kosumda farkli aday sirasi / esitlikte farkli ilk aday
+      // verebilirdi. Kaynak liste sirasi (sortOrder), esitlikte id.
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       include: {
         material: {
           select: { id: true, name: true, tags: true, normalizedName: true, materialType: true },
@@ -606,6 +610,10 @@ export class MatchingService {
     const others = await this.prisma.userLibrary.findMany({
       // G8: capraz-marka alternatif havuzu da FIRMAYA ait.
       where: { firmaId: k.firmaId, brandId: { not: brandId } },
+      // FAZ C A12 (05.10): SIRA SABIT — orderBy'siz Postgres sirasi tanimsizdir;
+      // ayni teklif iki kosumda farkli aday sirasi / esitlikte farkli ilk aday
+      // verebilirdi. Kaynak liste sirasi (sortOrder), esitlikte id.
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       include: {
         brand: { select: { id: true, name: true } },
         product: true,
@@ -722,6 +730,9 @@ export class MatchingService {
   ): Promise<Record<string, MatchResult>> {
     const prices = await (this.prisma as any).laborPrice.findMany({
       where: { firmaId },
+      // FAZ C A12 ikizi: iscilik havuzu da sabit sirada — firma ekraniyla ayni
+      // (kalem adi), esitlikte id.
+      orderBy: [{ laborItem: { name: 'asc' } }, { id: 'asc' }],
       include: { laborItem: true },
     });
 
@@ -853,6 +864,9 @@ export class MatchingService {
     const others = await (this.prisma as any).laborPrice.findMany({
       where: { firma: { firmaId: k.firmaId, id: { not: iscilikFirmaId } } },
       include: { laborItem: true, firma: { select: { id: true, name: true } } },
+      // FAZ C A12 ikizi: iscilik havuzu da sabit sirada — firma ekraniyla ayni
+      // (kalem adi), esitlikte id.
+      orderBy: [{ laborItem: { name: 'asc' } }, { id: 'asc' }],
     });
     if (others.length === 0) return null;
     const pool = this.hazirlaLaborPool(others);

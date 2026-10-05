@@ -5,9 +5,10 @@
  * OLCULDU (04.10, canli v18 yeniden indekslemesi): gunluk "N aile ogrenildi"
  * diyordu; N sozluge SUNULAN aile sayisiydi (admin.service reindexProducts,
  * `aileler.size`). learnFamilyAliases zaten kayitli olanlari YAZMAZ ve
- * gercek sayiyi `{ ogrenilen }` olarak dondurur — donus okunmuyordu. Sozlukte
- * 30→32 (2 yeni) varken gunluk yuzlercesini "ogrenildi" sayiyordu. v19
- * yeniden indekslemesinin sonucu bu satirdan okunacak.
+ * gercek sayiyi `{ ogrenilen }` olarak dondurur — donus okunmuyordu. Gunluk
+ * yuzlercesini "ogrenildi" sayarken sozluge HIC alias eklenmemisti (learned
+ * satir sayisi degismedi; 30→32 acilis seed'indendi — koordinator olcumu
+ * 05.10). Canli v19 (05.10, yeni bicim): "211 aile denendi (0 yeni)".
  *
  * KURAL: gunluk ve donus IKI sayi tasir — aileDenenen (sunulan), aileYeni
  * (gercekten yazilan). Ogrenme hatasi yeni sayisina 0 katar, isi durdurmaz.

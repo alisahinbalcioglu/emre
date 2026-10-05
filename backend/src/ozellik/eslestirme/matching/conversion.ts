@@ -164,13 +164,26 @@ function fractionToDecimal(whole: string | null, num: string, den: string): numb
  */
 export function extractSizeInfo(text: string): SizeInfo | null {
   // Iki apostrof = inc isareti (kesif Excel'leri) — normalizer ile ayni kural
-  const normalized = normalizeText(text).replace(/'{2}/g, '"');
+  // FAZ C B15 (05.10 olculdu): inc ONEK yazimi ("INC 2 SİYAH BORU", "inch 2
+  // boru") ve Turkce "parmak" (= inc: "2 parmak siyah boru") okunmuyordu;
+  // kelimeler bilinmeyen sayilip dogru urun onaya dusuyordu. Isaretli bicime
+  // cevrilir, asagidaki inc kurallari aynen okur ("1 1/4 inch 10 adet"te 10,
+  // ilk olcunun ortusme penceresinde elenir — ayrica denetim gereksiz,
+  // mutasyonla olculdu). "parmakli" (sifat) degismez.
+  const normalized = normalizeText(text).replace(/'{2}/g, '"')
+    .replace(/\b(?:inch|inc|parmak)\s+(\d+(?:\s+\d+\/\d+|\/\d+)?)(?![\d/.,])/g, '$1"')
+    .replace(/(\d)\s*parmak\b/g, '$1"');
 
   // 1) DN — tum eslesmelerden EN SONDAKI (gercek malzeme capi sonda olur)
   // FAZ B A5 (04.10 olculdu): "DN65xDN15" → YOK. `\b` x'e YAPISIK DN'i
   // gormuyordu ('5x' ve 'xd' arasinda kelime siniri yok). Bas: kelime siniri
   // YA DA rakamdan sonra gelen x; son: rakam degil (x gelebilir).
-  const dnMatches = Array.from(normalized.matchAll(/(?:\b|(?<=\dx))dn[\s-]*(\d{2,3})(?!\d)/g));
+  // FAZ C A10 (05.10 olculdu): yalniz 2-3 hane okunuyordu. "DN 8" satiri
+  // capsiz; "DN1000" URUNU capsiz (ayni urun kendi adiyla capsiz-dusum
+  // onayina dusuyordu) — satir tarafi ise bitisik "DN8"/"DN1000"u line-parser'in
+  // eski arka kapisindan okuyordu (asimetri). Kural burada, ikisi icin TEK:
+  // tek haneli yalniz gercek DN'ler (6, 8), dort haneye kadar (DN1000-DN2000).
+  const dnMatches = Array.from(normalized.matchAll(/(?:\b|(?<=\dx))dn[\s-]*([68]|\d{2,4})(?!\d)/g));
   if (dnMatches.length > 0) {
     const last = dnMatches[dnMatches.length - 1];
     const v = parseInt(last[1], 10);
