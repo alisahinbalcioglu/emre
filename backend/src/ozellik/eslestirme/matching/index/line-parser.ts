@@ -131,6 +131,38 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
     }
   }
 
+  // ── FAZ C B16 (05.10 olculdu): AGIZ YAZIMI "110'LUK" ─────────────────
+  // "110'LUK PİS SU BORUSU" capsiz kaliyor, 'luk' bilinmeyen kelime olup
+  // 110 mm urunu bile ONAYA dusuruyordu. Yalniz SATIR tarafi (fiyat listeleri
+  // "110 mm" yazar) ve dar: 16-630 arasi sayi — kucuk sayi belirsizdir
+  // ("2'lik boru" = 2", "12'lik bakir" = 12 mm), okunmaz; ambalaj anlami
+  // ("100'lük paket", "50'lik kutu") olcu DEGILDIR. Yazili olcu varsa o kazanir.
+  let lukOlcusu = false;
+  if (!capInfo) {
+    const luk = norm.match(/(?<![\d.,/])(\d{2,3})\s*'?\s*l[iu]k\b(?!\s*(?:paket|kutu|koli|adet|torba|pk|pkt)\b)/);
+    const v = luk ? parseInt(luk[1], 10) : 0;
+    if (v >= 16 && v <= 630) {
+      capInfo = { source: 'mm', value: v, display: `${v} mm` };
+      lukOlcusu = true;
+    }
+  }
+
+  // ── FAZ C D3 (05.10 olculdu): IZOLASYONDA BASTAKI mm KALINLIKTIR ─────────
+  // "25 mm Kauçuk İzolasyon" → 25 mm CAP sanilip 25 mm kalinlikli 35 mm'lik
+  // urune OTOMATIK yaziliyordu. KI vakasinin kurali ("19 mm Kauçuk İzolasyon
+  // 1/2''" = 19 mm kalinlik + 1/2" boru) arkadan cap gelmeyince de gecerli:
+  // izolasyon ailesi + metnin BASINDAKI tek mm olcusu + baska mm olcusu yok →
+  // cap YOK. Sayi belirtecte kalir (urunun "25 mm kalınlık" cinsiyle eslesir)
+  // ve asagidaki boy kurali onu okur — KI listesi kalinligi BOY sutununda
+  // tasir; boy suzgeci yalniz eslesen varsa daraltir, yoksa zararsizdir.
+  // Sondaki mm ("Kauçuk İzolasyon 25 mm") belirsiz, dokunulmaz.
+  if (familySlug === 'izolasyon' && capInfo?.source === 'mm') {
+    const bas = norm.match(/^(\d{1,2})\s*mm\b/);
+    if (bas && capInfo.value === parseInt(bas[1], 10) && (norm.match(/\d\s*mm\b/g) ?? []).length === 1) {
+      capInfo = null;
+    }
+  }
+
   // Boy: "50 cm" / "500 mm" — capla karismasin diye YALNIZ acik uzunluk
   const boyMatch = norm.match(/(\d+(?:[.,]\d+)?)\s*(cm|mm)\b(?!\s*\))/);
   let boyTag: string | null = null;
@@ -160,6 +192,8 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   const capArtigi = /^x\d|^dn\d+xdn\d+$/;
   const tokens = adaylar.filter((t) => {
     if (olcuOnEk.test(t) || olcuBitisik.test(t) || capArtigi.test(t)) return false;
+    // B16: "110'luk" → ['110','luk'] / "110luk" → ['110luk'] — ek olcuya aittir
+    if (lukOlcusu && /^(?:\d{2,3})?l[iu]k$/.test(t)) return false;
     if (!capInfo) return true;
     // FAZ B A5: "2 inç BORU" — 'inc'/'inch' olcunun BIRIMIDIR, cap okunduysa
     // tuketilmistir (ad kelimesi degil). Olcusuz satirda kelime korunur.

@@ -124,6 +124,7 @@ const SUITES: Suite[] = [
   { ad: 'Yeniden indeksleme günlüğü: aile denendi / yeni (FAZ B parti 2b)', script: 'test:reindex-gunlugu', zincir: 'Z1' },
   { ad: 'Etiket katmanı: PN/SDR/PE sınıfı çap değil · DKP/pres/manşonu/basınçlı/PE-X · Ø mm\'siz · başlık bağlamı (FAZ C1)', script: 'test:etiket-katmani', zincir: 'Z2' },
   { ad: 'Büyük harf birim · havuz sırası · çekim eki borusu↔borular (FAZ C1)', script: 'test:birim-sira-cekim', zincir: 'Z2' },
+  { ad: 'Satır ölçü yazımı: 110\'LUK · izolasyon kalınlığı çap değil (FAZ C2)', script: 'test:satir-olcu-yazimi', zincir: 'Z2' },
   // ── S2+S3 (06.08.2026): ÖNERİ KUTUSU. Çapraz-marka/firma önerisi ana
   //    motoru çağırıyor ve motorun "onaylat" dediği tek adayı KESİN gibi
   //    sunuyordu. İki kural mühürlendi: kanıt gücü yetmeyen aday (çapı ya da
