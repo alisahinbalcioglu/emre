@@ -1052,10 +1052,23 @@ export class LibraryService {
     return n > 0;
   }
 
-  // Kullanici markayi kutuphanesinden tamamen cikarir
+  /**
+   * Kullanici markayi kutuphanesinden tamamen cikarir — satirlar, liste
+   * SEKMELERI ve marka kaydi TEK islemde.
+   *
+   * P4b Parti 3 yan bulgusu (05.10, gercek servisle olculdu): sekmeler
+   * (`LibraryList`) silinmiyordu. Marka kaldirilinca "Fiyat Listesi" 0 kalemle
+   * kaliyor; yeniden aktarimda `getBrandLists`in tembel gocu satirlari EN ESKI
+   * artik sekmeye bagliyor, diger artiklar "(0)" sekme olarak geri geliyordu.
+   * Canli (05.10, salt okuma): 13 sekmenin 13'u satirli, artik 0 — goc gerekmez.
+   * Siralama: once satirlar (sekmeye SetNull bagli), sonra sekmeler.
+   */
   async removeBrandFromLibrary(k: Kimlik, brandId: string) {
-    await this.prisma.userLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId } });
-    await this.prisma.userBrandLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.userLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId } });
+      await tx.libraryList.deleteMany({ where: { firmaId: k.firmaId, brandId } });
+      await tx.userBrandLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId } });
+    });
     return { ok: true };
   }
 }

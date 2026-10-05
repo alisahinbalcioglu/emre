@@ -18,6 +18,9 @@
  *     ([] / false) kaliyordu (yeniden indeksleme guncel surumu atlar).
  * H/R · TEK LISTE: `turetilmisIndeksAlanlari` = buildProductIndex alanlari ∩
  *     sema − rowKey; yonetici yeniden indekslemesi de onu yazar.
+ * K · MARKAYI KALDIR (Parti 3 yan bulgusu, 05.10): satirlar, liste sekmeleri
+ *     ve marka kaydi TEK islemde silinir — sekmeler kaliyordu, yeniden
+ *     aktarimda satirlar artik sekmeye baglaniyordu.
  *
  * INCELEME TURU (05.10, code/security/database-reviewer): bagi kopan satirda
  * eski duzeltme yeni adi golgeliyordu (A14) · eski karisik listede baska
@@ -689,6 +692,89 @@ async function dBlogu(): Promise<void> {
   check('D2 tam 500 karakter kabul (sınır dahil)', d2.length === 0, js(d2));
 }
 
+// ═══ K — markayı kaldır: satırlar + sekmeler TEK işlemde (P4b Parti 3 yan bulgusu, 05.10) ═══
+async function kBlogu(): Promise<void> {
+  console.log('\n── K · markayı kütüphaneden kaldır: satırlar + liste sekmeleri TEK işlemde ──');
+  const d = await dunyaKur();
+  await havuzKur(d);
+  await aktar(d, KA);
+  await d.svc.getBrandLists(KA, HAVUZ_MARKA); // tembel göç: "Fiyat Listesi" sekmesi
+  // İkinci sekme (+ Yeni Liste ikizi): bellek-prisma `aggregate` bilmediği için
+  // addRowsToBrandList yerine sekme kurulur ve bir satır ona taşınır.
+  const ek = await d.db.istemci.libraryList.create({ data: { userId: 'u-a', firmaId: 'f-a', brandId: HAVUZ_MARKA, name: 'Ek Liste' } });
+  const tasinan = d.db.tablo('UserLibrary').find((r) => r.firmaId === 'f-a' && r.brandId === HAVUZ_MARKA)!;
+  await d.db.istemci.userLibrary.update({ where: { id: tasinan.id }, data: { libraryListId: ek.id } });
+  await aktar(d, KB);
+  await d.svc.getBrandLists(KB, HAVUZ_MARKA);
+  // Aynı firmanın BAŞKA markası (satır + sekme + marka kaydı) — süzgeçten
+  // `brandId` düşerse o da silinirdi (inceleme MEDIUM-2).
+  const DIGER = 'b-diger';
+  await d.db.istemci.brand.create({ data: { id: DIGER, name: 'Diğer Marka' } });
+  await d.db.istemci.priceList.create({ data: { id: 'pl-diger', name: 'Diğer Liste', brandId: DIGER } });
+  await urunKur(d, 'pi-dg', kolonlar({ ad: 'Diğer Vana', cap: 'DN25', price: 30 }), { brandId: DIGER, priceListId: 'pl-diger' });
+  await d.svc.importPriceList(KA, { brandId: DIGER, priceListId: 'pl-diger' } as any);
+  await d.svc.getBrandLists(KA, DIGER);
+  const sekme = (f: string, b = HAVUZ_MARKA) => d.db.tablo('LibraryList').filter((l) => l.firmaId === f && l.brandId === b).length;
+  const satirSay = (f: string, b = HAVUZ_MARKA) => d.db.tablo('UserLibrary').filter((r) => r.firmaId === f && r.brandId === b).length;
+  const markaKaydi = (f: string, b = HAVUZ_MARKA) => d.db.tablo('UserBrandLibrary').some((u) => u.firmaId === f && u.brandId === b);
+  const durum = () => js({
+    a: [sekme('f-a'), satirSay('f-a'), markaKaydi('f-a')], aDiger: [sekme('f-a', DIGER), satirSay('f-a', DIGER), markaKaydi('f-a', DIGER)],
+    b: [sekme('f-b'), satirSay('f-b'), markaKaydi('f-b')],
+  });
+  check('K0 ÖLÇÜT: f-a iki sekme + satır + kayıt, f-a diğer markada sekme + satır + kayıt, f-b sekme + satır + kayıt',
+    sekme('f-a') === 2 && satirSay('f-a') > 0 && markaKaydi('f-a')
+      && sekme('f-a', DIGER) === 1 && satirSay('f-a', DIGER) > 0 && markaKaydi('f-a', DIGER)
+      && sekme('f-b') === 1 && satirSay('f-b') > 0 && markaKaydi('f-b'), durum());
+
+  d.islemIci.length = 0;
+  await d.svc.removeBrandFromLibrary(KA, HAVUZ_MARKA);
+  check('K1 ⭐ kaldırınca f-a satırları VE sekmeleri gider (eskiden sekmeler 0 kalemle kalıyordu)',
+    satirSay('f-a') === 0 && sekme('f-a') === 0, durum());
+  // Gerçek Postgres'te işlem DIŞI istemciyle yapılan silme geri alınmaz; bellek-prisma
+  // hatada tüm tabloları geri sardığı için K5 bunu tek başına ayırt etmez (inceleme MEDIUM-1).
+  check('K1b ⭐ üç silme de İŞLEM istemcisinden (tek işlem), bu sırayla',
+    js(d.islemIci) === js(['userLibrary.deleteMany', 'libraryList.deleteMany', 'userBrandLibrary.deleteMany']), js(d.islemIci));
+  check('K2 marka kaydı (UserBrandLibrary) da gider', !markaKaydi('f-a'), durum());
+  check('K3 başka firmanın sekmesi, satırları ve marka kaydı dokunulmaz',
+    sekme('f-b') === 1 && satirSay('f-b') > 0 && markaKaydi('f-b'), durum());
+  check('K3b aynı firmanın BAŞKA markası dokunulmaz (satır, sekme, kayıt)',
+    sekme('f-a', DIGER) === 1 && satirSay('f-a', DIGER) > 0 && markaKaydi('f-a', DIGER), durum());
+
+  await aktar(d, KA);
+  const { lists } = await d.svc.getBrandLists(KA, HAVUZ_MARKA);
+  check('K4 ⭐ yeniden aktarımda TEK sekme, eski boş sekme "(0)" geri gelmez',
+    lists.length === 1 && satirSay('f-a') > 0 && lists[0]._count.items === satirSay('f-a'),
+    js(lists.map((l: any) => [l.name, l._count.items])));
+
+  // Atomiklik: sekme silme düşerse satırlar da YERİNDE kalmalı (tek işlem —
+  // bellek-prisma fonksiyonlu $transaction hatasında tabloları geri sarar).
+  const hataliTx = (tx: any) => new Proxy(tx, {
+    get(t, ad) {
+      if (ad !== 'libraryList') return t[ad];
+      return new Proxy(t.libraryList, {
+        get(m, islem) {
+          if (islem === 'deleteMany') return async () => { throw new Error('taklit: sekme silinemedi'); };
+          return m[islem];
+        },
+      });
+    },
+  });
+  const hataliIstemci = new Proxy(d.db.istemci, {
+    get(t, ad) {
+      if (ad === '$transaction') return (fn: any, ...r: any[]) => t.$transaction((tx: any) => fn(hataliTx(tx)), ...r);
+      return t[ad];
+    },
+  });
+  const hataliSvc = new LibraryService(hataliIstemci, {} as any);
+  const once = { satir: satirSay('f-a'), sekme: sekme('f-a') };
+  let hata = '';
+  try { await hataliSvc.removeBrandFromLibrary(KA, HAVUZ_MARKA); } catch (e: unknown) { hata = String((e as Error)?.message); }
+  check('K5 ⭐ sekme silme düşerse satırlar ve marka kaydı da YERİNDE (tek işlem)',
+    hata.includes('taklit') && satirSay('f-a') === once.satir && sekme('f-a') === once.sekme
+      && d.db.tablo('UserBrandLibrary').some((u) => u.firmaId === 'f-a' && u.brandId === HAVUZ_MARKA),
+    js({ hata, once, sonra: { satir: satirSay('f-a'), sekme: sekme('f-a') } }));
+}
+
 bitmezseKirmizi((async () => {
   hBlogu();
   await mBlogu();
@@ -696,6 +782,7 @@ bitmezseKirmizi((async () => {
   await aBlogu();
   await rBlogu();
   await dBlogu();
+  await kBlogu();
   console.log(`\n${'='.repeat(64)}\nP4B KUTUPHANE: ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`);
   if (failed) {
     failures.forEach((f) => console.log(`  · ${f}`));
