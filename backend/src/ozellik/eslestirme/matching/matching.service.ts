@@ -19,7 +19,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { generateTags } from './tag-generator';
-import { hesaplaNetFiyat } from '../../fiyat/matching/pricing';
 import { extractMaterialKind, extractFluid } from './normalizer';
 import { extractSizeInfo } from './conversion';
 import { TerminologyService, SOZLUK_MALZEME_RETTI } from './terminology.service';
@@ -28,7 +27,7 @@ import { gunlukDegeri } from './gunluk-degeri';
 // TEK MOTOR (Faz 2b): indeksli + Ad-kilitli cekirdek (saf — test:index K1-K7)
 import { parseLine } from './index/line-parser';
 import { runQuery, guclutekAday, aileUyusmazligiTeshisi, HAFIZA_OTOYAZ_ENGELI } from './index/query-engine';
-import { toMatchResult, gorunenAd, kurOf, kaynakFiyatOf } from '../../fiyat/matching/index/outcome-mapper';
+import { toMatchResult, gorunenAd, kurOf, kaynakFiyatOf, tlNetFiyat } from '../../fiyat/matching/index/outcome-mapper';
 import type { TryCevirici } from '../../fiyat/matching/index/outcome-mapper';
 import { INDEX_VERSION, tokenize, buildProductIndex, rebuildIndexFields, iscilikAdCekirdegi, malzemeEtiketleri } from './index/product-index';
 import type { ProductColumns } from './index/product-index';
@@ -658,12 +657,10 @@ export class MatchingService {
       const m = markaOf.get(tekAday.id)!;
       const list = toTry(tekAday.listPrice, tekAday.currency);
       const isk = tekAday.discountRate ?? 0;
-      // Kutuphane ekrani formulu (outcome-mapper.netFiyat ile AYNI):
-      // custom TABANI degistirir, iskonto HER ZAMAN uygulanir.
-      const taban = tekAday.customPrice != null && tekAday.customPrice > 0
-        ? toTry(tekAday.customPrice, tekAday.currency)
-        : list;
-      const net = hesaplaNetFiyat(taban, isk);
+      // Kutuphane ekrani formulu (outcome-mapper.netFiyat ile AYNI kaynak):
+      // custom TABANI degistirir, iskonto HER ZAMAN uygulanir, doviz ONCE
+      // kendi biriminde netlenir sonra cevrilir (C6, karar (c)).
+      const net = tlNetFiyat(tekAday, toTry);
       byBrand.set(mid, {
         brandId: m.id, brandName: m.name,
         materialName: gorunenAd(tekAday), // boy'lu urunde boy gorunur (hidrant vakasi)
@@ -899,7 +896,7 @@ export class MatchingService {
         // popup bileseni) — brandId/brandName alanlari FIRMA tasir.
         brandId: f.id, brandName: f.name,
         materialName: gorunenAd(tek),
-        netPrice: hesaplaNetFiyat(list, isk), listPrice: list, discount: isk,
+        netPrice: tlNetFiyat(tek, toTry), listPrice: list, discount: isk, // C6 ikizi
         kaynakKur: kurOf(tek, toTry), // kur donmasi ikizi (malzeme onerisiyle ayni)
         kaynakFiyat: kaynakFiyatOf(tek), // F1 ikizi
         // S2: cekince burada da tasinir (ikiz sozlesme ayrismaz).
