@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 943
-Toplam satir: 258693
+Toplam satir: 258833
 Uc nokta: 239
 test:* scripti: 173
 
@@ -198,10 +198,10 @@ test:* scripti: 173
 | `backend/src/ozellik/giris/excel-grid/excel-grid.service.ts` | 1120 |
 | `backend/src/ozellik/giris/excel-grid/sheet-discipline.ts` | 61 |
 | `backend/src/ozellik/giris/excel-grid/standart-sema.ts` | 361 |
-| `backend/src/ozellik/imha/imha-listesi.ts` | 647 |
+| `backend/src/ozellik/imha/imha-listesi.ts` | 670 |
 | `backend/src/ozellik/imha/imha.job.ts` | 149 |
 | `backend/src/ozellik/imha/imha.module.ts` | 25 |
-| `backend/src/ozellik/imha/imha.servisi.ts` | 544 |
+| `backend/src/ozellik/imha/imha.servisi.ts` | 558 |
 | `backend/src/ozellik/imha/saklama-sureleri.ts` | 75 |
 | `backend/src/ozellik/kutuphane/admin/admin-kurumsal-giris.controller.ts` | 136 |
 | `backend/src/ozellik/kutuphane/admin/admin.controller.ts` | 271 |
@@ -398,7 +398,7 @@ test:* scripti: 173
 | `backend/test/havale-teklif-paketi-test.ts` | 2171 |
 | `backend/test/hesap-dogrulugu-test.ts` | 916 |
 | `backend/test/iliskisel-alan-suzgeci-test.ts` | 172 |
-| `backend/test/imha-test.ts` | 1217 |
+| `backend/test/imha-test.ts` | 1320 |
 | `backend/test/imza-ekseni-test.ts` | 326 |
 | `backend/test/index-engine-test.ts` | 1788 |
 | `backend/test/iscilik-bayat-indeks-test.ts` | 138 |
@@ -1308,7 +1308,7 @@ test:* scripti: 173
 | `backend/test/havale-teklif-paketi-test.ts` | `node:crypto` `@nestjs/common` `@nestjs/config` `@prisma/client` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/odeme/abonelik/paket-degisimi.servisi` `../src/ozellik/odeme/abonelik/satinalma.servisi` `../src/ozellik/odeme/fatura/fatura.servisi` `../src/ozellik/odeme/havale/havale.servisi` `../src/ozellik/firma/uyelik-kurallari` `../src/ozellik/odeme/dunning/dunning.metinleri` `../src/ozellik/odeme/iyzico/iyzico.client` `../src/ozellik/odeme/havale/havale-kart-penceresi` `reflect-metadata` |
 | `backend/test/hesap-dogrulugu-test.ts` | `fs` `path` `exceljs` `../src/ozellik/teklif/quotes/standart-cikti` `../src/ozellik/teklif/quotes/export-engine` `../src/ozellik/cikti/quote-formats/format-engine` `../src/ozellik/teklif/quotes/quotes.service` `../src/ozellik/fiyat/exchange-rates/exchange-rates.service` `../src/ozellik/giris/excel-grid/excel-grid.service` `../src/ozellik/fiyat/matching/pricing` `../src/ozellik/cikti/utils/antet` `./cikti-test-yardimci` `./yardimci/bitmezse-kirmizi` `../../frontend/ozellik/fiyat/pricing` `../../frontend/ozellik/teklif/teklif-kalem` `../../frontend/ozellik/fiyat/sayi-alani` `../src/ozellik/kutuphane/utils/import-fidelity` `../src/ozellik/giris/excel-grid/standart-sema` `../src/ozellik/giris/ai/ai.service` |
 | `backend/test/iliskisel-alan-suzgeci-test.ts` | `../src/ozellik/teklif/quotes/quotes.service` `./yardimci/bitmezse-kirmizi` |
-| `backend/test/imha-test.ts` | `fs` `path` `../src/ozellik/imha/imha.job` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
+| `backend/test/imha-test.ts` | `fs` `path` `../src/ozellik/imha/imha-listesi` `../src/ozellik/imha/imha.job` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/imza-ekseni-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/tag-generator` `../src/ozellik/eslestirme/matching/shared-tag-matcher` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/index-engine-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` `./yardimci/bitmezse-kirmizi` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/conversion` |
 | `backend/test/iscilik-bayat-indeks-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/index/product-index` `./yardimci/bitmezse-kirmizi` |
