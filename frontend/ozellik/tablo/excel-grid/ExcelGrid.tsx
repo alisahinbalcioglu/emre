@@ -3405,6 +3405,34 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     },
   }));
   const [pinnedBottomRow, setPinnedBottomRow] = React.useState<ExcelRowData[]>([]);
+  /**
+   * OZET SATIRLARI YERINDE (05.10 — KP17/KP29 KOK NEDENI, olculdu).
+   *
+   * Her hucre isleminin ardindan (`setTimeout(0)` → `updatePinnedBottom`)
+   * `pinnedBottomRowData` prop'u YENI dizi aliyordu; AG Grid bunu uygularken O
+   * ARADA ACILMIS duzenleyiciyi kapatiyordu. "300 ↓ 400 ↓ 500" zincirinde bir
+   * sonraki hucreye yazilan rakamlar bu yuzden kayboluyordu — zaman cizelgesi:
+   * "5" duzenleyiciyi acti, "0" yazildi, ~80 ms sonra hicbir tus yokken odak
+   * hucreye dondu (duzenleyici kapandi), kalan "0" YENI bir duzenleyici acti.
+   * AG Grid'in KENDI Enter gezinmesi de ayni oranda kaybediyordu (makine hizi:
+   * ↓ 20'de 13, Enter 20'de 11; ozet guncellemesi kapatilinca 20'de 0).
+   *
+   * Satir SAYISI ayniysa satirlar YERINDE guncellenir: `rowNode.setData` yalniz
+   * o ozet satirini tazeler, govde satirlarina ve acik duzenleyiciye dokunmaz.
+   * Kimlik ayrica denetlenmez: ozet satirlarinin `_rowIdx`i SIRAYLA uretilir
+   * (-1, -2, -11, -12…), ayni sayida satir ayni kimlikleri tasir; karisik kipte
+   * birimi degisen kova `_currency`sini `setData` ile alir. Sayi degisirse (ilk
+   * kurulum, karisik kipte yeni birim kovasi) eskisi gibi prop'tan kurulur.
+   */
+  const ozetSatirlariniYaz = useCallback((yeni: ExcelRowData[]) => {
+    const api = gridRef.current?.api;
+    const sayi = api?.getPinnedBottomRowCount() ?? 0;
+    if (api && sayi > 0 && sayi === yeni.length) {
+      for (let i = 0; i < sayi; i++) api.getPinnedBottomRow(i)?.setData(yeni[i]);
+      return;
+    }
+    setPinnedBottomRow(yeni);
+  }, []);
 
   // ── FITTING GECISI (02.09): fitting satirlarinin hucreleri kapsamdan yazilir ──
   // Her toplam yenilemesinde (her fiyat/miktar/kar degisiminden sonra
@@ -3516,7 +3544,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         if (genelAlanK) s._gosterim[genelAlanK] = oz.genelToplam;
         return s;
       });
-      if (mode === 'library') { setPinnedBottomRow(toplamSatirlari); return; }
+      if (mode === 'library') { ozetSatirlariniYaz(toplamSatirlari); return; }
       const karSatirlari = kovalar.map(({ pb, ozet: oz }, i) => {
         const k: any = karSatiri(oz, R, nameField);
         k._rowIdx = -2 - i * 10;
@@ -3526,7 +3554,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         for (const alan of [materialTotalField, laborTotalField, genelAlanK]) if (alan) k._gosterim[alan] = k[alan];
         return k;
       });
-      setPinnedBottomRow([...toplamSatirlari, ...karSatirlari]);
+      ozetSatirlariniYaz([...toplamSatirlari, ...karSatirlari]);
       return;
     }
     const ozet = sayfaToplamlari(satirlar, data.columnRoles as any);
@@ -3577,11 +3605,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       for (const alan of [materialTotalField, laborTotalField, grandTotalField ?? grandUnitPriceField]) {
         if (alan) karRow._gosterim[alan] = karGosterim[alan];
       }
-      setPinnedBottomRow([pinnedRow, karRow]);
+      ozetSatirlariniYaz([pinnedRow, karRow]);
     } else {
-      setPinnedBottomRow([pinnedRow]);
+      ozetSatirlariniYaz([pinnedRow]);
     }
-  }, [data.columnRoles, mode, fittingSatirlariniYenile, conversionRate, karisik]);
+  }, [data.columnRoles, mode, fittingSatirlariniYenile, conversionRate, karisik, ozetSatirlariniYaz]);
   updatePinnedBottomRef.current = updatePinnedBottom;
   // Kur yuklenince / birim degisince pinned YENIDEN kurulur: data.rowData efekti
   // kendi yayinimizda (sonYayinRef) erken doner, ona guvenilemez.

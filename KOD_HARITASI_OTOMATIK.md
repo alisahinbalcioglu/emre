@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 930
-Toplam satir: 255155
+Toplam satir: 255212
 Uc nokta: 239
 test:* scripti: 170
 
@@ -818,7 +818,7 @@ test:* scripti: 170
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5310 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5338 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -916,7 +916,7 @@ test:* scripti: 170
 | `frontend/test/e2e/malzeme-aday-ipucu.spec.ts` | 90 |
 | `frontend/test/e2e/restore-ozet.spec.ts` | 122 |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
-| `frontend/test/e2e/secim-duzenleme.spec.ts` | 555 |
+| `frontend/test/e2e/secim-duzenleme.spec.ts` | 584 |
 | `frontend/test/e2e/surukle-bayat-sebep.spec.ts` | 91 |
 | `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 347 |
 | `frontend/test/e2e/teklif-acik-duzenleyici.spec.ts` | 131 |
