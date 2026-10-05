@@ -4,8 +4,9 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-/** Malzeme adinin azami uzunlugu — urun olusturma (bu DTO) ve kutuphane
- *  izgarasindaki ad duzeltmesi (`saveBrandSheets`) AYNI sinir. Ad urun
+/** Malzeme adinin azami uzunlugu — urun olusturma (bu DTO), tekil kutuphane
+ *  kalemi (`CreateLibraryItemDto`) ve kutuphane izgarasindaki ad duzeltmesi
+ *  (`saveBrandSheets`) AYNI sinir. Ad urun
  *  indeksine gider: `buildProductIndex` adin uzunluguyla karesel buyur
  *  (P4b guvenlik incelemesi 05.10: 10 bin karakter 3-4 sn, 20 bin 12-16 sn
  *  olay dongusu). */

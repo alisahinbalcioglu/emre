@@ -38,6 +38,9 @@ import { buildProductIndex, INDEX_VERSION, type ProductColumns } from '../src/oz
 import { turetilmisIndeksAlanlari } from '../src/ozellik/kutuphane/urun-indeksi-alanlari';
 import { bellekPrisma, type BellekPrisma } from './yardimci/bellek-prisma';
 import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
+import { CreateLibraryItemDto } from '../src/ozellik/kutuphane/library/dto/create-library-item.dto';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail?: string) {
@@ -673,12 +676,26 @@ async function rBlogu(): Promise<void> {
     r4 instanceof Error && r4.message === 'baglanti koptu (test)', String(r4));
 }
 
+// ═══ D — tekil kütüphane kalemi adı sınırı (P4b 2b güvenlik incelemesi) ═══
+// Indekssiz satirin adi eslestirmede HER istekte indekslenir (karesel); POST
+// /library sinirsiz ad aliyordu. Urun olusturma ve ad duzeltmesiyle AYNI sinir.
+async function dBlogu(): Promise<void> {
+  console.log('\n── D · tekil kütüphane kalemi adı sınırı ──');
+  const hatali = async (ad: string) =>
+    (await validate(plainToInstance(CreateLibraryItemDto, { materialName: ad, brandId: 'b1' }))).map((e) => e.property);
+  const d1 = await hatali('x'.repeat(501));
+  check('D1 ⭐ 501 karakterlik ad reddedilir (indekssiz satır eşleştirmede her istekte indekslenir)', d1.includes('materialName'), js(d1));
+  const d2 = await hatali('x'.repeat(500));
+  check('D2 tam 500 karakter kabul (sınır dahil)', d2.length === 0, js(d2));
+}
+
 bitmezseKirmizi((async () => {
   hBlogu();
   await mBlogu();
   await fBlogu();
   await aBlogu();
   await rBlogu();
+  await dBlogu();
   console.log(`\n${'='.repeat(64)}\nP4B KUTUPHANE: ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`);
   if (failed) {
     failures.forEach((f) => console.log(`  · ${f}`));

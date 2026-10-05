@@ -208,10 +208,18 @@ bitmezseKirmizi((async () => {
   check('K5b kullanicinin yazdigi fiyat havuz guncellemesinden SONRA da duruyor', fiyat('3/4"') === 150, `3/4" Liste Fiyat=${fiyat('3/4"')} (havuz 240)`);
 
   console.log('── K4) YENIDEN AKTARIMDAN SONRA ESLESTIRME (teklife giden fiyat) ──');
-  const sonuc: any = await eslestirici.bulkMatch(K as any, 'b1', ['Küresel vana 1/2"', 'Küresel vana 3/4"', 'Küresel vana 1"']);
+  // C7 (P4b 2b, Emre karari 01.10): ortak urunde firmanin ad duzeltmesi
+  // MOTORA girer — 1" urunun adi bu firmada artik "Küresel Vana (tam geçişli)"
+  // (duz "Küresel vana 1"" o urun grubunu bulmaz). Fiyat donmasi (K1) urunun
+  // bu firmadaki ADIYLA olculur. Satir PARANTEZSIZ yazilir: motor, havuzda
+  // ayni adi tasiyan urunde de parantezli satiri eslestirmiyor (05.10 olculdu,
+  // duzeltmeden bagimsiz — satir cozucunun mevcut davranisi).
+  const YENI_AD_1 = 'KÜRESEL VANA TAM GEÇİŞLİ 1"';
+  const sonuc: any = await eslestirici.bulkMatch(K as any, 'b1', ['Küresel vana 1/2"', 'Küresel vana 3/4"', YENI_AD_1]);
   const net = (ad: string) => sonuc[ad]?.netPrice;
   check('K4a iskontolu satir: net = 120 × (1 − %10) = 108', net('Küresel vana 1/2"') === 108, `netPrice=${net('Küresel vana 1/2"')} (donmus 90)`);
-  check('K4b adi degisen satir: net = 360', net('Küresel vana 1"') === 360, `netPrice=${net('Küresel vana 1"')} (donmus 300)`);
+  check('K4b adi degisen satir (bu firmadaki adiyla): net = 360', net(YENI_AD_1) === 360,
+    `netPrice=${net(YENI_AD_1)} (donmus 300) · ${JSON.stringify({ c: sonuc[YENI_AD_1]?.confidence, r: sonuc[YENI_AD_1]?.reason })}`);
   check('K5c kullanicinin yazdigi fiyat eslestirmede de 150', net('Küresel vana 3/4"') === 150, `netPrice=${net('Küresel vana 3/4"')}`);
 
   console.log('── K6) AYRISMIS FIYAT ISARETI (tur 3 A4c): tahmin yok, iki fiyat gorunur ──');
