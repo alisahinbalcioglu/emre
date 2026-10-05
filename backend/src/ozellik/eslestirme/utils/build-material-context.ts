@@ -35,9 +35,14 @@ const INCH_TO_DN: Record<string, string> = {
 
 function extractCapFromText(text: string): string | null {
   if (!text) return null;
+  // FAZ C B17 (05.10 olculdu): tirnak sinifi iki DUZ ASCII tirnakti (etkisiz);
+  // on yuz ikizi 04.10'da duzeldi (tirnakNormal). Kacisla yazilir ki editor
+  // karakteri sessizce degistiremesin. '' (iki kesme) = inc isareti.
   const normalized = text
     .toLowerCase()
-    .replace(/[""]/g, '"')
+    .replace(/[\u2018\u2019\u02BC\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u2033]/g, '"')
+    .replace(/'{2}/g, '"')
     .replace(/½/g, '1/2')
     .replace(/¾/g, '3/4')
     .replace(/¼/g, '1/4');
@@ -58,7 +63,10 @@ function extractCapFromText(text: string): string | null {
   while ((m = fraction.exec(normalized)) !== null) {
     matches.push({ value: m[1], index: m.index });
   }
-  const integer = /(\d+)["'`]/g;
+  // B17 SOL SINIR (normalizer.extractDiameter 27.08 dersinin ikizi): "3/4\""
+  // icinden 4" ve "1 1/2\"" icinden 2" OKUNUYORDU — cap korumasi farkli capli
+  // basligi ayni sanip satira ekliyordu ("GALVANİZ BORU 2\" 1 1/2\"").
+  const integer = /(?<![\d/])(\d+)["'`]/g;
   while ((m = integer.exec(normalized)) !== null) {
     matches.push({ value: m[1], index: m.index });
   }

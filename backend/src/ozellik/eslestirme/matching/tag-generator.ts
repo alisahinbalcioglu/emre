@@ -142,7 +142,8 @@ export function generateTags(materialName: string): TaggedMaterial {
   // Eger malzeme tipi 'boru' ise ve alternatif bir malzeme cinsi yoksa, celik etiketi ekle
   // Alternatif cinsler: pvc, ppr, pe, hdpe, bakir, aluminyum, pirinc, dokum, paslanmaz, bronz
   if (materialType === 'boru') {
-    const alternativeKinds = ['pvc', 'ppr', 'pe', 'hdpe', 'bakir', 'aluminyum', 'pirinc', 'dokum', 'paslanmaz', 'bronz'];
+    // 'pex' (FAZ C B18): PE-X / PE-RT / PEX plastiktir — celik varsayilanina dusmez.
+    const alternativeKinds = ['pvc', 'ppr', 'pe', 'pex', 'hdpe', 'bakir', 'aluminyum', 'pirinc', 'dokum', 'paslanmaz', 'bronz'];
     const hasAlternative = alternativeKinds.some((k) => tags.has(k));
     if (!hasAlternative) {
       tags.add('celik');

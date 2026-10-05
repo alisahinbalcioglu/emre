@@ -249,11 +249,23 @@ const OLUMSUZLUK_EKI = /^s[iu]z/;
  *  yanlis pozitif uretmezler ('dis'⊂'disko' gibi). */
 const KISA_KOKLER: ReadonlySet<string> = new Set(['pp', 'ppr', 'pvc', 'pex']);
 
+/** CEKIM EKI (FAZ C, 05.10 olculdu): iyelik (-su/-si/-u/-i) ve cogul
+ *  (-lar/-ler, -lari/-leri). ONEK toleransi yalniz biri digerinin onekiyse
+ *  calisiyordu: "borusu" ile "borular" ORTAK KOKU paylasir ama ikisi de
+ *  digerinin oneki DEGIL → esit sayilmiyordu. Olculen bedel (Pimtas, servis +
+ *  sozluk): "PİS SU BORUSU 110 mm" asil pis su borularini ("U-PVC Geçme Muflu
+ *  Borular") HIC listelemiyordu. Kural DAR: ortak kok ONEK_MIN'den kisa
+ *  degil VE iki kalan da bu kumede ('siz' olumsuzlugu, '-li' sifati, unsuz
+ *  yumusamasi [dirsegi/dirsekler] KAPSAM DISI). */
+const CEKIM_EKI = /^(?:s?[iu]|l[ae]r[iu]?)$/;
+
 export function tokenEsit(a: string, b: string): boolean {
   if (a === b) return true;
   if ((a.length >= ONEK_MIN || KISA_KOKLER.has(a)) && b.startsWith(a)) return !OLUMSUZLUK_EKI.test(b.slice(a.length));
   if ((b.length >= ONEK_MIN || KISA_KOKLER.has(b)) && a.startsWith(b)) return !OLUMSUZLUK_EKI.test(a.slice(b.length));
-  return false;
+  let k = 0;
+  while (k < a.length && k < b.length && a[k] === b[k]) k++;
+  return k >= ONEK_MIN && CEKIM_EKI.test(a.slice(k)) && CEKIM_EKI.test(b.slice(k));
 }
 
 /** istenen ⊆ varolan (onek toleransli) */

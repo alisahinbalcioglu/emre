@@ -332,13 +332,26 @@ async function temizSuTestleri() {
   ];
   const SATIR = 'TEMİZ SU BORULARI DN 20';
   const adlar = (r: any) => ((r?.candidates ?? []) as any[]).map((c) => c.materialName).join(' | ');
+  // "Ceviri uygulandi" OLCUTU (FAZ C, 05.10 — koordinator onayi): coklu soru ve
+  // PP-R adaylar PVC'nin ONUNDE. Eski olcut "PVC-U elendi" idi; yalniz COGUL
+  // satirda, tokenEsit('borulari','borusu') = false TESADUFUYLE tutuyordu.
+  // Olculdu: eski kodda TEKIL "TEMİZ SU BORUSU DN 20" PVC-U'yu zaten listeliyordu.
+  // T1 karari ("varsayilan PPR-C") ELEME degil SIRALAMA: ceviri yokken satir
+  // PVC-U'ya TEK eslesme/otomatik gider, varken coklu + PP-R onde (fikstur ters
+  // cevrilince de). Pis su'daki sert ELEME (karar a) temiz su icin SOYLENMEDI.
+  const ppOnde = (r: any) => {
+    const c = ((r?.candidates ?? []) as any[]).map((x) => String(x.materialName));
+    const ilkPvc = c.findIndex((n) => /PVC/.test(n));
+    const sonPp = c.map((n) => /PP-R/.test(n)).lastIndexOf(true);
+    return r?.confidence === 'multi' && c.length > 0 && /PP-R/.test(c[0]) && (ilkPvc === -1 || sonPp < ilkPvc);
+  };
 
-  // TS1: yalniz seed'ler → "temiz su"→PPR uygulanir; adaylar PP-R, PVC-U YOK
+  // TS1: yalniz seed'ler → "temiz su"→PPR uygulanir; PP-R adaylar ONDE
   {
     const svc = svcAlias(WAVIN);
     const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'b1', [SATIR]))[SATIR];
-    check('TS1 temiz su → PPR cevirisi: adaylar PP-R, PVC-U elendi',
-      r?.confidence === 'multi' && /PP-R/.test(adlar(r)) && !/PVC/.test(adlar(r)), adlar(r));
+    check('TS1 temiz su → PPR cevirisi: coklu soru, PP-R adaylar PVC-U\'nun onunde',
+      ppOnde(r), adlar(r));
   }
 
   // TS2: GOLGELEME (asil canli bug) — metne degen daha uzun ogrenilmis
@@ -348,7 +361,7 @@ async function temizSuTestleri() {
     const svc = svcAlias(WAVIN, [{ alias: 'temiz su borulari', impliedType: 'temiz su borulari' }]);
     const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'b1', [SATIR]))[SATIR];
     check('TS2 golgeleme fix: E8e takilan ogrenilmis alias seed ceviriyi dusurmez',
-      /PP-R/.test(adlar(r)) && !/PVC/.test(adlar(r)), adlar(r));
+      ppOnde(r), adlar(r));
   }
 
   // TS3: S4 zehri — ceviri degeri tasimayan saf ad-alias'i hint olamaz,
@@ -357,7 +370,7 @@ async function temizSuTestleri() {
     const svc = svcAlias(WAVIN, [{ alias: 'temiz su borulari' }]);
     const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'b1', [SATIR]))[SATIR];
     check('TS3 degersiz (ceviri tasimayan) alias atlanir → seed uygulanir, PP-R',
-      /PP-R/.test(adlar(r)) && !/PVC/.test(adlar(r)), adlar(r));
+      ppOnde(r), adlar(r));
   }
 
   // TS4: E8 REGRESYON — "DOĞALGAZ VANASI" satirina dogalgaz alias'i (boru)
@@ -385,7 +398,7 @@ async function temizSuTestleri() {
     }]);
     const r = (await svc.bulkMatch({ userId: 'u1', firmaId: 'u1' }, 'b1', [SATIR]))[SATIR];
     check('TS5 S4 baslik-alias\'i (impliedType=null, kinds/sizeClass dolu) seed ceviriyi golgelemez → PP-R',
-      /PP-R/.test(adlar(r)) && !/PVC/.test(adlar(r)), adlar(r));
+      ppOnde(r), adlar(r));
   }
 
   // TS6 (HAKAN vakasi): kutuphanede adinda 'temiz su' GECMEYEN yalniz PPR

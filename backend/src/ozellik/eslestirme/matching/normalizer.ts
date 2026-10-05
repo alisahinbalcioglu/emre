@@ -203,10 +203,17 @@ export function extractDiameter(text: string): string | null {
     // ⚠ `''` (iki apostrof) yazimi bu noktada ZATEN `"` olmustur (satir 87).
     // Meşru is KORUNUR: mm'siz/Ø'suz gercek mm yazimlari ("63 PE100 - SDR17")
     // etiket uretmeye devam eder — kilit: test L5.
-    const bare = normalized.match(/(?<![a-z0-9.,])(\d{2,3})(?!\s*")(?![\d.,]*\s*(mm|bar|mt|m\b))(?![a-z0-9])/);
-    if (bare) {
+    // ⚠ PN / SDR / PE SINIFI DEGERI CAP DEGILDIR (FAZ C B13, 05.10 olculdu):
+    //     "PN 16 PPR Boru" → od-16 · "PPR Boru PN 20" → dn20 (20 mm boruyla
+    //     AYNI hafiza anahtari) · "PE 100 Boru 63" → dn100 · "SDR 17" → od-17.
+    // Onekli sayilar ATLANIR; karar ilk ONEKSIZ sayidadir (eskisi gibi) —
+    // "PN 10 PPR Boru 25" artik 25'i gorur.
+    const SINIF_ONEKI = /(?:\bpn|\bsdr|\bpe)\s*[-:]?\s*$/;
+    for (const bare of normalized.matchAll(/(?<![a-z0-9.,])(\d{2,3})(?!\s*")(?![\d.,]*\s*(mm|bar|mt|m\b))(?![a-z0-9])/g)) {
+      if (SINIF_ONEKI.test(normalized.slice(0, bare.index ?? 0))) continue;
       const mm = parseInt(bare[1], 10);
       if (mm >= 16 && mm <= 630) return MM_TO_DN[mm] ?? `od-${mm}`;
+      break;
     }
   }
 
@@ -229,7 +236,8 @@ const MM_TO_DN: Record<number, string> = {
 
 const SURFACE_PATTERNS: { pattern: RegExp; tag: string }[] = [
   { pattern: /galvaniz/i, tag: 'galvaniz' },
-  { pattern: /dkp/i, tag: 'galvaniz' },
+  // FAZ C B18 (05.10): /dkp/ → galvaniz KALDIRILDI. DKP (dekape) kaplamasiz
+  // celik sactir, galvaniz DEGILDIR — "DKP Boru" galvaniz anahtarina dusuyordu.
   { pattern: /sicak\s*daldirma/i, tag: 'galvaniz' },
   { pattern: /siyah/i, tag: 'siyah' },
   { pattern: /kaynakli/i, tag: 'siyah' },
@@ -259,10 +267,14 @@ const CONNECTION_PATTERNS: { pattern: RegExp; tag: string }[] = [
   { pattern: /threaded/i, tag: 'disli' },
   { pattern: /\bnpt\b/i, tag: 'disli' }, // E3: 1/2" NPT = disli baglanti
   { pattern: /vidali/i, tag: 'disli' },
-  { pattern: /mansanlu|mansonlu|mansonu/i, tag: 'disli' },
+  // FAZ C B18: 'mansonu' CIKTI — "PPR Manşonu" bir ISIMDIR (manson parcasi),
+  // baglanti SIFATI degil ("Manşonlu boru" = disli/mansonlu baglanti).
+  { pattern: /mansanlu|mansonlu/i, tag: 'disli' },
   { pattern: /kaynakli|welded/i, tag: 'kaynakli' },
   { pattern: /flansh|flans|flanged/i, tag: 'flans' },
-  { pattern: /press|pres/i, tag: 'pres' },
+  // FAZ C B18: yalin /pres/ "kompresör", "presostat", "ekspres"i yakaliyordu.
+  // Kelime basi + pres/press (+ -li, -le…, -fit…) — "Pres Fitting", "Presli".
+  { pattern: /\bpress?(?:li|le\w*|fit\w*)?\b/i, tag: 'pres' },
   { pattern: /duz\s*uclu/i, tag: 'duz-uclu' },
   // AD-CINS Sozlugu: yivli (grooved/victaulic) baglanti — celik boru/vana/
   // fittings'te yaygin cins ("Yivli Dirsek", "Test Drenaj Vanasi Yivli")
@@ -404,16 +416,26 @@ export function extractMaterialTypeDetayli(
 // Malzeme Cinsi Tespiti
 // ────────────────────────────────────────────
 
-const MATERIAL_PATTERNS: { pattern: RegExp; tag: string }[] = [
+/** Metinde plastik malzeme yaziliysa "basincli boru" celik SAYILMAZ (B18). */
+const PLASTIK_YAZILI = /\b(?:pe|pvc|upvc|pvcu|ppr|pprc|pp|hdpe|pex)\b|\bpe-?(?:100|80)\b|polietilen|polipropilen|polivinil/i;
+
+const MATERIAL_PATTERNS: { pattern: RegExp; tag: string; degilse?: RegExp }[] = [
   // Celik boru varyasyonlari: siyah boru, su ve yangin tesisat borusu, basincli boru = celik
   { pattern: /celik|steel|\bst\b/i, tag: 'celik' },
   { pattern: /su\s*ve\s*yangin\s*tesisat/i, tag: 'celik' },
-  { pattern: /basincli\s*boru/i, tag: 'celik' },
+  // FAZ C B18 (05.10): "PE / PVC Basınçlı Boru" plastik basinc borusudur —
+  // malzeme YAZILIYSA bu cikarim yapilmaz (malzemesiz "Basınçlı Boru" celik kalir).
+  { pattern: /basincli\s*boru/i, tag: 'celik', degilse: PLASTIK_YAZILI },
   { pattern: /siyah.*boru|boru.*siyah/i, tag: 'celik' },
   // "PP KURESEL VANA" gibi kullanimlarda PP = polipropilen (M4: PP vana,
   // pirinc/celik vanayla AYNI aile degildir — cins filtresi ayirir)
   { pattern: /\bppr\b|\bpprc\b|\bpp-?r?\b|polipropilen/i, tag: 'ppr' },
-  { pattern: /\bpe\b|polietilen/i, tag: 'pe' },
+  // FAZ C B18: PE-X / PE-RT (capraz bagli, ayri malzeme) 'pe' DEGIL; bitisik
+  // PE sinifi (PE100 / PE80 / PE-100) ise polietilendir — etiketlenmiyordu.
+  { pattern: /\bpe\b(?!-?(?:x|rt)[a-c]?\b)|\bpe-?(?:100|80)\b|polietilen/i, tag: 'pe' },
+  // PE-X / PE-RT / PEX kendi cinsi — yoksa tag-generator'daki "malzemesiz boru
+  // = celik" varsayilani onlari CELIK yapar (bitisik "PEX Boru" zaten celikti).
+  { pattern: /\bpe-?(?:x|rt)[a-c]?\b|\bpex[a-c]?\b/i, tag: 'pex' },
   { pattern: /\bpvc\b|polivinil/i, tag: 'pvc' },
   { pattern: /\bhdpe\b/i, tag: 'hdpe' },
   { pattern: /\bbakir\b|copper/i, tag: 'bakir' },
@@ -430,8 +452,8 @@ const MATERIAL_PATTERNS: { pattern: RegExp; tag: string }[] = [
 export function extractMaterialKind(text: string): string[] {
   const normalized = normalizeText(text);
   const kinds: string[] = [];
-  for (const { pattern, tag } of MATERIAL_PATTERNS) {
-    if (pattern.test(normalized)) kinds.push(tag);
+  for (const { pattern, tag, degilse } of MATERIAL_PATTERNS) {
+    if (pattern.test(normalized) && !(degilse && degilse.test(normalized))) kinds.push(tag);
   }
   return kinds;
 }
@@ -484,7 +506,11 @@ export function extractOuterDiameter(text: string): string | null {
  * "Ø50 mm", "Ø70 mm", "Ø100 mm" → DN koduna cevir
  */
 export function extractODiameter(text: string): string | null {
-  const match = text.match(/[Øø]\s*(\d+)\s*mm/i);
+  // FAZ C B18 (05.10): "mm" SARTI vardi — "Ø110 Boru" olcusuz kaliyor, hafiza
+  // anahtari hic uretilmiyordu. mm'li yazim aynen; mm'siz yalniz 2-3 hane.
+  // Simgeler conversion.extractSizeInfo (B9) ikizi: Ø ø Φ φ ⌀ ∅.
+  const norm = normalizeText(text);
+  const match = norm.match(/[øφ⌀∅]\s*(\d+)\s*mm/) ?? norm.match(/[øφ⌀∅]\s*(\d{2,3})\b(?![.,]\d)/);
   if (!match) return null;
   const mm = parseInt(match[1], 10);
   // mm → DN eslestirme
