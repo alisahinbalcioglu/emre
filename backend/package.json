@@ -67,6 +67,7 @@
     "test:birim-sira-cekim": "ts-node test/birim-sira-cekim-test.ts",
     "test:satir-olcu-yazimi": "ts-node test/satir-olcu-yazimi-test.ts",
     "test:urun-indeksi-v20": "ts-node test/urun-indeksi-v20-test.ts",
+    "test:ad-uzunlugu": "ts-node test/ad-uzunlugu-test.ts",
     "test:grid": "ts-node test/excel-grid-test.ts",
     "test:labor-sheet": "ts-node test/labor-sheet-test.ts",
     "test:kl": "ts-node test/kl-liste-ekleme-test.ts",
