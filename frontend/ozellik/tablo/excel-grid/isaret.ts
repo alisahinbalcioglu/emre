@@ -32,8 +32,21 @@
  * `_sayiUyari: {alan: {ham, tur}}` durur. Bu sinyal `_matStatus`/`_matSebep`e
  * YAZILMAZ: eslestirme ve elle fiyat girisi o alanlari ezer/siler — kullanici
  * dosyadaki metnin neden gelmedigini goremezdi. En ONCELIKLI sinyaldir.
+ *
+ * ── C10 (P4b Parti 3, 05.10): BAYAT KUR ───────────────────────────────────
+ * Dovizli kutuphane satirindan gelen TL fiyat, son basarili TCMB cekiminden
+ * bu yana > 2 is gunu eski kurla hesaplanmissa motor `kaynakKur.bayat` yazar
+ * (P4a sunucuda yalniz WARN yaziyordu). Isaret ZEMIN degil SERIT: bayat kurlu
+ * fiyat ayni zamanda oneri / otomatik varyant olabilir — o isaretin zemini ve
+ * metni KALIR, serit ve kur notu EKLENIR (hicbir sinyal digerini yutmaz).
+ * Serit `background-image`: izgaranin tulleri (kopya secimi, fitting kapsami,
+ * surukleme) `box-shadow: inset` kanalinda ve !important'siz — satir ici
+ * golge onlari EZERDI; gradyan zeminle birlesir, tul ustune biner.
+ * Hucre fiyati dovizde kaldiysa (karisik kip, taraf birimi USD/EUR) kurla
+ * hesaplanmamistir: isaret yok (kayittaki iliskisel TL karsiligi yine bu
+ * kurla — teklif-kalem.ts — ama o hucrede gorunmez).
  */
-import { kayitliSayiUyarisi, type SayiAlanTuru } from '../../fiyat/sayi-alani';
+import { kayitliSayiUyarisi, trSayi, type SayiAlanTuru } from '../../fiyat/sayi-alani';
 
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil.
 import { paraBicim } from '../../fiyat/pricing';
@@ -56,12 +69,23 @@ export interface IsaretGirdisi {
   sayiUyari?: unknown;
   /** A2: uyari metninin alan turu (fiyat kolonlari 'fiyat', miktar 'miktar'). */
   sayiAlani?: SayiAlanTuru;
+  /** C10: fiyatin TL'ye cevrildigi kur — satirin `_matKurBilgi`/`_labKurBilgi`
+   *  alani (motorun `kaynakKur`u: {currency, kur, tarih, bayat?, yasIsGunu?}).
+   *  Yalniz `bayat: true` isaret uretir; eski kayittaki metin bicimi ('USD/41,2') degil. */
+  kurBilgi?: unknown;
+  /** C10: hucre fiyatinin taraf birimi (`_matPB`/`_labPB`, karisik kip). USD/EUR
+   *  ise hucre fiyati dovizde kalmistir, kurla hesaplanmamistir. Yoksa TL (tl kipi).
+   *  ⚠ Cagiran `kurBilgi`yi verirken BUNU da vermeli: yoksa karisik kipteki $
+   *  hucresi TL sayilir. */
+  tarafBirimi?: unknown;
 }
 
 /** Hucre arka plani (textAlign cagirana ait — bu modul yalniz RENGI karara baglar). */
 export interface IsaretStili {
   backgroundColor: string;
   color?: string;
+  /** C10 bayat kur seridi (sol kenarda gradyan) — diger isaretin zemini uzerine eklenir. */
+  backgroundImage?: string;
 }
 
 const KIRMIZI: IsaretStili = { backgroundColor: '#fee2e2' };
@@ -74,6 +98,10 @@ const MAVI: IsaretStili = { backgroundColor: '#e0f2fe', color: '#0c4a6e' };
 const SARI: IsaretStili = { backgroundColor: '#fef9c3', color: '#854d0e' };
 // A2: sayi okunamadi — MOR; kirmizi (eslesme yok) ve turuncudan (hata) gozle ayrisir.
 const MOR: IsaretStili = { backgroundColor: '#ede9fe', color: '#5b21b6' };
+// C10: bayat kur — sol AMBER serit (gradyan; tul kanali box-shadow'a dokunmaz);
+// baska isaret yoksa amber-50 zemin. Sariyla (oneri) zemini yakin: ayirt eden SERIT.
+const KUR_BAYAT_SERIDI = 'linear-gradient(to right, #d97706 0 3px, transparent 3px)';
+const KUR_BAYAT: IsaretStili = { backgroundColor: '#fffbeb', color: '#92400e', backgroundImage: KUR_BAYAT_SERIDI };
 
 /** A2: satirin bu hucresinde ice aktarma sayi uyarisi var mi? */
 function sayiUyarisiVar(g: IsaretGirdisi): boolean {
@@ -86,6 +114,45 @@ function malzemeDali(g: IsaretGirdisi): boolean {
 }
 
 const durumu = (g: IsaretGirdisi): string => String(g.durum ?? '');
+
+/** Hucrede fiyat OLMADIGINI soyleyen durumlar (doldurma yolu kuru fiyatla birlikte siler). */
+const FIYATSIZ_DURUMLAR = new Set(['yok', 'belirsiz', 'hata', 'ad-yok', 'urun_degil']);
+
+interface BayatKur { yas: number | null; birim: string; kur: number | null; tarih: string }
+
+/**
+ * C10: hucredeki TL fiyat bayat kurla mi hesaplandi? Degilse null. Kur notu
+ * yalniz FIYATA eslik eder: sayi okunamadi ya da fiyatsiz durumda (kur zaten
+ * fiyatla birlikte silinir) isaret yok.
+ */
+function bayatKur(g: IsaretGirdisi): BayatKur | null {
+  const k = g.kurBilgi as { bayat?: unknown; yasIsGunu?: unknown; currency?: unknown; kur?: unknown; tarih?: unknown } | null | undefined;
+  if (!k || typeof k !== 'object' || k.bayat !== true) return null;
+  const taraf = String(g.tarafBirimi ?? '');
+  if (taraf === 'USD' || taraf === 'EUR') return null; // fiyat dovizde kaldi — kur kullanilmadi
+  if (sayiUyarisiVar(g) || FIYATSIZ_DURUMLAR.has(durumu(g))) return null;
+  const sayi = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const yas = sayi(k.yasIsGunu);
+  return {
+    yas: yas != null && yas > 0 ? Math.floor(yas) : null,
+    birim: typeof k.currency === 'string' ? k.currency.trim() : '',
+    kur: sayi(k.kur),
+    tarih: typeof k.tarih === 'string' ? k.tarih.trim() : '',
+  };
+}
+
+/**
+ * "Fiyatlandırıldığında kur 3 iş günü eskiydi (1 USD = ₺41,2345, 01.10.2026) — …"
+ * GECMIS ZAMAN: kur bilgisi teklifle KAYDEDILIR (kur donmasi) — aylar sonra
+ * acilan teklifte "3 is gunu eski" bugunu anlatmaz, fiyatlandirma anini anlatir.
+ * SD6: notun nasil kalkacagini da soyler (yeniden sec → yeni kur; elle yazilan
+ * fiyatin kuru yoktur).
+ */
+function bayatKurNotu(b: BayatKur, g: IsaretGirdisi): string {
+  const ayrinti = [b.kur != null && b.birim ? `1 ${b.birim} = ₺${trSayi(b.kur, 2, 4)}` : '', b.tarih].filter(Boolean).join(', ');
+  const bas = b.yas != null ? `Fiyatlandırıldığında kur ${b.yas} iş günü eskiydi` : 'Fiyatlandırıldığında kur eskiydi';
+  return `${bas}${ayrinti ? ` (${ayrinti})` : ''} — güncel kur için ${menuAdi(g)} menüsünden yeniden seçin ya da fiyatı elle yazın`;
+}
 
 /**
  * "Bu satir kullanici karari bekliyor mu?" — guven kapisi sayacinin olcutu.
@@ -100,8 +167,16 @@ export function secimBekliyor(durum: unknown): boolean {
 /**
  * Hucre arka plani. Isaret yoksa `null` (cagiran duz stili uygular).
  * SIRA ONEMLI: sayi okunamadi (A2) > otomatik varyant > oneri > yok/belirsiz > urun_degil.
+ * C10 bayat kur zemin YARISINA girmez: secilen zeminin USTUNE serit ekler
+ * (zemin yoksa kendi amber zemini).
  */
 export function isaretStili(g: IsaretGirdisi): IsaretStili | null {
+  const ana = anaStil(g);
+  if (!bayatKur(g)) return ana;
+  return ana ? { ...ana, backgroundImage: KUR_BAYAT_SERIDI } : KUR_BAYAT;
+}
+
+function anaStil(g: IsaretGirdisi): IsaretStili | null {
   if (sayiUyarisiVar(g)) return MOR;
   if (malzemeDali(g)) {
     if (g.otoVaryant) return MAVI;
@@ -131,8 +206,17 @@ function adTuru(g: IsaretGirdisi): string {
  * ne yapacagini bilir. Canli bulgu (30.07): kaynakta "kirmizi (astar) boyali"
  * secilmisti, hedef caplarda o cins yoktu; ekranda yalniz pembe hucre vardi ve
  * kullanici "otomatik varyant calismiyor" olarak yasadi.
+ *
+ * C10: bayat kur notu metnin SONUNA eklenir (oneri / otomatik varyant metni kalir).
  */
 export function isaretTooltip(g: IsaretGirdisi): string {
+  const ana = anaTooltip(g);
+  const kur = bayatKur(g);
+  if (!kur) return ana;
+  return ana ? `${ana} · ${bayatKurNotu(kur, g)}` : bayatKurNotu(kur, g);
+}
+
+function anaTooltip(g: IsaretGirdisi): string {
   if (sayiUyarisiVar(g)) {
     // Tek cumle kaynagi: elle yazma toast'i ve form kutusu AYNI metni gosterir.
     return `Dosyadan gelmedi — ${kayitliSayiUyarisi(g.sayiUyari, g.sayiAlani ?? 'fiyat') ?? 'sayı okunamadı'}`;
@@ -160,26 +244,65 @@ export function isaretTooltip(g: IsaretGirdisi): string {
 
 const PARA_SEMBOLU: Record<string, string> = { TRY: '₺', USD: '$', EUR: '€' };
 
+// Eski kayitta ham yazim olabilir — arka ucun OKUMA tablosunun aynisi
+// (exchange-rates.service `PARA_BIRIMI_YAZIMLARI`); yazma yollari yalniz kod yazar.
+const BIRIM_YAZIMI: Record<string, string> = {
+  '': 'TRY', TL: 'TRY', '₺': 'TRY', YTL: 'TRY',
+  $: 'USD', US$: 'USD', DOLAR: 'USD', DOLLAR: 'USD',
+  '€': 'EUR', EURO: 'EUR', AVRO: 'EUR',
+};
+
+/** Birim yazimi → kod ('TL' / '₺' = 'TRY', bos → TRY); taninmayan yazim aynen. */
+function birimKodu(birim: string): string {
+  const kod = birim.trim().toUpperCase().replace(/\s+/g, '');
+  return BIRIM_YAZIMI[kod] ?? kod;
+}
+
+/** Tutar + birim simgesi; taninmayan birim KODUYLA yazilir (₺ uydurulmaz). */
+function paraMetni(v: number, birim: string): string {
+  const kod = birimKodu(birim);
+  return `${PARA_SEMBOLU[kod] ?? `${kod} `}${paraBicim(v, 1)}`;
+}
+
+/** Ayrisan satirin ust seritteki eylemi — sayfadaki dugmeyle AYNI ad. */
+export const HAVUZA_DON_EYLEMI = 'Havuz fiyatına dön';
+
 /**
  * K1 AYRISMIS KUTUPHANE FIYATI (tur 3 A4c, 14.09) — kutuphane "Liste Fiyat"
  * hucresi. HAVUZA BAGLI satirda ozel fiyat havuz liste fiyatindan ayrismis:
  * havuz guncellenip yeniden aktarilmis ve ozel fiyat eski havuz fiyatinda
  * donmus OLABILIR — ya da kullanici bilerek yazmistir. Hangisinin gecerli
  * oldugu TAHMIN EDILMEZ: hucre SARI, ipucu iki fiyati gosterir, kullanici
- * gecerli fiyati hucreye yazar. Sinyal backend'den gelir (`_fiyatAyrisik`,
- * library-sheet-builder `havuzFiyatAyrisimi` — migration'daki "ayrismis"
- * tanimi). Sinyal yoksa null: cagiran normal stili uygular.
+ * gecerli fiyati hucreye yazar ya da ozel fiyati birakip havuza doner
+ * (marka sayfasi «Havuz fiyatına dön»). Sinyal backend'den gelir
+ * (`_fiyatAyrisik`, library-sheet-builder `havuzFiyatAyrisimi` — migration'daki
+ * "ayrismis" tanimi). Sinyal yoksa null: cagiran normal stili uygular.
+ *
+ * C3 (P4b Parti 3): ozel fiyat liste fiyatindan FARKLI birimde olabilir;
+ * backend o zaman iki birimi de tasir (`ozelBirim`/`havuzBirim`). Her fiyat
+ * KENDI simgesiyle yazilir — tek simge "$12 · $480" diye yanlis soylerdi.
+ * Hucreye yazilan sayi ozel fiyatin biriminde kalir, ayrisma kapanmaz: tek
+ * cikis havuza donmektir.
  */
 export function kutuphaneFiyatAyrisimi(d: unknown): { stil: IsaretStili; ipucu: string } | null {
-  const satir = d as { _fiyatAyrisik?: { ozel?: unknown; havuz?: unknown }; _currency?: unknown } | null | undefined;
+  const satir = d as {
+    _fiyatAyrisik?: { ozel?: unknown; havuz?: unknown; ozelBirim?: unknown; havuzBirim?: unknown };
+    _currency?: unknown;
+  } | null | undefined;
   const a = satir?._fiyatAyrisik;
   if (!a || typeof a !== 'object') return null;
   const ozel = Number(a.ozel);
   const havuz = Number(a.havuz);
   if (a.ozel == null || a.havuz == null || !Number.isFinite(ozel) || !Number.isFinite(havuz)) return null;
-  const sembol = PARA_SEMBOLU[String(satir?._currency ?? 'TRY')] ?? '₺';
+  const satirBirimi = String(satir?._currency ?? 'TRY');
+  const ozelBirim = typeof a.ozelBirim === 'string' ? a.ozelBirim : satirBirimi;
+  const havuzBirim = typeof a.havuzBirim === 'string' ? a.havuzBirim : satirBirimi;
+  const fiyatlar = `Özel fiyat ${paraMetni(ozel, ozelBirim)} · havuz liste fiyatı ${paraMetni(havuz, havuzBirim)}`;
+  const eylem = `üstteki «${HAVUZA_DON_EYLEMI}» düğmesine basın`;
   return {
     stil: SARI,
-    ipucu: `Özel fiyat ${sembol}${paraBicim(ozel, 1)} · havuz liste fiyatı ${sembol}${paraBicim(havuz, 1)} — havuz fiyatı değişmiş; geçerli fiyatı bu hücreye yazın`,
+    ipucu: birimKodu(ozelBirim) === birimKodu(havuzBirim)
+      ? `${fiyatlar} — havuz fiyatı değişmiş; geçerli fiyatı bu hücreye yazın ya da ${eylem}`
+      : `${fiyatlar} — para birimleri farklı; havuz fiyatına geçmek için ${eylem}`,
   };
 }
