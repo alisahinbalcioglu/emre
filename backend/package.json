@@ -197,7 +197,8 @@
     "test:p4b-motor": "ts-node test/p4b-motor-test.ts",
     "test:ex-karisik": "ts-node test/cikti-karisik-test.ts",
     "test:p4b-kutuphane": "ts-node test/p4b-kutuphane-test.ts",
-    "test:net-fiyat-ikiz": "ts-node test/net-fiyat-ikiz-test.ts"
+    "test:net-fiyat-ikiz": "ts-node test/net-fiyat-ikiz-test.ts",
+    "test:cap-ikiz": "ts-node test/cap-ikiz-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

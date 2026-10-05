@@ -236,6 +236,9 @@ const SUITES: Suite[] = [
   // 05.10.2026: kutuphane doviz neti — on yuz hesaplaNetFiyat/Doviz arka uc ikizleriyle
   //    her girdide ayni; kutuphanenin "Net Fiyat"i satirin biriminde (₺ 1 hane, $/€ 2 hane).
   { ad: 'Net fiyat ikizi (kütüphane döviz neti)', script: 'test:net-fiyat-ikiz', zincir: 'Z2' },
+  // 05.10.2026: baslik baglami cap okuyucusu — on yuz kopyasi arka uc (P2-ek) kuralinin
+  //    satir satir kopyasi; kaynak metni + 13 gercek kesif dosyasinin tum adlari AYNI.
+  { ad: 'Çap okuyucu ikizi (extractCapFromText ön ↔ arka)', script: 'test:cap-ikiz', zincir: 'Z2' },
   { ad: 'Teklif formatı kabul (T/KF2)', script: 'test:export', zincir: 'Z5' },
   { ad: 'Canlı simülasyon (SIM/G)', script: 'test:livesim', zincir: 'Z5' },
   // ── KAPATMA TURU ADIM 2 (31.07.2026): pakette OLMAYAN 4 suite eklendi.
