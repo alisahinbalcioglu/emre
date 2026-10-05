@@ -74,6 +74,7 @@ export default function GridTestPage() {
   // test olcmedigi bir seyi iddia ediyordu. Bayrak render'da okunamaz
   // (SSR/istemci hydration uyusmazligi); cozum grid'i bir tik geciktirmek.
   const [gridHazir, setGridHazir] = useState(false);
+  const [kutuphaneDoviz, setKutuphaneDoviz] = useState(false);
   React.useEffect(() => {
     const arama = new URLSearchParams(window.location.search);
     const kip = arama.get('iscilik');
@@ -88,6 +89,9 @@ export default function GridTestPage() {
     // COKLU PARA BIRIMI F2 (05.10): `?para=karisik` → izgara karisik kipte
     // (taraf para birimi). Uretim sayfasi F6'ya dek GECIRMEZ.
     if (arama.get('para') === 'karisik') setParaKipi('karisik');
+    // KUTUPHANE DOVIZ NETI (05.10): `?kutuphaneDoviz=1` → kutuphane modunda satir 2
+    // USD ve liste 10,55 (₺ kurali $10,60 gosterirdi). Varsayilan KAPALI.
+    if (arama.get('kutuphaneDoviz') === '1') setKutuphaneDoviz(true);
     setGridHazir(true); // ayni tikte toplanir → grid ilk render'da DOGRU degeri gorur
     if (kip === 'gec') {
       const t = setTimeout(() => setIscilikAcik(true), 300);
@@ -158,7 +162,8 @@ export default function GridTestPage() {
       rowData: [
         satir(0, 'No', 'Malzeme Adı', 'Miktar', false, true),
         satir(1, '', 'Siyah Çelik Boru TS EN 10255', '', false),
-        satir(2, '1', "6'' Siyah Boru", '286'),
+        satir(2, '1', "6'' Siyah Boru", '286', true, false,
+          kutuphaneDoviz && mod === 'library' ? { _currency: 'USD', _matBirim: '10.55' } : {}),
         satir(3, '2', "4'' Siyah Boru", '268'),
         satir(4, '3', "3'' Siyah Boru", '102'),
         satir(5, '4', "2'' Siyah Boru", '564'),
@@ -212,7 +217,7 @@ export default function GridTestPage() {
       brands: [],
       headerEndRow: 0,
     };
-  }, [mod]);
+  }, [mod, kutuphaneDoviz]);
 
   const onBrandChange = useCallback(async (rowIdx: number, brandId: string, materialName: string, opts?: { variantTags?: string[]; silent?: boolean }) => {
     cagriSayisi.current++;

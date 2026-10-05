@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, PARA_SEMBOLU, paraIsaretiniAyikla,
+  paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, PARA_SEMBOLU, paraIsaretiniAyikla, netFiyatBiriminde,
 } from './taraf-para-birimi';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam } from './pricing';
 
@@ -103,5 +103,26 @@ describe('paraIsaretiniAyikla — elle girisin sayi kismi', () => {
   });
   it('isaretsiz metin aynen', () => {
     expect(paraIsaretiniAyikla('15')).toBe('15');
+  });
+});
+
+// ── KUTUPHANE NETI (05.10, P2 notu): kutuphane ekraninin "Net Fiyat" kolonu dovizli
+// satirda da ₺ kuraliyla (1 hane yukari) yuvarliyordu; motorun kaynak neti (F1
+// `kaynakFiyat`) ve TL neti (P2 C6) dovizde 2 hane. Kural TEK yerde: satirin
+// birimine gore TRY → hesaplaNetFiyat, USD/EUR → hesaplaNetFiyatDoviz (arka uc ikizi).
+describe('netFiyatBiriminde — kutuphane neti satirin biriminde', () => {
+  it('USD/EUR 2 hane YUKARI (1 hane degil)', () => {
+    expect(netFiyatBiriminde(10.55, 0, 'USD')).toBe(10.55);
+    expect(netFiyatBiriminde(10.551, 0, 'EUR')).toBe(10.56);
+    expect(netFiyatBiriminde(3354.64, 10, 'USD')).toBe(3019.18);
+  });
+  it('KONTROL: TRY ve birimsiz satir BUGUNKU kural (1 hane yukari)', () => {
+    expect(netFiyatBiriminde(10.55, 0, 'TRY')).toBe(10.6);
+    expect(netFiyatBiriminde(3354.64, 10, undefined)).toBe(3019.2);
+    expect(netFiyatBiriminde(10.55, 0, 'GBP')).toBe(10.6); // taninmayan birim tahmin edilmez → ₺ kurali
+  });
+  it('iskonto sinirlanir (0-100), ayni formul', () => {
+    expect(netFiyatBiriminde(100, 150, 'USD')).toBe(0);
+    expect(netFiyatBiriminde(100, -5, 'USD')).toBe(100);
   });
 });

@@ -28,7 +28,7 @@ import {
   extractDiameter, extractSurfaces, extractConnection, extractMaterialKind, extractODiameter,
 } from '../src/ozellik/eslestirme/matching/normalizer';
 import { generateTags } from '../src/ozellik/eslestirme/matching/tag-generator';
-import { buildMaterialContextFromRows } from '../src/ozellik/eslestirme/utils/build-material-context';
+import { buildMaterialContextFromRows, extractCapFromText } from '../src/ozellik/eslestirme/utils/build-material-context';
 import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 let passed = 0; let failed = 0; const failures: string[] = [];
@@ -86,6 +86,60 @@ async function main() {
     check('B18 "⌀63 Boru" → od-63 (cap simgeleri, conversion B9 ikizi)', extractODiameter('⌀63 Boru') === 'od-63', String(extractODiameter('⌀63 Boru')));
     check('B18 karsi: "Ø110 mm Boru" → dn100', extractODiameter('Ø110 mm Boru') === 'dn100');
     check('★ B18 hafiza anahtari: "Ø110 Boru" olcu etiketi tasir', js(olcu('Ø110 Boru')) === '["dn100"]', js(olcu('Ø110 Boru')));
+
+    // ══ P2-EK (05.10, koordinator onayi) · Ø tablosu tek · siyah plastik boru ═
+    // Olculdu: extractODiameter'in KENDI mm→DN tablosu MM_TO_DN'den eksikti —
+    // ayni boru iki yazimda FARKLI hafiza anahtari ("Ø22 Boru" od-22 ↔ "22 mm
+    // Boru" dn15). FAZ C'de mm'siz Ø okunmaya baslayinca ayrisma yayildi.
+    for (const mm of [22, 28, 60, 114, 110]) {
+      check(`★ P2-ek "Ø${mm} Boru" ile "${mm} mm Boru" AYNI olcu etiketi`, js(olcu(`Ø${mm} Boru`)) === js(olcu(`${mm} mm Boru`)), `${js(olcu(`Ø${mm} Boru`))} vs ${js(olcu(`${mm} mm Boru`))}`);
+    }
+    check('P2-ek "Ø22 mm Boru" (mm\'li) de ayni: dn15', js(olcu('Ø22 mm Boru')) === '["dn15"]', js(olcu('Ø22 mm Boru')));
+    // "siyah.*boru → celik" plastik yazili metinde gecersiz (basincli boru kuralinin ikizi)
+    for (const t of ['Siyah PE100 Boru 63', 'Siyah HDPE Boru 110', 'Boru Siyah PE 63']) check(`★ P2-ek "${t}" celik SAYILMAZ`, !extractMaterialKind(t).includes('celik'), js(extractMaterialKind(t)));
+    for (const t of ['Siyah Boru 2"', 'Siyah Çelik Boru 2"']) check(`P2-ek karsi: "${t}" → celik`, extractMaterialKind(t).includes('celik') && generateTags(t).tags.includes('celik'), js(extractMaterialKind(t)));
+
+    // ══ P2-EK · extractCapFromText IKIZ KURALI (on yuz ↔ arka uc) ═══════════
+    // Olculdu (05.10): 21 gercek dosya, 3.850 tekil ad — eski iki taraf 169 adda
+    // ayrisiyordu (P3 kulliyati: 3.142 adda 154). Kural build-material-context'te.
+    const cap: Array<[string, string | null, string]> = [
+      // A · coklu DN
+      ['Boru DN25 (1”) Yukarıdaki gibi ancak Çap: DN50', 'dn50', 'A etiket "Çap:" kazanir'],
+      ['Kelepçe/U-Bolt Çapı : Muhtelif (DN100, DN80, DN65)', 'dn100', 'A etiket "Çapı :"'],
+      ['DN150 Kollektör (2xDN100+3xDN80+1xDN15)', 'dn150', 'A parantez ici ikincil (eski arka uc dn15)'],
+      ['Branşman Kelepçesi, DN150 x DN50', 'dn150', 'A ilk DN = asil hat (eski arka uc dn50)'],
+      ['3"x1"-DN80 x DN25 Dişli Mekanik Te', 'dn80', 'A DN incten once, ilk'],
+      ['Giriş-Çıkış : 1xHDPE225 Flanşlı Giriş - 1xDN65 Flanşlı Çıkış', 'dn65', 'A bitisik "1xDN65"'],
+      // B · unicode bilesik kesir
+      ['2½" ve üstü borular', 'dn65', 'B "2½" bilesiktir (eski arka uc null)'],
+      ['1¼" galvaniz boru', 'dn32', 'B "1¼"'],
+      ['½" küresel vana', 'dn15', 'B yalin ½'],
+      // C · tirnak / kesme
+      ['1” EMT Galvaniz Boru', 'dn25', 'C tipografik ”'],
+      ["2'' siyah boru", 'dn50', "C iki kesme ''"],
+      ["1' siyah boru", 'dn25', 'C tek kesme, arkasinda harf yok'],
+      ["Ex-Proof Tehlike sınıfı 1'e uygun", null, "C Turkce ek 1'e — olcu degil (eski arka uc dn25)"],
+      ['TSE Onaylı, EN 671-1’e Uygun', null, 'C tipografik kesme + ek'],
+      ["2'li priz grubu", null, "C 2'li — olcu degil"],
+      // yan bulgular (olcum sirasinda)
+      ['Sonsuz sargı CP 648-E-W45/1.8"', null, 'ondalik "1.8\\"" icinden 8" okunmaz (eski dn200)'],
+      ["1 1/ 4'' x 1''x 1'' İnegal Tee", 'dn32', 'bolunmus kesir "1 1/ 4" (eski 4" → dn100 riski)'],
+      ["4''x3'' Yivli Redüksiyon", 'dn100', 'inc de ILK olcu (asil hat)'],
+      ['Esnek bağlantı hortumu 1.5" uçlu', null, 'ondalik "1.5\\"" icinden 5" okunmaz (eski arka uc dn125)'],
+      ['Pis Su Kolektörü (DN50 çıkışlı) DN100', 'dn100', 'A parantezdeki olcu ONCE gelse de asil olcu disaridaki'],
+      ['Sprinkler Flex ve seti,1"-500', 'dn25', 'karsi: liste virgulu ondalik degil'],
+      // P3 kulliyati incelemesi (05.10): sartname metninde SONRAKI etiketler alt parcayi anlatir
+      ['Baskın Vana İstasyonu, DN100 (4”)\nTür : Klapeli\nÇapı : DN100 (4”)\nElle Tahrik Ünitesi : - Türü : Küresel Vana\n: - Çapı : ½”', 'dn100', 'A ILK etiket asil kalem (son etiket alt parcanin ½"i: dn15)'],
+      ['Yerüstü Hidrantı\nGiriş Çapı : DN100\nÇıkış Çapı : 2 x DN 65 Storz', 'dn100', 'A ILK etiket (giris), cikis ikincil'],
+      ['Çap : 2"\nÇıkış Çapı : DN65', 'dn50', 'A etiketin KENDI bolgesi: sonraki etiketin DN\'i incin onune gecmez'],
+      ['Boru DN25\nÇap : muhtelif\nBağlantı Çapı : DN40', 'dn40', 'A ilk etiket okunamazsa sonraki ETIKET (etiketsiz DN25 degil)'],
+      ['TS EN 671-1,1" hortum,30m', 'dn25', 'virgul ondalik DEGIL, liste ayiraci (P3 kulliyati; eski dn25)'],
+      ['3/4" küresel vana', 'dn20', 'karsi: "3/4\\"" icinden 4" okunmaz'],
+      ['GALVANİZ BORU', null, 'karsi: olcusuz'],
+    ];
+    for (const [t, b, ad] of cap) {
+      check(`${ad.startsWith('karsi') ? '' : '★ '}CAP ${ad}: "${t}" → ${b}`, extractCapFromText(t) === b, String(extractCapFromText(t)));
+    }
 
     // ══ B17 · baslik baglami (arka uc build-material-context) ═════════════
     const roles = { noField: 'no', nameField: 'ad', brandField: 'marka' };
