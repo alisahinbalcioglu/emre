@@ -20,6 +20,9 @@
  *   K1-K2  fiyati degismeyen kayit customPrice YAZMAZ (yalniz iskonto / yalniz ad)
  *   K3-K4  yeniden aktarimdan sonra ekran ve eslestirme YENI havuz fiyatini kullanir
  *   K5     kullanicinin GERCEKTEN yazdigi fiyat kalici (L4: ozel fiyat korunur)
+ *   K7     (P4b Parti 3) yuk ADI yalniz ad hucresi YUKLENDIGI halden farkliysa
+ *          tasir — acik kalan eski ekran, baska yerde yapilan ad duzeltmesini
+ *          yalniz iskonto kaydiyla geri ALMAZ
  *
  *  DB GEREKMEZ: bellek-ici sahte Prisma (yalniz bu yolun cagirdigi islemler).
  * ─────────────────────────────────────────────────────────────────────────────
@@ -129,10 +132,15 @@ const derle = (kod: string) => ts.transpileModule(kod, {
 // A2 (tur 3): sayfanin `numOrU`su ortak MAKINE okuyucusuna (`sayiOku`) devreder;
 // sayfanin import'u bu baglamda yok — GERCEK kural modulu verilir (kopya degil).
 const { sayiOku } = require('../../frontend/ozellik/fiyat/sayi-alani');
+// P4b Parti 3: yukun adi `degisenMalzemeAdi(r, nameField, ilkAdlarRef.current)` —
+// GERCEK modul; `ilkAdlarRef` sayfanin fetchData'si gibi YUKLENEN satirlardan kurulur.
+const { degisenMalzemeAdi, malzemeAdlari } = require('../../frontend/ozellik/kutuphane/malzeme-ad-imzasi');
 // eslint-disable-next-line no-new-func
-const kayitYukuHam = new Function('sayiOku', 'dirtyExisting', 'priceField', 'unitField', 'nameField',
-  `${derle(numOrUKaynak)}\n${derle(yukKaynak)}\nreturn payload;`) as (s: unknown, d: any[], p: string, u: string, n: string) => any[];
-const kayitYuku = (d: any[], p: string, u: string, n: string) => kayitYukuHam(sayiOku, d, p, u, n);
+const kayitYukuHam = new Function('sayiOku', 'degisenMalzemeAdi', 'dirtyExisting', 'priceField', 'unitField', 'nameField', 'ilkAdlarRef',
+  `${derle(numOrUKaynak)}\n${derle(yukKaynak)}\nreturn payload;`) as (s: unknown, a: unknown, d: any[], p: string, u: string, n: string, i: { current: Map<string, string> }) => any[];
+/** `yuklenen`: sayfanin o anki ekranini YUKLEDIGI satirlar (ilk adlar bunlardan). */
+const kayitYuku = (d: any[], p: string, u: string, n: string, yuklenen: any[]) =>
+  kayitYukuHam(sayiOku, degisenMalzemeAdi, d, p, u, n, { current: malzemeAdlari(yuklenen, n) });
 
 const K = { userId: 'u1', firmaId: 'f1' };
 
@@ -173,7 +181,7 @@ bitmezseKirmizi((async () => {
   Object.assign(bul('1"'), { [R.nameField]: 'Küresel Vana (tam geçişli)', _dirty: true });
   Object.assign(bul('3/4"'), { [R.materialUnitPriceField]: '150', _dirty: true });
   const kirli = satirlar.filter((r: any) => r._isDataRow && r._libraryItemId && r._dirty);
-  const yuk = kayitYuku(kirli, R.materialUnitPriceField, R.unitField, R.nameField);
+  const yuk = kayitYuku(kirli, R.materialUnitPriceField, R.unitField, R.nameField, once.satirlar);
 
   console.log('── K0) OLCUT: on yuz yuku sayfadan cikti ve fiyati HER kirli satirda gonderiyor ──');
   const yuk12 = yuk.find((p: any) => p.libraryItemId === bul('1/2"')._libraryItemId);
@@ -182,6 +190,10 @@ bitmezseKirmizi((async () => {
     /\bsayiOku\(/.test(numOrUKaynak) && yukKaynak.length > 300, `numOrU ${numOrUKaynak.length} karakter (sayiOku devri) · yuk ${yukKaynak.length} karakter`);
   check('K0b yalniz iskontosu degisen satirin yukunde de listPrice VAR (K1 bu yuzden gerekli)',
     yuk.length === 3 && typeof yuk12?.listPrice === 'number', JSON.stringify(yuk12));
+  const yuk1 = yuk.find((p: any) => p.libraryItemId === bul('1"')._libraryItemId);
+  check('K0c (P4b Parti 3) yalniz iskontosu degisen satirin yukunde AD YOK; adi degisenin yukunde VAR',
+    yuk12 != null && yuk12.materialName === undefined && yuk1?.materialName === 'Küresel Vana (tam geçişli)',
+    JSON.stringify({ iskontolu: yuk12?.materialName, adli: yuk1?.materialName }));
 
   await lib.saveBrandSheets(K as any, 'b1', yuk);
 
@@ -246,6 +258,31 @@ bitmezseKirmizi((async () => {
     ];
     const yanlis = durumlar.filter(([, girdi, beklenen]) => (havuzFiyatAyrisimi(girdi) !== null) !== beklenen).map(([ad]) => ad);
     check('K6d tanim migration\'daki "ayrismis" ile ayni: yalniz HAVUZA BAGLI ve C≠L (kisisel, yetim, esit, bos isaretsiz)', yanlis.length === 0, yanlis.join(' · ') || `${durumlar.length} durum`);
+  }
+
+  console.log('── K7) ESKI IZGARA AD KAYBI (P4b Parti 3): ad YALNIZ ad hucresi degistiyse gider ──');
+  {
+    const { gosterilenAd } = require('../src/ozellik/kutuphane/library/library-sheet-builder');
+    // Ekran yuklenir; SONRA baska bir oturum (ekip arkadasi) 3/4" satirinin adini duzeltir.
+    const eski = await ekranSatirlari(listId);
+    const eskiSatir = eski.satirlar.find((r: any) => r.col_cap === '3/4"');
+    const EKIP_ADI = 'Küresel Vana Ekip Düzeltmesi';
+    await lib.saveBrandSheets(K as any, 'b1', [{ libraryItemId: eskiSatir._libraryItemId, materialName: EKIP_ADI }]);
+    check('K7 ÖLÇÜT: ekip arkadasinin duzeltmesi YAZILDI (yoksa K7b bos yere yesil yanardi)',
+      gosterilenAd(kutuphaneSatiri('3/4"')) === EKIP_ADI, gosterilenAd(kutuphaneSatiri('3/4"')));
+    // Acik kalan ESKI ekran yalniz iskontoyu degistirip kaydeder (ad hucresinde eski ad durur)
+    const yuk7 = kayitYuku([{ ...eskiSatir, _draftDiscount: 15, _dirty: true }],
+      eski.R.materialUnitPriceField, eski.R.unitField, eski.R.nameField, eski.satirlar);
+    check('K7a yuk AD TASIMAZ (ad hucresi yuklendigi gibi)', yuk7.length === 1 && yuk7[0].materialName === undefined, JSON.stringify(yuk7[0]));
+    await lib.saveBrandSheets(K as any, 'b1', yuk7);
+    const son = kutuphaneSatiri('3/4"');
+    check('K7b ⭐ eski ekranin kaydi ekip arkadasinin ad duzeltmesini GERI ALMAZ',
+      gosterilenAd(son) === EKIP_ADI, `gosterilen=${gosterilenAd(son)} kullaniciAdi=${son?.kullaniciAdi} adRaw=${son?.adRaw}`);
+    check('K7c ayni kayitta iskonto YAZILDI', son?.discountRate === 15, `discountRate=${son?.discountRate}`);
+    // Ayni eski ekranda kullanici adi GERCEKTEN degistirirse ad gider (kural adi engellemez)
+    const yuk7d = kayitYuku([{ ...eskiSatir, [eski.R.nameField]: 'Küresel Vana Kullanıcı', _dirty: true }],
+      eski.R.materialUnitPriceField, eski.R.unitField, eski.R.nameField, eski.satirlar);
+    check('K7d ad hucresi degisince ad gider', yuk7d[0]?.materialName === 'Küresel Vana Kullanıcı', JSON.stringify(yuk7d[0]));
   }
 
   console.log(`\nSONUC: ${passed} PASS, ${failures.length} FAIL`);

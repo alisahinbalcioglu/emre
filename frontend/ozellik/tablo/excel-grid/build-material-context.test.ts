@@ -78,7 +78,8 @@ describe('extractCapFromText — kesrin paydasi tam sayi inc DEGILDIR', () => {
     ['Küresel Vana 3/4"', 'dn20'],
     ['¾"', 'dn20'],
     ['1¼"', 'dn32'],
-    ['TE 1" x 3/4"', 'dn20'],
+    // P2 kurali (05.10): incte de ILK olcu asil hat capidir (inegal te / redüksiyon)
+    ['TE 1" x 3/4"', 'dn25'],
   ])('%s → %s', (metin, cap) => {
     expect(extractCapFromText(metin)).toBe(cap);
   });
@@ -87,7 +88,7 @@ describe('extractCapFromText — kesrin paydasi tam sayi inc DEGILDIR', () => {
     expect(extractCapFromText('Vana 1"')).toBe('dn25');
     expect(extractCapFromText('DN 25 vana')).toBe('dn25');
     expect(extractCapFromText('Dirsek 3/4')).toBe('dn20');
-    expect(extractCapFromText('3/4" x 1"')).toBe('dn25');
+    expect(extractCapFromText('3/4" x 1"')).toBe('dn20'); // P2 kurali: ILK olcu
     expect(extractCapFromText('olcusuz satir')).toBeNull();
     // cok haneli payda: 5/16"nin 6"si (dn150) okunmaz — tabloda 5/16 yok, cap YOK
     expect(extractCapFromText('Civata 5/16"')).toBeNull();

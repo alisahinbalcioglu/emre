@@ -131,16 +131,16 @@ async function tekFiyatiPanoyaAlVeTeklifeGec(page: Page) {
   await moduAyarla(page, 'quote');
 }
 
-// ⚠ KARANTINA (04.10, koordinator karari — kararsiz test kurali: adiyla).
-// OLCUM (kapinin kendi komutu, `--repeat-each`): mevcut kodda 16'da 1, 8'de 1;
-// D14 degisikligi OLMADAN (HEAD) da dustu — P3 duzeltmelerinden bagimsiz.
-// Belirti: ↓ ile alt satira gectikten sonra yazilan degerin TAMAMI kayboluyor
-// ("400" ya da "500" hucrede bos); eski "ilk karakter kaybi" sinifinin agir
-// hali. Kok adres: ExcelGrid.tsx editor ↓/↑ gezinmesi (~2404: stopEditing →
-// ensureIndexVisible → setFocusedCell + rAF ikinci odak). Kok duzeltme AYRI
-// IS (sahibi Emre'nin kararinda). CI Playwright kosmuyor; karantina yalniz
-// yerel e2e kapisinin anlamli kalmasi icin. Duzeltilince `test.fixme` → `test`.
-test.fixme('KP17 ★ EDITORDE ↓ ile alt satira gecis — "300 ↓ 400 ↓ 500" ritmi', async ({ page }) => {
+// KARANTINA KALKTI (05.10; 04.10'da adiyla alinmisti: 16'da 1, 8'de 1).
+// KOK NEDEN BULUNDU VE DUZELDI (05.10): her hucre isleminin ardindan ozet
+// (pinned) satirlari `pinnedBottomRowData` prop'undan YENIDEN veriliyordu; AG Grid
+// bunu uygularken o arada ACILMIS duzenleyiciyi kapatiyordu (zaman cizelgesi:
+// "5" duzenleyiciyi acti, "0" yazildi, ~80 ms sonra tussuz odak hucreye dondu).
+// AG Grid'in kendi Enter gezinmesi de ayni oranda kaybediyordu. Duzeltme:
+// ExcelGrid `ozetSatirlariniYaz` — yapi ayniysa ozet satirlari YERINDE
+// (`rowNode.setData`). Olcum (makine hizi, 20 tekrar): ↓ 13 → 0, Enter 11 → 0.
+// Kapilar: KP17, KP29, KP33 (belirlenimci), KP34 (insan hizi).
+test('KP17 ★ EDITORDE ↓ ile alt satira gecis — "300 ↓ 400 ↓ 500" ritmi', async ({ page }) => {
   // Kullanicinin cumlesi: "300 tl girdik, hemen alt satira yon tuslari ile
   // gecmek istiyorum ancak olmuyor; hucreden ciktigimda calisiyor."
   await moduAyarla(page, 'quote');
@@ -169,6 +169,41 @@ test.fixme('KP17 ★ EDITORDE ↓ ile alt satira gecis — "300 ↓ 400 ↓ 500"
   await expect(page.locator('[row-index="2"] [col-id="_matToplam"]')).toHaveText(/85\.800/);
   await expect(page.locator('[row-index="3"] [col-id="_matToplam"]')).toHaveText(/107\.200/);
   await expect(page.locator('[row-index="4"] [col-id="_matToplam"]')).toHaveText(/51\.000/);
+});
+
+test('KP33 ★ ↓ sonrasi acilan duzenleyici OZET TAZELEMESINDE kapanmaz (belirlenimci)', async ({ page }) => {
+  // Eski kodda islemin ardindan ozet satirlari ~50-100 ms icinde YENIDEN veriliyor ve
+  // o arada acilan duzenleyiciyi kapatiyordu. Ilk rakam HEMEN yazilir (duzenleyici
+  // acilir), 300 ms beklenir (tazeleme kesin araya girer), kalan yazilir: eski kodda
+  // "5" duzenleyiciyle birlikte gider, kalan "00" yeni duzenleyiciye duser.
+  await moduAyarla(page, 'quote');
+  const h2 = page.locator('[row-index="2"] [col-id="_matBirim"]');
+  const h3 = page.locator('[row-index="3"] [col-id="_matBirim"]');
+  await h2.dblclick();
+  await page.keyboard.type('300');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('5');
+  await page.waitForTimeout(300);
+  await page.keyboard.type('00');
+  await page.keyboard.press('Enter');
+  await expect(h3).toHaveText(/500/);
+  // Ozet satiri YERINDE de dogru tazelendi: 286×300 + 268×500 = 85.800 + 134.000
+  await expect(page.locator('.ag-floating-bottom [row-index="b-0"] [col-id="_matToplam"]')).toHaveText(/219\.800/);
+});
+
+test('KP34 ★ INSAN HIZINDA "300 ↓ 400 ↓ 500" (tus arasi 80-150 ms) deger kaybetmez', async ({ page }) => {
+  await moduAyarla(page, 'quote');
+  const bekle = () => page.waitForTimeout(80 + Math.random() * 70);
+  const yaz = async (m: string) => { for (const ch of m) { await page.keyboard.press(ch); await bekle(); } };
+  const h = (r: number) => page.locator(`[row-index="${r}"] [col-id="_matBirim"]`);
+  await h(2).dblclick();
+  await bekle();
+  await yaz('300'); await page.keyboard.press('ArrowDown'); await bekle();
+  await yaz('400'); await page.keyboard.press('ArrowDown'); await bekle();
+  await yaz('500'); await page.keyboard.press('Enter');
+  await expect(h(2)).toHaveText(/300/);
+  await expect(h(3)).toHaveText(/400/);
+  await expect(h(4)).toHaveText(/500/);
 });
 
 test('KP18 ★ EDITORDE ↑ yukari gider; ←/→ metin imlecinde KALIR', async ({ page }) => {
@@ -429,15 +464,9 @@ test('KP28 ★ KUTUPHANE IKIZI: secili araliga dagitim orada da calisir', async 
   }
 });
 
-// ⚠ KARANTINA (05.10, koordinator karari — kararsiz test kurali: adiyla).
-// OLCUM (kapinin kendi komutu, `--repeat-each=15`): kutuphane doviz neti dalinda
-// 3/15, HEAD duzenek + ExcelGrid ile (degisiklik geri alinmis) 1/15 dustu —
-// degisiklikten bagimsiz. Belirti KP17 ile ayni: hucre BOS kaliyor (yazilan 300
-// de 400 de kayboluyor). Kok adres KP17 notundaki: ExcelGrid editor ↓/↑
-// gezinmesi (stopEditing → setFocusedCell + rAF ikinci odak). Insan hizinda
-// deger kaybi olup olmadigi AYRICA olculuyor (koordinator, 05.10); kok duzeltme
-// o olcume gore siralanir. Duzeltilince `test.fixme` → `test`.
-test.fixme('KP29 ★ EDITORDE son veri satirinda ↓ — rakamlar AYNI hucrede birlesmez', async ({ page }) => {
+// KARANTINA KALKTI (05.10; ayni gun adiyla alinmisti: 15'te 3 / HEAD 15'te 1).
+// Kok neden ve duzeltme KP17 notunda (ozet satirlari yerinde).
+test('KP29 ★ EDITORDE son veri satirinda ↓ — rakamlar AYNI hucrede birlesmez', async ({ page }) => {
   // Sinirda editor acik birakilsaydi kullanici ↓ basip yazmaya devam edince
   // yeni rakamlar eski degerin ucuna eklenirdi (300 ↓ 400 → "300400").
   await moduAyarla(page, 'quote');
