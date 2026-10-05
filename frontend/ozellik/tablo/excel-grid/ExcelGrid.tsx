@@ -1340,6 +1340,14 @@ function FirmaDropdown(props: ICellRendererParams & {
     yazVeriLab(node, '_labAdaySayisi', null);
     if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(hane));
     if (laborTotalField) node.setDataValue(laborTotalField, total.toFixed(hane));
+    // C10 (P4b Parti 3): `_labKurBilgi` kolonsuz alan — fiyat metni AYNI kalirsa
+    // (kur bayatladi ama degeri degismedi, ayni firma yeniden secildi) yukaridaki
+    // setDataValue hucreyi zorla cizmez, bayat kur seridi gorunmezdi. Malzeme
+    // ikizi bunu `yazVeri`nin kolonsuz-alan tazelemesiyle aliyor; burada TEK
+    // hucre, yazimin sonunda.
+    try {
+      if (laborUnitPriceField) api?.refreshCells({ rowNodes: [node], columns: [laborUnitPriceField], force: true });
+    } catch { /* grid gitti */ }
     console.log(`[FirmaDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice}, qty=${qty}`);
   };
 
@@ -4312,16 +4320,21 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           && field === data.columnRoles.laborUnitPriceField;
         const malzemeFiyatKolonu = field === data.columnRoles.materialUnitPriceField;
         if (malzemeFiyatKolonu || iscilikFiyatKolonu) {
+          // C10 (P4b Parti 3): bayat kur isareti — kur TARAF birimiyle BIRLIKTE
+          // verilir: karisik kipte dovizde kalan hucre kurla hesaplanmadi
+          // (`_matPB`/`_labPB` USD/EUR → isaret yok; tl kipinde alan yok → TL).
           const girdiden = (d: any): IsaretGirdisi => (malzemeFiyatKolonu
             ? {
               dal: 'malzeme', durum: d?._matStatus, sebep: d?._matSebep,
               adaySayisi: d?._matAdaySayisi, otoVaryant: d?._matAutoVariant, oneri: d?._matSuggestion,
               sayiUyari: d?._sayiUyari?.[field], sayiAlani: 'fiyat', // A2: ice aktarma sayi sinyali
+              kurBilgi: d?._matKurBilgi, tarafBirimi: d?._matPB, saltOkunur: seciciSaltOkunur,
             }
             : {
               dal: 'iscilik', durum: d?._labStatus, sebep: d?._labSebep,
               adaySayisi: d?._labAdaySayisi,
               sayiUyari: d?._sayiUyari?.[field], sayiAlani: 'fiyat', // A2: ikiz
+              kurBilgi: d?._labKurBilgi, tarafBirimi: d?._labPB, saltOkunur: seciciSaltOkunur,
             });
           base.cellStyle = ((params: any) => {
             if (params.node?.rowPinned || !params.data) return { textAlign: 'right' };
