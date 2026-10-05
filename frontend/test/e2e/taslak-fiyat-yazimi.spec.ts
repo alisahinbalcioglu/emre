@@ -220,6 +220,21 @@ test.describe('D5 — elle yazılan fiyat taslağa girer', () => {
   // işçilik için AYRI dal yok — yani aşağıdaki malzeme ölçümü ikizi de kapsar.
   // Ayrıca `yazVeri` ve `yazVeriLab` ikisi de sinyali veriyor (ExcelGrid.tsx).
 
+  test('★ ÇOKLU PARA BİRİMİ F2 KONTROLÜ: tl kipinde elle fiyat taraf birimi YAZMAZ (kayıt verisi değişmez)', async ({ page }) => {
+    // Üretim sayfası F6'ya dek karışık kipi açmaz; yalnız-TL teklifin satır
+    // verisine `_matPB` sızarsa kayıt baytları değişir. Taslak, satırın tam
+    // halini taşıdığı için ölçüt burada.
+    await ac(page);
+    const h = await hucre(page, 0, '_matBirim');
+    await h.dblclick();
+    await page.keyboard.type('250');
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => String((await taslakSatirlari(page, TASLAK_ANAHTARI))?.[0]?._matBirim ?? ''), { timeout: 10_000 }).toMatch(/250/);
+    const satir = (await taslakSatirlari(page, TASLAK_ANAHTARI))?.[0] ?? {};
+    expect('_matPB' in satir, 'tl kipinde _matPB yazildi').toBe(false);
+    expect(String(satir._matToplam)).toBe('2500.0'); // ₺ kurali: 1 hane metni
+  });
+
   test('★ TÜRETİLEN hücre de taşınır: satır toplamı taslakta', async ({ page }) => {
     // Birim fiyat × miktar satır toplamını üretir; o da yerinde yazılır.
     await ac(page);
@@ -232,5 +247,100 @@ test.describe('D5 — elle yazılan fiyat taslağa girer', () => {
       const s = await taslakSatirlari(page, TASLAK_ANAHTARI);
       return String(s?.[0]?._matToplam ?? '');
     }, { timeout: 10_000 }).toMatch(/2500/); // 250 × 10 — LİTERAL
+  });
+});
+
+/**
+ * TASLAK YAZILAMAZSA (Emre kararı 02.10): sessionStorage yazımı başarısız olursa
+ * (kota aşımı) ESKİ taslak SİLİNMEZ, korunur; kullanıcı "Taslak kaydedilemedi"
+ * uyarısı görür. Yazılamayan son değişiklik kaybolur, önceki taslak kalır.
+ * Eski kod catch'te taslağı SİLİYORDU ("bayat restore olmasın") — F5'te
+ * kullanıcı bütün emeğini kaybediyordu, oysa önceki taslak yalnız son
+ * değişikliği eksik bir taslaktı.
+ *
+ * Uyarı DURUM DEĞİŞİNCE bir kez: her yazım denemesinde değil (tost seli yok).
+ * ⚠ Ölçüt DOM'daki tost SAYISI olamaz: tost sınırı 1 (use-toast TOAST_LIMIT),
+ * yeni tost eskisinin YERİNE geçer — sel olsa da DOM 1 gösterir. Her `toast()`
+ * çağrısı YENİ kimlikli öğe ekler; gözlemci eklenen öğeleri sayar.
+ */
+async function yazimiBoz(page: Page, anahtar: string) {
+  await page.evaluate((k) => {
+    const w = window as any;
+    w.__taslakBozuk = true;
+    w.__taslakDeneme = 0;
+    if (!w.__asilSetItem) {
+      w.__asilSetItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key: string, val: string) {
+        if (key === k && w.__taslakBozuk) {
+          w.__taslakDeneme++;
+          throw new DOMException('kota (test)', 'QuotaExceededError');
+        }
+        return w.__asilSetItem.call(this, key, val);
+      };
+    }
+    // Eklenen "Taslak kaydedilemedi" tost öğelerini say (her toast() çağrısı yeni öğe).
+    w.__uyariSayisi = 0;
+    new MutationObserver((kayitlar) => {
+      for (const kayit of kayitlar) kayit.addedNodes.forEach((n) => {
+        if (n instanceof HTMLElement && n.matches('li, [role="status"]') && /Taslak kaydedilemedi/.test(n.textContent ?? '')) w.__uyariSayisi++;
+      });
+    }).observe(document.body, { childList: true, subtree: true });
+  }, anahtar);
+}
+
+async function elleYaz(page: Page, deger: string) {
+  const h = await hucre(page, 0, '_matBirim');
+  await h.dblclick();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type(deger);
+  await page.keyboard.press('Enter');
+  await expect(h).toHaveText(new RegExp(deger));
+}
+
+test.describe('TASLAK YAZILAMAZSA — eski taslak korunur + uyarı bir kez', () => {
+  test('★★ yazım başarısız olunca ÖNCEKİ taslak silinmez', async ({ page }) => {
+    await ac(page);
+    await elleYaz(page, '250');
+    await expect.poll(async () => String((await taslakSatirlari(page, TASLAK_ANAHTARI))?.[0]?._matBirim ?? ''), { timeout: 10_000 }).toMatch(/250/);
+
+    await yazimiBoz(page, TASLAK_ANAHTARI);
+    await elleYaz(page, '300');
+    // FİKSTÜR KANITI: yazım GERÇEKTEN denendi ve başarısız oldu.
+    await expect.poll(() => page.evaluate(() => (window as any).__taslakDeneme), { timeout: 10_000 }).toBeGreaterThan(0);
+    const satirlar = await taslakSatirlari(page, TASLAK_ANAHTARI);
+    expect(satirlar, 'önceki taslak SİLİNDİ').not.toBeNull();
+    expect(String(satirlar?.[0]?._matBirim ?? '')).toMatch(/250/);
+  });
+
+  test('★★ kullanıcı "Taslak kaydedilemedi" uyarısını görür', async ({ page }) => {
+    await ac(page);
+    await yazimiBoz(page, TASLAK_ANAHTARI);
+    await elleYaz(page, '300');
+    await expect(page.getByText('Taslak kaydedilemedi').first()).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('★★ uyarı her denemede değil, durum değişince BİR KEZ (tost seli yok)', async ({ page }) => {
+    await ac(page);
+    await yazimiBoz(page, TASLAK_ANAHTARI);
+    await elleYaz(page, '300');
+    await expect.poll(() => page.evaluate(() => (window as any).__uyariSayisi), { timeout: 10_000 }).toBe(1);
+    await elleYaz(page, '400');
+    // İkinci başarısız denemenin GERÇEKTEN olduğunu bekle (yoksa "1" yanlış sebepten geçer).
+    await expect.poll(() => page.evaluate(() => (window as any).__taslakDeneme), { timeout: 10_000 }).toBeGreaterThan(1);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => (window as any).__uyariSayisi)).toBe(1);
+  });
+
+  test('★ yazım düzelince yeni hal yazılır; SONRAKİ arıza yine bir kez uyarır', async ({ page }) => {
+    await ac(page);
+    await yazimiBoz(page, TASLAK_ANAHTARI);
+    await elleYaz(page, '300');
+    await expect.poll(() => page.evaluate(() => (window as any).__uyariSayisi), { timeout: 10_000 }).toBe(1);
+    await page.evaluate(() => { (window as any).__taslakBozuk = false; });
+    await elleYaz(page, '500');
+    await expect.poll(async () => String((await taslakSatirlari(page, TASLAK_ANAHTARI))?.[0]?._matBirim ?? ''), { timeout: 10_000 }).toMatch(/500/);
+    await page.evaluate(() => { (window as any).__taslakBozuk = true; });
+    await elleYaz(page, '600');
+    await expect.poll(() => page.evaluate(() => (window as any).__uyariSayisi), { timeout: 10_000 }).toBe(2);
   });
 });

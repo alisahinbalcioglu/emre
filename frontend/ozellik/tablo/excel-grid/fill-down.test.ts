@@ -1155,3 +1155,48 @@ describe('D14b — surukle-doldur onceki sorgunun sebebini birakmaz', () => {
     expect(s.geriAl[0].oncekiDegerler._matSebep).toBe('Bu markada bu ürün ailesi yok.');
   });
 });
+
+describe('F2 — coklu para birimi: karisik kipte surukle-doldur KAYNAK birimde yazar', () => {
+  const USD = async () => ({ netPrice: 420, confidence: 'high', kaynakFiyat: { currency: 'USD' as const, net: 10.5 } } as MotorSonucu);
+
+  it('★★ malzeme: birim 10.50 · toplam 10,5 × 3 = 31.50 · _matPB USD · net dovizde', async () => {
+    const h = node(1, 'KÜRESEL VANA DN25', 3, { _marka: 'A' });
+    await fillDown({ hedefler: [h] as any, markaId: 'B', roller: ROLLER, motor: USD, kaynakVaryantTags: null, kaynakLabel: '', karisik: true });
+    expect(h.data.col5).toBe('10.50');
+    expect(h.data.col6).toBe('31.50');
+    expect(h.data._matPB).toBe('USD');
+    expect(h.data._matNetPrice).toBe(10.5);
+  });
+
+  it('★ isçilik ikizi: _labPB', async () => {
+    const h = node(2, 'Montaj', 3, { _firma: 'F1' });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'F2', roller: ROLLER, motor: USD, kaynakVaryantTags: null, kaynakLabel: '', karisik: true,
+      hedefAlanlar: { birimFiyat: '_labBirim', toplam: '_labToplam', status: '_labStatus', kaynakRozeti: '_labKaynak', dal: 'iscilik' },
+    });
+    expect(h.data._labBirim).toBe('10.50');
+    expect(h.data._labPB).toBe('USD');
+  });
+
+  it('★ fiyat yazmayan dal karisik kipte taraf birimini de siler', async () => {
+    const h = node(3, 'KÜRESEL VANA DN25', 3, { _marka: 'A', _matPB: 'USD', col5: '10.50' });
+    await fillDown({
+      hedefler: [h] as any, markaId: 'B', roller: ROLLER, kaynakVaryantTags: null, kaynakLabel: '', karisik: true,
+      motor: async () => ({ netPrice: 0, confidence: 'none', reason: 'yok' } as MotorSonucu),
+    });
+    expect(h.data._matPB).toBeNull();
+  });
+
+  it('★ SD7: taraf birimi geri-alma anliginda', async () => {
+    const h = node(4, 'KÜRESEL VANA DN25', 3, { _marka: 'A', _matPB: 'EUR' });
+    const s = await fillDown({ hedefler: [h] as any, markaId: 'B', roller: ROLLER, motor: USD, kaynakVaryantTags: null, kaynakLabel: '', karisik: true });
+    expect(s.geriAl[0].oncekiDegerler._matPB).toBe('EUR');
+  });
+
+  it('★★ KONTROL: tl kipi bugunku gibi (TL net, 1 hane, birim alani YAZILMAZ)', async () => {
+    const h = node(5, 'KÜRESEL VANA DN25', 3, { _marka: 'A' });
+    await fillDown({ hedefler: [h] as any, markaId: 'B', roller: ROLLER, motor: USD, kaynakVaryantTags: null, kaynakLabel: '' });
+    expect(h.data.col5).toBe('420.0');
+    expect('_matPB' in h.data).toBe(false);
+  });
+});

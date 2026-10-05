@@ -95,3 +95,29 @@ export function kayittanTaslak(
     quoteId: quote.id,
   };
 }
+
+// ══ TASLAK YAZILAMAZSA (Emre karari 02.10) ══════════════════════════════════
+//
+// sessionStorage yazimi basarisiz olursa (kota asimi) ESKI taslak SILINMEZ,
+// korunur; kullanici "Taslak kaydedilemedi" uyarisi gorur. Yazilamayan son
+// degisiklik kaybolur, onceki taslak kalir. Eski kod catch'te taslagi
+// SILIYORDU ("bayat state restore edilmesin") — F5'te kullanicinin TUM emegi
+// gidiyordu; oysa onceki taslak yalniz son degisikligi eksik bir taslakti.
+//
+// Uyari DURUM DEGISINCE bir kez (yazildi/ilk → yazilamadi): yazim her hucre
+// degisiminde (600 ms gecikmeli) ve sayfa gizlenirken denenir — her denemede
+// tost atmak sel olurdu. Yazim duzelince durum sifirlanir; sonraki ariza yine
+// bir kez uyarir. Kapi: test/e2e/taslak-fiyat-yazimi.spec.ts + taslak.test.ts.
+
+export type TaslakYazimDurumu = 'yazildi' | 'yazilamadi';
+
+/** Bu yazim sonucu icin uyari gosterilmeli mi? (yalniz yazilamadi'ya GECISTE) */
+export function taslakUyarisiGerekirMi(onceki: TaslakYazimDurumu | null, simdi: TaslakYazimDurumu): boolean {
+  return simdi === 'yazilamadi' && onceki !== 'yazilamadi';
+}
+
+/** Kullaniciya gosterilen uyari — tek kaynak. */
+export const TASLAK_YAZILAMADI_UYARISI = {
+  title: 'Taslak kaydedilemedi',
+  description: 'Tarayıcının geçici depolama alanı dolu. Son değişiklik taslağa yazılamadı; önceki taslak korunuyor. Kaybetmemek için teklifi kaydedin.',
+} as const;

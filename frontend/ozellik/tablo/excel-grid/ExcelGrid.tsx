@@ -23,6 +23,7 @@ import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, 
 import { isaretStili, isaretTooltip, secimBekliyor, kutuphaneFiyatAyrisimi, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
+import { paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, paraIsaretiniAyikla, PARA_SEMBOLU, birimliToplamlar, fittingBirimli, cokluTutarMetni, type ParaBirimi } from '@/ozellik/fiyat/taraf-para-birimi';
 // FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
 import {
   FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
@@ -288,6 +289,14 @@ interface Props {
    * sayfa onu bir ref + debounce ile karsilar, React render URETILMEZ.
    */
   onFiyatYazildi?: () => void;
+  /**
+   * COKLU PARA BIRIMI (Emre karari 04.10): 'karisik' kipte dovizli kalem KENDI
+   * para biriminde yazilir/gosterilir; birim TARAF basina (`_matPB`/`_labPB`).
+   * Varsayilan 'tl' — bugunku davranis BIREBIR (hicbir birim alani yazilmaz).
+   * ⚠ F2 asamasi: sayfa toplamlari / KAR / fitting (F3) karisik kipi HENUZ
+   * bilmiyor — uretim sayfasi bu bayragi F6'ya dek GECIRMEZ (yalniz harness).
+   */
+  paraBirimiKipi?: 'tl' | 'karisik';
   // library mode'da hangi fiyat alanini kullanir? (material veya labor)
   libraryPriceField?: 'materialUnitPriceField' | 'laborUnitPriceField';
   currencySymbol: string;
@@ -329,8 +338,10 @@ function BrandDropdown(props: ICellRendererParams & {
   sayaciTazele?: () => void;
   /** D5: satira para yazildi (taslak tetigi). */
   paraYazildi?: () => void;
+  /** COKLU PARA BIRIMI F2: karisik kip — fiyat KAYNAK para biriminde yazilir. */
+  karisik?: boolean;
 }) {
-  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, unitField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, onAutoVariantApplied, seciciSaltOkunur, sayaciTazele, paraYazildi, api, node } = props;
+  const { data, brands, onBrandChange, nameField, noField, brandField, quantityField, unitField, materialUnitPriceField, materialTotalField, diameterField, groupVariants, autoVariantEnabled, onAutoVariantApplied, seciciSaltOkunur, sayaciTazele, paraYazildi, karisik, api, node } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
   const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null);
   // HATA RAPORU FIX: popup konumu WRAPPER div'den alinir — onceki triggerRef
@@ -492,28 +503,37 @@ function BrandDropdown(props: ICellRendererParams & {
     paraYazildi?.(); // D5: yerinde yazim taslak efektini tetiklemiyor
   };
 
-  const writePriceToNode = (targetNode: any, netPrice: number, isSuggestion = false, kaynakKur?: any) => {
+  const writePriceToNode = (targetNode: any, netPrice: number, isSuggestion = false, kaynakKur?: any, kaynakFiyat?: any) => {
     const d = targetNode.data;
     const kar = sayiAlani(d._malzKar);
+    // COKLU PARA BIRIMI F2: karisik kipte fiyat KAYNAK para biriminde yazilir
+    // (motor F1 `kaynakFiyat`); doviz 2 hane yukari (karar 4). Kaynak fiyat
+    // yoksa (TL listesi / eski motor) TL neti TRY olarak yazilir. tl kipinde
+    // HICBIR sey degismez — `_matPB` yazilmaz, hane 1.
+    const kf = karisik && kaynakFiyat && Number.isFinite(kaynakFiyat.net) ? kaynakFiyat : null;
+    const net = kf ? kf.net : netPrice;
+    const pb: ParaBirimi = kf ? kf.currency : 'TRY';
+    const hane = karisik ? paraHanesi(pb) : 1;
     // SPEC (fiyat cekirdegi): satis = net×(1+kar), YUKARI 1 hane; toplam = satis×miktar.
-    const finalPrice = hesaplaSatisBirimFiyat(netPrice, kar);
+    const finalPrice = hesaplaSatisBirimFiyat(net, kar, hane);
     const qty = etkinMiktar(d, quantityField, unitField); // UY2
-    const total = hesaplaSatirToplam(finalPrice, qty);
+    const total = hesaplaSatirToplam(finalPrice, qty, hane);
 
     // AG-Grid sutun tipi string — number degeri reddediyor (warning #135)
-    yazVeri(targetNode, '_matNetPrice', netPrice);
+    yazVeri(targetNode, '_matNetPrice', net);
+    if (karisik) yazVeri(targetNode, '_matPB', pb);
     // KUR DONMASI (06.08): dovizli kaynaktan gelen fiyatin kuru satirla
     // birlikte KAYDEDILIR (sheets JSON'a aynen girer). TRY'de null.
     // Kolon degil veri alani — dogrudan mutasyon yeterli (emitRows tasir).
     d._matKurBilgi = kaynakKur ?? null;
     yazVeri(targetNode, '_matSuggestion', isSuggestion);
     yazVeri(targetNode, '_matStatus', ''); // eslesme geldi — bekleme isareti kalkar
-    if (materialUnitPriceField) targetNode.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
-    if (materialTotalField) targetNode.setDataValue(materialTotalField, total.toFixed(1));
+    if (materialUnitPriceField) targetNode.setDataValue(materialUnitPriceField, finalPrice.toFixed(hane));
+    if (materialTotalField) targetNode.setDataValue(materialTotalField, total.toFixed(hane));
 
     console.log(`[BrandDropdown] row=${d._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice}, qty=${qty}, total=${total}, suggestion=${isSuggestion}`);
   };
-  const writePrice = (netPrice: number, isSuggestion = false, kaynakKur?: any) => writePriceToNode(node, netPrice, isSuggestion, kaynakKur);
+  const writePrice = (netPrice: number, isSuggestion = false, kaynakKur?: any, kaynakFiyat?: any) => writePriceToNode(node, netPrice, isSuggestion, kaynakKur, kaynakFiyat);
 
   /**
    * D1 (30.09, P0) — FIYAT YAZMAYAN DAL ESKI FIYATI SILER (writePriceToNode'un tersi).
@@ -537,6 +557,7 @@ function BrandDropdown(props: ICellRendererParams & {
   const fiyatiTemizle = () => {
     yazVeri(node, '_matNetPrice', 0);
     node.data._matKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+    if (karisik) node.data._matPB = null; // F2: fiyat yoksa taraf birimi de yok
     yazVeri(node, '_matSuggestion', false);
     yazVeri(node, '_matAutoVariant', null);
     node.data._matVariantLabel = null;
@@ -651,7 +672,7 @@ function BrandDropdown(props: ICellRendererParams & {
 
     // Tek eslesme — fiyat yaz ('suggestion' ise sari isaretle)
     if (result && result.netPrice > 0) {
-      writePrice(result.netPrice, result.confidence === 'suggestion', (result as any).kaynakKur);
+      writePrice(result.netPrice, result.confidence === 'suggestion', (result as any).kaynakKur, (result as any).kaynakFiyat);
       // PRD v3.0 Bolum B: kaynak satir KENDI varyant kimligini kaydeder —
       // SURUKLE/CIFT-TIK bunu tasir. Toggle kalkti (autoVariantEnabled=false):
       // yayilim yalniz acik niyetle → kaynak varyanti HER tek-eslesmede
@@ -760,7 +781,7 @@ function BrandDropdown(props: ICellRendererParams & {
         const det = buildMaterialContextDetailed(api, n.rowIndex ?? 0, nameField, noField, brandField, quantityField, diameterField);
         const r = await onBrandChange(d._rowIdx, d._marka, det.name || nm, { variantTags: variant.tags, silent: true });
         if (r && r.autoVariant && r.netPrice > 0) {
-          writePriceToNode(n, r.netPrice, true, (r as any).kaynakKur);
+          writePriceToNode(n, r.netPrice, true, (r as any).kaynakKur, (r as any).kaynakFiyat);
           yazVeri(n, '_matAutoVariant', variant.label); // V4.1 rozeti
           yazVeri(n, '_matVariantMode', 'auto');
           // Fill-handle kaynagi olabilsin diye varyant kimligi satirda tasinir
@@ -783,7 +804,7 @@ function BrandDropdown(props: ICellRendererParams & {
     const brandId = data._marka as string | null;
     // Kullanici popup'tan bilincli sectiginde 'oneri' degil kesin sayilir.
     // V4.2: popup'tan secim = MANUEL — grup degisse bile uzerine yazilmaz.
-    writePrice(c.netPrice, false, (c as any).kaynakKur);
+    writePrice(c.netPrice, false, (c as any).kaynakKur, (c as any).kaynakFiyat);
     yazVeri(node, '_matVariantMode', 'manual');
     yazVeri(node, '_matAutoVariant', null);
     // Duzeltme Talebi §4.2: SECIMIN KIMLIGI SATIRDA TASINIR — fill-handle
@@ -869,7 +890,7 @@ function BrandDropdown(props: ICellRendererParams & {
   // M3: alternatif marka secimi — marka + fiyat BIRLIKTE atanir, satir manuel
   const handleAlternativeSelect = (a: BrandAlternative) => {
     node.setDataValue('_marka', a.brandId);
-    writePrice(a.netPrice, false, (a as any).kaynakKur);
+    writePrice(a.netPrice, false, (a as any).kaynakKur, (a as any).kaynakFiyat);
     yazVeri(node, '_matVariantMode', 'manual');
     yazVeri(node, '_matAutoVariant', null);
     setAlternatives(null);
@@ -1227,11 +1248,13 @@ function FirmaDropdown(props: ICellRendererParams & {
   sayaciTazele?: () => void;
   /** D5 ikizi: satira para yazildi. */
   paraYazildi?: () => void;
+  /** COKLU PARA BIRIMI F2 ikizi: karisik kip. */
+  karisik?: boolean;
 }) {
   const {
     data, laborFirms, sheetDiscipline, laborEnabled, onFirmaChange,
     nameField, noField, brandField, quantityField, unitField, laborUnitPriceField, laborTotalField,
-    diameterField, seciciSaltOkunur, sayaciTazele, paraYazildi,
+    diameterField, seciciSaltOkunur, sayaciTazele, paraYazildi, karisik,
     api, node,
   } = props;
   const [candidates, setCandidates] = React.useState<MatchCandidate[] | null>(null);
@@ -1292,14 +1315,21 @@ function FirmaDropdown(props: ICellRendererParams & {
     paraYazildi?.(); // D5 ikizi
   };
 
-  const writeLaborPrice = (netPrice: number, kaynakKur?: any) => {
+  const writeLaborPrice = (netPrice: number, kaynakKur?: any, kaynakFiyat?: any) => {
     const kar = sayiAlani(data._iscKar);
+    // F2 IKIZI (malzeme writePriceToNode ile ayni kural): karisik kipte
+    // KAYNAK para birimi, doviz 2 hane; tl kipinde hicbir sey degismez.
+    const kf = karisik && kaynakFiyat && Number.isFinite(kaynakFiyat.net) ? kaynakFiyat : null;
+    const net = kf ? kf.net : netPrice;
+    const pb: ParaBirimi = kf ? kf.currency : 'TRY';
+    const hane = karisik ? paraHanesi(pb) : 1;
     // SPEC: satis = net×(1+kar) yukari 1 hane; toplam = satis×miktar.
-    const finalPrice = hesaplaSatisBirimFiyat(netPrice, kar);
+    const finalPrice = hesaplaSatisBirimFiyat(net, kar, hane);
     const qty = etkinMiktar(data, quantityField, unitField); // UY2
-    const total = hesaplaSatirToplam(finalPrice, qty);
+    const total = hesaplaSatirToplam(finalPrice, qty, hane);
 
-    yazVeriLab(node, '_labNetPrice', netPrice);
+    yazVeriLab(node, '_labNetPrice', net);
+    if (karisik) yazVeriLab(node, '_labPB', pb);
     // KUR DONMASI: malzeme ikiziyle AYNI kural (ikizi unutma dersi)
     node.data._labKurBilgi = kaynakKur ?? null;
     // ISARET: fiyat geldi → bekleme kalkar (ExcelGrid.tsx:322 malzeme ikizi).
@@ -1308,8 +1338,8 @@ function FirmaDropdown(props: ICellRendererParams & {
     yazVeriLab(node, '_labStatus', '');
     yazVeriLab(node, '_labSebep', null);
     yazVeriLab(node, '_labAdaySayisi', null);
-    if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(1));
-    if (laborTotalField) node.setDataValue(laborTotalField, total.toFixed(1));
+    if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, finalPrice.toFixed(hane));
+    if (laborTotalField) node.setDataValue(laborTotalField, total.toFixed(hane));
     console.log(`[FirmaDropdown] row=${data._rowIdx}, net=${netPrice}, kar=${kar}%, final=${finalPrice}, qty=${qty}`);
   };
 
@@ -1319,6 +1349,7 @@ function FirmaDropdown(props: ICellRendererParams & {
   const fiyatiTemizleLab = () => {
     yazVeriLab(node, '_labNetPrice', 0);
     node.data._labKurBilgi = null; // kur donmasi: fiyatla birlikte temizlenir
+    if (karisik) node.data._labPB = null; // F2 ikizi
     node.data._labVariantTags = null; // Y3 ikizi: eski firmanin kalem kimligi tohum olmaz
     if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, '');
     if (laborTotalField) node.setDataValue(laborTotalField, '');
@@ -1377,7 +1408,7 @@ function FirmaDropdown(props: ICellRendererParams & {
     }
 
     if (result && result.netPrice > 0) {
-      writeLaborPrice(result.netPrice, (result as any).kaynakKur);
+      writeLaborPrice(result.netPrice, (result as any).kaynakKur, (result as any).kaynakFiyat);
       // L7: tek-eslesme kaynagi da varyant kimligini SAKLAR — surukleme
       // kalem cinsini (kaynakli/yivli) tasiyabilsin (malzeme 26d8448 dersi).
       if (result.variantTags && result.variantTags.length > 0) {
@@ -1407,7 +1438,7 @@ function FirmaDropdown(props: ICellRendererParams & {
 
   const handleCandidateSelect = async (c: MatchCandidate) => {
     const firmaId = data._firma as string | null;
-    writeLaborPrice(c.netPrice, (c as any).kaynakKur);
+    writeLaborPrice(c.netPrice, (c as any).kaynakKur, (c as any).kaynakFiyat);
     // L7: secimin kimligi satirda tasinir — fill-handle kaynak okur
     node.data._labVariantTags = c.variantTags && c.variantTags.length > 0 ? c.variantTags : null;
     setCandidates(null);
@@ -1445,7 +1476,7 @@ function FirmaDropdown(props: ICellRendererParams & {
   // L5: alternatif firma secimi — firma + fiyat BIRLIKTE atanir
   const handleAlternativeSelect = (a: BrandAlternative) => {
     node.setDataValue('_firma', a.brandId); // alan adi marka tasir, deger FIRMA
-    writeLaborPrice(a.netPrice, (a as any).kaynakKur);
+    writeLaborPrice(a.netPrice, (a as any).kaynakKur, (a as any).kaynakFiyat);
     setAlternatives(null);
     setPopupPos(null);
     console.log(`[FirmaDropdown] L5 alternatif firma secildi: ${a.brandName} → "${a.materialName}" = ${a.netPrice}`);
@@ -1859,8 +1890,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   onAutoVariantChange,
   onAutoVariantApplied,
   floorFields,
+  paraBirimiKipi = 'tl',
 }, ref) {
   const gridRef = useRef<AgGridReact<ExcelRowData>>(null);
+  const karisik = paraBirimiKipi === 'karisik';
 
   // V4: grup (baslik) → secilen varyant. Cell renderer'lar paylasir.
   const groupVariantsRef = useRef<GroupVariantMap>({});
@@ -3200,6 +3233,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         (srcDet.header ? groupVariantsRef.current[srcDet.header]?.label : undefined) ?? '';
 
       const sonuc = await fillDown({
+        karisik, // F2: karisik kipte fiyat kaynak para biriminde
         hedefler: result.targetRowNodes,
         markaId: result.value,
         roller: data.columnRoles as any,
@@ -3255,6 +3289,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           : null;
 
       const sonuc = await fillDown({
+        karisik, // F2: karisik kipte fiyat kaynak para biriminde
         hedefler: result.targetRowNodes,
         markaId: result.value,
         roller: data.columnRoles as any,
@@ -3391,7 +3426,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
 
     console.log(`[FillHandle] Complete: ${result.targetRowNodes.length} rows filled, field=${result.field}`);
   }, [data.columnRoles, onBrandChange, onFirmaChange, onRowDataChange, applyDiscountBulk,
-      autoVariantEnabled, onAutoVariantChange, onAutoVariantApplied, sayaciTazele, paraYazildi]);
+      autoVariantEnabled, onAutoVariantChange, onAutoVariantApplied, sayaciTazele, paraYazildi, karisik]);
 
   useFillHandle({
     gridRef,
@@ -3435,9 +3470,31 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     api.forEachNode((n) => { if (n.data) satirlar.push(n.data); });
     // Yazilacak hucreler saf fonksiyondan (fitting.ts, testli); burada yalniz
     // DEGISEN hucre yazilir.
-    const hucreler = fittingHucreleri(satirlar, data.columnRoles as any);
+    let hucreler = fittingHucreleri(satirlar, data.columnRoles as any);
+    // ── F3 (karar 2): KARISIK KIPTE fitting tutari BIRIM BASINA ─────────────
+    // Kapsam karisiksa her birim AYRI tutar uretir; tek sayili hucre iki birimi
+    // tasiyamaz. Toplam hucreleri BOSALTILIR, birim basina tutarlar satir
+    // verisinde (`_fittingBirimli`, kolon degil) — bicimlendirici "₺x + $y"
+    // cizer, sayfa toplami (`birimliToplamlar`) kapsamdan yeniden hesaplar.
+    const fittingYenilenen: any[] = [];
+    if (karisik) {
+      const Rk = data.columnRoles as any;
+      const toplamAlanlari = new Set([Rk.materialTotalField, Rk.laborTotalField, Rk.grandTotalField].filter(Boolean));
+      hucreler = hucreler.map((h) => (toplamAlanlari.has(h.alan) ? { ...h, deger: '' } : h));
+      for (const r of satirlar) {
+        if (!r._fitting) continue;
+        const node = api.getRowNode(String(r._rowIdx));
+        if (!node?.data) continue;
+        const yeni = fittingBirimli(node.data, satirlar, Rk);
+        if (JSON.stringify((node.data as any)._fittingBirimli ?? null) !== JSON.stringify(yeni)) {
+          (node.data as any)._fittingBirimli = yeni;
+          fittingYenilenen.push(node);
+        }
+      }
+    }
     fittingYaziyorRef.current = true;
     try {
+      if (fittingYenilenen.length) api.refreshCells({ rowNodes: fittingYenilenen, force: true });
       for (const h of hucreler) {
         const node = api.getRowNode(String(h.rowIdx));
         if (!node?.data || String(node.data[h.alan] ?? '') === h.deger) continue;
@@ -3462,7 +3519,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     }
     // Tul kimlik tabanli (row-id); yine de kapsam/hucre degisimi sonrasi tazele
     if (fittingModuRef.current) fittingTulu(fittingModuRef.current.rowIdx);
-  }, [data.columnRoles, enableStructureEdit, fittingTulu, mode]);
+  }, [data.columnRoles, enableStructureEdit, fittingTulu, mode, karisik]);
 
   // Pinned bottom "GENEL TOPLAM" satirini gunceller — tum data row'larin grand toplamini alir
   const updatePinnedBottom = useCallback(() => {
@@ -3484,6 +3541,42 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // binecek — kar icin ikinci bir hesap yeri ACILMAZ.
     const satirlar: any[] = [];
     gridRef.current.api.forEachNode((node) => { if (node.data) satirlar.push(node.data); });
+    // ── COKLU PARA BIRIMI F3: KARISIK KIP — BIRIM BASINA ALT SATIRLAR ────────
+    // Her birim kendi "GENEL TOPLAM ₺/$/€" ve "KÂR ₺/$/€" satirini alir; dolar
+    // liraya EKLENMEZ. Degerler birimin kendisinde (cevrim yok — `_gosterim`
+    // ham degeri tasir), sembol satirin `_currency`sinden (bicimlendirici zaten
+    // okur). Hesap TEK yerden: `birimliToplamlar` (taraf-para-birimi.ts).
+    if (karisik) {
+      const R = data.columnRoles as any;
+      const genelAlanK = R.grandTotalField ?? R.grandUnitPriceField;
+      const kovalar = birimliToplamlar(satirlar, R);
+      const toplamSatirlari = kovalar.map(({ pb, ozet: oz }, i) => {
+        const s: any = { _rowIdx: -1 - i * 10, _isDataRow: false, _isHeaderRow: false, _isPinnedTotal: true, _currency: pb };
+        if (nameField) s[nameField] = `GENEL TOPLAM ${PARA_SEMBOLU[pb]}`;
+        if (materialTotalField) s[materialTotalField] = oz.matToplam.toFixed(PARA_ONDALIK);
+        if (laborTotalField) s[laborTotalField] = oz.labToplam.toFixed(PARA_ONDALIK);
+        if (grandTotalField) s[grandTotalField] = oz.genelToplam.toFixed(PARA_ONDALIK);
+        if (!grandTotalField && grandUnitPriceField) s[grandUnitPriceField] = oz.genelToplam.toFixed(PARA_ONDALIK);
+        if (grandUnitPriceField && grandTotalField) s[grandUnitPriceField] = '';
+        s._gosterim = { oran: conversionRate };
+        if (materialTotalField) s._gosterim[materialTotalField] = oz.matToplam;
+        if (laborTotalField) s._gosterim[laborTotalField] = oz.labToplam;
+        if (genelAlanK) s._gosterim[genelAlanK] = oz.genelToplam;
+        return s;
+      });
+      if (mode === 'library') { setPinnedBottomRow(toplamSatirlari); return; }
+      const karSatirlari = kovalar.map(({ pb, ozet: oz }, i) => {
+        const k: any = karSatiri(oz, R, nameField);
+        k._rowIdx = -2 - i * 10;
+        k._currency = pb;
+        if (nameField) k[nameField] = `KÂR ${PARA_SEMBOLU[pb]}`;
+        k._gosterim = { oran: conversionRate };
+        for (const alan of [materialTotalField, laborTotalField, genelAlanK]) if (alan) k._gosterim[alan] = k[alan];
+        return k;
+      });
+      setPinnedBottomRow([...toplamSatirlari, ...karSatirlari]);
+      return;
+    }
     const ozet = sayfaToplamlari(satirlar, data.columnRoles as any);
     // A4b: EKRAN BIRIMINDEKI toplam satir satir cevrilir (cikti ile ayni kurus).
     // Standart alanlar TL kalir; cevrilmis degerler `_gosterim`de, uretildigi carpanla.
@@ -3536,7 +3629,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     } else {
       setPinnedBottomRow([pinnedRow]);
     }
-  }, [data.columnRoles, mode, fittingSatirlariniYenile, conversionRate]);
+  }, [data.columnRoles, mode, fittingSatirlariniYenile, conversionRate, karisik]);
   updatePinnedBottomRef.current = updatePinnedBottom;
   // Kur yuklenince / birim degisince pinned YENIDEN kurulur: data.rowData efekti
   // kendi yayinimizda (sonYayinRef) erken doner, ona guvenilemez.
@@ -3678,6 +3771,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   // Hucre ESKI degerinde kalir; toast olmadan kullanici yazdiginin neden
   // "kayboldugunu" goremezdi.
   const bekleyenSayiUyarisiRef = useRef<string | null>(null);
+  // F2 (karar 3): karisik kipte elle yazilan fiyat metnindeki birim ("$12").
+  // Ayristirici ham metni gorur, deger degisim dali birimi buradan alir.
+  const elleBirimRef = useRef<{ node: unknown; alan: string; pb: ParaBirimi } | null>(null);
   const sayiUyarisiniGoster = useCallback((e?: { newValue?: unknown }) => {
     const u = bekleyenSayiUyarisiRef.current;
     bekleyenSayiUyarisiRef.current = null;
@@ -3772,6 +3868,18 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         : [roller.materialUnitPriceField, roller.laborUnitPriceField, roller.materialTotalField, roller.laborTotalField]
           .includes(c.field) ? 'fiyat' : null;
       if (sayiKolonTuru) base.valueParser = sayiHucreParser(sayiKolonTuru, bekleyenSayiUyarisiRef);
+      // F2 (karar 3): karisik kipte BIRIM fiyat hucresi "$12"/"₺12"/"€12" kabul
+      // eder — isaret birimi secer, sayi kismi AYNI insan sinirindan (yukaridaki
+      // ayristirici) gecer. tl kipinde ayristirici degismez.
+      if (karisik && base.valueParser && (c.field === roller.materialUnitPriceField || c.field === roller.laborUnitPriceField)) {
+        const temelParser = base.valueParser as (p: any) => unknown;
+        base.valueParser = (p: any) => {
+          const ham = String(p.newValue ?? '');
+          const pb = elleGirilenPB(ham);
+          elleBirimRef.current = pb ? { node: p.node, alan: c.field, pb } : null;
+          return temelParser(pb ? { ...p, newValue: paraIsaretiniAyikla(ham) } : p);
+        };
+      }
       if (sayiKolonTuru === 'miktar') {
         // E (kopyala gidis-donus): kopya bu bicimlendiriciden okunur. Ham "12.375"
         // panoya gidip 12375 yapistiriliyordu; TR bicimi ("12,375") iki yonde tek anlamli.
@@ -3923,6 +4031,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             seciciSaltOkunur={seciciSaltOkunur}
             sayaciTazele={sayaciTazele}
             paraYazildi={paraYazildi}
+            karisik={karisik}
             nameField={data.columnRoles.nameField}
             noField={data.columnRoles.noField}
             brandField={data.columnRoles.brandField}
@@ -3957,6 +4066,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             seciciSaltOkunur={seciciSaltOkunur}
             sayaciTazele={sayaciTazele}
             paraYazildi={paraYazildi}
+            karisik={karisik}
             laborFirms={laborFirms}
             sheetDiscipline={sheetDiscipline}
             laborEnabled={laborEnabled}
@@ -4121,8 +4231,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             // (kur yeni degisti, pinned henuz kurulmadi) bugunku TL × oran'a duser.
             const gk = (params.data as any)?._gosterim;
             const alanK = params.colDef?.field as string;
-            if (gk && gk.oran === conversionRate && typeof gk[alanK] === 'number') return `${currencySymbol}${paraBicim(gk[alanK], 1)}`;
-            return `${currencySymbol}${paraBicim(kv, conversionRate)}`;
+            // F3: karisik kipte KAR satiri birim basina — sembol satirin `_currency`si.
+            const karSym = (params.data as any)?._currency ? (ROW_CURRENCY_SYMBOL[(params.data as any)._currency] ?? currencySymbol) : currencySymbol;
+            if (gk && gk.oran === conversionRate && typeof gk[alanK] === 'number') return `${karSym}${paraBicim(gk[alanK], 1)}`;
+            return `${karSym}${paraBicim(kv, conversionRate)}`;
           }
           // ⚠ `parseFloat(String(v))` DEGIL — `sayiOku` (E2E'de olculdu):
           // TR klavyede "1875,5" yazan kullanicinin degeri hucrede VIRGULLU
@@ -4131,6 +4243,36 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           // ₺536.393). Kullanici ekranda CARPIMI TUTMAYAN iki sayi goruyordu.
           // `sayiOku` virgulu cozer ve isareti korur (sayiAlani BURADA olmaz:
           // negatifi 0 gostermek KAR satirindaki zarari gizlerdi).
+          // ── COKLU PARA BIRIMI F2: KARISIK KIP, VERI SATIRI ───────────────
+          // Hucre degeri TARAFIN kendi biriminde (cevrim YOK, `conversionRate`
+          // uygulanmaz); sembol tarafin birimi. Toplam / Toplam Birim Fiyat
+          // PARCALARDAN: ayni birimde tek tutar, farkli birimde iki tutar yan
+          // yana (karar 1). Bu hucrelerin SAKLI degeri karisik kipte anlamsizdir
+          // (F4 kayit/F5 cikti parcalardan okur). Pinned satirlar F3'te.
+          if (karisik && !params.node?.rowPinned && (params.data as any)?._isDataRow) {
+            const dK = params.data as any;
+            const R = data.columnRoles;
+            const alanK2 = params.colDef?.field as string;
+            // F3 (karar 2): fitting satiri birim basina tutar tasir.
+            if (dK._fitting && dK._fittingBirimli) {
+              const fb = dK._fittingBirimli as { mat: Array<{ pb: ParaBirimi; toplam: number }>; lab: Array<{ pb: ParaBirimi; toplam: number }> };
+              const parca = (l: Array<{ pb: ParaBirimi; toplam: number }>) => l.map((x) => ({ pb: x.pb, tutar: x.toplam }));
+              if (alanK2 === R.materialTotalField) return cokluTutarMetni(parca(fb.mat)) ?? '';
+              if (alanK2 === R.laborTotalField) return cokluTutarMetni(parca(fb.lab)) ?? '';
+              if (alanK2 === R.grandTotalField) return cokluTutarMetni([...parca(fb.mat), ...parca(fb.lab)]) ?? '';
+              return '';
+            }
+            if (alanK2 === R.grandTotalField || alanK2 === R.grandUnitPriceField) {
+              const toplamMi = alanK2 === R.grandTotalField;
+              const m = sayiOku(dK[(toplamMi ? R.materialTotalField : R.materialUnitPriceField) as string]);
+              const l = sayiOku(dK[(toplamMi ? R.laborTotalField : R.laborUnitPriceField) as string]);
+              return karmaToplamMetni(m, tarafPB(dK, 'malzeme'), l, tarafPB(dK, 'iscilik')) ?? '';
+            }
+            const vK = sayiOku(params.value);
+            if (vK === null || vK === 0) return '';
+            const dal = alanK2 === R.laborUnitPriceField || alanK2 === R.laborTotalField ? 'iscilik' : 'malzeme';
+            return `${PARA_SEMBOLU[tarafPB(dK, dal)]}${paraBicim(vK, 1)}`;
+          }
           const v = sayiOku(params.value) ?? NaN;
           if (isNaN(v)) return '';
           // Pinned bottom satirinda 0 bile gosterilsin (GENEL TOPLAM satiri)
@@ -4391,7 +4533,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       fittingDuzenlenebilir,
       // D9 + I1: bayrak burada OLMAZSA kolonlar yeniden kurulmaz ve salt okunur
       // cizim HIC uygulanmaz (sessiz olu kod).
-      seciciSaltOkunur, sayaciTazele, paraYazildi]);
+      seciciSaltOkunur, sayaciTazele, paraYazildi, karisik]);
 
   // Ceviri kalemi gorunurlugu degisince ad kolonu yeniden cizilir: renderer
   // ref okuyor, AG Grid kendiliginden tazelemez (fitting tazelemesiyle ayni desen).
@@ -4408,6 +4550,15 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   const yazVeriHucre = (node: any, alan: string, deger: any) => {
     if (node?.data) node.data[alan] = deger;
     try { node?.setDataValue?.(alan, deger); } catch { /* kolon yok */ }
+  };
+
+  /** F2 (karar 3): elle girilen birim fiyatin taraf birimi — ayristiricinin
+   *  ham metinden okudugu birim ("$12") ya da tarafin MEVCUT birimi. */
+  const elleBirimiAl = (e: CellValueChangedEvent<ExcelRowData>, dal: 'malzeme' | 'iscilik'): ParaBirimi => {
+    const s = elleBirimRef.current;
+    elleBirimRef.current = null;
+    if (s && s.node === e.node && s.alan === e.colDef.field) return s.pb;
+    return tarafPB(e.data, dal);
   };
 
   const handleCellValueChanged = useCallback((e: CellValueChangedEvent<ExcelRowData>) => {
@@ -4667,6 +4818,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
       yazVeriHucre(e.node, '_matNetPrice', net);
       row._matKurBilgi = null; // elle girilen TL fiyatin kaynak kuru yoktur
+      // F2 (karar 3): karisik kipte elle fiyat tarafin MEVCUT birimini korur;
+      // "$12"/"₺12"/"€12" yazimi birimi secer. Tazelemeden ONCE yazilir —
+      // hucre yeni birimin sembolüyle cizilsin. tl kipinde birim yazilmaz.
+      const elleMatPB = karisik ? elleBirimiAl(e, 'malzeme') : null;
+      if (elleMatPB) yazVeriHucre(e.node, '_matPB', elleMatPB);
       // ⚠ `setDataValue` BURADA CALISMAZ: `_matStatus` bir grid KOLONU degil,
       // yalnizca satir verisinde yasayan bir isaret alani. AG Grid kolonu
       // bulamayinca cagriyi SESSIZCE dusurur (`return false`) — yani kirmizi
@@ -4693,7 +4849,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       // (cellStyle) ancak acik tazelemeyle yeniden kosar.
       e.api.refreshCells({ rowNodes: [e.node], force: true });
       const qty = etkinMiktar(row, quantityField, unitField); // UY2
-      e.node.setDataValue(materialTotalField, hesaplaSatirToplam(enteredPrice, qty).toFixed(1));
+      const matHane = elleMatPB ? paraHanesi(elleMatPB) : 1;
+      e.node.setDataValue(materialTotalField, hesaplaSatirToplam(enteredPrice, qty, matHane).toFixed(matHane));
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
       console.log(`[ExcelGrid] Manuel malz. birim: row=${row._rowIdx}, entered=${enteredPrice}, kar=${kar}%, net=${net.toFixed(2)}, qty=${qty}`);
     }
@@ -4705,6 +4862,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       const net = kar > 0 ? enteredPrice / (1 + kar / 100) : enteredPrice;
       yazVeriHucre(e.node, '_labNetPrice', net);
       row._labKurBilgi = null; // elle girilen TL fiyatin kaynak kuru yoktur
+      const elleLabPB = karisik ? elleBirimiAl(e, 'iscilik') : null; // F2 ikizi (karar 3)
+      if (elleLabPB) yazVeriHucre(e.node, '_labPB', elleLabPB);
       // IKIZ (bu turda eklendi): isaret temizleme MALZEMEDE vardi, iscilikte
       // HIC YAZILMAMISTI. `isaret.ts` iki dali da okuyor; firma surukleyip
       // doldurunca eslesmeyen satirlar kirmizi kaliyor ve kullanici fiyati
@@ -4715,7 +4874,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       yazVeriHucre(e.node, '_labAdaySayisi', null);
       e.api.refreshCells({ rowNodes: [e.node], force: true });
       const qty = etkinMiktar(row, quantityField, unitField); // UY2
-      e.node.setDataValue(laborTotalField, hesaplaSatirToplam(enteredPrice, qty).toFixed(1));
+      const labHane = elleLabPB ? paraHanesi(elleLabPB) : 1;
+      e.node.setDataValue(laborTotalField, hesaplaSatirToplam(enteredPrice, qty, labHane).toFixed(labHane));
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
       console.log(`[ExcelGrid] Manuel isc. birim: row=${row._rowIdx}, entered=${enteredPrice}, kar=${kar}%, net=${net.toFixed(2)}, qty=${qty}`);
     }
@@ -4803,7 +4963,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // oldugu icin tetiklenmiyordu ve F5 emegi siliyordu (olculdu).
     paraYazildi();
   }, [data.columnRoles, data.columnDefs, onRowDataChange, autoAppendRow, recountPending, floorFields,
-      mode, updatePinnedBottom, fittingDuzenlenebilir, paraYazildi, laborEnabled]);
+      mode, updatePinnedBottom, fittingDuzenlenebilir, paraYazildi, laborEnabled, karisik]);
 
   // getRowId — stabil row kimligi (re-render'da row'un durumunu korur)
   const getRowId = useCallback((params: GetRowIdParams<ExcelRowData>) => {
