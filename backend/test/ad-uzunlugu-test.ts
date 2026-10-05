@@ -27,6 +27,9 @@ import { AILE_COZUCU_OLCUM, resolveFamily } from '../src/ozellik/eslestirme/matc
 import { resolveAdDetayli, resolveAdDetayliFiltresiz, sozlukKapsayan, AD_COZUCU_OLCUM } from '../src/ozellik/eslestirme/matching/ad-resolver';
 import { AD_SOZLUGU, AD_ZENGINLESTIRME } from '../src/ozellik/eslestirme/matching/ad-cins-sozlugu';
 import { normalizeText, extractMaterialTypeDetayli } from '../src/ozellik/eslestirme/matching/normalizer';
+import { buildProductIndex, type ProductColumns } from '../src/ozellik/eslestirme/matching/index/product-index';
+import { MatchingService, AD_AZAMI_UZUNLUK, sorguAdi } from '../src/ozellik/eslestirme/matching/matching.service';
+import { TerminologyService, ALIAS_SEEDS } from '../src/ozellik/eslestirme/matching/terminology.service';
 import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const XLSX = require('xlsx');
@@ -171,6 +174,73 @@ async function main() {
   check(`★ H3a sondan-parca denetimi: parseLine ${yeniParca} ≤ belleksiz dongunun %25'i (${refParca})`, refParca > 0 && yeniParca <= refParca * 0.25, `${yeniParca}/${refParca}`);
   const ortalama = yeniParca > 0 ? yeniDesen / yeniParca : Infinity;
   check(`★ H3b desen denemesi: parca basina ortalama ${ortalama.toFixed(1)} ≤ desen sayisinin %15'i (${DESEN_SAYISI})`, ortalama <= DESEN_SAYISI * 0.15, `${yeniDesen}/${yeniParca}`);
+
+  // ══ B · SALDIRI TAVANI (matching.service, AD_AZAMI_UZUNLUK) ══════════════
+  // Satir REDDEDILMEZ: motor ilk AD_AZAMI_UZUNLUK karakterle calisir, sonuc
+  // ORIJINAL ada yazilir; hafiza imzasi da ayni kirpik adla kurulur.
+  const enUzunGercek = Math.max(...metinler.map((a) => a.length));
+  const etkilenen = metinler.filter((a) => sorguAdi(a) !== a).length;
+  check(`★ B0 gercek adlar etkilenmez: tavan ${AD_AZAMI_UZUNLUK} > en uzun fikstür adi ${enUzunGercek}, etkilenen ${etkilenen}`, AD_AZAMI_UZUNLUK > enUzunGercek && etkilenen === 0);
+
+  const urun = (c: ProductColumns, i: number) => {
+    const idx = buildProductIndex(c);
+    return { id: `lib-${i}`, materialId: null, material: null, materialName: idx.displayName, listPrice: c.price, customPrice: null,
+      discountRate: 0, currency: 'TRY', productIndexId: `pi-${i}`, brand: { id: 'b1', name: 'B1' },
+      product: { ...idx, id: `pi-${i}`, ad: c.ad, cins: c.cins ?? null, baglanti: null, capRaw: c.cap ?? null, kategori: null, boyMm: null, urunKodu: null, sheetName: null, price: c.price, birim: null } };
+  };
+  const kutuphane = [
+    urun({ ad: 'Küresel Vana', cins: 'Pirinç', cap: 'DN50', price: 500 } as ProductColumns, 1),
+    urun({ ad: 'Küresel Vana', cins: 'Pirinç', cap: 'DN25', price: 200 } as ProductColumns, 2),
+  ];
+  const imzalar: string[] = [];
+  const prisma: any = {
+    userLibrary: { findMany: async (a: any) => (a?.where?.brandId && typeof a.where.brandId === 'object' ? [] : kutuphane) },
+    brand: { findUnique: async () => ({ name: 'B1' }) },
+    eslesmeHafizasi: {
+      findUnique: async (a: any) => { imzalar.push(`oku:${a?.where?.userId_imza?.imza}`); return null; },
+      upsert: async (a: any) => { imzalar.push(`yaz:${a?.where?.userId_imza?.imza}`); return undefined; },
+      findFirst: async () => null,
+    },
+    material: { update: async () => undefined },
+    terminologyAlias: { findMany: async () => ALIAS_SEEDS.map((s: any, i: number) => ({ id: `a${i}`, userId: null, active: true, ...s })) },
+    user: { findUnique: async () => ({ firmaId: 'u1' }) },
+  };
+  const svc: any = new MatchingService(prisma, new TerminologyService(prisma), { getRates: async () => ({ usdTry: 40, eurTry: 48, source: 'tcmb' }) } as any);
+  const K = { userId: 'u1', firmaId: 'u1' };
+  const KOK = ['kirmizi', 'pirinc', 'govdeli', 'yuksek', 'tam', 'gecisli', 'kollu', 'disli', 'sertifikali', 'onayli', 'monte', 'edilmis'];
+  let dolgu = ''; for (let i = 0; dolgu.length < 50000; i++) dolgu += `${KOK[i % KOK.length]}${Math.floor(i / KOK.length)} `;
+  // aile + cap TAVANIN OTESINDE: kirpilmis ad onlari gormez, tam ad gorurdu
+  const uzunAd = `${dolgu}küresel vana DN50`;
+  const kirpik = uzunAd.slice(0, AD_AZAMI_UZUNLUK);
+  const ikiz = `${kirpik}${dolgu.slice(0, 3000)} küresel vana DN25`; // ayni ilk 2.000 karakter, farkli son
+  // takma ad tohumu ('sprinkler hatti' → boru ipucu) TAVANIN OTESINDE: kirpik ad ipucunu gormemeli
+  const aliasAd = `${dolgu}sprinkler hattı DN50`;
+  const sus = async <T>(f: () => Promise<T>) => { const a = { log: console.log, warn: console.warn, error: console.error }; console.log = () => {}; console.warn = () => {}; console.error = () => {}; try { return await f(); } finally { Object.assign(console, a); } };
+
+  AILE_COZUCU_OLCUM.parcaDenetimi = 0;
+  const rUzun: any = await sus(() => svc.bulkMatch(K, 'b1', [uzunAd, ikiz]));
+  const isUzun = AILE_COZUCU_OLCUM.parcaDenetimi;
+  AILE_COZUCU_OLCUM.parcaDenetimi = 0;
+  const rKirpik: any = await sus(() => svc.bulkMatch(K, 'b1', [kirpik]));
+  const isKirpik = AILE_COZUCU_OLCUM.parcaDenetimi;
+  const rAlias: any = await sus(() => svc.bulkMatch(K, 'b1', [aliasAd]));
+  const tamAlias: any = await sus(() => svc.bulkMatch(K, 'b1', ['sprinkler hattı DN50']));
+  const tamAd: any = await sus(() => svc.bulkMatch(K, 'b1', ['küresel vana DN50']));
+  check(`FIXTURE KANITI: tavanin otesindeki "küresel vana DN50" TAM adda eslesir (${tamAd['küresel vana DN50']?.netPrice} TL), uzun ad ${uzunAd.length} karakter`, (tamAd['küresel vana DN50']?.netPrice ?? 0) > 0 && uzunAd.length > 40000);
+  const anahtar = (o: any, k: string) => o != null && Object.prototype.hasOwnProperty.call(o, k);
+  check('★ B1 sonuc ORIJINAL ada yazilir (iki uzun ad da kendi anahtariyla, kirpik anahtar YOK)', anahtar(rUzun, uzunAd) && anahtar(rUzun, ikiz) && !anahtar(rUzun, kirpik), js(Object.keys(rUzun ?? {}).map((x) => x.length)));
+  check('★ B2 motor kirpik adla calisir: uzun adin sonucu = kirpik adin sonucu (tavan otesi DN50 GORULMEZ)', js(rUzun?.[uzunAd]) === js(rKirpik?.[kirpik]) && js(rUzun?.[ikiz]) === js(rKirpik?.[kirpik]), `${js(rUzun?.[uzunAd]).slice(0, 80)} ≠ ${js(rKirpik?.[kirpik]).slice(0, 80)}`);
+  check(`FIXTURE KANITI: "sprinkler hattı DN50" tam adda takma ad ipucu sonucu DEGISTIRIR (kirpik sonuctan farkli)`, js(tamAlias?.['sprinkler hattı DN50']) !== js(rKirpik?.[kirpik]), js(tamAlias?.['sprinkler hattı DN50']).slice(0, 80));
+  check('★ B2b takma ad da kirpik adla cozulur: tavan otesindeki "sprinkler hattı" ipucu GORULMEZ', js(rAlias?.[aliasAd]) === js(rKirpik?.[kirpik]), `${js(rAlias?.[aliasAd]).slice(0, 80)} ≠ ${js(rKirpik?.[kirpik]).slice(0, 80)}`);
+  check(`★ B3 is tavanla sinirli: 2 uzun ad (50.000+ karakter) ${isUzun} denetim ≤ 2 × kirpik ad ${isKirpik}`, isKirpik > 0 && isUzun <= 2 * isKirpik, `${isUzun}/${isKirpik}`);
+  // B4 hafiza imzasi simetrik: remember (tam uzun ad) ↔ eslestirme (kirpik) ayni anahtar
+  const ozelImza = (ad: string) => svc.buildImza(ad, 'b1');
+  const ozelKind = (ad: string) => svc.buildKindImza(ad, 'b1', []);
+  const imzaUzunCap = `${dolgu.slice(0, 100)} küresel vana DN50 ${dolgu}`; // cap tavandan ONCE: imza olculu kalir
+  check('★ B4 hafiza imzasi kirpik adla kurulur (buildImza / buildKindImza: tam uzun ad = kirpik ad)',
+    js(ozelImza(uzunAd)) === js(ozelImza(kirpik)) && js(ozelKind(uzunAd)) === js(ozelKind(kirpik)) && js(ozelImza(imzaUzunCap)) === js(ozelImza(sorguAdi(imzaUzunCap))),
+    `${js(ozelImza(uzunAd))} / ${js(ozelImza(kirpik))}`);
+  check('B4 karsi: tavan otesindeki olcu imzaya GIRMEZ (tam ad kirpilmasaydi dn50 tasirdi)', ozelImza(uzunAd) === null && ozelImza('küresel vana DN50') !== null, js(ozelImza(uzunAd)));
 
   console.log(`\n${'='.repeat(60)}\nAD UZUNLUGU HIZI (P2): ${passed} PASS · ${failed} FAIL`);
   if (failures.length) { console.log('\nDUSENLER:'); failures.forEach((f) => console.log('  · ' + f)); }

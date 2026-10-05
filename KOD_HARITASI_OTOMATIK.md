@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 933
-Toplam satir: 256751
+Toplam satir: 256842
 Uc nokta: 239
 test:* scripti: 172
 
@@ -146,7 +146,7 @@ test:* scripti: 172
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 116 |
 | `backend/src/ozellik/eslestirme/matching/matching.module.ts` | 16 |
-| `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1387 |
+| `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1408 |
 | `backend/src/ozellik/eslestirme/matching/normalizer.ts` | 752 |
 | `backend/src/ozellik/eslestirme/matching/shared-tag-matcher.ts` | 165 |
 | `backend/src/ozellik/eslestirme/matching/tag-generator.ts` | 162 |
@@ -317,7 +317,7 @@ test:* scripti: 172
 | `backend/test/abonelik-erisim-test.ts` | 377 |
 | `backend/test/abonelik-olcum-sorgu-test.ts` | 575 |
 | `backend/test/aci-okuma-test.ts` | 145 |
-| `backend/test/ad-uzunlugu-test.ts` | 181 |
+| `backend/test/ad-uzunlugu-test.ts` | 251 |
 | `backend/test/admin-import-test.ts` | 402 |
 | `backend/test/aile-oncelik-simulasyon.ts` | 292 |
 | `backend/test/aile-oncelik-test.ts` | 182 |
@@ -1218,7 +1218,7 @@ test:* scripti: 172
 | `backend/test/abonelik-erisim-test.ts` | `fs` `path` `@nestjs/core` `../src/altyapi/auth/seviye` `../src/altyapi/auth/capabilities.helper` `../src/altyapi/auth/guards/tier.guard` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/kutuphane/labor/labor.controller` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/abonelik-olcum-sorgu-test.ts` | `node:fs` `node:path` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/aci-okuma-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/index/types` `./yardimci/bitmezse-kirmizi` |
-| `backend/test/ad-uzunlugu-test.ts` | `fs` `path` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/ad-resolver` `../src/ozellik/eslestirme/matching/ad-cins-sozlugu` `../src/ozellik/eslestirme/matching/normalizer` `./yardimci/bitmezse-kirmizi` `xlsx` |
+| `backend/test/ad-uzunlugu-test.ts` | `fs` `path` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/ad-resolver` `../src/ozellik/eslestirme/matching/ad-cins-sozlugu` `../src/ozellik/eslestirme/matching/normalizer` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` `xlsx` |
 | `backend/test/admin-import-test.ts` | `../src/ozellik/eslestirme/utils/etiket-display` `./yardimci/bitmezse-kirmizi` `xlsx` `../src/ozellik/giris/excel-grid/excel-grid.service` `../src/ozellik/kutuphane/admin/admin.service` `../src/ozellik/kutuphane/utils/import-fidelity` |
 | `backend/test/aile-oncelik-simulasyon.ts` | `fs` `path` `../src/ozellik/eslestirme/matching/ad-cins-sozlugu` `../src/ozellik/eslestirme/matching/ad-resolver` `../src/ozellik/eslestirme/matching/index/product-index` `xlsx` |
 | `backend/test/aile-oncelik-test.ts` | `../src/ozellik/eslestirme/matching/ad-cins-sozlugu` `../src/ozellik/eslestirme/matching/index/product-index` |
