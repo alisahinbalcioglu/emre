@@ -2113,6 +2113,10 @@ export class AdminService {
     toplam: number; guncellenen: number; atlanan: number;
     belirsizOnce: number; belirsizSonra: number; korunanDuzeltme: number;
     surum: number;
+    /** Ogrenme icin sozluge SUNULAN aile sayisi (kapsam basina tekil) */
+    aileDenenen: number;
+    /** Sozlukte olmayip GERCEKTEN yazilan alias sayisi (learnFamilyAliases donusu) */
+    aileYeni: number;
   }> {
     const rows = await (this.prisma as any).productIndex.findMany();
     let guncellenen = 0, atlanan = 0, belirsizOnce = 0, belirsizSonra = 0, korunanDuzeltme = 0;
@@ -2175,17 +2179,28 @@ export class AdminService {
       guncellenen++;
     }
 
-    let aileSayisi = 0;
+    // GUNLUK DOGRULUGU (05.10, koordinator notu): eskiden "N aile ogrenildi"
+    // yazilan N, sozluge SUNULAN aile sayisiydi — cogu zaten kayitli oldugu
+    // icin yazilmaz (idempotens). v18 yeniden indekslemesinde gunluk yuzlerce
+    // "ogrenildi" derken sozluge 2 alias eklenmisti (seed 30→32). Iki sayi
+    // ayri: denenen (sunulan) ve yeni (learnFamilyAliases'in yazdigi).
+    let aileDenenen = 0;
+    let aileYeni = 0;
     for (const [kapsam, aileler] of ogrenilecekAileler) {
-      aileSayisi += aileler.size;
-      await this.terminology.learnFamilyAliases(
+      aileDenenen += aileler.size;
+      const sonuc = await this.terminology.learnFamilyAliases(
         Array.from(aileler, ([adBucket, canonical]) => ({ adBucket, canonical })),
         kapsam,
-      ).catch((e) => console.warn('[Reindex] aile ogrenme atlandi:', (e as Error).message));
+      ).catch((e) => { console.warn('[Reindex] aile ogrenme atlandi:', (e as Error).message); return null; });
+      aileYeni += sonuc?.ogrenilen ?? 0;
     }
 
     console.log(`[Reindex] v${INDEX_VERSION}: ${guncellenen} guncellendi, ${atlanan} zaten guncel, ` +
-      `belirsiz ${belirsizOnce}→${belirsizSonra}${korunanDuzeltme ? `, ${korunanDuzeltme} admin duzeltmesi korundu` : ''}${aileSayisi ? `, ${aileSayisi} aile ogrenildi` : ''}`);
-    return { toplam: rows.length, guncellenen, atlanan, belirsizOnce, belirsizSonra, korunanDuzeltme, surum: INDEX_VERSION };
+      `belirsiz ${belirsizOnce}→${belirsizSonra}${korunanDuzeltme ? `, ${korunanDuzeltme} admin duzeltmesi korundu` : ''}` +
+      `${aileDenenen ? `, ${aileDenenen} aile denendi (${aileYeni} yeni)` : ''}`);
+    return {
+      toplam: rows.length, guncellenen, atlanan, belirsizOnce, belirsizSonra, korunanDuzeltme,
+      surum: INDEX_VERSION, aileDenenen, aileYeni,
+    };
   }
 }

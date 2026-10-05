@@ -171,6 +171,13 @@ export type KanitKapisi =
   | 'aile-zayif'
   /** S-vakasi: ad daraltmasi gevsetildi — ad birebir eslesmedi */
   | 'ad-gevsetildi'
+  /** B10 (FAZ B, 05.10): urunun FIYAT birimi (kg, boy, paket…) satirin MIKTAR
+   *  biriminden farkli bir tabanda — iki taraf da TANINIYOR ve celisiyor.
+   *  Olculdu: kg / boy fiyatli boru, metre satirina 'high' yaziliyordu
+   *  (miktar × fiyat kat kat yanlis). ELEME DEGIL KAPI: aday kalir, fiyat
+   *  otomatik yazilmaz, hafiza otoyazisi da yazmaz. Birimsiz ya da taninmayan
+   *  birim kanit degildir (kapi acilmaz). Bkz. `fiyatBirimiSinifi`. */
+  | 'fiyat-birimi'
   /** Karar #3: satirda yazili ama bu havuzun dagarciginda olmayan kelime */
   | 'bilinmeyen-kelime'
   /** H6: aile hic cozulemedi — eslesme yalniz olcu benzerligiyle bulundu */

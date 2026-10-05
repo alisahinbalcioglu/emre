@@ -12,7 +12,7 @@
 // her alani doldurmak ZORUNDA.
 // ════════════════════════════════════════════════════════════════════
 
-import { hesaplaNetFiyat, hesaplaNetFiyatDoviz } from '../pricing';
+import { hesaplaNetFiyat, hesaplaNetFiyatDoviz, yukariYuvarla } from '../pricing';
 import { paraBirimiKodu } from '../../exchange-rates/exchange-rates.service';
 import { extractAttrTags, extractFluid } from '../../../eslestirme/matching/normalizer';
 import { buildAttrUyari } from '../../../eslestirme/matching/shared-tag-matcher';
@@ -111,12 +111,38 @@ export function gorunenAd(r: IndexedRow): string {
  * Kural: EKRAN NE GOSTERIYORSA ESLESTIRME ONU YAZAR — customPrice yalniz
  * TABANI degistirir, iskonto her zaman uygulanir. custom=liste olan mevcut
  * veriyle sonuc birebir ayni kalir (veri temizligi gerekmez).
+ *
+ * `list` liste fiyatinin TL karsiligi (gosterim), net `tlNetFiyat`tan (C6).
  */
 function netFiyat(r: IndexedRow, toTry: (v: number, cur: string) => number): { net: number; list: number; isk: number } {
   const list = toTry(r.listPrice ?? r.urun.price, r.currency);
-  const isk = r.discountRate ?? 0;
+  return { net: tlNetFiyat(r, toTry), list, isk: r.discountRate ?? 0 };
+}
+
+/**
+ * TEKLIFE YAZILAN TL NET — C6, KARAR (c) (Emre, P2 motor paketi): "Doviz +
+ * iskonto yuvarlamasi pricing.ts kuralina uyacak. Once liste biriminde
+ * Net = Liste × (1 − Isk/100), SONRA cevrim."
+ *
+ *   TL net = yukari-1-hane( cevir( kaynak net ) )   (kaynak net: `kaynakFiyatOf`)
+ *
+ * OLCULDU (05.10): eski sira once TL'ye ceviriyor (kurus), iskontoyu TL'de
+ * uyguluyordu — kutuphanede gorunen net × kur ile teklife yazilan TL net
+ * ayrisiyordu (USD 1,001 −%50, kur 47,57: kutuphane 0,51 $ = 24,26 TL,
+ * motor 23,9 TL). TRY satir DEGISMEZ (cevrim yok; net zaten ₺ kurali).
+ * Uc yol bunu cagirir — tek formul: tek eslesme/aday/hafiza/iscilik
+ * (`netFiyat`), malzeme onerisi ve iscilik onerisi (matching.service).
+ * Kapi: test:doviz-net-yuvarlama.
+ */
+export function tlNetFiyat(r: IndexedRow, toTry: (v: number, cur: string) => number): number {
+  const kaynak = kaynakFiyatOf(r);
+  if (kaynak?.currency === 'TRY') return kaynak.net;
+  if (kaynak) return yukariYuvarla(toTry(kaynak.net, r.currency));
+  // Taninmayan para birimi: canlida cevrilemez, cagiranlar once eler (KUR-01).
+  // Yalniz `cevrilemez`siz saf test ceviricisi buraya gelir — eski sira korunur.
+  const list = toTry(r.listPrice ?? r.urun.price, r.currency);
   const taban = r.customPrice != null && r.customPrice > 0 ? toTry(r.customPrice, r.currency) : list;
-  return { net: hesaplaNetFiyat(taban, isk), list, isk };
+  return hesaplaNetFiyat(taban, r.discountRate ?? 0);
 }
 
 /**
