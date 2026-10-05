@@ -115,6 +115,7 @@ const SUITES: Suite[] = [
   { ad: 'Sürükleme akışkan kapısını atlamaz (K1)', script: 'test:surukleme-akiskan', zincir: 'Z2' },
   { ad: 'Hafıza kimlik kapısında otomatik yazmaz (karar b)', script: 'test:hafiza-kimlik-kapisi', zincir: 'Z2' },
   { ad: 'P4 motor notları: günlük · prototip · bayat kur · öneri havuzu', script: 'test:p4-motor-notlari', zincir: 'Z2' },
+  { ad: 'Ölçü okuyucu: PN kesri · et kalınlığı · çap simgeleri · DN reduksiyon (FAZ B parti 1)', script: 'test:olcu-okuyucu', zincir: 'Z2' },
   // ── S2+S3 (06.08.2026): ÖNERİ KUTUSU. Çapraz-marka/firma önerisi ana
   //    motoru çağırıyor ve motorun "onaylat" dediği tek adayı KESİN gibi
   //    sunuyordu. İki kural mühürlendi: kanıt gücü yetmeyen aday (çapı ya da

@@ -179,7 +179,9 @@ export interface ProductIndexFields {
 //     sorgu 0. Yani duzeltme yalniz GORUNMEYEN adaylari geri getiriyor.
 //     ⚠ Surum artisi iscilik tarafini da bayatlatir — L1 (hazirlaLaborPool)
 //     duzeltilmeden bu artis yapilamazdi: bayat dal capi ADINDAN okumuyordu.
-export const INDEX_VERSION = 18;
+// v19 (04.10, FAZ B parti 1): olcu okuyucu — PN sonrasi kesir (B4/B5), CAP x ET
+// (B6), Φ/⌀/∅ (B9), DN65xDN15 (A5) urunun cap SUTUNUNU da etkiler → capTags.
+export const INDEX_VERSION = 19;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';

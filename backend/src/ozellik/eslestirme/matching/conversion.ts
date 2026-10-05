@@ -167,7 +167,10 @@ export function extractSizeInfo(text: string): SizeInfo | null {
   const normalized = normalizeText(text).replace(/'{2}/g, '"');
 
   // 1) DN — tum eslesmelerden EN SONDAKI (gercek malzeme capi sonda olur)
-  const dnMatches = Array.from(normalized.matchAll(/\bdn[\s-]*(\d{2,3})\b/g));
+  // FAZ B A5 (04.10 olculdu): "DN65xDN15" → YOK. `\b` x'e YAPISIK DN'i
+  // gormuyordu ('5x' ve 'xd' arasinda kelime siniri yok). Bas: kelime siniri
+  // YA DA rakamdan sonra gelen x; son: rakam degil (x gelebilir).
+  const dnMatches = Array.from(normalized.matchAll(/(?:\b|(?<=\dx))dn[\s-]*(\d{2,3})(?!\d)/g));
   if (dnMatches.length > 0) {
     const last = dnMatches[dnMatches.length - 1];
     const v = parseInt(last[1], 10);
@@ -181,7 +184,10 @@ export function extractSizeInfo(text: string): SizeInfo | null {
   // Bilesik kesir: 2 1/2 (isaret opsiyonel — kesir zaten inc demektir).
   // \b: tam-sayi parcasi HARF'e YAPISIK OLMAMALI — "P235TR1 3/4" grade son
   // rakami "1" bilesige kacip "1 3/4" (1.75") uretiyordu (denetim D3a bulgu).
-  const compoundRe = /\b(\d+)\s+(\d+)\/(\d+)\s*(?:"|inch|inc\b)?/g;
+  // FAZ B B4 (04.10 olculdu): "PN 16 1/2\"" → 16,5". PN (basinc sinifi)
+  // degeri bilesik kesrin TAM KISMI sanildi. PN'den hemen sonra gelen sayi
+  // olcu degildir; gercek bilesik ("PN 25 1 1/4\"") AYNEN okunur.
+  const compoundRe = /(?<!\bpn\s{0,3})\b(\d+)\s+(\d+)\/(\d+)\s*(?:"|inch|inc\b)?/g;
   while ((m = compoundRe.exec(normalized)) !== null) {
     inchHits.push({ dec: fractionToDecimal(m[1], m[2], m[3]), index: m.index, display: `${m[1]} ${m[2]}/${m[3]}"` });
   }
@@ -196,7 +202,7 @@ export function extractSizeInfo(text: string): SizeInfo | null {
   //     urun kodu → "10217-1/2"              (tire oncesi uzun rakam dizisi)
   // `\b` zaten uzun dizinin ORTASINDAN yakalamayi engeller: "10217-" icinde
   // "17-" oncesinde kelime siniri yoktur. {1,3} ise bastan uzun diziyi eler.
-  const compoundTireRe = /\b(\d{1,3})-(\d+)\/(\d+)\s*(?:"|inch|inc\b)?/g;
+  const compoundTireRe = /(?<!\bpn\s{0,3})\b(\d{1,3})-(\d+)\/(\d+)\s*(?:"|inch|inc\b)?/g;
   while ((m = compoundTireRe.exec(normalized)) !== null) {
     const cakisma = inchHits.some((x) => Math.abs(x.index - m!.index) <= 5);
     if (cakisma) continue;
@@ -205,7 +211,11 @@ export function extractSizeInfo(text: string): SizeInfo | null {
   // Tek kesir: 1/2, 3/4. Bilesigin parcasi olmadigi OVERLAP kontroluyle
   // saglanir (asagida ≤5 char) — eski (?<!\d\s) lookbehind'i grade rakami
   // bulasan "3/4"u da yanlislikla eliyordu; kaldirildi (overlap yeterli).
-  const fracRe = /(\d+)\/(\d+)\s*(?:"|inch|inc\b)?/g;
+  // FAZ B B5 (04.10 olculdu): "PN10/16" → 0,625". Basinc sinifi yazimi
+  // ("PN10/16" = PN10 ve PN16 flansa uyar) kesir sanildi. PN'den hemen sonra
+  // gelen kesir olcu degildir. `(?<!\d)`: kesir rakam dizisinin ORTASINDAN
+  // baslamaz ("pn10/16" icinde "0/16" yakalanip 0" uretmesin).
+  const fracRe = /(?<!\bpn\s{0,3})(?<!\d)(\d+)\/(\d+)\s*(?:"|inch|inc\b)?/g;
   while ((m = fracRe.exec(normalized)) !== null) {
     const overlap = inchHits.some((x) => Math.abs(x.index - m!.index) <= 5);
     if (overlap) continue;
@@ -244,14 +254,26 @@ export function extractSizeInfo(text: string): SizeInfo | null {
     // mm alindigi icin ET secilir, yanlis cap uretilirdi. "et" onekli olanlari
     // eleyip dis capi tercih et; hicbiri kalmazsa (yalniz et yazan patolojik
     // metin) geri dusup son mm'yi al — kirilma yok.
-    const disCap = decMm.filter((mm) => {
-      const onek = normalized.slice(Math.max(0, (mm.index ?? 0) - 5), mm.index ?? 0);
-      return !/\bet\b\s*$/.test(onek);
-    });
-    const secim = disCap.length > 0 ? disCap : decMm;
-    const last = secim[secim.length - 1];
-    const raw = last[1].replace(',', '.');
-    return { source: 'mm', value: parseFloat(raw), display: `${raw} mm` };
+    //
+    // FAZ B B6 (04.10 olculdu): "Ø110 x 6,6 mm" → 6,6 mm. "CAP x ET" bilesik
+    // yazimda ondalik mm ET KALINLIGIDIR ve bu kural asagidaki bilesik/Ø
+    // kurallarindan ONCE kostugu icin cap diye donuyordu (110'luk HDPE boru
+    // satiri "bulunamadi"). Rakam + x'ten hemen sonra gelen ondalik mm aday
+    // DEGILDIR; hepsi boyleyse bu kural SUSAR ve cap Ø / bilesik kuralindan
+    // okunur ("et" onekindeki patolojik geri dusus burada YOK — cap orada).
+    const etKalinligi = (mm: RegExpMatchArray) =>
+      /\d\s*x\s*$/.test(normalized.slice(Math.max(0, (mm.index ?? 0) - 8), mm.index ?? 0));
+    const adaylar = decMm.filter((mm) => !etKalinligi(mm));
+    if (adaylar.length > 0) {
+      const disCap = adaylar.filter((mm) => {
+        const onek = normalized.slice(Math.max(0, (mm.index ?? 0) - 5), mm.index ?? 0);
+        return !/\bet\b\s*$/.test(onek);
+      });
+      const secim = disCap.length > 0 ? disCap : adaylar;
+      const last = secim[secim.length - 1];
+      const raw = last[1].replace(',', '.');
+      return { source: 'mm', value: parseFloat(raw), display: `${raw} mm` };
+    }
   }
   const intMm = Array.from(normalized.matchAll(/(?<![\d.,])(\d{2,3})\s*mm\b/g));
   if (intMm.length > 0) {
@@ -259,7 +281,10 @@ export function extractSizeInfo(text: string): SizeInfo | null {
     return { source: 'mm', value: v, display: `${v} mm` };
   }
   // Ø32 (mm'siz), d32 (P3) — toLowerCase 'Ø'yu 'ø'ye indirir
-  const oMatch = normalized.match(/ø\s*(\d{2,3})\b/);
+  // FAZ B B9 (04.10 olculdu): yalniz Ø (normalize → ø) taniniyordu; ayni
+  // anlamdaki Φ/φ (Yunan fi), ⌀ (U+2300 cap isareti) ve ∅ (U+2205, cizimlerde
+  // cap yerine sik kullanilir) satirin capini TAMAMEN dusuruyordu.
+  const oMatch = normalized.match(/[øφ⌀∅]\s*(\d{2,3})\b/);
   if (oMatch) {
     const v = parseInt(oMatch[1], 10);
     return { source: 'mm', value: v, display: `Ø${v}` };
@@ -325,7 +350,11 @@ export function extractSizeInfo(text: string): SizeInfo | null {
  * kendinden once bir inc isareti (") vardir; bilesik kesirde tire'den once
  * RAKAM durur. Lookbehind bu ikisini kesin ayirir — "1-1/4\"" bolunmez.
  */
-const REDUKSIYON_AYIRICI = /x|(?<=")\s*-/i;
+// FAZ B B7 (04.10 olculdu): "Ø110 x 6,6 mm" iki olculu reduksiyon sanildi
+// (imza [dn110, dn7], bilesik) — CAP x ET bilesigindeki x ayirici DEGILDIR.
+// x'ten sonra ondalik, isaretsiz (inc degil) kisa sayi = et kalinligi.
+// Reduksiyonlar AYNEN: '3"x1"' · '2" x 1.5"' (ondalik INC) · '110x90' · DN65xDN15.
+const REDUKSIYON_AYIRICI = /x(?!\s*\d{1,2}[.,]\d+(?!\s*(?:"|inch\b|inc\b|\d)))|(?<=")\s*-/i;
 
 export function capImzasi(text: string, cls: SizeClass): { imza: string[]; bilesik: boolean } {
   const norm = normalizeText(text).replace(/'{2}/g, '"');
