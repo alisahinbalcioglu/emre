@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 946
-Toplam satir: 259352
+Toplam satir: 259452
 Uc nokta: 239
 test:* scripti: 175
 
@@ -232,7 +232,7 @@ test:* scripti: 175
 | `backend/src/ozellik/kutuphane/library/library-sheet-builder.ts` | 213 |
 | `backend/src/ozellik/kutuphane/library/library.controller.ts` | 169 |
 | `backend/src/ozellik/kutuphane/library/library.module.ts` | 14 |
-| `backend/src/ozellik/kutuphane/library/library.service.ts` | 1062 |
+| `backend/src/ozellik/kutuphane/library/library.service.ts` | 1075 |
 | `backend/src/ozellik/kutuphane/materials/dto/create-material-price.dto.ts` | 14 |
 | `backend/src/ozellik/kutuphane/materials/dto/create-material.dto.ts` | 8 |
 | `backend/src/ozellik/kutuphane/materials/materials.controller.ts` | 59 |
@@ -452,7 +452,7 @@ test:* scripti: 175
 | `backend/test/ortam-degiskenleri-test.ts` | 255 |
 | `backend/test/p2-2-sheets-indeks-test.ts` | 170 |
 | `backend/test/p4-motor-notlari-test.ts` | 259 |
-| `backend/test/p4b-kutuphane-test.ts` | 705 |
+| `backend/test/p4b-kutuphane-test.ts` | 792 |
 | `backend/test/p4b-motor-test.ts` | 364 |
 | `backend/test/paket-aciklama-duzelt-test.ts` | 183 |
 | `backend/test/paket-degisimi-test.ts` | 1447 |
