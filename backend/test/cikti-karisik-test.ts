@@ -17,8 +17,9 @@
  *    - Doviz tarafi 2 hane YUKARI: formul ROUNDUP(C*E,2) (karar 4).
  *    - GENEL TOPLAM sekmesi: sayfa × birim satirlari + birim basina TEKLİF
  *      GENEL TOPLAMI; "çevrim yapılmaz" notu.
- *    - "Teklif formatında aktar" yolu tek birimli İCMAL'e yazar ($ + ₺
- *      toplardi) → karisik teklifte numara YAKMADAN acik mesajla reddedilir.
+ *    - "Teklif formatında aktar" (İCMAL, 05.10): F5'in gecici 400 reddi KALKTI —
+ *      karisik teklif o yolda da iner, İCMAL birim basina (ayrintisi
+ *      `test:export-karisik`; burada yalniz servis baglantisi).
  *  KONTROL: birim alani olmayan (yalniz-TL) teklif 9 sutun, tek SAYFA TOPLAMI
  *  (ayrintisi `test:ex` / `test:export`te, dokunulmadi).
  *  DB GEREKMEZ.
@@ -297,8 +298,8 @@ async function main() {
   const k1 = servis([MEKANIK]);
   let hata = '';
   try { await k1.svc.exportXlsx(KIM, 'q1'); } catch (e: any) { hata = `${e?.getStatus?.() ?? ''} ${e?.message ?? e}`; }
-  check('KR15a format yolu karisik teklifi 400 ile reddeder', hata.startsWith('400 ') && hata.includes('Fiyatlandırılmış Excel'), hata);
-  check('KR15b reddedilen indirme numara YAKMAZ', kayit.numara === 0 && k1.quote.quoteNo === null && k1.quote.rev === 0, js({ n: kayit.numara, no: k1.quote.quoteNo }));
+  check('KR15a format yolu karisik teklifi INDIRIR (İCMAL birim basina — test:export-karisik)', hata === '' && k1.quote.rev === 1, hata);
+  check('KR15b indirme numara alir (tek atama)', kayit.numara === 1 && k1.quote.quoteNo === `MP-${new Date().getFullYear()}-001`, js({ n: kayit.numara, no: k1.quote.quoteNo }));
   const k2 = servis([TL_SAYFA]);
   let tlHata = '';
   try { await k2.svc.exportXlsx(KIM, 'q1'); } catch (e: any) { tlHata = String(e?.message ?? e); }

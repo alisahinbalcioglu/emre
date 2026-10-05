@@ -129,6 +129,14 @@ export function kovayaEkle(kovalar: Kovalar, pb: ParaBirimi, dal: 'mat' | 'lab',
   kovalar.set(pb, dal === 'mat' ? { ...kv, matK: kv.matK + k } : { ...kv, labK: kv.labK + k });
 }
 
+/** Sayfanin bir birimlik toplami (kurus) — format yolunun İCMAL'i buna baglanir. */
+export interface BirimKovasi { pb: ParaBirimi; matK: number; labK: number }
+
+/** Kovalar SABIT sirada (₺, $, €); bos sayfada bos liste. */
+export function kovaListesi(kovalar: Kovalar): BirimKovasi[] {
+  return BIRIM_SIRASI.filter((pb) => kovalar.has(pb)).map((pb) => ({ pb, ...kovalar.get(pb)! }));
+}
+
 /** Birim basina SAYFA TOPLAMI satiri (GENEL TOPLAM sekmesi buna baglanir). */
 export interface BirimToplami { pb: ParaBirimi; satir: number; matK: number; labK: number }
 
@@ -171,11 +179,12 @@ const OZET_BASLIKLARI_EN = ['Sheet', 'Currency', 'Material', 'Labour', 'Grand To
 const BIRIM_ETIKETI: Record<ParaBirimi, string> = { TRY: '₺ (TL)', USD: '$ (USD)', EUR: '€ (EUR)' };
 export const CEVRIM_YOK_NOTU = 'Toplamlar para birimi başına ayrıdır; çevrim yapılmaz.';
 const CEVRIM_YOK_NOTU_EN = 'Totals are per currency; no conversion is applied.';
+export const cevrimYokNotu = (dil?: string): string => (dil === 'en' ? CEVRIM_YOK_NOTU_EN : CEVRIM_YOK_NOTU);
 
 export interface BirimliSayfa { ad: string; toplamlar: BirimToplami[] }
 
 /** Excel bir fonksiyona en fazla 255 arguman kabul eder — parcali SUM. */
-const hucreToplami = (hucreler: string[]): string => {
+export const hucreToplami = (hucreler: string[]): string => {
   const gruplar: string[] = [];
   for (let i = 0; i < hucreler.length; i += 255) gruplar.push(`SUM(${hucreler.slice(i, i + 255).join(',')})`);
   return gruplar.join('+');
@@ -250,7 +259,7 @@ export function karisikOzetSayfasiYaz(
     }
   }
   ws.addRow([]);
-  const not = ws.addRow([dil === 'en' ? CEVRIM_YOK_NOTU_EN : CEVRIM_YOK_NOTU]);
+  const not = ws.addRow([cevrimYokNotu(dil)]);
   ws.mergeCells(not.number, 1, not.number, SON);
   not.getCell(1).font = yazi(9, RENK.SOLUK, { italic: true });
   not.getCell(1).alignment = { vertical: 'middle', wrapText: true };
