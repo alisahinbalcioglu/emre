@@ -39,6 +39,9 @@ import { TerminologyService } from '../src/ozellik/eslestirme/matching/terminolo
 import { LaborMatchingController } from '../src/ozellik/eslestirme/labor-matching/labor-matching.controller';
 import { LaborMatchingService } from '../src/ozellik/eslestirme/labor-matching/labor-matching.service';
 import { ExchangeRatesService } from '../src/ozellik/fiyat/exchange-rates/exchange-rates.service';
+import { LaborFirmsController } from '../src/ozellik/kutuphane/labor-firms/labor-firms.controller';
+import { LaborFirmsService } from '../src/ozellik/kutuphane/labor-firms/labor-firms.service';
+import { ExcelGridService } from '../src/ozellik/giris/excel-grid/excel-grid.service';
 import { bellekPrisma, type BellekPrisma } from './yardimci/bellek-prisma';
 import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
@@ -68,9 +71,11 @@ const testKapisi = {
 class OlcumLibrary extends LibraryController {}
 class OlcumMatching extends MatchingController {}
 class OlcumLaborMatching extends LaborMatchingController {}
+class OlcumLaborFirms extends LaborFirmsController {}
 Reflect.defineMetadata(GUARDS_METADATA, [testKapisi], OlcumLibrary);
 Reflect.defineMetadata(GUARDS_METADATA, [testKapisi], OlcumMatching);
 Reflect.defineMetadata(GUARDS_METADATA, [testKapisi], OlcumLaborMatching);
+Reflect.defineMetadata(GUARDS_METADATA, [testKapisi], OlcumLaborFirms);
 
 const sahteKur = {
   getRates: async () => ({ usdTry: 40, eurTry: 48, usdTryBuying: 40, eurTryBuying: 48, source: 'sahte', date: '' }),
@@ -97,6 +102,7 @@ interface Dunya {
 }
 
 const MARKA = 'marka-1';
+const ISCILIK_FIRMASI = 'isc-a';
 
 async function dunyaKur(): Promise<Dunya> {
   const db = bellekPrisma();
@@ -104,11 +110,12 @@ async function dunyaKur(): Promise<Dunya> {
   await p.firma.create({ data: { id: KISI.firmaId, ad: KISI.firmaId } });
   await p.user.create({ data: { id: KISI.id, email: 'a1@ornek.test', password: 'x', firmaId: KISI.firmaId } });
   await p.brand.create({ data: { id: MARKA, name: 'Olcum Marka' } });
+  await p.laborFirm.create({ data: { id: ISCILIK_FIRMASI, name: 'Olcum Iscilik', discipline: 'mechanical', userId: KISI.id, firmaId: KISI.firmaId } });
 
   @Module({
-    controllers: [OlcumLibrary, OlcumMatching, OlcumLaborMatching],
+    controllers: [OlcumLibrary, OlcumMatching, OlcumLaborMatching, OlcumLaborFirms],
     providers: [
-      LibraryService, MatchingService, LaborMatchingService, TerminologyService,
+      LibraryService, MatchingService, LaborMatchingService, TerminologyService, LaborFirmsService, ExcelGridService,
       { provide: PrismaService, useValue: p },
       { provide: ExchangeRatesService, useValue: sahteKur },
     ],
@@ -338,9 +345,77 @@ async function gBlogu(): Promise<void> {
   }
 }
 
+// ═══ I — P4b (05.10.2026, S1 incelemesi): iscilik toplu kayit (save-bulk) DTO ═══
+// Govde satir ici tipteydi: `items: "abc"` / `[null]` servisi TypeError ile 500'e
+// dusuruyordu (`[5]` sessizce suzuluyordu). DTO yapiyi dogrular; SATIR duzeyinde hosgorulu kalir (yarim
+// satiri servis suzer) ve para birimini servise birakir (KUR-02 Turkce mesaj).
+async function iBlogu(): Promise<void> {
+  console.log('\n── I (P4b) işçilik toplu kayıt (save-bulk) gövdesi ──');
+  const d = await dunyaKur();
+  try {
+    const firmalar = d.app.get(LaborFirmsService);
+    const asil = firmalar.saveBulkPrices.bind(firmalar);
+    const cagrilar: unknown[][] = [];
+    (firmalar as any).saveBulkPrices = async (...args: unknown[]) => { cagrilar.push(args); return { ok: true }; };
+    const yol = `/labor-firms/${ISCILIK_FIRMASI}/save-bulk`;
+    const satir = { laborName: 'Vana montajı DN25', unit: 'adet', unitPrice: 120 };
+
+    const bozuklar: Array<[string, unknown]> = [
+      ['I.1', { priceListId: 'new', items: 'abc' }],
+      ['I.2', { priceListId: 'new', items: [5] }],
+      ['I.3', { priceListId: 'new', items: [null] }],
+      ['I.4', { priceListId: 'new', items: [{ ...satir, laborName: 123 }] }],
+      ['I.5', { priceListId: 'new', items: [{ ...satir, unitPrice: '120' }] }],
+      ['I.6', { priceListId: 5, items: [satir] }],
+      ['I.7', { priceListId: 'new', items: [satir], sheet: [] }],
+      ['I.8', { priceListId: 'new' }],
+    ];
+    for (const [ad, govde] of bozuklar) {
+      const once = cagrilar.length;
+      const r = await d.istek('POST', yol, govde);
+      check(`${ad} Bicimsiz govde 400 alir, servise ULASMAZ (${JSON.stringify(govde).slice(0, 70)})`,
+        r.durum === 400 && cagrilar.length === once, `${r.durum} ${r.metin.slice(0, 160)}`);
+    }
+
+    // BAGLANTI: gecerli govde servise tum alanlariyla ulasir; sheet ICERIGI
+    // (ic ice alanlar) silinmez, bilinmeyen satir alani silinir (whitelist).
+    const sheet = {
+      columnDefs: [{ field: 'ad', headerName: 'Ad' }], columnRoles: { ad: 'name' }, headerEndRow: 0,
+      rowData: [{ _rowIdx: 0, _isDataRow: true, ad: 'Vana montajı DN25', not: 'gece mesaisi', _laborName: 'Vana montajı DN25' }],
+    };
+    const tamSatir = { ...satir, category: 'Vana', discountRate: 10, currency: 'USD', hack: 'baska-firma' };
+    const once = cagrilar.length;
+    const r = await d.istek('POST', yol, { priceListId: 'new', items: [tamSatir, { laborName: '', unitPrice: 0 }], sheet });
+    const c = cagrilar[once];
+    const gelenSatir = (c?.[3] as any[])?.[0];
+    check('I.9 BAGLANTI: gecerli govde servise ulasir (liste kimligi, satir alanlari, para birimi)',
+      r.durum === 201 && c?.[2] === 'new' && gelenSatir?.laborName === satir.laborName && gelenSatir?.unit === 'adet'
+        && gelenSatir?.unitPrice === 120 && gelenSatir?.category === 'Vana' && gelenSatir?.discountRate === 10 && gelenSatir?.currency === 'USD',
+      `${r.durum} ${JSON.stringify(c?.slice(2, 4))}`);
+    check('I.10 yarim satir DTO\'da 400 ALMAZ, servise ulasir (suzme serviste)', (c?.[3] as any[])?.length === 2, JSON.stringify(c?.[3]));
+    check('I.11 sheet ICERIGI aynen ulasir (ic ice alanlar silinmez)', JSON.stringify(c?.[4]) === JSON.stringify(sheet), JSON.stringify(c?.[4]));
+    check('I.12 bilinmeyen satir alani servise ULASMAZ (whitelist)', !!gelenSatir && !('hack' in gelenSatir), JSON.stringify(gelenSatir));
+
+    // GERCEK servis: suzme ve KUR-02 mesaji DTO'dan sonra da serviste.
+    (firmalar as any).saveBulkPrices = asil;
+    const satirSayisi = () => d.db.tablo('LaborPrice').length;
+    const onceSatir = satirSayisi();
+    const g = await d.istek('POST', yol, { priceListId: 'new', items: [satir, { laborName: '', unit: 'adet', unitPrice: 0 }, { laborName: 'X', unitPrice: 5 }] });
+    check('I.13 gercek servis: yarim satirlar suzulur, gecerli satir YAZILIR (201, +1 fiyat satiri)',
+      g.durum === 201 && satirSayisi() === onceSatir + 1, `${g.durum} ${g.metin.slice(0, 160)} satir ${onceSatir}→${satirSayisi()}`);
+    const kur = await d.istek('POST', yol, { priceListId: 'new', items: [{ ...satir, currency: 'EURO' }] });
+    check('I.14 para birimi serviste dogrulanir: Turkce satir mesaji (KUR-02), yazilmaz',
+      kur.durum === 400 && /^Satır 1 \("Vana montajı DN25"\): para birimi /.test(String(kur.veri?.message)) && satirSayisi() === onceSatir + 1,
+      `${kur.durum} ${kur.metin.slice(0, 160)}`);
+  } finally {
+    await d.app.close();
+  }
+}
+
 async function main(): Promise<void> {
   await sBlogu();
   await gBlogu();
+  await iBlogu();
   console.log(`\nGOVDE DOGRULAMA: ${passed} PASS, ${failures.length} FAIL`);
   if (failures.length) {
     for (const f of failures) console.log(`  FAIL: ${f}`);

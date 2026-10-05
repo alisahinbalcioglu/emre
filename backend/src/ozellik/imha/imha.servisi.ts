@@ -71,7 +71,7 @@ function KURAL(model: string): SilmeKurali {
 export class CaprazFirmaBagiHatasi extends Error {
   constructor(
     readonly firmaId: string,
-    readonly bag: 'QuoteItem.laborFirmaId' | 'Quote.formatId' | 'LaborPrice.laborItemId',
+    readonly bag: 'QuoteItem.laborFirmaId' | 'Quote.formatId' | 'LaborPrice.laborItemId' | 'LaborPrice.priceListId',
     readonly sayi: number,
   ) {
     super(
@@ -179,7 +179,7 @@ export class ImhaServisi {
         : [];
 
       // ── §5.4 — BASKA FIRMANIN SATIRINA DOKUNUYOR MUYUZ? ──────────────────
-      await this.caprazBagKapisi(tx, firmaId, teklifIdler, iscilikFirmaIdler, formatIdler);
+      await this.caprazBagKapisi(tx, firmaId, teklifIdler, iscilikFirmaIdler, formatIdler, iscilikListeIdler);
 
       // ── Silme — `imha-listesi.ts` sirasiyla, yapraktan koke ──────────────
       const kimlikKumeleri: Record<string, string[] | string> = {
@@ -284,8 +284,10 @@ export class ImhaServisi {
   // ═════════════════════════════════════════════════════════════════════════
 
   /**
-   * §5.4 KAPISI. Bugun canlida bu iki bag SIFIR satir iceriyor ve API bu bagi
-   * URETEMIYOR:
+   * §5.4 KAPISI. Dort bag denetlenir: teklif kalemi → iscilik firmasi, teklif →
+   * format, fiyat satiri → iscilik kalemi (01.10), fiyat satiri → fiyat listesi
+   * (05.10); son ikisinin gerekcesi kendi bloklarinda. Bugun canlida ilk iki
+   * bag SIFIR satir iceriyor ve API bu bagi URETEMIYOR:
    *   · `quotes.service.ts` teklif kalemini yazarken yalniz KENDI firmasinin
    *     `LaborFirm`lerini kabul ediyor (`firmaOk` suzgeci),
    *   · teklif formati hem yazarken hem okurken `firmaId: k.firmaId` ile
@@ -302,6 +304,7 @@ export class ImhaServisi {
     teklifIdler: string[],
     iscilikFirmaIdler: string[],
     formatIdler: string[],
+    iscilikListeIdler: string[],
   ): Promise<void> {
     const bizimTeklif = new Set(teklifIdler);
 
@@ -342,6 +345,22 @@ export class ImhaServisi {
       const yabanci = fiyatlar.filter((f) => !bizimIscilik.has(f.firmaId)).length;
       if (yabanci > 0) {
         throw new CaprazFirmaBagiHatasi(firmaId, 'LaborPrice.laborItemId', yabanci);
+      }
+    }
+
+    // 05.10.2026 (P4b, S1 incelemesi): firmanin iscilik FIYAT LISTESINE
+    // (`LaborPrice.priceListId`) BASKA firmanin fiyat satiri bagliysa liste
+    // silinirken 04.10 CASCADE'i (iscilik_liste_silme_cascade) o satiri
+    // sessizce goturur. Bugunku yazim bu bagi uretmez (liste ve satiri ayni
+    // iscilik firmasinda acilir) — bu kapi o degismezin ikinci kilidi.
+    if (iscilikListeIdler.length) {
+      const bizimIscilik = new Set(iscilikFirmaIdler);
+      const fiyatlar: any[] = await this.parcaliBul(tx.laborPrice, 'priceListId', iscilikListeIdler, {
+        firmaId: true,
+      });
+      const yabanci = fiyatlar.filter((f) => !bizimIscilik.has(f.firmaId)).length;
+      if (yabanci > 0) {
+        throw new CaprazFirmaBagiHatasi(firmaId, 'LaborPrice.priceListId', yabanci);
       }
     }
   }
