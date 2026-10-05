@@ -186,7 +186,7 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   // ilk surum '\d+x\d+'yi de yutuyordu ve once/sonra karsilastirmasi "Teflon
   // Bant 12x10" boyut belirtecini (12 mm x 10 m) dusurdugunu gosterdi.
   const capArtigi = /^x\d|^dn\d+xdn\d+$/;
-  const tokens = adaylar.filter((t) => {
+  const olcuDisi = (t: string): boolean => {
     if (olcuOnEk.test(t) || olcuBitisik.test(t) || capArtigi.test(t)) return false;
     // B16: "110'luk" → ['110','luk'] / "110luk" → ['110luk'] — ek olcuya aittir
     if (lukOlcusu && /^(?:\d{2,3})?l[iu]k$/.test(t)) return false;
@@ -197,7 +197,22 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
     if (t === 'inc' || t === 'inch' || t === 'parmak') return false;
     const n = parseFloat(t.replace(',', '.'));
     return !(Number.isFinite(n) && n === capInfo.value);
-  });
+  };
+  const tokens = adaylar.filter(olcuDisi);
+
+  // ── PARANTEZ ICI NITELIK (P2, 05.10 — P4 bulgusu, olculdu) ────────────
+  // Parantez blogu yukarida kisit token'larindan ATILIR (Faz 2b H1/R6), urun
+  // indeksi ise ATMAZ ("Küresel Vana (tam geçişli)" → tam/gecisli adTokens'ta).
+  // Sonuc: "Küresel Vana (tam geçişli) 1\"" satiri duz "Küresel Vana"ya
+  // fiyatlaniyor, parantezle ayrisan cesitler ("Çekvalf (tek/çift taraf içten
+  // dişli)") ayirt edilemiyordu. Belirtecler AYNI hattan cikarilir; kisit
+  // DEGILDIR — query-engine yalniz havuzda taninanlari yumusak ayirici yapar.
+  const parantezMetni = (raw.match(/\([^)]*\)/g) ?? []).map((p) => p.slice(1, -1)).join(' ');
+  const parantezTokenlari = parantezMetni.trim() === '' ? [] : Array.from(new Set(tokenize(parantezMetni
+    .replace(/(?<!\d)\d{1,3}(?:\s+|-)\d{1,2}\/\d{1,2}/g, ' ')
+    .replace(/(?<!\d)\d{1,2}\/\d{1,2}/g, ' ')).map((t) =>
+    (Object.prototype.hasOwnProperty.call(KISALTMALAR, t) ? KISALTMALAR[t] : t))))
+    .filter((t) => olcuDisi(t) && !tokens.includes(t));
 
   // ── AILEYI COZEN KELIMELER ───────────────────────────────────────
   // Bir token KALDIRILINCA aile cozumu bozuluyorsa, o token ailenin ADIDIR.
@@ -219,7 +234,7 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
     }
   }
 
-  return { raw, notProduct: false, familySlug, tokens, aileKelimeleri, capInfo, boyTag, unit: unit ?? null, unitSignal };
+  return { raw, notProduct: false, familySlug, tokens, aileKelimeleri, parantezTokenlari, capInfo, boyTag, unit: unit ?? null, unitSignal };
 }
 
 /**
