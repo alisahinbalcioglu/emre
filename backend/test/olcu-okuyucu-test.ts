@@ -51,7 +51,8 @@ const sor = (q: string, h: IndexedRow[]) => runQuery(parseLine(q), h) as any;
 const ozet = (o: any) => `${o.kind}${o.reason ? '/' + o.reason : ''} ${JSON.stringify((o.kind === 'ask' ? o.rows : o.row ? [o.row] : []).map((r: any) => `${r.urun.capRaw}@${r.listPrice}`))} kapilar=${JSON.stringify(o.kapilar)}`;
 
 async function main() {
-  check('O INDEX_VERSION 19 (urun capTags degisir → yeniden indeksleme)', Number(INDEX_VERSION) === 19, `INDEX_VERSION=${INDEX_VERSION}`);
+  // >= : sonraki surum artislari (v20 FAZ C3) bu partinin sartini bozmaz
+  check('O INDEX_VERSION >= 19 (urun capTags degisir → yeniden indeksleme)', Number(INDEX_VERSION) >= 19, `INDEX_VERSION=${INDEX_VERSION}`);
 
   // ── B4 PN + inc ────────────────────────────────────────────────────────
   esit('PN 16 1/2"', 'inch/0.5');

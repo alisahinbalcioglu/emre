@@ -11,7 +11,7 @@
 
 import { normalizeText, extractMaterialType } from '../normalizer';
 import { resolveAd } from '../ad-resolver';
-import { extractSizeInfo, isSizeTag, SizeInfo } from '../conversion';
+import { extractSizeInfo, SizeInfo } from '../conversion';
 import { tokenize, buildBoyTag, resolveFamily, tokenEsit } from './product-index';
 import type { LineQuery, FamilyVocab, RoutedTokens, IndexedRow } from './types';
 
@@ -118,18 +118,14 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
 
   // Cap: kaynak-farkinda (DN mi, inc mi, mm mi yazilmis?) — cevrim tablosu
   // secimi buna bagli (PPR'de DN=mm, celikte DN≠mm). v1 ile ayni primitif.
+  // FAZ C A10 (05.10 olculdu): burada "ciplak PE yolu" adli bir ARKA KAPI
+  // vardi; yorumu "63 PE100 SDR17"yi kurtardigini soyluyordu ama HIC
+  // kurtarmiyordu (belirtecler 'dn\d+'/'od-\d+' degil). Fiilen yalniz bitisik
+  // tek/dort haneli DN'i okuyordu — urun tarafinin okumadigi olculeri (DN1000)
+  // ve anlamsizlari (DN1, DN12345) — satir/urun asimetrisi. Kural
+  // extractSizeInfo'ya tasindi (ikisi icin tek); ciplak sayi A8'dir (karar:
+  // gercek liste gorulene dek dokunulmaz).
   let capInfo: SizeInfo | null = extractSizeInfo(raw);
-  if (!capInfo) {
-    // Ciplak PE yolu ("63 PE100 SDR17"): conversion parser'i ciplak sayiyi
-    // BILEREK yakalamaz (yanlis pozitif riski) — v1 bu yolu tag'lerden
-    // kurtariyordu, aynisini yapiyoruz.
-    const legacy = adaylar.find((t) => isSizeTag(t));
-    if (legacy) {
-      capInfo = legacy.startsWith('od-')
-        ? { source: 'mm', value: parseInt(legacy.slice(3), 10), display: legacy }
-        : { source: 'dn', value: parseInt(legacy.slice(2), 10), display: legacy.toUpperCase() };
-    }
-  }
 
   // ── FAZ C B16 (05.10 olculdu): AGIZ YAZIMI "110'LUK" ─────────────────
   // "110'LUK PİS SU BORUSU" capsiz kaliyor, 'luk' bilinmeyen kelime olup
@@ -197,7 +193,8 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
     if (!capInfo) return true;
     // FAZ B A5: "2 inç BORU" — 'inc'/'inch' olcunun BIRIMIDIR, cap okunduysa
     // tuketilmistir (ad kelimesi degil). Olcusuz satirda kelime korunur.
-    if (t === 'inc' || t === 'inch') return false;
+    // FAZ C B15: Turkce "parmak" (= inc) da olcu birimidir.
+    if (t === 'inc' || t === 'inch' || t === 'parmak') return false;
     const n = parseFloat(t.replace(',', '.'));
     return !(Number.isFinite(n) && n === capInfo.value);
   });

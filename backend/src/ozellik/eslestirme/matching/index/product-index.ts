@@ -186,7 +186,10 @@ export interface ProductIndexFields {
 //     (sizeClass → capTags) · "PE 100"/"PE 80" → pe100/pe80 kanonu (adTokens).
 //     ⚠ Parti 1 parti 2'siz canliya CIKARSA bu iki degisiklik v19 satirlarina
 //     ULASMAZ — surum ayni oldugu icin bayat sayilmazlar.
-export const INDEX_VERSION = 19;
+// v20 (05.10, FAZ C3): aile ve cap yolu — "steel" icindeki tee artik fitting
+// degil (B12, adSlug/aile) · DN 6/8 ve 4 haneli DN (A10, capTags) · inc oneki ve
+// "parmak" (B15, capTags). Yeniden indeksleme: v19 ile ayni komut (idempotent).
+export const INDEX_VERSION = 20;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';

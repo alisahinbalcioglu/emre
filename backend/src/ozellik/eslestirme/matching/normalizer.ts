@@ -330,7 +330,10 @@ const TYPE_PATTERNS: { pattern: RegExp; type: string }[] = [
   { pattern: /reduksiyon/i, type: 'fitting' },
   { pattern: /reducer/i, type: 'fitting' },
   { pattern: /\bte\b/i, type: 'fitting' },
-  { pattern: /tee/i, type: 'fitting' },
+  // FAZ C B12 (05.10 olculdu): yalin /tee/ "steel"in ICINDEN tutuyordu —
+  // "Paslanmaz Steel" / "Galvanized Steel" adli urunun ailesi 'fitting'
+  // cikiyordu (sondan cozumde son kelime "steel"). Kelime sinirli; cogul "tees".
+  { pattern: /\btees?\b/i, type: 'fitting' },
   { pattern: /manson/i, type: 'fitting' },
   { pattern: /coupling/i, type: 'fitting' },
   // AD-CINS Sozlugu fittings es anlamlilari
