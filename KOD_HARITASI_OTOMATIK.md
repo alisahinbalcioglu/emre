@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 939
-Toplam satir: 257558
+Kod dosyasi: 941
+Toplam satir: 257775
 Uc nokta: 239
 test:* scripti: 171
 
@@ -506,9 +506,9 @@ test:* scripti: 171
 | `frontend/app/(protected)/firma/ekip/kurumsal-giris/page.tsx` | 576 |
 | `frontend/app/(protected)/firma/ekip/page.tsx` | 438 |
 | `frontend/app/(protected)/koltuk-durduruldu/page.tsx` | 129 |
-| `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | 502 |
-| `frontend/app/(protected)/labor-firms/page.tsx` | 287 |
-| `frontend/app/(protected)/labor/page.tsx` | 320 |
+| `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | 532 |
+| `frontend/app/(protected)/labor-firms/page.tsx` | 291 |
+| `frontend/app/(protected)/labor/page.tsx` | 325 |
 | `frontend/app/(protected)/layout.tsx` | 275 |
 | `frontend/app/(protected)/library/brand/[brandId]/page.tsx` | 629 |
 | `frontend/app/(protected)/library/electrical-brands/page.tsx` | 420 |
@@ -774,6 +774,8 @@ test:* scripti: 171
 | `frontend/ozellik/kutuphane/iscilik-ad-imzasi.ts` | 45 |
 | `frontend/ozellik/kutuphane/iscilik-katalog-adresi.test.ts` | 80 |
 | `frontend/ozellik/kutuphane/iscilik-katalog-adresi.ts` | 28 |
+| `frontend/ozellik/kutuphane/iscilik-silme-onayi.test.ts` | 131 |
+| `frontend/ozellik/kutuphane/iscilik-silme-onayi.ts` | 47 |
 | `frontend/ozellik/kutuphane/library/HavuzaDonusDiyalogu.tsx` | 109 |
 | `frontend/ozellik/kutuphane/library/InlineFirmEntry.tsx` | 165 |
 | `frontend/ozellik/kutuphane/library/ManualBrandModal.tsx` | 193 |
@@ -1408,9 +1410,9 @@ test:* scripti: 171
 | `frontend/app/(protected)/firma/ekip/kurumsal-giris/page.tsx` | `react` `next/link` `next/navigation` `lucide-react` `@/ortak/lib/api` `@/ortak/hooks/use-confirm` `@/ortak/hooks/use-toast` `@/ortak/lib/kimlik-hata-metinleri` `@/ozellik/kimlik/kurumsal-baslat` `@/ozellik/firma/ekip/ekip-parcalari` |
 | `frontend/app/(protected)/firma/ekip/page.tsx` | `react` `next/link` `lucide-react` `@/ortak/lib/api` `@/ortak/hooks/use-confirm` `@/ortak/hooks/use-toast` `@/ortak/lib/kimlik-hata-metinleri` `@/ozellik/firma/ekip/koltuk-metinleri` `@/ozellik/firma/ekip/kisi-metinleri` `@/ozellik/firma/ekip/izin-metinleri` `@/ozellik/firma/ekip/ekip-tipleri` `@/ozellik/firma/ekip/UyeListesi` `@/ozellik/firma/ekip/DavetPenceresi` `@/ozellik/firma/ekip/UyeIzinPaneli` `@/ozellik/firma/ekip/ekip-parcalari` `@/ozellik/odeme/VitrinSaglayici` |
 | `frontend/app/(protected)/koltuk-durduruldu/page.tsx` | `react` `next/navigation` `@/ortak/lib/api` `@/ozellik/kimlik/verileri-indir` `@/ortak/hooks/use-toast` |
-| `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/geri-butonu` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/kutuphane/library/InlineFirmEntry` `@/ozellik/tablo/excel-grid/types` `@/ozellik/fiyat/sayi-alani` `@/ozellik/kutuphane/iscilik-ad-imzasi` |
-| `frontend/app/(protected)/labor-firms/page.tsx` | `react` `next/link` `next/navigation` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/geri-butonu` `@/ortak/ui/card` `@/ortak/ui/input` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/contexts/CapabilitiesContext` |
-| `frontend/app/(protected)/labor/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/card` `@/ortak/ui/geri-butonu` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/utils` `@/ozellik/fiyat/sayi-alani` `@/ozellik/kutuphane/iscilik-katalog-adresi` |
+| `frontend/app/(protected)/labor-firms/[firmaId]/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/geri-butonu` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/kutuphane/library/InlineFirmEntry` `@/ozellik/tablo/excel-grid/types` `@/ozellik/fiyat/sayi-alani` `@/ozellik/kutuphane/iscilik-ad-imzasi` `@/ozellik/kutuphane/iscilik-silme-onayi` `@/ozellik/kutuphane/hata-metni` |
+| `frontend/app/(protected)/labor-firms/page.tsx` | `react` `next/link` `next/navigation` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/geri-butonu` `@/ortak/ui/card` `@/ortak/ui/input` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/kutuphane/hata-metni` `@/ozellik/kutuphane/iscilik-silme-onayi` |
+| `frontend/app/(protected)/labor/page.tsx` | `react` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/card` `@/ortak/ui/geri-butonu` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ortak/lib/utils` `@/ozellik/fiyat/sayi-alani` `@/ozellik/kutuphane/iscilik-katalog-adresi` `@/ozellik/kutuphane/hata-metni` |
 | `frontend/app/(protected)/layout.tsx` | `@/ortak/kabuk/components/layout/Altbilgi` `react` `next/navigation` `next/link` `@/ortak/contexts/CapabilitiesContext` `@/ozellik/odeme/AbonelikSeridi` `@/ozellik/odeme/ErisimKapisi` `@/ozellik/odeme/VitrinSaglayici` `@/ozellik/firma/ekip/UyeIzniKapisi` `@/ortak/kabuk/components/layout/EpostaDogrulamaSeridi` `@/ortak/kabuk/components/layout/KapaliHesapSeridi` `@/ortak/kabuk/components/layout/Sidebar` `@/ortak/kabuk/components/layout/Breadcrumb` `@/ortak/lib/oturum` `@/ozellik/fiyat/para-gosterim` |
 | `frontend/app/(protected)/library/brand/[brandId]/page.tsx` | `react` `@/ortak/contexts/CapabilitiesContext` `next/navigation` `next/link` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/geri-butonu` `@/ortak/ui/card` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/types` `@/ozellik/fiyat/sayi-alani` `@/ozellik/kutuphane/malzeme-ad-imzasi` `@/ozellik/kutuphane/marka-kaldirma-onayi` `@/ozellik/kutuphane/hata-metni` `@/ozellik/kutuphane/havuza-donus` `@/ozellik/kutuphane/library/HavuzaDonusDiyalogu` `@/ozellik/tablo/excel-grid/isaret` |
 | `frontend/app/(protected)/library/electrical-brands/page.tsx` | `react` `@/ortak/contexts/CapabilitiesContext` `next/link` `lucide-react` `@/ortak/ui/card` `@/ortak/ui/geri-butonu` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/ui/label` `@/ortak/ui/dialog` `@/ortak/ui/select` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ozellik/fiyat/sayi-alani` |
@@ -1633,6 +1635,8 @@ test:* scripti: 171
 | `frontend/ozellik/kutuphane/havuza-donus.ts` | `../tablo/excel-grid/isaret` |
 | `frontend/ozellik/kutuphane/iscilik-ad-imzasi.test.ts` | `vitest` `node:fs` `node:path` `./iscilik-ad-imzasi` |
 | `frontend/ozellik/kutuphane/iscilik-katalog-adresi.test.ts` | `vitest` `node:fs` `node:path` `./iscilik-katalog-adresi` |
+| `frontend/ozellik/kutuphane/iscilik-silme-onayi.test.ts` | `vitest` `node:fs` `node:path` `./iscilik-silme-onayi` |
+| `frontend/ozellik/kutuphane/iscilik-silme-onayi.ts` | `../../ortak/hooks/use-confirm` |
 | `frontend/ozellik/kutuphane/library/HavuzaDonusDiyalogu.tsx` | `react` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/dialog` `@/ozellik/tablo/excel-grid/isaret` `@/ozellik/kutuphane/havuza-donus` |
 | `frontend/ozellik/kutuphane/library/InlineFirmEntry.tsx` | `react` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/types` `@/ozellik/fiyat/sayi-alani` |
 | `frontend/ozellik/kutuphane/library/ManualBrandModal.tsx` | `react` `lucide-react` `@/ortak/ui/button` `@/ortak/ui/input` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `@/ozellik/tablo/excel-grid/ExcelGrid` `@/ozellik/tablo/excel-grid/types` `@/ozellik/fiyat/sayi-alani` |
