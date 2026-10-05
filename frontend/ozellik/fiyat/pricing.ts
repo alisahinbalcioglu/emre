@@ -347,6 +347,8 @@ export function satirTarafi(
   r: Record<string, any>, miktar: number,
   birimAlan: string | undefined, topAlan: string | undefined,
   karAlan: '_malzKar' | '_iscKar', netAlan: '_matNetPrice' | '_labNetPrice',
+  /** F3: tarafin para hanesi (₺ 1, doviz 2); verilmezse ₺ kurali. */
+  hane = ONDALIK,
 ): { satis: number; maliyet: number; fiyatli: boolean } | null {
   // A2 (tur 3): MAKINE okuyucusu (ekran/kayit ile ayni) — "1.234,5" 1,234 degil.
   const sayi = (v: unknown) => sayiOku(v) ?? 0;
@@ -358,7 +360,7 @@ export function satirTarafi(
   if (birimBos && topBos) return { satis: 0, maliyet: 0, fiyatli: false };
 
   const satis = !topBos ? sayi(r[topAlan!])
-    : hesaplaSatirToplam(sayi(r[birimAlan!]), miktar);
+    : hesaplaSatirToplam(sayi(r[birimAlan!]), miktar, hane);
   // KÂR HÜCRESİ: ekranın/kaydın kullandığı SÜZGECİN AYNISI. Yerel `sayi`
   // negatifi geçirir; aşağıdaki `kar <= 0` dalı negatifi zaten sıfır gibi
   // ele aldığı için sonuç DEĞİŞMEZ — ama ölçüt tek yerden okunmalı ki
@@ -371,7 +373,7 @@ export function satirTarafi(
     const netSakli = typeof r[netAlan] === 'number' && r[netAlan] > 0 ? r[netAlan] : 0;
     const net = netSakli > 0 ? netSakli
       : sayi(birimAlan ? r[birimAlan] : 0) / (1 + kar / 100);
-    maliyet = hesaplaSatirToplam(hesaplaSatisBirimFiyat(net, 0), miktar);
+    maliyet = hesaplaSatirToplam(hesaplaSatisBirimFiyat(net, 0, hane), miktar, hane);
   }
   return { satis, maliyet, fiyatli: true };
 }
@@ -395,12 +397,24 @@ export interface SayfaToplamOzeti {
   labFiyatsiz: number;
 }
 
+/**
+ * COKLU PARA BIRIMI F3: TARAF SUZGECI — yalniz `dahil(r, dal)` diyen taraflar
+ * toplama girer (karisik kipte: tarafin birimi = kovanin birimi). `hane`
+ * kovanin para hanesi. Verilmezse (tl kipi) her sey BUGUNKU gibi.
+ */
+export interface TarafSuzgeci {
+  dahil: (r: Record<string, any>, dal: 'malzeme' | 'iscilik') => boolean;
+  hane: number;
+}
+
 export function sayfaToplamlari(
   satirlar: Record<string, any>[],
   roller: Record<string, string | undefined>,
   /** Gosterim carpani (TRY = 1). Her satir AYRI cevrilip kuruslanir —
    *  cikti motoru (standart-cikti.ts kurus()) ile ayni sira (A4b / Orta-2). */
   oran = 1,
+  /** F3: karisik kipte para birimi kovasi (bkz. TarafSuzgeci). */
+  suzgec?: TarafSuzgeci,
 ): SayfaToplamOzeti {
   const { materialUnitPriceField: mBirim, materialTotalField: mTop,
     laborUnitPriceField: lBirim, laborTotalField: lTop,
@@ -429,8 +443,9 @@ export function sayfaToplamlari(
 
     // Tek taraf (malzeme/iscilik) icin ortak kural — `satirTarafi` (disa
     // verilmis): fitting tabani da AYNI kurali okur, ikinci aritmetik yok.
-    let m = satirTarafi(r, miktar, mBirim, mTop, '_malzKar', '_matNetPrice');
-    let l = satirTarafi(r, miktar, lBirim, lTop, '_iscKar', '_labNetPrice');
+    const h = suzgec?.hane ?? ONDALIK;
+    let m = satirTarafi(r, miktar, mBirim, mTop, '_malzKar', '_matNetPrice', h);
+    let l = satirTarafi(r, miktar, lBirim, lTop, '_iscKar', '_labNetPrice', h);
 
     // ── FITTING SATIRI (02.09): MALIYET KAPSAMDAN TURER ────────────────────
     // Satis = hucrede yazan (grid gecisi `fittingHesapla` ile yazar; KE21
@@ -438,10 +453,22 @@ export function sayfaToplamlari(
     // satirin kendi kar yuzdesi YOKTUR, kapsamin karini tasir (F3). Ustteki
     // genel kural burada kar 0 gorup maliyet=satis der ve KAR satiri fitting
     // karini SIFIR yazardi — maliyet kapsamdan turetilip UZERINE yazilir.
-    if (r._fitting) {
+    if (suzgec && r._fitting) {
+      // F3 (karar 2): karisik kipte fitting KAPSAMDAN bu kovanin birimiyle
+      // hesaplanir — satis da (satirin sakli tek sayisi iki birimi tasiyamaz).
+      // Kovada kapsam yoksa taraf bu kovaya hic girmez (fiyatsiz da sayilmaz).
+      const f = fittingHesapla(r, satirlar, roller, suzgec);
+      m = f?.mat ? { satis: f.mat.toplam, maliyet: f.mat.maliyet, fiyatli: true } : null;
+      l = f?.lab ? { satis: f.lab.toplam, maliyet: f.lab.maliyet, fiyatli: true } : null;
+    } else if (r._fitting) {
       const f = fittingHesapla(r, satirlar, roller);
       if (m?.fiyatli) m = { ...m, maliyet: f?.mat?.maliyet ?? 0 };
       if (l?.fiyatli) l = { ...l, maliyet: f?.lab?.maliyet ?? 0 };
+    }
+    // F3: karisik kipte yalniz bu kovanin birimindeki taraf sayilir.
+    if (suzgec && !r._fitting) {
+      if (m && !suzgec.dahil(r, 'malzeme')) m = null;
+      if (l && !suzgec.dahil(r, 'iscilik')) l = null;
     }
 
     if (m) {
@@ -667,6 +694,8 @@ export function fittingHesapla(
   fit: Record<string, any>,
   satirlar: Record<string, any>[],
   roller: Record<string, string | undefined>,
+  /** F3 (karar 2): karisik kipte yalniz bu kovanin birimindeki kapsam taraflari; hane kovanin. */
+  suzgec?: TarafSuzgeci,
 ): FittingSonucu | null {
   const kapsam: unknown = fit?._fitting?.kapsam;
   if (!Array.isArray(kapsam)) return null;
@@ -688,10 +717,11 @@ export function fittingHesapla(
     if (!fittingKapsaminaAlinabilirMi(r, fit._rowIdx)) { eksik++; continue; }
     kapsamSayisi++;
     const miktar = etkinMiktar(r!, mikA, brmA);
-    const m = satirTarafi(r!, miktar, mBirim, mTop, '_malzKar', '_matNetPrice');
-    if (m?.fiyatli) { matFiyatli++; matK += K(m.satis); matMaliyetK += K(m.maliyet); }
-    const l = satirTarafi(r!, miktar, lBirim, lTop, '_iscKar', '_labNetPrice');
-    if (l?.fiyatli) { labFiyatli++; labK += K(l.satis); labMaliyetK += K(l.maliyet); }
+    const h = suzgec?.hane ?? ONDALIK;
+    const m = satirTarafi(r!, miktar, mBirim, mTop, '_malzKar', '_matNetPrice', h);
+    if (m?.fiyatli && (!suzgec || suzgec.dahil(r!, 'malzeme'))) { matFiyatli++; matK += K(m.satis); matMaliyetK += K(m.maliyet); }
+    const l = satirTarafi(r!, miktar, lBirim, lTop, '_iscKar', '_labNetPrice', h);
+    if (l?.fiyatli && (!suzgec || suzgec.dahil(r!, 'iscilik'))) { labFiyatli++; labK += K(l.satis); labMaliyetK += K(l.maliyet); }
   }
 
   const taraf = (kolonVar: boolean, fiyatli: number, tK: number, mK: number): FittingTaraf | null => {
@@ -700,9 +730,9 @@ export function fittingHesapla(
       taban: tK / 100,
       maliyetTaban: mK / 100,
       // kurus × yuzde / (100 kurus × 100 yuzde)
-      toplam: yukariYuvarla((tK * oran) / 10000),
-      maliyet: yukariYuvarla((mK * oran) / 10000),
-      birim: yukariYuvarla(tK / 10000),
+      toplam: yukariYuvarla((tK * oran) / 10000, suzgec?.hane ?? ONDALIK),
+      maliyet: yukariYuvarla((mK * oran) / 10000, suzgec?.hane ?? ONDALIK),
+      birim: yukariYuvarla(tK / 10000, suzgec?.hane ?? ONDALIK),
       fiyatli,
     };
   };

@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 907
-Toplam satir: 250598
+Kod dosyasi: 909
+Toplam satir: 250950
 Uc nokta: 239
 test:* scripti: 156
 
@@ -608,7 +608,7 @@ test:* scripti: 156
 | `frontend/lib/parse-material-text.test.ts` | 86 |
 | `frontend/lib/popup-secici-sozlesmesi.test.ts` | 62 |
 | `frontend/lib/pricing.test.ts` | 117 |
-| `frontend/lib/sayfa-toplamlari.test.ts` | 234 |
+| `frontend/lib/sayfa-toplamlari.test.ts` | 237 |
 | `frontend/lib/sayi-ayristirma.test.ts` | 80 |
 | `frontend/lib/silme-etkisi-getir.ts` | 26 |
 | `frontend/lib/silme-onay-metni.test.ts` | 194 |
@@ -685,6 +685,7 @@ test:* scripti: 156
 | `frontend/ozellik/firma/ekip/uye-izni-kapisi.ts` | 40 |
 | `frontend/ozellik/firma/kurumsal-giris/kurumsal-giris-metinleri.ts` | 115 |
 | `frontend/ozellik/firma/kurumsal-giris/kurumsal-giris-parcalari.tsx` | 200 |
+| `frontend/ozellik/fiyat/birimli-toplamlar.test.ts` | 96 |
 | `frontend/ozellik/fiyat/fitting-hesap.test.ts` | 354 |
 | `frontend/ozellik/fiyat/gosterim-dili.test.ts` | 301 |
 | `frontend/ozellik/fiyat/hesap-sinirlari.test.ts` | 242 |
@@ -693,14 +694,14 @@ test:* scripti: 156
 | `frontend/ozellik/fiyat/kur-geri-dusus.test.ts` | 140 |
 | `frontend/ozellik/fiyat/para-gosterim.ts` | 68 |
 | `frontend/ozellik/fiyat/para-sutun-genisligi.ts` | 243 |
-| `frontend/ozellik/fiyat/pricing.ts` | 715 |
+| `frontend/ozellik/fiyat/pricing.ts` | 745 |
 | `frontend/ozellik/fiyat/sayi-alani.ts` | 385 |
 | `frontend/ozellik/fiyat/sayi-kurali.test.ts` | 289 |
 | `frontend/ozellik/fiyat/sayi-oku.test.ts` | 72 |
 | `frontend/ozellik/fiyat/sayi-tek-suzgec.test.ts` | 175 |
 | `frontend/ozellik/fiyat/sayi-yollari.test.ts` | 366 |
 | `frontend/ozellik/fiyat/taraf-para-birimi.test.ts` | 108 |
-| `frontend/ozellik/fiyat/taraf-para-birimi.ts` | 80 |
+| `frontend/ozellik/fiyat/taraf-para-birimi.ts` | 141 |
 | `frontend/ozellik/fiyat/use-currency.ts` | 88 |
 | `frontend/ozellik/giris/kaynak-kolon.ts` | 34 |
 | `frontend/ozellik/hukuki/HukukiSayfa.tsx` | 110 |
@@ -799,7 +800,7 @@ test:* scripti: 156
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5288 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5357 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -882,6 +883,7 @@ test:* scripti: 156
 | `frontend/test/e2e/bant-sayaci.spec.ts` | 145 |
 | `frontend/test/e2e/bos-kaynak-surukle.spec.ts` | 130 |
 | `frontend/test/e2e/coklu-para-birimi-izgara.spec.ts` | 145 |
+| `frontend/test/e2e/coklu-para-birimi-toplam.spec.ts` | 93 |
 | `frontend/test/e2e/elle-fiyat-otomatik-rozet.spec.ts` | 133 |
 | `frontend/test/e2e/eslestirme-temizlik.spec.ts` | 154 |
 | `frontend/test/e2e/grid.spec.ts` | 206 |
@@ -1523,6 +1525,7 @@ test:* scripti: 156
 | `frontend/ozellik/firma/ekip/useFirmaYoneticisi.ts` | `react` `@/ortak/lib/api` `./kisi-metinleri` |
 | `frontend/ozellik/firma/ekip/uye-izni-kapisi.ts` | `./izin-metinleri` |
 | `frontend/ozellik/firma/kurumsal-giris/kurumsal-giris-parcalari.tsx` | `react` `lucide-react` `./kurumsal-giris-metinleri` |
+| `frontend/ozellik/fiyat/birimli-toplamlar.test.ts` | `vitest` `./taraf-para-birimi` `./pricing` |
 | `frontend/ozellik/fiyat/fitting-hesap.test.ts` | `vitest` |
 | `frontend/ozellik/fiyat/gosterim-dili.test.ts` | `vitest` `./sayi-alani` `./pricing` |
 | `frontend/ozellik/fiyat/hesap-sinirlari.test.ts` | `vitest` |
@@ -1687,6 +1690,7 @@ test:* scripti: 156
 | `frontend/test/e2e/bant-sayaci.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/bos-kaynak-surukle.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/coklu-para-birimi-izgara.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/coklu-para-birimi-toplam.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/elle-fiyat-otomatik-rozet.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/eslestirme-temizlik.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/grid.spec.ts` | `@playwright/test` |

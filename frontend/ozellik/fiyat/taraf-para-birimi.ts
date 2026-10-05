@@ -15,7 +15,7 @@
  *
  * Gosterim sayi dili `paraBicim` (pricing.ts) — tek kaynak.
  */
-import { ONDALIK, kurusTamsayi, paraBicim } from './pricing';
+import { ONDALIK, kurusTamsayi, paraBicim, sayfaToplamlari, fittingHesapla, type SayfaToplamOzeti, type TarafSuzgeci } from './pricing';
 
 export type ParaBirimi = 'TRY' | 'USD' | 'EUR';
 
@@ -76,4 +76,65 @@ export function elleGirilenPB(metin: string): ParaBirimi | null {
  */
 export function paraIsaretiniAyikla(metin: string): string {
   return String(metin ?? '').replace(/[$€₺]|\b(USD|EUR|EURO|AVRO|TRY|TL|DOLAR)\b/gi, '').trim();
+}
+
+// ══ F3 — SAYFA TOPLAMI / KAR / FITTING PARA BIRIMI BASINA ═════════════════
+
+/** Kova sirasi — sabit (ekranda ₺, $, € sirasiyla). */
+const SIRA: readonly ParaBirimi[] = ['TRY', 'USD', 'EUR'];
+
+/** Bu birimin kovasina giren taraflar: tarafin birimi = kovanin birimi. */
+export function birimSuzgeci(pb: ParaBirimi): TarafSuzgeci {
+  return { dahil: (r, dal) => tarafPB(r, dal) === pb, hane: paraHanesi(pb) };
+}
+
+/**
+ * Karisik kip sayfa toplami: birim BASINA bir ozet (dolar liraya eklenmez).
+ * Yalniz fiyatli tarafi olan birimler doner; hic yoksa tek ₺ kovasi (bugunku
+ * bos toplam satiri). Fiyatsiz satir sayilari HER kovaya yazilir: fiyatsiz
+ * tarafin birimi yoktur, hangi toplamin eksik oldugu bilinemez — uyari (KE29)
+ * hicbir kovada kaybolmasin. Yalniz-TL sayfada sonuc `sayfaToplamlari` ile
+ * birebir aynidir.
+ */
+export function birimliToplamlar(
+  satirlar: Record<string, any>[],
+  roller: Record<string, string | undefined>,
+): Array<{ pb: ParaBirimi; ozet: SayfaToplamOzeti }> {
+  const genel = sayfaToplamlari(satirlar, roller);
+  const kovalar = SIRA
+    .map((pb) => ({ pb, ozet: sayfaToplamlari(satirlar, roller, 1, birimSuzgeci(pb)) }))
+    .filter((k) => k.ozet.matFiyatli + k.ozet.labFiyatli > 0);
+  if (kovalar.length === 0) return [{ pb: 'TRY', ozet: genel }];
+  return kovalar.map((k) => ({
+    pb: k.pb,
+    ozet: { ...k.ozet, matFiyatsiz: genel.matFiyatsiz, labFiyatsiz: genel.labFiyatsiz },
+  }));
+}
+
+/** Fitting satirinin tutarlari birim BASINA (karar 2) — sifir tutar yazilmaz. */
+export function fittingBirimli(
+  fit: Record<string, any>,
+  satirlar: Record<string, any>[],
+  roller: Record<string, string | undefined>,
+): { mat: Array<{ pb: ParaBirimi; toplam: number }>; lab: Array<{ pb: ParaBirimi; toplam: number }> } {
+  const mat: Array<{ pb: ParaBirimi; toplam: number }> = [];
+  const lab: Array<{ pb: ParaBirimi; toplam: number }> = [];
+  for (const pb of SIRA) {
+    const f = fittingHesapla(fit, satirlar, roller, birimSuzgeci(pb));
+    if (f?.mat && f.mat.toplam !== 0) mat.push({ pb, toplam: f.mat.toplam });
+    if (f?.lab && f.lab.toplam !== 0) lab.push({ pb, toplam: f.lab.toplam });
+  }
+  return { mat, lab };
+}
+
+/**
+ * Birden cok birimli tutar metni ("₺20,00 + $2,10"): birimler sabit sirada,
+ * ayni birim kurus katmaninda birlesir, sifir yazilmaz; hic yoksa null.
+ */
+export function cokluTutarMetni(parcalar: Array<{ pb: ParaBirimi; tutar: number }>): string | null {
+  const K = new Map<ParaBirimi, number>();
+  for (const p of parcalar) K.set(p.pb, (K.get(p.pb) ?? 0) + kurusTamsayi(p.tutar));
+  const yazi = SIRA.filter((pb) => (K.get(pb) ?? 0) !== 0)
+    .map((pb) => `${PARA_SEMBOLU[pb]}${paraBicim(K.get(pb)! / 100, 1)}`);
+  return yazi.length ? yazi.join(' + ') : null;
 }

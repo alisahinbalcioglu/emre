@@ -23,7 +23,7 @@ import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, 
 import { isaretStili, isaretTooltip, secimBekliyor, kutuphaneFiyatAyrisimi, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
-import { paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, paraIsaretiniAyikla, PARA_SEMBOLU, type ParaBirimi } from '@/ozellik/fiyat/taraf-para-birimi';
+import { paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, paraIsaretiniAyikla, PARA_SEMBOLU, birimliToplamlar, fittingBirimli, cokluTutarMetni, type ParaBirimi } from '@/ozellik/fiyat/taraf-para-birimi';
 // FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
 import {
   FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
@@ -3470,9 +3470,31 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     api.forEachNode((n) => { if (n.data) satirlar.push(n.data); });
     // Yazilacak hucreler saf fonksiyondan (fitting.ts, testli); burada yalniz
     // DEGISEN hucre yazilir.
-    const hucreler = fittingHucreleri(satirlar, data.columnRoles as any);
+    let hucreler = fittingHucreleri(satirlar, data.columnRoles as any);
+    // ── F3 (karar 2): KARISIK KIPTE fitting tutari BIRIM BASINA ─────────────
+    // Kapsam karisiksa her birim AYRI tutar uretir; tek sayili hucre iki birimi
+    // tasiyamaz. Toplam hucreleri BOSALTILIR, birim basina tutarlar satir
+    // verisinde (`_fittingBirimli`, kolon degil) — bicimlendirici "₺x + $y"
+    // cizer, sayfa toplami (`birimliToplamlar`) kapsamdan yeniden hesaplar.
+    const fittingYenilenen: any[] = [];
+    if (karisik) {
+      const Rk = data.columnRoles as any;
+      const toplamAlanlari = new Set([Rk.materialTotalField, Rk.laborTotalField, Rk.grandTotalField].filter(Boolean));
+      hucreler = hucreler.map((h) => (toplamAlanlari.has(h.alan) ? { ...h, deger: '' } : h));
+      for (const r of satirlar) {
+        if (!r._fitting) continue;
+        const node = api.getRowNode(String(r._rowIdx));
+        if (!node?.data) continue;
+        const yeni = fittingBirimli(node.data, satirlar, Rk);
+        if (JSON.stringify((node.data as any)._fittingBirimli ?? null) !== JSON.stringify(yeni)) {
+          (node.data as any)._fittingBirimli = yeni;
+          fittingYenilenen.push(node);
+        }
+      }
+    }
     fittingYaziyorRef.current = true;
     try {
+      if (fittingYenilenen.length) api.refreshCells({ rowNodes: fittingYenilenen, force: true });
       for (const h of hucreler) {
         const node = api.getRowNode(String(h.rowIdx));
         if (!node?.data || String(node.data[h.alan] ?? '') === h.deger) continue;
@@ -3497,7 +3519,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     }
     // Tul kimlik tabanli (row-id); yine de kapsam/hucre degisimi sonrasi tazele
     if (fittingModuRef.current) fittingTulu(fittingModuRef.current.rowIdx);
-  }, [data.columnRoles, enableStructureEdit, fittingTulu, mode]);
+  }, [data.columnRoles, enableStructureEdit, fittingTulu, mode, karisik]);
 
   // Pinned bottom "GENEL TOPLAM" satirini gunceller — tum data row'larin grand toplamini alir
   const updatePinnedBottom = useCallback(() => {
@@ -3519,6 +3541,42 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // binecek — kar icin ikinci bir hesap yeri ACILMAZ.
     const satirlar: any[] = [];
     gridRef.current.api.forEachNode((node) => { if (node.data) satirlar.push(node.data); });
+    // ── COKLU PARA BIRIMI F3: KARISIK KIP — BIRIM BASINA ALT SATIRLAR ────────
+    // Her birim kendi "GENEL TOPLAM ₺/$/€" ve "KÂR ₺/$/€" satirini alir; dolar
+    // liraya EKLENMEZ. Degerler birimin kendisinde (cevrim yok — `_gosterim`
+    // ham degeri tasir), sembol satirin `_currency`sinden (bicimlendirici zaten
+    // okur). Hesap TEK yerden: `birimliToplamlar` (taraf-para-birimi.ts).
+    if (karisik) {
+      const R = data.columnRoles as any;
+      const genelAlanK = R.grandTotalField ?? R.grandUnitPriceField;
+      const kovalar = birimliToplamlar(satirlar, R);
+      const toplamSatirlari = kovalar.map(({ pb, ozet: oz }, i) => {
+        const s: any = { _rowIdx: -1 - i * 10, _isDataRow: false, _isHeaderRow: false, _isPinnedTotal: true, _currency: pb };
+        if (nameField) s[nameField] = `GENEL TOPLAM ${PARA_SEMBOLU[pb]}`;
+        if (materialTotalField) s[materialTotalField] = oz.matToplam.toFixed(PARA_ONDALIK);
+        if (laborTotalField) s[laborTotalField] = oz.labToplam.toFixed(PARA_ONDALIK);
+        if (grandTotalField) s[grandTotalField] = oz.genelToplam.toFixed(PARA_ONDALIK);
+        if (!grandTotalField && grandUnitPriceField) s[grandUnitPriceField] = oz.genelToplam.toFixed(PARA_ONDALIK);
+        if (grandUnitPriceField && grandTotalField) s[grandUnitPriceField] = '';
+        s._gosterim = { oran: conversionRate };
+        if (materialTotalField) s._gosterim[materialTotalField] = oz.matToplam;
+        if (laborTotalField) s._gosterim[laborTotalField] = oz.labToplam;
+        if (genelAlanK) s._gosterim[genelAlanK] = oz.genelToplam;
+        return s;
+      });
+      if (mode === 'library') { setPinnedBottomRow(toplamSatirlari); return; }
+      const karSatirlari = kovalar.map(({ pb, ozet: oz }, i) => {
+        const k: any = karSatiri(oz, R, nameField);
+        k._rowIdx = -2 - i * 10;
+        k._currency = pb;
+        if (nameField) k[nameField] = `KÂR ${PARA_SEMBOLU[pb]}`;
+        k._gosterim = { oran: conversionRate };
+        for (const alan of [materialTotalField, laborTotalField, genelAlanK]) if (alan) k._gosterim[alan] = k[alan];
+        return k;
+      });
+      setPinnedBottomRow([...toplamSatirlari, ...karSatirlari]);
+      return;
+    }
     const ozet = sayfaToplamlari(satirlar, data.columnRoles as any);
     // A4b: EKRAN BIRIMINDEKI toplam satir satir cevrilir (cikti ile ayni kurus).
     // Standart alanlar TL kalir; cevrilmis degerler `_gosterim`de, uretildigi carpanla.
@@ -3571,7 +3629,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     } else {
       setPinnedBottomRow([pinnedRow]);
     }
-  }, [data.columnRoles, mode, fittingSatirlariniYenile, conversionRate]);
+  }, [data.columnRoles, mode, fittingSatirlariniYenile, conversionRate, karisik]);
   updatePinnedBottomRef.current = updatePinnedBottom;
   // Kur yuklenince / birim degisince pinned YENIDEN kurulur: data.rowData efekti
   // kendi yayinimizda (sonYayinRef) erken doner, ona guvenilemez.
@@ -4173,8 +4231,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             // (kur yeni degisti, pinned henuz kurulmadi) bugunku TL × oran'a duser.
             const gk = (params.data as any)?._gosterim;
             const alanK = params.colDef?.field as string;
-            if (gk && gk.oran === conversionRate && typeof gk[alanK] === 'number') return `${currencySymbol}${paraBicim(gk[alanK], 1)}`;
-            return `${currencySymbol}${paraBicim(kv, conversionRate)}`;
+            // F3: karisik kipte KAR satiri birim basina — sembol satirin `_currency`si.
+            const karSym = (params.data as any)?._currency ? (ROW_CURRENCY_SYMBOL[(params.data as any)._currency] ?? currencySymbol) : currencySymbol;
+            if (gk && gk.oran === conversionRate && typeof gk[alanK] === 'number') return `${karSym}${paraBicim(gk[alanK], 1)}`;
+            return `${karSym}${paraBicim(kv, conversionRate)}`;
           }
           // ⚠ `parseFloat(String(v))` DEGIL — `sayiOku` (E2E'de olculdu):
           // TR klavyede "1875,5" yazan kullanicinin degeri hucrede VIRGULLU
@@ -4193,6 +4253,15 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
             const dK = params.data as any;
             const R = data.columnRoles;
             const alanK2 = params.colDef?.field as string;
+            // F3 (karar 2): fitting satiri birim basina tutar tasir.
+            if (dK._fitting && dK._fittingBirimli) {
+              const fb = dK._fittingBirimli as { mat: Array<{ pb: ParaBirimi; toplam: number }>; lab: Array<{ pb: ParaBirimi; toplam: number }> };
+              const parca = (l: Array<{ pb: ParaBirimi; toplam: number }>) => l.map((x) => ({ pb: x.pb, tutar: x.toplam }));
+              if (alanK2 === R.materialTotalField) return cokluTutarMetni(parca(fb.mat)) ?? '';
+              if (alanK2 === R.laborTotalField) return cokluTutarMetni(parca(fb.lab)) ?? '';
+              if (alanK2 === R.grandTotalField) return cokluTutarMetni([...parca(fb.mat), ...parca(fb.lab)]) ?? '';
+              return '';
+            }
             if (alanK2 === R.grandTotalField || alanK2 === R.grandUnitPriceField) {
               const toplamMi = alanK2 === R.grandTotalField;
               const m = sayiOku(dK[(toplamMi ? R.materialTotalField : R.materialUnitPriceField) as string]);

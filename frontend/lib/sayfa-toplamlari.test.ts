@@ -198,7 +198,10 @@ describe('A4a/A4b KAYNAK KAPISI — ExcelGrid ve iki doldurma yolu kurala BAGLI'
     pinnedOranli: /sayfaToplamlari\(\s*satirlar\s*,\s*data\.columnRoles as any\s*,\s*conversionRate\s*\)/,
     ikinciCarpmaYok: /paraBicim\(\s*g[pk]\[\s*alan[PK]\s*\]\s*,\s*1\s*\)/,
     ikinciCarpmaVar: /paraBicim\(\s*g[pk]\[\s*alan[PK]\s*\]\s*,\s*conversionRate\s*\)/,
-    bagimlilik: /\[data\.columnRoles, mode, fittingSatirlariniYenile, conversionRate\]/,
+    // ⚠ 05.10 (coklu para birimi F3): olcut dizinin TAM METNI degil, `conversionRate`in
+    // dizide OLMASI — sonradan eklenen bagimliliga (`karisik`) izin verir; kur
+    // degisince yeniden kurulma sozlesmesi aynen olculur (ozellik-kapisi 21.09 emsali).
+    bagimlilik: /\[data\.columnRoles, mode, fittingSatirlariniYenile, conversionRate(?:, [A-Za-z]+)*\]/,
     kurEfekti: /useEffect\(\s*\(\)\s*=>\s*\{\s*updatePinnedBottomRef\.current\?\.\(\);\s*\}\s*,\s*\[conversionRate\]\s*\)/,
     recalcKurus: /setDataValue\(grandTotalField,\s*kalemToplami\(/,
     recalcEski: /setDataValue\(grandTotalField,\s*yukariYuvarla\(/,
