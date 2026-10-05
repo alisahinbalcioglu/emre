@@ -467,6 +467,20 @@ export default function NewQuotePage() {
   const kutuphaneIzni = izinVar('kutuphane');
   const excelIzni = izinVar('excel');
   const excelGridRef = useRef<ExcelGridHandle>(null);
+  // ── ACIK DUZENLEYICI KAPISI (05.10, koordinator karari) ─────────────────
+  // Satir OKUYAN ya da DEGISTIREN her kullanici eyleminin BASINDA acik hucre
+  // duzenleyicisi islenir — ikizler (kutuphane marka sayfasi, iscilik firmasi)
+  // kayittan once `stopEditing()` cagiriyordu, bu sayfa CAGIRMIYORDU.
+  //  · Sekme degisiminde izgara yeni `key` ile YENIDEN KURULUR: duzenleyicideki
+  //    deger islenmeden siliniyordu (e2e AD2, odak tasimadan tetiklenen sekme).
+  //  · Kayit yolunu bugun sayfa yeniden cizimi TESADUFEN koruyor (satirlar
+  //    okunmadan once `setIsSaving` cizimi duzenleyiciyi isliyor) — kapi bunu
+  //    acik ve sira-bagimsiz yapar.
+  //  · Gercek olcumde (insan hizi, 150'de 4) Enter'dan sonra ACIK kalan yetim
+  //    duzenleyici goruldu; yeniden uretilemedi (750'de 0).
+  // Kapilar: test/e2e/teklif-acik-duzenleyici.spec.ts (AD1/AD2) +
+  // lib/acik-duzenleyici-kapisi.test.ts (her eylemde satir okumadan ONCE).
+  const duzenlemeyiBitir = () => excelGridRef.current?.stopEditing();
 
   const hasAnyLabor = capabilities.mechanical.labor || capabilities.electrical.labor;
 
@@ -478,6 +492,7 @@ export default function NewQuotePage() {
 
 
   const handleCeviri = async () => {
+    duzenlemeyiBitir();
     if (!multiSheet?.sheets) return;
     const sheets = multiSheet.sheets;
 
@@ -619,6 +634,7 @@ export default function NewQuotePage() {
 
   /** Duzeltmeyi CANLI satirlara uygular; kalicilik "Teklifi Kaydet" ile (K-T1). */
   const duzeltmeyiUygula = (kaynak: string, deger: string | null) => {
+    duzenlemeyiBitir();
     const sheets = multiSheet?.sheets;
     if (!sheets) return;
     const { yazilan } = duzeltmeyiSatirlaraUygula(sheets as any, kaynak, deger, liveRowDataBySheet);
@@ -919,6 +935,7 @@ export default function NewQuotePage() {
    * eslesen pozlarin kaynak hucreleri (miktar vb.) dosyadan guncellenir,
    * yeni satir/sheet eklenir, yalniz eskide olanlar sona tasinir. */
   function applyIncomingMultiSheet(multi: MultiSheetData) {
+    duzenlemeyiBitir();
     let merged: MultiSheetData;
     let live: Record<number, ExcelRowData[]>;
     let stats: ReturnType<typeof mergeMultiSheet>['stats'];
@@ -1159,6 +1176,7 @@ export default function NewQuotePage() {
   // A2: sutunu "kat" isaretle/kaldir + MIK = katlarin satir-toplami (yeniden hesap)
   function toggleColumnFloor(field: string) {
     if (lockedColumns.includes(field)) return;
+    duzenlemeyiBitir();
     const cur = activeFloorFields;
     const next = cur.includes(field) ? cur.filter((f) => f !== field) : [...cur, field];
     setColFloorsBySheet((prev) => ({ ...prev, [activeSheetKey]: next }));
@@ -1181,6 +1199,7 @@ export default function NewQuotePage() {
   // Dolu sutunda onay + "Gizle" alternatifi (yanlislikla veri/toplam bozulmasin).
   async function removeColumn(field: string) {
     if (lockedColumns.includes(field)) return;
+    duzenlemeyiBitir();
     const col = managedColumns.find((c) => c.field === field);
     const rows = liveRowDataBySheet[activeSheetKey] ?? activeSheetObj?.rowData ?? [];
     const dolu = rows.filter((r: any) => r._isDataRow && String(r[field] ?? '').trim() !== '').length;
@@ -1448,6 +1467,7 @@ export default function NewQuotePage() {
   }, [rows, totalCol]);
 
   async function handleSave() {
+    duzenlemeyiBitir(); // acik duzenleyici kapisi — satirlar asagida okunur
     // ── K6 (27.08): GORUNMEYEN TABLO KAYDEDILEMEZ ──────────────────────
     // Kaydin kaynagi ekranda CIZILEN tablodur (`multiSheet` ya da
     // `excelGridData`). Ikisi de yokken kayit yolu yine de calisip kullanicinin
@@ -2407,6 +2427,7 @@ export default function NewQuotePage() {
             }))}
             activeIndex={activeSheetIndex}
             onChange={(idx) => {
+              duzenlemeyiBitir(); // izgara yeni key ile kurulur — acik deger once islenir
               setActiveSheetIndex(idx);
               const active = multiSheet.sheets[idx];
               if (active) {

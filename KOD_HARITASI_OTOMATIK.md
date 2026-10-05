@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 928
-Toplam satir: 254838
+Kod dosyasi: 930
+Toplam satir: 255065
 Uc nokta: 239
 test:* scripti: 170
 
@@ -520,7 +520,7 @@ test:* scripti: 170
 | `frontend/app/(protected)/quote-formats/page.tsx` | 396 |
 | `frontend/app/(protected)/quotes/[id]/page.tsx` | 784 |
 | `frontend/app/(protected)/quotes/new/error.tsx` | 13 |
-| `frontend/app/(protected)/quotes/new/page.tsx` | 2442 |
+| `frontend/app/(protected)/quotes/new/page.tsx` | 2463 |
 | `frontend/app/(protected)/quotes/page.tsx` | 330 |
 | `frontend/app/admin/brands/page.tsx` | 904 |
 | `frontend/app/admin/denetim/page.tsx` | 294 |
@@ -612,6 +612,7 @@ test:* scripti: 170
 | `frontend/components/dwg-workspace/sprinkler-bayatlik.ts` | 51 |
 | `frontend/components/dwg-workspace/types.ts` | 80 |
 | `frontend/components/dwg-workspace/useWorkspaceState.ts` | 275 |
+| `frontend/lib/acik-duzenleyici-kapisi.test.ts` | 67 |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | 60 |
 | `frontend/lib/indeks-sagligi.test.ts` | 75 |
 | `frontend/lib/indeks-sagligi.ts` | 64 |
@@ -915,9 +916,10 @@ test:* scripti: 170
 | `frontend/test/e2e/malzeme-aday-ipucu.spec.ts` | 90 |
 | `frontend/test/e2e/restore-ozet.spec.ts` | 122 |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
-| `frontend/test/e2e/secim-duzenleme.spec.ts` | 547 |
+| `frontend/test/e2e/secim-duzenleme.spec.ts` | 555 |
 | `frontend/test/e2e/surukle-bayat-sebep.spec.ts` | 91 |
 | `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 347 |
+| `frontend/test/e2e/teklif-acik-duzenleyici.spec.ts` | 131 |
 | `frontend/test/e2e/varyant-kimligi.spec.ts` | 113 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
@@ -1483,6 +1485,7 @@ test:* scripti: 170
 | `frontend/components/dwg-workspace/sprinkler-bayatlik.test.ts` | `vitest` `./sprinkler-bayatlik` |
 | `frontend/components/dwg-workspace/types.ts` | `@/components/dwg-metraj` |
 | `frontend/components/dwg-workspace/useWorkspaceState.ts` | `react` `@/ortak/hooks/use-toast` `./types` `./gecmis` |
+| `frontend/lib/acik-duzenleyici-kapisi.test.ts` | `vitest` `fs` `path` |
 | `frontend/lib/gs6b-golge-kurali.test.ts` | `vitest` `fs` `path` |
 | `frontend/lib/indeks-sagligi.test.ts` | `vitest` `./indeks-sagligi` |
 | `frontend/lib/kar-degisimi.test.ts` | `vitest` |
@@ -1743,6 +1746,7 @@ test:* scripti: 170
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/surukle-bayat-sebep.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | `@playwright/test` `../../ozellik/teklif/taslak` |
+| `frontend/test/e2e/teklif-acik-duzenleyici.spec.ts` | `@playwright/test` `../../ozellik/teklif/taslak` |
 | `frontend/test/e2e/varyant-kimligi.spec.ts` | `@playwright/test` |
 | `frontend/vitest.config.ts` | `vitest/config` |
 | `scripts/deploy-olcum.cjs` | `fs` |
