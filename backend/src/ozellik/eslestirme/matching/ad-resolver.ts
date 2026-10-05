@@ -22,6 +22,48 @@ const NEGATIVE_GUARDS: Record<string, RegExp> = {
   kanal: /kanalizasyon/,
 };
 
+/**
+ * ONEK KOVASI (P2 ad uzunlugu, 05.10 — olculdu): `resolveAdDetayli` her desende
+ * metnin TAMAMINDA indexOf yapiyordu (desen sayisi × metin uzunlugu). Aile
+ * cozucu bunu sondan-parca basina, parseLine'in aileKelimeleri dongusu de token
+ * basina tekrarliyor: 1.475 karakterlik gercek bir sartname adi tek basina
+ * ~0,7 sn suruyordu ve CPU profilinde zamanin en buyuk payi buradaydi.
+ * Kural (sonuc BIREBIR ayni): bir desen metinde geciyorsa ILK UC KARAKTERI de
+ * gecer (PATTERNS'e yalniz ≥3 karakterli desen girer). Metnin uc-karakterli
+ * dizileri bir kez cikarilir; yalniz oneki metinde bulunan desenler PATTERNS
+ * SIRASIYLA denenir. Kovaya girmeyen desen zaten indexOf -1 verirdi.
+ */
+// Anahtar: uc UTF-16 birimi tek sayida (16+16+16 bit < 2^53, kesin) — dize kesmeden.
+const onekAnahtari = (s: string, i: number): number =>
+  s.charCodeAt(i) * 4294967296 + s.charCodeAt(i + 1) * 65536 + s.charCodeAt(i + 2);
+// `nesil`: kova bu cagrida eklendi mi (cagri basina yeni Set kurmamak icin; senkron, yeniden girissiz).
+const ONEK_KOVASI: ReadonlyMap<number, { dizinler: number[]; nesil: number }> = (() => {
+  const m = new Map<number, { dizinler: number[]; nesil: number }>();
+  PATTERNS.forEach(({ p }, i) => {
+    const k = onekAnahtari(p, 0);
+    const kova = m.get(k);
+    if (kova) kova.dizinler.push(i); else m.set(k, { dizinler: [i], nesil: 0 });
+  });
+  return m;
+})();
+let onekNesli = 0;
+
+/** Metinde oneki gecen desenlerin PATTERNS sirasi (artan dizin). */
+function onekAdaylari(norm: string): number[] {
+  const nesil = ++onekNesli;
+  const adaylar: number[] = [];
+  for (let i = 0; i + 3 <= norm.length; i++) {
+    const kova = ONEK_KOVASI.get(onekAnahtari(norm, i));
+    if (!kova || kova.nesil === nesil) continue;
+    kova.nesil = nesil;
+    for (const d of kova.dizinler) adaylar.push(d);
+  }
+  return adaylar.sort((a, b) => a - b);
+}
+
+/** Olcum sayaci (yalniz test okur): `resolveAdDetayli`nin denedigi desen sayisi. */
+export const AD_COZUCU_OLCUM = { desenDenemesi: 0 };
+
 /** Yeni aile slug'lari (regex disinda sozlukten gelenler) — tip=must kilidi. */
 export const AD_YENI_SLUGS: ReadonlySet<string> = new Set(AD_SOZLUGU.map((e) => e.slug));
 
@@ -55,6 +97,27 @@ export function resolveAd(text: string): string | null {
  * `resolveAd` bunun uzerine kuruldu — tek tarama, tek dogruluk kaynagi.
  */
 export function resolveAdDetayli(
+  text: string,
+): { slug: string; desen: string; index: number } | null {
+  const norm = normalizeText(text);
+  for (const i of onekAdaylari(norm)) {
+    const { p, slug } = PATTERNS[i];
+    AD_COZUCU_OLCUM.desenDenemesi++;
+    const index = norm.indexOf(p);
+    if (index < 0) continue;
+    const guard = NEGATIVE_GUARDS[slug];
+    if (guard && guard.test(norm)) continue;
+    return { slug, desen: p, index };
+  }
+  return null;
+}
+
+/**
+ * TEST REFERANSI (kapi `test:ad-uzunlugu`): onek suzgeci OLMAYAN eski tarama —
+ * `resolveAdDetayli`nin birebir ayni sonucu verdigi BUNA karsi olculur.
+ * Uretim kodu cagirmaz.
+ */
+export function resolveAdDetayliFiltresiz(
   text: string,
 ): { slug: string; desen: string; index: number } | null {
   const norm = normalizeText(text);

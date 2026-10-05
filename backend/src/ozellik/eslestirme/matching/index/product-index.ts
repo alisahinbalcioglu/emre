@@ -453,22 +453,54 @@ export function malzemeEtiketleri(...metinler: Array<string | null | undefined>)
  * kelimesi ADIN SONUNDA arandigi icin bastaki nitelemeler ("dekoratif boru")
  * aileyi kacirtmaz.
  */
-function basIsimAilesi(text: string): string | null {
+function basIsimAilesi(text: string, bellek?: AileBellegi): string | null {
   const tam = normalizeText(text);
   const kelimeler = tam.split(/\s+/).filter(Boolean);
+  // Sondan-parca ARTIMLI kurulur (`kelimeler.slice(i).join(' ')` ile ayni dize;
+  // her adimda bastan birlestirmek uzun metinde karesel is yapiyordu).
+  let parca = '';
   for (let i = kelimeler.length - 1; i >= 0; i--) {
-    const parca = kelimeler.slice(i).join(' ');
+    parca = parca === '' ? kelimeler[i] : `${kelimeler[i]} ${parca}`;
     // parca DAIMA metnin sonundadir → tam metindeki basi basit fark.
     const ofset = tam.length - parca.length;
-
-    const rx = extractMaterialTypeDetayli(parca);
-    if (rx && rx.type !== 'diger') return kapsayanVarsaOnuAl(tam, ofset, rx.index, rx.length, rx.type);
-
-    const dc = resolveAdDetayli(parca);
-    if (dc) return kapsayanVarsaOnuAl(tam, ofset, dc.index, dc.desen.length, dc.slug);
+    let s = bellek?.get(parca);
+    if (s === undefined) {
+      s = parcaDenetle(parca);
+      bellek?.set(parca, s);
+    }
+    if (s) return kapsayanVarsaOnuAl(tam, ofset, s.index, s.uzunluk, s.slug);
   }
   return null;
 }
+
+/** Sondan-parca denetimi — yalniz PARCANIN fonksiyonu (sozluk/desen sabitleri). */
+type ParcaSonucu = { index: number; uzunluk: number; slug: string } | null;
+function parcaDenetle(parca: string): ParcaSonucu {
+  AILE_COZUCU_OLCUM.parcaDenetimi++;
+  const rx = extractMaterialTypeDetayli(parca);
+  if (rx && rx.type !== 'diger') return { index: rx.index, uzunluk: rx.length, slug: rx.type };
+  const dc = resolveAdDetayli(parca);
+  if (dc) return { index: dc.index, uzunluk: dc.desen.length, slug: dc.slug };
+  return null;
+}
+
+/**
+ * CAGRI ICI BELLEK (P2 ad uzunlugu, 05.10 — olculdu): parseLine'in aileKelimeleri
+ * dongusu aile cozumunu token basina, kalan metnin TAMAMIYLA yeniden kosar; bir
+ * token cikarilinca onun SAGINDAKI sondan-parcalar tam metindekiyle AYNI dizedir.
+ * Bellek (parca → denetim sonucu) bu tekrari onler. Sonuc birebir ayni: denetim
+ * yalniz parcanin saf fonksiyonudur ve sozluk tek bir senkron cagri icinde
+ * degismez — KURESEL onbellek DEGIL, cagiranin kurdugu kisa omurlu Map.
+ */
+export type AileBellegi = Map<string, ParcaSonucu>;
+
+/** `resolveFamily(ad)` (kategorisiz) ile AYNI sonuc; bellegi cagiran tasir. */
+export function resolveFamilyBellekli(ad: string, bellek: AileBellegi): string | null {
+  return basIsimAilesi(ad, bellek);
+}
+
+/** Olcum sayaci (yalniz test okur): yapilan sondan-parca denetimi. */
+export const AILE_COZUCU_OLCUM = { parcaDenetimi: 0 };
 
 /**
  * KAPSAMA USTUNLUGU (bkz. `sozlukKapsayan` — gerekce ve olcum orada).

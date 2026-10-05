@@ -12,7 +12,7 @@
 import { normalizeText, extractMaterialType } from '../normalizer';
 import { resolveAd } from '../ad-resolver';
 import { extractSizeInfo, SizeInfo } from '../conversion';
-import { tokenize, buildBoyTag, resolveFamily, tokenEsit } from './product-index';
+import { tokenize, buildBoyTag, resolveFamily, resolveFamilyBellekli, tokenEsit, type AileBellegi } from './product-index';
 import type { LineQuery, FamilyVocab, RoutedTokens, IndexedRow } from './types';
 
 /**
@@ -206,11 +206,16 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   // Ikisi de akis-anahtari ailesine cozulur; 'flow'/'switch' urunun TURKCE
   // adinda gecmez ama ailenin INGILIZCE adidir. Kullaniciya "bulunamadı"
   // demek yalan olur (sozluk onlari zaten taniyor: ad-cins-sozlugu 'flow switch').
+  // HIZ (P2 ad uzunlugu, 05.10): bu dongu aile cozumunu token basina kalan
+  // metnin TAMAMIYLA yeniden kosar — uzun sartname adinda parseLine suresinin
+  // %93-99'u buradaydi (1.475 karakter ~0,7 sn). Sondan-parca denetimleri cagri
+  // ici BELLEKLE paylasilir; sonuc `resolveLineFamily` ile birebir ayni.
   const aileKelimeleri: string[] = [];
   if (familySlug) {
+    const bellek: AileBellegi = new Map();
     for (const t of tokens) {
       const kalan = tokens.filter((x) => x !== t).join(' ');
-      if (resolveLineFamily(kalan) !== familySlug) aileKelimeleri.push(t);
+      if (resolveFamilyBellekli(kalan, bellek) !== familySlug) aileKelimeleri.push(t);
     }
   }
 
