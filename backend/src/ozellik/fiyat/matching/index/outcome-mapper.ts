@@ -40,14 +40,42 @@ export type TryCevirici = ((v: number, cur: string) => number) & {
   cevrilemez?: (cur?: string | null) => boolean;
 };
 
-const cevrilemezMi = (r: IndexedRow, toTry: (v: number, cur: string) => number): boolean =>
-  !!(toTry as TryCevirici).cevrilemez?.(r.currency);
+/**
+ * FIYAT TABANI (C3, P4b 2b — Emre karari 01.10): ozel fiyat (> 0) varsa taban
+ * O'dur ve KENDI birimindedir (`customPriceCurrency`; NULL = goc oncesi ya da
+ * yedekten donen satir → liste birimi), yoksa liste fiyati liste biriminde.
+ * Birimi, tabani SECEN ayni kosul belirler (ozel fiyati 0 olan satirda taban
+ * da birim de listenindir). Eskiden birim hep `currency`ydi: "Kutuphaneme
+ * Aktar" liste birimini degistirince ozel fiyat sessizce YENI birimde
+ * okunuyordu (120 TL ozel fiyat → 120 € × kur). Fiyat, kur, cevrilebilirlik
+ * ve kaynak fiyat bu tek yerden okur.
+ */
+export function fiyatTabani(r: IndexedRow): { tutar: number; birim: string } {
+  if (r.customPrice != null && r.customPrice > 0) return { tutar: r.customPrice, birim: r.customPriceCurrency ?? r.currency };
+  return { tutar: r.listPrice ?? r.urun.price, birim: r.currency };
+}
+
+/** Satirin fiyati (TABANI) TL'ye cevrilemiyor mu — kur yok ya da birim taninmadi (KUR-01/02). */
+export const cevrilemezMi = (r: IndexedRow, toTry: (v: number, cur: string) => number): boolean =>
+  !!(toTry as TryCevirici).cevrilemez?.(fiyatTabani(r).birim);
+
+/** Liste fiyatinin TL karsiligi (GOSTERIM). Taban ozel fiyatsa ve liste
+ *  biriminin kuru yoksa (birimler ayrismis satir) NaN sizmasin diye tabanin
+ *  TL karsiligi gosterilir — yazilan fiyat zaten tabandandir. */
+export function listeTl(r: IndexedRow, toTry: (v: number, cur: string) => number): number {
+  if ((toTry as TryCevirici).cevrilemez?.(r.currency)) {
+    const t = fiyatTabani(r);
+    return toTry(t.tutar, t.birim);
+  }
+  return toTry(r.listPrice ?? r.urun.price, r.currency);
+}
 
 /** Dovizli satir icin cevrimde kullanilan kuru cikar; TRY'de ve cevrilemeyen satirda undefined.
- *  Para birimi YAZIMI kanonige cevrilir ('€' → EUR) — cevirici de oyle cevirir (KUR-02). */
+ *  Kur TABANIN birimindendir (yazilan fiyat ondan dogar). Para birimi YAZIMI
+ *  kanonige cevrilir ('€' → EUR) — cevirici de oyle cevirir (KUR-02). */
 export function kurOf(r: IndexedRow, toTry: (v: number, cur: string) => number): KaynakKur | undefined {
   const t = toTry as TryCevirici;
-  const kod = paraBirimiKodu(r.currency);
+  const kod = paraBirimiKodu(fiyatTabani(r).birim);
   if ((kod !== 'USD' && kod !== 'EUR') || !t.kur || cevrilemezMi(r, toTry)) return undefined;
   return {
     currency: kod,
@@ -68,13 +96,14 @@ export function kurOf(r: IndexedRow, toTry: (v: number, cur: string) => number):
  * yeniden denemek duzeltmez, kutuphane satiri duzeltilmelidir (kirmizi "yok").
  */
 function cevrilemezSonuc(r: IndexedRow): MatchResult {
-  const kod = paraBirimiKodu(r.currency);
+  const birim = fiyatTabani(r).birim;
+  const kod = paraBirimiKodu(birim);
   const bos = { netPrice: 0, listPrice: 0, discount: 0 };
   if (kod === null) {
     return {
       ...bos,
       confidence: 'none',
-      reason: `Para birimi tanınmadı ("${String(r.currency ?? '').trim()}") — kütüphanede TRY, USD ya da EUR yazın; fiyat yazılmadı.`,
+      reason: `Para birimi tanınmadı ("${String(birim ?? '').trim()}") — kütüphanede TRY, USD ya da EUR yazın; fiyat yazılmadı.`,
     };
   }
   return {
@@ -115,8 +144,7 @@ export function gorunenAd(r: IndexedRow): string {
  * `list` liste fiyatinin TL karsiligi (gosterim), net `tlNetFiyat`tan (C6).
  */
 function netFiyat(r: IndexedRow, toTry: (v: number, cur: string) => number): { net: number; list: number; isk: number } {
-  const list = toTry(r.listPrice ?? r.urun.price, r.currency);
-  return { net: tlNetFiyat(r, toTry), list, isk: r.discountRate ?? 0 };
+  return { net: tlNetFiyat(r, toTry), list: listeTl(r, toTry), isk: r.discountRate ?? 0 };
 }
 
 /**
@@ -137,12 +165,11 @@ function netFiyat(r: IndexedRow, toTry: (v: number, cur: string) => number): { n
 export function tlNetFiyat(r: IndexedRow, toTry: (v: number, cur: string) => number): number {
   const kaynak = kaynakFiyatOf(r);
   if (kaynak?.currency === 'TRY') return kaynak.net;
-  if (kaynak) return yukariYuvarla(toTry(kaynak.net, r.currency));
+  if (kaynak) return yukariYuvarla(toTry(kaynak.net, kaynak.currency));
   // Taninmayan para birimi: canlida cevrilemez, cagiranlar once eler (KUR-01).
   // Yalniz `cevrilemez`siz saf test ceviricisi buraya gelir — eski sira korunur.
-  const list = toTry(r.listPrice ?? r.urun.price, r.currency);
-  const taban = r.customPrice != null && r.customPrice > 0 ? toTry(r.customPrice, r.currency) : list;
-  return hesaplaNetFiyat(taban, r.discountRate ?? 0);
+  const t = fiyatTabani(r);
+  return hesaplaNetFiyat(toTry(t.tutar, t.birim), r.discountRate ?? 0);
 }
 
 /**
@@ -154,12 +181,14 @@ export function tlNetFiyat(r: IndexedRow, toTry: (v: number, cur: string) => num
  * tek formul, ayrisma yok.
  */
 export function kaynakFiyatOf(r: IndexedRow): KaynakFiyat | undefined {
-  const kod = paraBirimiKodu(r.currency);
+  const t = fiyatTabani(r);
+  const kod = paraBirimiKodu(t.birim);
   if (kod !== 'TRY' && kod !== 'USD' && kod !== 'EUR') return undefined;
-  const list = r.listPrice ?? r.urun.price;
   const isk = r.discountRate ?? 0;
-  const taban = r.customPrice != null && r.customPrice > 0 ? r.customPrice : list;
-  const net = kod === 'TRY' ? hesaplaNetFiyat(taban, isk) : hesaplaNetFiyatDoviz(taban, isk);
+  const net = kod === 'TRY' ? hesaplaNetFiyat(t.tutar, isk) : hesaplaNetFiyatDoviz(t.tutar, isk);
+  // `list` KAYNAK birimdedir: liste fiyati baska birimdeyse (ozel fiyatin
+  // birimi ayrismis satir, C3) o birimin listesi yoktur — tabanin kendisi.
+  const list = paraBirimiKodu(r.currency) === kod ? r.listPrice ?? r.urun.price : t.tutar;
   return { currency: kod, net, list, discount: isk };
 }
 

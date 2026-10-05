@@ -692,9 +692,16 @@ model UserLibrary {
   customPrice       Float?
   discountRate      Float?
   listPrice         Float?
-  // Z4: listPrice/customPrice'in para birimi — havuzdan aktarimda MaterialPrice
-  // .currency kopyalanir; eslestirme teklif aninda TRY'ye cevirir.
+  // Z4: listPrice'in para birimi — havuzdan aktarimda MaterialPrice/ProductIndex
+  // .currency kopyalanir; eslestirme teklif aninda TRY'ye cevirir. Ozel fiyatin
+  // birimi P4b'den beri ayri (`customPriceCurrency`; NULL ise bu alan).
   currency          String     @default("TRY")
+  // C3 (P4b 05.10, Emre karari 01.10): OZEL FIYATIN kendi birimi — girildigi
+  // anda dondurulur. "Kutuphaneme Aktar" liste birimini (`currency`) degistirse
+  // de ozel fiyat kendi biriminde kalir (eskiden sessizce yeni birimde
+  // okunuyordu). NULL: ozel fiyat yok YA DA goc oncesi/yedekten donen satir —
+  // okuyan `customPriceCurrency ?? currency` (izgara P4b 2a, motor 2b).
+  customPriceCurrency String?
   // ── L1/L3 (Kutuphane Aktarim Sadakati): havuzdaki yapi BIREBIR tasinir.
   // Kategori basligi (grup bantlari + eslestirme baglami)
   kategori          String?
@@ -703,6 +710,12 @@ model UserLibrary {
   cap               String?
   // Kaynak metin birebir (Y3 ikizi)
   adRaw             String?
+  // C7 (P4b 05.10, Emre karari 01.10): firmanin AD DUZELTMESI — sahipli OLMAYAN
+  // satirda (havuz urunu, baska firmanin indeksi, indekssiz satir) yalniz bu
+  // firmada gecerli; ProductIndex'e yazilmaz (baska firma etkilenmez), aktarim
+  // ezmez; havuz adina donus temizler. Sahipli urunde duzeltme ProductIndex'in
+  // kendisine yazilir (bu alan NULL). Gecmis TASINMADI (goc doldurmaz).
+  kullaniciAdi      String?
   // Kaynak satir sirasi (grup ici siralama — sistem alfabetik dayatmaz)
   sortOrder         Int        @default(0)
   unit              String?
@@ -1068,6 +1081,9 @@ model LaborPrice {
   @@unique([laborItemId, firmaId, priceListId])
   @@index([firmaId])
   @@index([laborItemId])
+  // P4b (05.10, S1 incelemesi): liste sorgulari ve liste silmenin CASCADE'i
+  // `priceListId` ile tarar; unique'te 3. kolon oldugu icin o indeks kullanilamaz.
+  @@index([priceListId])
 }
 
 model AiUsageLog {
