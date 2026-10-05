@@ -68,6 +68,20 @@ export function tarihMetni(t: Date): string {
 
 export const kolonHarfi = (n: number): string => String.fromCharCode(64 + n); // yalniz A–Z (en fazla 9 kolon)
 
+/** Kolon genisligi (karakter) → piksel — logo konumu ve kaydirma kestirimi. */
+export const kolonPx = (genislik: number): number => Math.floor(genislik * 7 + 5);
+
+/** SAYFA TOPLAMI satirinin gorunumu (A–I): acik zemin, ustte kalin cizgi, lacivert kalin. */
+export function toplamSatiriBicimle(t: ExcelJS.Row): void {
+  for (let k = 1; k <= 9; k++) {
+    const c = t.getCell(k);
+    c.fill = dolgu(RENK.TOPLAM_ZEMIN);
+    c.border = UST_KALIN_CIZGI;
+    c.font = yazi(10, RENK.LACIVERT, { bold: true });
+    c.alignment = k === 2 ? { vertical: 'middle' } : { horizontal: 'center', vertical: 'middle' };
+  }
+}
+
 export interface BaslikBlogu {
   /** 1. satir — teklif adi */
   baslik: string;

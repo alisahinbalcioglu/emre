@@ -223,6 +223,11 @@ const SUITES: Suite[] = [
   // Yerine gelen sozlesmeler:
   { ad: 'Standart grid şeması (GS/MF)', script: 'test:gs', zincir: 'Z1' },
   { ad: 'Standart çıktı (EX1-EX8)', script: 'test:ex', zincir: 'Z4' },
+  // 05.10.2026: coklu para birimi F5 — karisik teklifin fiyatli Excel'i birim basina
+  //    (hucre bicimi tarafin birimi, gizli J/K + SUMIF sayfa toplamlari, fitting
+  //    birim basina satir, GENEL TOPLAM birim basina, cevrim yok); format yolu
+  //    karisik teklifi numara yakmadan reddeder. Yalniz-TL duzeni test:ex'te.
+  { ad: 'Karışık para birimli çıktı (F5)', script: 'test:ex-karisik', zincir: 'Z4' },
   { ad: 'Teklif formatı kabul (T/KF2)', script: 'test:export', zincir: 'Z5' },
   { ad: 'Canlı simülasyon (SIM/G)', script: 'test:livesim', zincir: 'Z5' },
   // ── KAPATMA TURU ADIM 2 (31.07.2026): pakette OLMAYAN 4 suite eklendi.

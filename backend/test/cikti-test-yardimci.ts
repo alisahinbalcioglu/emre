@@ -198,6 +198,24 @@ export function formulDegerlendir(wb: ExcelJS.Workbook, sayfa: string, formul: s
         for (const l of argumanlar('COUNT')) for (const a of l) if (a.v !== undefined) n++; // hata/metin/bos sayilmaz
         return { v: n };
       }
+      // F5 (coklu para birimi, 05.10): SUMIF(olcut araligi, "metin", toplam araligi) —
+      // birim basina SAYFA TOPLAMI. Yalniz cikti kalibi: metin olcut BIREBIR esitlik
+      // (buyuk/kucuk harf duyarsiz, Excel), joker YOK; araliklar ayni boyda.
+      if (x.v === 'SUMIF') {
+        const a = argumanlar('SUMIF');
+        if (a.length !== 3 || a[1].length !== 1) throw new Error(`SUMIF 3 arguman ister: ${formul}`);
+        const olcut = a[1][0];
+        if (olcut.m === undefined || /[*?~<>=]/.test(olcut.m)) throw new Error(`SUMIF yalniz duz metin olcut: ${formul}`);
+        if (a[0].length !== a[2].length) throw new Error(`SUMIF araliklari ayni boyda degil: ${formul}`);
+        const aranan = olcut.m.toLowerCase();
+        let s = 0;
+        a[0].forEach((h, i) => {
+          if (h.m === undefined || h.m.toLowerCase() !== aranan) return;
+          const d = a[2][i];
+          if (d.v !== undefined) s += d.v; // metin/bos toplanmaz (Excel)
+        });
+        return { v: s };
+      }
       if (x.v === 'IF') {
         const a = tekArgumanlar('IF');
         if (a.length !== 3) throw new Error(`IF 3 arguman ister: ${formul}`);
