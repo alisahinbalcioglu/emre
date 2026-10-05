@@ -30,15 +30,20 @@ import * as ExcelJS from 'exceljs';
 import {
   STANDART_KOLONLAR_EN, OZET_KOLONLAR_EN, birimCevir, ciktiMetni,
 } from './cikti-dil';
-import { kurusTamsayi, yukariYuvarla } from '../../fiyat/matching/pricing';
+import { ONDALIK, kurusTamsayi, yukariYuvarla } from '../../fiyat/matching/pricing';
 // A2 (tur 3): kayitli grid hucresi MAKINE sinirindadir — on yuz `sayiOku` ikizi
 import { makineSayiOku } from '../../kutuphane/utils/import-fidelity';
 import { AntetBilgi, antetYaz } from '../../cikti/utils/antet';
 import { AlanHaritasi, SayfaPlani, alanHaritasi, miktarVeBirim, sayfaPlaniKur } from './cikti-satirlari';
 import {
-  ALT_CIZGI, RENK, UST_KALIN_CIZGI, baskiAyarla, baslikBloguYaz, dolgu, miktarBicimi,
-  paraBicimi, tabloBasligiYaz, tarihMetni, yazi,
+  ALT_CIZGI, RENK, baskiAyarla, baslikBloguYaz, dolgu, kolonPx, miktarBicimi,
+  paraBicimi, tabloBasligiYaz, tarihMetni, toplamSatiriBicimle, yazi,
 } from './cikti-stil';
+import {
+  BIRIM_SIRASI, BIRIM_SUTUNLARI, BIRIM_SUTUN_GENISLIGI, BirimToplami, BirimliSayfa, FittingParcasi, Kovalar, ParaBirimi, SEMBOL,
+  birimSutunBasliklari, birimToplamSatirlariYaz, fittingParcalari, karisikKipMi, karisikOzetSayfasiYaz,
+  karisikToplamHucresi, kovayaEkle, paraHanesi, tarafPB,
+} from './cikti-karisik';
 
 /** EX1 — degismez 9 kolon, bu sirada. */
 export const STANDART_CIKTI_KOLONLARI = [
@@ -98,6 +103,12 @@ export interface StandartCiktiSonuc {
   fiyatsizSatir: number;
   /** Dosyadaki toplami miktar × birim fiyatla tutmadigi icin yeniden hesaplanan satir */
   yenidenHesaplanan: number;
+  /**
+   * F5 KARISIK KIP: birim basina teklif geneli (sabit sira ₺, $, €). Yalniz
+   * karisik teklifte dolu; o zaman `genelToplam` YALNIZ ₺ kovasidir — dolar
+   * liraya eklenmez, cevrim yapilmaz.
+   */
+  birimliGenelToplam?: Array<{ pb: ParaBirimi; toplam: number }>;
 }
 
 /** TR-bilinçli sayi parse (Bulgu B7/B8 siniri): "1.234,56" → 1234.56,
@@ -145,6 +156,8 @@ export interface StandartSayfaBilgi {
   toplamSatiri: number | null;
   /** Dosyadaki toplami carpimla tutmayan, Excel'de yeniden hesaplanan satir */
   yenidenHesaplanan: number;
+  /** F5 karisik kip: birim basina SAYFA TOPLAMI satirlari (GENEL TOPLAM buna baglanir). */
+  birimToplamlari?: BirimToplami[];
 }
 
 /** Ciktinin kendi ozet sayfasi — teklif sayfalari bu adi ALAMAZ (I9). */
@@ -195,6 +208,13 @@ export interface SayfaYazOpsiyon {
   baslik?: string;
   /** Baslik blogundaki tarih (verilmezse bugun). */
   tarih?: Date;
+  /**
+   * F5 KARISIK KIP (`karisikKipMi`): taraflar kendi biriminde, `birim` YOK
+   * SAYILIR (cevrim yapilmaz); gizli J/K birim sutunlari + birim basina SAYFA
+   * TOPLAMI. Yalniz fiyatli yol verir — format yolu karisik teklifi reddeder
+   * (tek birimli İCMAL'e yazar).
+   */
+  karisik?: boolean;
 }
 
 /** Sayfaya yazilan TEK para kenari (malzeme ya da iscilik): E/F ya da G/H. */
@@ -240,10 +260,15 @@ interface ParaKenari {
  * × 100 = 1.347,25 toplamli satirda kurusa yuvarlanmis birimle formul
  * 1.347,00 hesaplardi — tutarli satir "yeniden hesaplanmis" gibi kayardi.
  * Gorunen rakam degismez (bicim 2 hane). Dovizde E = birim × oran.
+ *
+ * `hane` (F5, karar 4): ekranin yukari yuvarlama hanesi. Varsayilan ₺ kurali
+ * (1 hane); karisik kipte dovizli taraf KENDI biriminde 2 hane yukari
+ * yuvarlanir → formul `ROUNDUP(C*E,2)`. Tutarlilik da o haneyle olculur:
+ * 1 hane kurali $31,66'yi (3 × 10,551) "tutarsiz" sayip Excel'e 31,65 yazdirirdi.
  */
 function kenarYaz(
   satir: ExcelJS.Row, birimKol: number, miktar: number | null,
-  birimTL: number, toplamTL: number | null, oran: number, fmt: string, sabitDeger: boolean,
+  birimTL: number, toplamTL: number | null, oran: number, fmt: string, sabitDeger: boolean, hane = ONDALIK,
 ): ParaKenari {
   const n = satir.number;
   const bk = String.fromCharCode(64 + birimKol);
@@ -261,17 +286,17 @@ function kenarYaz(
     const carpimTL = miktar * birimTL;
     // Dosya tutarliligi TL'de olculur (doviz cevrimi yuvarlamasi tutarsizlik DEGIL)
     const toplamTLK = toplamTL === null ? null : kurusTamsayi(toplamTL);
-    const tutarsiz = toplamTLK !== null && toplamTLK !== kurusTamsayi(carpimTL) && toplamTLK !== kurusTamsayi(yukariYuvarla(carpimTL));
+    const tutarsiz = toplamTLK !== null && toplamTLK !== kurusTamsayi(carpimTL) && toplamTLK !== kurusTamsayi(yukariYuvarla(carpimTL, hane));
     const yuvarlaK = kurusTamsayi(miktar * birim);
     if (tutarsiz) {
       formul(yuvarla, yuvarlaK);
       return { birim, toplamK: yuvarlaK, yeniden: true };
     }
-    const ekranK = kurusTamsayi((toplamTL ?? yukariYuvarla(carpimTL)) * oran);
+    const ekranK = kurusTamsayi((toplamTL ?? yukariYuvarla(carpimTL, hane)) * oran);
     if (yuvarlaK === ekranK) {
       formul(yuvarla, yuvarlaK);
-    } else if (oran === 1 && carpimTL > 0 && kurusTamsayi(yukariYuvarla(carpimTL)) === ekranK) {
-      formul(`ROUNDUP(C${n}*${bk}${n},1)`, ekranK);
+    } else if (oran === 1 && carpimTL > 0 && kurusTamsayi(yukariYuvarla(carpimTL, hane)) === ekranK) {
+      formul(`ROUNDUP(C${n}*${bk}${n},${hane})`, ekranK);
     } else {
       tHucre.value = ekranK / 100;
     }
@@ -305,10 +330,12 @@ function satirSayisi(metin: string, punto: number, genislikPx: number): number {
   return Math.max(1, Math.ceil((em * punto * (96 / 72) * 1.1) / genislikPx));
 }
 
-const kolonPx = (genislik: number) => Math.floor(genislik * 7 + 5);
 /** B (Malzeme Adı) kaydirma genisligi ve not satirinin B–I birlesik genisligi (px). */
 const AD_PX = kolonPx(KALEM_GENISLIKLERI[1]) - 6;
 const NOT_PX = KALEM_GENISLIKLERI.slice(1).reduce((a, g) => a + kolonPx(g), 0) - 6;
+/** F5 karisik kip: Genel Toplam sutunu (karma satirin iki tutari) ve kaydirma genisligi (px). */
+const KARMA_TOPLAM_GENISLIGI = 26;
+const KARMA_PX = kolonPx(KARMA_TOPLAM_GENISLIGI) - 6;
 
 /** SUM araligi: ilk..son, ARA TOPLAM (`_ozet`) satirlari ATLANARAK (13.09 "3 kat" dersi). */
 function toplamFormulu(kolon: string, ilk: number, son: number, haric: ReadonlySet<number>): string {
@@ -325,14 +352,77 @@ function toplamFormulu(kolon: string, ilk: number, son: number, haric: ReadonlyS
   return gruplar.join('+') || '0';
 }
 
+/** I (Genel Toplam) formulu: iki kenar ya da (karisik kipte birimler farkliyken) yalniz dolu kenar. */
+function genelToplamFormulu(n: number, kaynak: 'ikisi' | 'malzeme' | 'iscilik'): string {
+  if (kaynak === 'malzeme') return `IF(F${n}="","",F${n})`;
+  if (kaynak === 'iscilik') return `IF(H${n}="","",H${n})`;
+  return `IF(COUNT(F${n},H${n})=0,"",SUM(F${n},H${n}))`;
+}
+
+/** Kalem satirinin gorunumu (A–I): No soluk, Genel Toplam kalin, ad sola kaydirmali. */
+function kalemSatiriBicimle(satir: ExcelJS.Row, miktar: number | null): void {
+  satir.eachCell({ includeEmpty: true }, (c, k) => {
+    if (k > 9) return;
+    c.font = k === 1 ? NO_YAZISI : k === 9 ? yazi(10, RENK.METIN, { bold: true }) : KALEM_YAZISI;
+    c.alignment = k === 2 ? { horizontal: 'left', vertical: 'middle', wrapText: true } : ORTALI;
+    c.border = ALT_CIZGI;
+  });
+  if (miktar !== null) satir.getCell(3).numFmt = miktarBicimi(miktar);
+}
+
+/**
+ * F5 karar 2: karisik kapsamli FITTING birim BASINA ayri satir ("… — ₺ kısmı",
+ * "… — $ kısmı"; tek birimde ad eksiz). Tutarlar DEGER: on yuzun
+ * `_fittingBirimli`si (kapsam × oran, birimin hanesiyle yukari) — C × E tutari
+ * vermez (bkz. kenarYaz FITTING). Birim fiyat hucresi bos, No yalniz ilk parcada.
+ */
+function karisikFittingYaz(
+  ws: ExcelJS.Worksheet, ad: string, no: number | string, miktar: number | null, birimMetni: string | null, fb: unknown, dil?: string,
+): { satirlar: number[]; parcalar: FittingParcasi[]; yazilan: number; fiyatsiz: boolean } {
+  const parcalar = fittingParcalari(fb);
+  const satirlar: number[] = [];
+  let yazilan = 0;
+  parcalar.forEach((x, i) => {
+    const etiket = parcalar.length > 1 ? `${ad} — ${SEMBOL[x.pb]} ${dil === 'en' ? 'part' : 'kısmı'}` : ad;
+    const satir = ws.addRow([i === 0 && no !== '' ? no : null, etiket, miktar, birimMetni]);
+    satir.height = 18 + (satirSayisi(etiket, 10, AD_PX) - 1) * 12.75;
+    const n = satir.number;
+    satir.getCell(6).value = x.matK === null ? null : x.matK / 100;
+    satir.getCell(8).value = x.labK === null ? null : x.labK / 100;
+    const genelK = x.matK === null && x.labK === null ? null : (x.matK ?? 0) + (x.labK ?? 0);
+    satir.getCell(9).value = {
+      formula: `IF(COUNT(F${n},H${n})=0,"",SUM(F${n},H${n}))`, result: genelK === null ? '' : genelK / 100,
+    } as ExcelJS.CellFormulaValue;
+    for (const k of [5, 6, 7, 8, 9]) satir.getCell(k).numFmt = paraBicimi(x.pb);
+    satir.getCell(BIRIM_SUTUNLARI.malzeme).value = x.pb;
+    satir.getCell(BIRIM_SUTUNLARI.iscilik).value = x.pb;
+    kalemSatiriBicimle(satir, miktar);
+    yazilan += [x.matK, x.labK, genelK].filter((v) => v !== null && v !== 0).length;
+    satirlar.push(n);
+  });
+  return { satirlar, parcalar, yazilan, fiyatsiz: parcalar.every((x) => x.matK === null && x.labK === null) };
+}
+
 function kalemSayfasiYaz(
   wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet, plan: SayfaPlani, alan: AlanHaritasi, ops: SayfaYazOpsiyon,
 ): Omit<StandartSayfaBilgi, 'wsName' | 'ozet'> {
-  const birim = ops.birim ?? null;
+  const karisik = !!ops.karisik;
+  // F5: karisik kipte taraflar KENDI biriminde — goruntuleme birimi yok sayilir (cevrim yok)
+  const birim = karisik ? null : ops.birim ?? null;
   const oran = birim && birim.kod !== 'TRY' ? birim.katsayi : 1;
   const fmt = paraBicimi(birim?.kod ?? 'TRY');
 
   ws.columns = KALEM_GENISLIKLERI.map((width) => ({ width }));
+  if (karisik) {
+    // Karma satirin iki tutari ("$2.680,00 + 10.720,00 ₺") 18'lik sutuna sigmiyordu (PDF'te
+    // iki kenardan kesildi, 05.10) — prototipin genisligi
+    ws.getColumn(9).width = KARMA_TOPLAM_GENISLIGI;
+    // Gizli birim sutunlari (J/K): SAYFA TOPLAMI'nin SUMIF olcutu; baski alani A:I kalir
+    for (const k of [BIRIM_SUTUNLARI.malzeme, BIRIM_SUTUNLARI.iscilik]) {
+      ws.getColumn(k).width = BIRIM_SUTUN_GENISLIGI;
+      ws.getColumn(k).hidden = true;
+    }
+  }
   // ANTET (plan 4.4): tablo YAZILMADAN once. Sonradan satir eklemek YASAK —
   // ExcelJS formul referanslarini guncellemez (bkz. antet.ts SUM GUVENLIGI).
   antetYaz(wb, ws, ops.antet, { metinKolonu: 2, logoKolonu: 7 });
@@ -341,7 +431,7 @@ function kalemSayfasiYaz(
     tarih: `${ciktiMetni('Tarih', ops.dil)}: ${tarihMetni(ops.tarih ?? new Date())}`,
     ilkKolon: 1, sonKolon: 9,
   });
-  const bas = tabloBasligiYaz(ws, kolonlar(ops.dil), [2], 30);
+  const bas = tabloBasligiYaz(ws, karisik ? [...kolonlar(ops.dil), ...birimSutunBasliklari(ops.dil)] : kolonlar(ops.dil), [2], 30);
   const ilkVeri = bas.number + 1;
 
   // No: tarif "yalniz kalemlere 1, 2, 3…". Dosyanin KENDI numarasi varsa
@@ -353,6 +443,7 @@ function kalemSayfasiYaz(
   let matToplamK = 0; let labToplamK = 0; let yazilan = 0; let fiyatsizSatir = 0; let yeniden = 0;
   const toplamSatirlari: number[] = [];
   const ozetSatirlari = new Set<number>();
+  const kovalar: Kovalar = new Map(); // F5 karisik: birim basina sayfa toplami
 
   for (const p of plan.satirlar) {
     if (p.tur === 'kalem') {
@@ -360,6 +451,14 @@ function kalemSayfasiYaz(
       const { miktar, birim: birimMetni } = miktarVeBirim(r, alan);
       const kaynakNo = String(r[alan.no] ?? '').trim();
       const no = kaynakNumarali ? (/^[1-9]\d{0,6}$/.test(kaynakNo) ? Number(kaynakNo) : kaynakNo) : ++sira;
+      if (karisik && r._fitting && r._fittingBirimli) {
+        const f = karisikFittingYaz(ws, p.ad, no, miktar, birimCevir(birimMetni, ops.dil) || null, r._fittingBirimli, ops.dil);
+        for (const x of f.parcalar) { kovayaEkle(kovalar, x.pb, 'mat', x.matK); kovayaEkle(kovalar, x.pb, 'lab', x.labK); }
+        toplamSatirlari.push(...f.satirlar);
+        yazilan += f.yazilan;
+        if (f.fiyatsiz) fiyatsizSatir++;
+        continue;
+      }
       const satir = ws.addRow([
         no === '' ? null : no, p.ad,
         // A2: okunamayan miktar metni ("Ø100 PVC boru") BOS yazilir — 0 da uydurma sayi da degil
@@ -370,22 +469,39 @@ function kalemSayfasiYaz(
       satir.height = 18 + (satirSayisi(p.ad, 10, AD_PX) - 1) * 12.75;
       const toplamOku = (k: string) => (String(r[k] ?? '').trim() === '' ? null : sayi(r[k]));
       const fitting = !!r._fitting; // birim hucresi gosterim, tutar kapsamdan (bkz. kenarYaz)
-      const mat = kenarYaz(satir, 5, miktar, sayi(r[alan.matBirim]), toplamOku(alan.matToplam), oran, fmt, fitting);
-      const lab = kenarYaz(satir, 7, miktar, sayi(r[alan.labBirim]), toplamOku(alan.labToplam), oran, fmt, fitting);
+      // F5: karisik kipte her taraf KENDI biriminin bicimi ve yuvarlama hanesiyle
+      const matPB = karisik ? tarafPB(r, 'malzeme') : null;
+      const labPB = karisik ? tarafPB(r, 'iscilik') : null;
+      const mat = kenarYaz(satir, 5, miktar, sayi(r[alan.matBirim]), toplamOku(alan.matToplam), oran,
+        matPB ? paraBicimi(matPB) : fmt, fitting, matPB ? paraHanesi(matPB) : undefined);
+      const lab = kenarYaz(satir, 7, miktar, sayi(r[alan.labBirim]), toplamOku(alan.labToplam), oran,
+        labPB ? paraBicimi(labPB) : fmt, fitting, labPB ? paraHanesi(labPB) : undefined);
       const n = satir.number;
       const genelK = mat.toplamK === null && lab.toplamK === null ? null : (mat.toplamK ?? 0) + (lab.toplamK ?? 0);
-      satir.getCell(9).value = {
-        formula: `IF(COUNT(F${n},H${n})=0,"",SUM(F${n},H${n}))`, result: genelK === null ? '' : genelK / 100,
-      } as ExcelJS.CellFormulaValue;
-      satir.getCell(9).numFmt = fmt;
-
-      satir.eachCell({ includeEmpty: true }, (c, k) => {
-        if (k > 9) return;
-        c.font = k === 1 ? NO_YAZISI : k === 9 ? yazi(10, RENK.METIN, { bold: true }) : KALEM_YAZISI;
-        c.alignment = k === 2 ? { horizontal: 'left', vertical: 'middle', wrapText: true } : ORTALI;
-        c.border = ALT_CIZGI;
-      });
-      if (miktar !== null) satir.getCell(3).numFmt = miktarBicimi(miktar);
+      // F5: karisik kipte I hucresinin kurali tek yerde (karma METIN / tek taraf / bos)
+      const kt = matPB && labPB ? karisikToplamHucresi(matPB, mat.toplamK, labPB, lab.toplamK) : null;
+      if (kt?.tur === 'metin') {
+        satir.getCell(9).value = kt.metin;
+      } else if (kt?.tur !== 'bos') {
+        const kaynak = kt?.kaynak ?? 'ikisi';
+        const sonucK = kaynak === 'malzeme' ? mat.toplamK : kaynak === 'iscilik' ? lab.toplamK : genelK;
+        satir.getCell(9).value = {
+          formula: genelToplamFormulu(n, kaynak), result: sonucK === null ? '' : sonucK / 100,
+        } as ExcelJS.CellFormulaValue;
+        satir.getCell(9).numFmt = kt ? paraBicimi(kt.pb) : fmt;
+      }
+      if (matPB && labPB) {
+        satir.getCell(BIRIM_SUTUNLARI.malzeme).value = matPB;
+        satir.getCell(BIRIM_SUTUNLARI.iscilik).value = labPB;
+        kovayaEkle(kovalar, matPB, 'mat', mat.toplamK);
+        kovayaEkle(kovalar, labPB, 'lab', lab.toplamK);
+      }
+      kalemSatiriBicimle(satir, miktar);
+      if (kt?.tur === 'metin') {
+        // Buyuk tutarlar genis sutuna da sigmayabilir: kelime sinirinda kaydir, yukseklik metne gore
+        satir.getCell(9).alignment = { ...ORTALI, wrapText: true };
+        satir.height = Math.max(Number(satir.height) || 18, 18 + (satirSayisi(String(satir.getCell(9).value), 10, KARMA_PX) - 1) * 12.75);
+      }
 
       yazilan += [mat.birim, mat.toplamK, lab.birim, lab.toplamK, genelK].filter((v) => v !== null && v !== 0).length;
       matToplamK += mat.toplamK ?? 0;
@@ -435,7 +551,13 @@ function kalemSayfasiYaz(
   const sonVeri = Math.max(ilkVeri, ws.rowCount);
 
   let toplamSatiri: number | null = null;
-  if (ops.toplamSatiri !== false) {
+  let birimToplamlari: BirimToplami[] | undefined;
+  if (ops.toplamSatiri !== false && karisik) {
+    // F5: birim BASINA SAYFA TOPLAMI — SUMIF(J/K, birim); ozet satirinin birim hucresi bos, girmez
+    ws.addRow([]);
+    birimToplamlari = birimToplamSatirlariYaz(ws, kovalar, ilkVeri, sonVeri, ops.dil);
+    toplamSatiri = birimToplamlari[0].satir;
+  } else if (ops.toplamSatiri !== false) {
     // Tarif §3: bir bos satir, sonra SAYFA TOPLAMI = SUM(ilk veri : son veri) — ozet satirlari haric
     ws.addRow([]);
     const t = ws.addRow([null, ciktiMetni('SAYFA TOPLAMI', ops.dil)]);
@@ -446,13 +568,7 @@ function kalemSayfasiYaz(
       t.getCell(k).value = { formula: toplamFormulu(harf, ilkVeri, sonVeri, ozetSatirlari), result: sonuc[k] / 100 } as ExcelJS.CellFormulaValue;
       t.getCell(k).numFmt = fmt;
     }
-    for (let k = 1; k <= 9; k++) {
-      const c = t.getCell(k);
-      c.fill = dolgu(RENK.TOPLAM_ZEMIN);
-      c.border = UST_KALIN_CIZGI;
-      c.font = yazi(10, RENK.LACIVERT, { bold: true });
-      c.alignment = k === 2 ? { vertical: 'middle' } : ORTALI;
-    }
+    toplamSatiriBicimle(t);
     toplamSatiri = t.number;
   }
 
@@ -461,10 +577,13 @@ function kalemSayfasiYaz(
   ws.properties.tabColor = { argb: RENK.SEKME_KALEM };
   baskiAyarla(ws, { yatay: true, sonKolon: 9, sonSatir: ws.rowCount, tekrarSatiri: bas.number, teklifAdi: ops.baslik ?? '', dil: ops.dil });
 
+  // F5: karisik kipte tek sayili toplam YALNIZ ₺ kovasidir (dolar liraya eklenmez)
+  const tl = karisik ? kovalar.get('TRY') ?? { matK: 0, labK: 0 } : { matK: matToplamK, labK: labToplamK };
   return {
     matCol: 6, labCol: 8, toplamSatirlari,
-    matDeger: matToplamK / 100, labDeger: labToplamK / 100,
+    matDeger: tl.matK / 100, labDeger: tl.labK / 100,
     yazilan, fiyatsizSatir, tur: 'kalem', toplamSatiri, yenidenHesaplanan: yeniden,
+    ...(birimToplamlari ? { birimToplamlari } : {}),
   };
 }
 
@@ -606,6 +725,9 @@ export async function standartCiktiUret(g: StandartCiktiGirdi): Promise<Standart
   wb.creator = 'MetaPrice';
   wb.created = new Date();
 
+  // F5: karisik teklifte taraflar kendi biriminde — goruntuleme birimi sayfa
+  // yaziminda YOK SAYILIR (cevrim yok), ozet sekmesi "Fiyatlar USD" notunu yazmaz
+  const karisik = karisikKipMi(g.sheetsArr);
   const birim = g.birim ?? null;
   const kod = birim?.kod ?? 'TRY';
   const tarih = g.tarih ?? new Date();
@@ -617,13 +739,14 @@ export async function standartCiktiUret(g: StandartCiktiGirdi): Promise<Standart
 
   let yazilan = 0; let fiyatsizSatir = 0; let yenidenHesaplanan = 0;
   const kalemSayfalari: OzetSatiri[] = [];
+  const birimliSayfalar: BirimliSayfa[] = [];
 
   // KF7: sayfalar TEK motorla yazilir — format yolu da ayni fonksiyonu cagirir
   for (const sh of g.sheetsArr ?? []) {
     if (!sh || sh.isEmpty) continue;
     const b = standartSayfaYaz(wb, sh, {
       birim, toplamSatiri: true, dil: g.dil, antet: g.antet,
-      rezerveAdlar: [GENEL_TOPLAM_SAYFA_ADI], baslik: g.baslik, tarih,
+      rezerveAdlar: [GENEL_TOPLAM_SAYFA_ADI], baslik: g.baslik, tarih, karisik,
     });
     yazilan += b.yazilan;
     fiyatsizSatir += b.fiyatsizSatir;
@@ -632,22 +755,34 @@ export async function standartCiktiUret(g: StandartCiktiGirdi): Promise<Standart
     // satirlari sayfa toplamina zaten girmedi (30.07 cift sayim yasagi).
     if (b.tur === 'kalem' && b.toplamSatiri !== null) {
       kalemSayfalari.push({ ad: b.wsName, satir: b.toplamSatiri, matK: kurusTamsayi(b.matDeger), labK: kurusTamsayi(b.labDeger) });
+      if (b.birimToplamlari) birimliSayfalar.push({ ad: b.wsName, toplamlar: b.birimToplamlari });
     }
   }
-  ozetSayfasiYaz(wb, ozetWs, kalemSayfalari, { ...g, tarih }, paraBicimi(kod));
+  if (karisik) karisikOzetSayfasiYaz(wb, ozetWs, birimliSayfalar, { ...g, tarih });
+  else ozetSayfasiYaz(wb, ozetWs, kalemSayfalari, { ...g, tarih }, paraBicimi(kod));
 
   // Kurus tamsayi — sayfa toplamlari ile teklif geneli AYNI kuralla toplanir
   const genelToplamK = kalemSayfalari.reduce((a, s) => a + s.matK + s.labK, 0);
   const genelToplam = genelToplamK / 100;
+  // F5: birim basina teklif geneli (karisikta `genelToplam` yalniz ₺ kovasidir)
+  const birimTutarlari = birimliSayfalar.flatMap((s) => s.toplamlar);
+  const birimliGenelToplam = karisik
+    ? BIRIM_SIRASI
+      .filter((pb) => birimTutarlari.some((t) => t.pb === pb))
+      .map((pb) => ({ pb, toplam: birimTutarlari.filter((t) => t.pb === pb).reduce((a, t) => a + t.matK + t.labK, 0) / 100 }))
+    : undefined;
   const buffer = Buffer.from(await wb.xlsx.writeBuffer());
+  const tutar = (v: number) => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   // EX7: gorunur self-check
   const ozet = [
     `${yazilan} değer aktarıldı ✓`,
     // P2-1b: 2 hane — ekran (PARA_ONDALIK) ve bu dosyanin numFmt'i ile ayni.
-    `genel toplam ${simge(kod)}${genelToplam.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    birimliGenelToplam?.length
+      ? `genel toplam ${birimliGenelToplam.map((x) => `${SEMBOL[x.pb]}${tutar(x.toplam)}`).join(' + ')}`
+      : `genel toplam ${simge(kod)}${tutar(genelToplam)}`,
     // KARAR 23.09: Excel carpimi gosterir, ekran dosyanin rakamini — fark SOYLENIR
     yenidenHesaplanan ? `${yenidenHesaplanan} satırda dosyadaki toplam miktar × birim fiyatla tutmuyordu, Excel yeniden hesapladı` : '',
   ].filter(Boolean).join(' · ');
 
-  return { buffer, ozet, genelToplam, yazilan, fiyatsizSatir, yenidenHesaplanan };
+  return { buffer, ozet, genelToplam, yazilan, fiyatsizSatir, yenidenHesaplanan, ...(birimliGenelToplam ? { birimliGenelToplam } : {}) };
 }
