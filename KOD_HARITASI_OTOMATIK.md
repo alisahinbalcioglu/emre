@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 905
-Toplam satir: 250255
+Kod dosyasi: 909
+Toplam satir: 250877
 Uc nokta: 239
 test:* scripti: 157
 
@@ -515,7 +515,7 @@ test:* scripti: 157
 | `frontend/app/admin/users/page.tsx` | 647 |
 | `frontend/app/cerez-politikasi/page.tsx` | 13 |
 | `frontend/app/davet-kabul/page.tsx` | 483 |
-| `frontend/app/dev/grid-test/page.tsx` | 418 |
+| `frontend/app/dev/grid-test/page.tsx` | 454 |
 | `frontend/app/fiyatlar/page.tsx` | 174 |
 | `frontend/app/forgot-password/page.tsx` | 92 |
 | `frontend/app/gizlilik/page.tsx` | 13 |
@@ -695,12 +695,14 @@ test:* scripti: 157
 | `frontend/ozellik/fiyat/kur-geri-dusus.test.ts` | 140 |
 | `frontend/ozellik/fiyat/para-gosterim.ts` | 68 |
 | `frontend/ozellik/fiyat/para-sutun-genisligi.ts` | 243 |
-| `frontend/ozellik/fiyat/pricing.ts` | 713 |
+| `frontend/ozellik/fiyat/pricing.ts` | 715 |
 | `frontend/ozellik/fiyat/sayi-alani.ts` | 385 |
 | `frontend/ozellik/fiyat/sayi-kurali.test.ts` | 289 |
 | `frontend/ozellik/fiyat/sayi-oku.test.ts` | 72 |
 | `frontend/ozellik/fiyat/sayi-tek-suzgec.test.ts` | 175 |
 | `frontend/ozellik/fiyat/sayi-yollari.test.ts` | 366 |
+| `frontend/ozellik/fiyat/taraf-para-birimi.test.ts` | 108 |
+| `frontend/ozellik/fiyat/taraf-para-birimi.ts` | 80 |
 | `frontend/ozellik/fiyat/use-currency.ts` | 88 |
 | `frontend/ozellik/giris/kaynak-kolon.ts` | 34 |
 | `frontend/ozellik/hukuki/HukukiSayfa.tsx` | 110 |
@@ -799,7 +801,7 @@ test:* scripti: 157
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5197 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5288 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -810,8 +812,8 @@ test:* scripti: 157
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 66 |
 | `frontend/ozellik/tablo/excel-grid/fill-alanlari.test.ts` | 30 |
 | `frontend/ozellik/tablo/excel-grid/fill-alanlari.ts` | 25 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 1158 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 528 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 1203 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 546 |
 | `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | 234 |
 | `frontend/ozellik/tablo/excel-grid/fitting.ts` | 184 |
 | `frontend/ozellik/tablo/excel-grid/gosterim-baglantisi.test.ts` | 274 |
@@ -851,8 +853,9 @@ test:* scripti: 157
 | `frontend/ozellik/teklif/fitting-ipucu.ts` | 49 |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.test.ts` | 254 |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | 195 |
-| `frontend/ozellik/teklif/restore-rematch.test.ts` | 741 |
-| `frontend/ozellik/teklif/restore-rematch.ts` | 274 |
+| `frontend/ozellik/teklif/kaynak-fiyat-baglanti.test.ts` | 26 |
+| `frontend/ozellik/teklif/restore-rematch.test.ts` | 776 |
+| `frontend/ozellik/teklif/restore-rematch.ts` | 288 |
 | `frontend/ozellik/teklif/salt-okunur-secici.test.ts` | 113 |
 | `frontend/ozellik/teklif/taslak.test.ts` | 129 |
 | `frontend/ozellik/teklif/taslak.ts` | 124 |
@@ -880,6 +883,7 @@ test:* scripti: 157
 | `frontend/test/e2e-golden/verify.mjs` | 836 |
 | `frontend/test/e2e/bant-sayaci.spec.ts` | 145 |
 | `frontend/test/e2e/bos-kaynak-surukle.spec.ts` | 130 |
+| `frontend/test/e2e/coklu-para-birimi-izgara.spec.ts` | 145 |
 | `frontend/test/e2e/elle-fiyat-otomatik-rozet.spec.ts` | 133 |
 | `frontend/test/e2e/eslestirme-temizlik.spec.ts` | 154 |
 | `frontend/test/e2e/grid.spec.ts` | 206 |
@@ -888,13 +892,13 @@ test:* scripti: 157
 | `frontend/test/e2e/iscilik-doldurma-ozeti.spec.ts` | 83 |
 | `frontend/test/e2e/iscilik-fill-baglam.spec.ts` | 124 |
 | `frontend/test/e2e/iscilik-kapali-tutamak.spec.ts` | 121 |
-| `frontend/test/e2e/kopyala-yapistir.spec.ts` | 366 |
+| `frontend/test/e2e/kopyala-yapistir.spec.ts` | 373 |
 | `frontend/test/e2e/malzeme-aday-ipucu.spec.ts` | 90 |
 | `frontend/test/e2e/restore-ozet.spec.ts` | 122 |
 | `frontend/test/e2e/salt-okunur-secici.spec.ts` | 97 |
 | `frontend/test/e2e/secim-duzenleme.spec.ts` | 547 |
 | `frontend/test/e2e/surukle-bayat-sebep.spec.ts` | 91 |
-| `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 332 |
+| `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 347 |
 | `frontend/test/e2e/varyant-kimligi.spec.ts` | 113 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
@@ -1534,6 +1538,8 @@ test:* scripti: 157
 | `frontend/ozellik/fiyat/sayi-oku.test.ts` | `vitest` `./sayi-alani` |
 | `frontend/ozellik/fiyat/sayi-tek-suzgec.test.ts` | `vitest` `fs` `path` |
 | `frontend/ozellik/fiyat/sayi-yollari.test.ts` | `vitest` `fs` `path` `./pricing` `../tablo/excel-grid/discount-utils` `../tablo/excel-grid/yapistir` |
+| `frontend/ozellik/fiyat/taraf-para-birimi.test.ts` | `vitest` `./pricing` |
+| `frontend/ozellik/fiyat/taraf-para-birimi.ts` | `./pricing` |
 | `frontend/ozellik/fiyat/use-currency.ts` | `react` `@/ortak/lib/api` `@/ortak/types/quotes` `./para-gosterim` |
 | `frontend/ozellik/hukuki/HukukiSayfa.tsx` | `next/link` `@/ortak/kabuk/components/layout/Altbilgi` `./metinler` |
 | `frontend/ozellik/hukuki/metinler.ts` | `../kimlik/kapatma-metinleri` |
@@ -1615,7 +1621,7 @@ test:* scripti: 157
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.test.ts` | `node:fs` `node:path` `vitest` |
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | `../../teklif/ceviri-kota` `../paket-bicim` |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | `react` `react-dom` |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | `react` `react-dom` `ag-grid-react` `ag-grid-community` `./types` `./oneri-cekince` `./useFillHandle` `./fill-alanlari` `./discount-utils` `./CustomDropdown` `./fill-down` `./yapistir` `./kopyala` `./isaret` `@/ozellik/tablo/parse-material-text` `@/ozellik/fiyat/pricing` `./satir-terfi` `@/ozellik/fiyat/sayi-alani` `@/ozellik/fiyat/para-sutun-genisligi` `./build-material-context` `./aday-ayirt-edicilik` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `ag-grid-community/styles/ag-grid.css` `ag-grid-community/styles/ag-theme-alpine.css` `./fill-handle.css` |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | `react` `react-dom` `ag-grid-react` `ag-grid-community` `./types` `./oneri-cekince` `./useFillHandle` `./fill-alanlari` `./discount-utils` `./CustomDropdown` `./fill-down` `./yapistir` `./kopyala` `./isaret` `@/ozellik/tablo/parse-material-text` `@/ozellik/fiyat/pricing` `@/ozellik/fiyat/taraf-para-birimi` `./satir-terfi` `@/ozellik/fiyat/sayi-alani` `@/ozellik/fiyat/para-sutun-genisligi` `./build-material-context` `./aday-ayirt-edicilik` `@/ortak/lib/api` `@/ortak/hooks/use-toast` `@/ortak/hooks/use-confirm` `ag-grid-community/styles/ag-grid.css` `ag-grid-community/styles/ag-theme-alpine.css` `./fill-handle.css` |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | `react` |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/tablo/excel-grid/build-material-context.test.ts` | `vitest` `./build-material-context` |
@@ -1624,7 +1630,7 @@ test:* scripti: 157
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | `../../fiyat/sayi-alani` |
 | `frontend/ozellik/tablo/excel-grid/fill-alanlari.test.ts` | `vitest` `./fill-alanlari` |
 | `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | `vitest` `./fill-down` `./isaret` |
-| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | `../../fiyat/pricing` `../../fiyat/sayi-alani` |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | `../../fiyat/pricing` `../../fiyat/sayi-alani` `../../fiyat/taraf-para-birimi` |
 | `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | `vitest` `./yapistir` |
 | `frontend/ozellik/tablo/excel-grid/fitting.ts` | `../../fiyat/pricing` |
 | `frontend/ozellik/tablo/excel-grid/gosterim-baglantisi.test.ts` | `vitest` `fs` `path` |
@@ -1656,8 +1662,9 @@ test:* scripti: 157
 | `frontend/ozellik/teklif/fitting-ipucu.test.ts` | `vitest` `fs` `path` `../tablo/excel-grid/fitting` |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.test.ts` | `vitest` `./teklif-kalem` |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | `./teklif-kalem` |
+| `frontend/ozellik/teklif/kaynak-fiyat-baglanti.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/teklif/restore-rematch.test.ts` | `vitest` `./restore-rematch` `../tablo/excel-grid/types` |
-| `frontend/ozellik/teklif/restore-rematch.ts` | `../tablo/excel-grid/types` `../fiyat/sayi-alani` `../tablo/excel-grid/fitting` |
+| `frontend/ozellik/teklif/restore-rematch.ts` | `../tablo/excel-grid/types` `../fiyat/sayi-alani` `../fiyat/taraf-para-birimi` `../tablo/excel-grid/fitting` |
 | `frontend/ozellik/teklif/salt-okunur-secici.test.ts` | `vitest` `node:fs` `node:path` |
 | `frontend/ozellik/teklif/taslak.test.ts` | `vitest` `node:fs` `node:path` `./taslak` |
 | `frontend/ozellik/teklif/teklif-dil-karari.test.ts` | `vitest` `./ceviri-kota` |
@@ -1682,6 +1689,7 @@ test:* scripti: 157
 | `frontend/test/e2e-golden/verify.mjs` | `node:fs` `node:path` `node:url` `node:module` `./sayi-ayristirma.mjs` `./artefakt-dizini.cjs` |
 | `frontend/test/e2e/bant-sayaci.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/bos-kaynak-surukle.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/coklu-para-birimi-izgara.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/elle-fiyat-otomatik-rozet.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/eslestirme-temizlik.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/grid.spec.ts` | `@playwright/test` |

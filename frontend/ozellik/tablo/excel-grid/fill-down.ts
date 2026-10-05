@@ -29,6 +29,7 @@ import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, kalemToplami, 
 // NOT: goreli yol ZORUNLU — vitest.config.ts'te '@/' alias'i tanimli degil
 // ve bu modul vitest ile kosuyor (fill-down.test.ts).
 import { sayiAlani, sayiOku } from '../../fiyat/sayi-alani';
+import { paraHanesi, type ParaBirimi } from '../../fiyat/taraf-para-birimi';
 
 /** Eslestirme motorunun (onBrandChange/onFirmaChange) dondurdugu sonuc. */
 export interface MotorSonucu {
@@ -49,6 +50,8 @@ export interface MotorSonucu {
   /** Kur donmasi: fiyatin dogdugu kur (dovizli kaynakta). Doldurma fiyat
    *  yazarken bunu da yazar — yazmazsa satirda ONCEKI kaynagin kuru kaliyordu. */
   kaynakKur?: unknown;
+  /** COKLU PARA BIRIMI F1/F2: fiyatin KAYNAK para birimindeki hali (motor). */
+  kaynakFiyat?: { currency: ParaBirimi; net: number };
   variantTags?: string[];
   variantMissing?: boolean;
   /** Motorun insan-okur gerekcesi ("Seçilen varyant bu çapta kütüphanede
@@ -142,6 +145,8 @@ interface TemizAlanlar {
   /** Y3: varyant kimligi (`_matVariantTags` / `_labVariantTags`). */
   tag: string;
   iscilikMi: boolean;
+  /** F2: karisik kipte taraf birimi alani (`_matPB` / `_labPB`); tl kipinde yok. */
+  pb?: string;
 }
 
 /**
@@ -173,6 +178,7 @@ function fiyatiTemizle(
   yaz(node, alanlar.net, 0);
   // Kolon degil veri alani — fiyat yazan dal da dogrudan yaziyor (KUR DONMASI).
   node.data[alanlar.kur] = null;
+  if (alanlar.pb) node.data[alanlar.pb] = null; // F2: fiyat yoksa taraf birimi de yok
   // Y3 (02.10): VARYANT KIMLIGI de gider. D1'de bilerek birakilmisti ("kimlik
   // tohumu") — yanlisti: kimlik YALNIZ onu ureten markayla anlamlidir. Kalsaydi
   // bu satirdan surukleyince A'nin varyanti B'nin sorgularina SERT FILTRE olarak
@@ -260,6 +266,10 @@ export interface FillDownArgs {
   };
   /** Baglam kurucu: hedef satirin sorgu metni (grup basligi mirasi dahil). */
   sorguMetni?: (node: FillNode) => string;
+  /** COKLU PARA BIRIMI F2: karisik kip — fiyat KAYNAK para biriminde yazilir
+   *  (`kaynakFiyat`), taraf birimi `_matPB`/`_labPB`; doviz 2 hane yukari.
+   *  Verilmezse (tl kipi) bugunku davranis birebir. */
+  karisik?: boolean;
 }
 
 /** Grid alanina yaz — hem veriye hem (kolon varsa) grid'e.
@@ -295,9 +305,11 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
   const sebepAlan = iscilikMi ? '_labSebep' : '_matSebep';
   const adayAlan = iscilikMi ? '_labAdaySayisi' : '_matAdaySayisi';
   const kurAlan = iscilikMi ? '_labKurBilgi' : '_matKurBilgi';
+  // F2: karisik kipte taraf birimi alani; tl kipinde YOK (hicbir sey yazilmaz).
+  const pbAlan = args.karisik ? (iscilikMi ? '_labPB' : '_matPB') : undefined;
   // D1: fiyat YAZMAYAN her dalin kullandigi ortak "eski fiyati sil" kumesi.
   const temizAlanlar: TemizAlanlar = {
-    birimFiyat: bfAlan, toplam: totAlan, net: netAlan, kur: kurAlan, tag: tagAlan, iscilikMi,
+    birimFiyat: bfAlan, toplam: totAlan, net: netAlan, kur: kurAlan, tag: tagAlan, iscilikMi, pb: pbAlan,
   };
 
   const sonuc: FillSonuc = {
@@ -354,7 +366,7 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
     const oncekiDegerler: Record<string, any> = {};
     for (const f of SNAP) oncekiDegerler[f] = node.data[f];
     for (const f of [bfAlan, totAlan, roller.grandTotalField,
-      statusAlan, rozetAlan, tagAlan, sebepAlan, adayAlan, kurAlan]) {
+      statusAlan, rozetAlan, tagAlan, sebepAlan, adayAlan, kurAlan, pbAlan]) {
       if (f) oncekiDegerler[f] = node.data[f];
     }
     sonuc.geriAl.push({ rowIdx, oncekiDegerler });
@@ -429,9 +441,15 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
       // KE15 sözleşmesinin ("malzeme %20 / işçilik %10 KARIŞMAZ",
       // lib/sayfa-toplamlari.test.ts) doldurma yolundaki ihlaliydi.
       const kar = sayiAlani(node.data[iscilikMi ? '_iscKar' : '_malzKar']);
-      const satisFiyat = hesaplaSatisBirimFiyat(r.netPrice, kar);
+      // F2: karisik kipte KAYNAK para birimi (etkilesimli `writePriceToNode`
+      // ile ayni kural); doviz 2 hane. tl kipinde hane 1, net TL — degismez.
+      const kf = pbAlan && r.kaynakFiyat && Number.isFinite(r.kaynakFiyat.net) ? r.kaynakFiyat : null;
+      const net = kf ? kf.net : r.netPrice;
+      const hane = pbAlan ? paraHanesi(kf ? kf.currency : 'TRY') : 1;
+      const satisFiyat = hesaplaSatisBirimFiyat(net, kar, hane);
       const miktar = etkinMiktar(node.data, roller.quantityField, roller.unitField);
-      yaz(node, netAlan, r.netPrice);
+      yaz(node, netAlan, net);
+      if (pbAlan) node.data[pbAlan] = kf ? kf.currency : 'TRY'; // kolon degil — dogrudan veri
       // KUR DONMASI (14.09 olculdu): doldurma kur bilgisini HIC yazmiyordu —
       // USD fiyat yazilan satirda onceki kaynagin kuru (ornek: EUR 30) kaliyor,
       // iscilikte hic yazilmiyordu. Etkilesimli yol (ExcelGrid writePriceToNode)
@@ -449,8 +467,8 @@ export async function fillDown(args: FillDownArgs): Promise<FillSonuc> {
         yaz(node, '_matAutoVariant', kaynakLabel || null);
         node.data._matVariantLabel = kaynakLabel || null;
       }
-      if (bfAlan) yaz(node, bfAlan, satisFiyat.toFixed(1));
-      if (totAlan) yaz(node, totAlan, hesaplaSatirToplam(satisFiyat, miktar).toFixed(1));
+      if (bfAlan) yaz(node, bfAlan, satisFiyat.toFixed(hane));
+      if (totAlan) yaz(node, totAlan, hesaplaSatirToplam(satisFiyat, miktar, hane).toFixed(hane));
       // ── KD11 (kalem 54, Yol C): GENEL TOPLAM ────────────────────────────
       // Buras: eskiden YALNIZ `totAlan`i yaziyordu. Sonuc: toplu doldurmada
       // Malz. Toplam doluyor, Genel Toplam BOS kaliyordu — kullanicinin

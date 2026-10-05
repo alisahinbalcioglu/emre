@@ -160,14 +160,16 @@ export function hesaplaNetFiyat(listeFiyat: number, iskontoYuzde: number): numbe
 
 /** ASAMA B: Net (teklif biriminde) + kar% → SATIS birim.
  *  Kar 0 → satis = net (1 haneye yukari). Cevrim yapmaz. */
-export function hesaplaSatisBirimFiyat(netTeklifParaBirimi: number, karYuzde: number): number {
+export function hesaplaSatisBirimFiyat(netTeklifParaBirimi: number, karYuzde: number, hane = ONDALIK): number {
   const oran = Math.max(0, karYuzde) / 100;
-  return yukariYuvarla(netTeklifParaBirimi * (1 + oran));
+  return yukariYuvarla(netTeklifParaBirimi * (1 + oran), hane);
 }
 
-/** Satir toplami = satis birim × miktar. */
-export function hesaplaSatirToplam(satisBirimFiyat: number, miktar: number): number {
-  return yukariYuvarla(satisBirimFiyat * miktar);
+/** Satir toplami = satis birim × miktar.
+ *  `hane`: coklu para birimi F2a — dovizli tarafta 2 (taraf-para-birimi.ts
+ *  `paraHanesi`); verilmezse ₺ kurali (1 hane), mevcut cagiranlar DEGISMEZ. */
+export function hesaplaSatirToplam(satisBirimFiyat: number, miktar: number, hane = ONDALIK): number {
+  return yukariYuvarla(satisBirimFiyat * miktar, hane);
 }
 
 // ══ PARA BIRIMI GOSTERIMI — TEK KAYNAK (KD9, 02.08.2026) ═══════════════════

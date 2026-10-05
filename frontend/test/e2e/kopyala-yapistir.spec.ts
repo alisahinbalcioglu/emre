@@ -353,7 +353,14 @@ test('KP16 ★ Marka kolonu panoya AD yazar, UUID DEGIL', async ({ page }) => {
   await expect(page.locator('[row-index="2"] [col-id="_matBirim"]')).toHaveText(/600/);
 
   const marka = page.locator('[row-index="2"] [col-id="_marka"]');
-  await marka.click();
+  // ⚠ ODAK KLAVYEYLE (05.10): hucrenin ortasina tiklamak marka MENUSUNU acar;
+  // menu 3'ten fazla secenekte ODAKLI arama kutusu gosterir (CustomDropdown
+  // `options.length > 3`) ve Ctrl+C oraya gider. Bu test harness'ta 3 marka
+  // varken TESADUFEN geciyordu (F2 dorduncu markayi ekleyince 6/6 dustu —
+  // olculdu); uretimde marka sayisi hep 3'ten fazla. Soldaki kar hucresine
+  // odaklanip → ile marka hucresine gecmek menuyu ACMAZ.
+  await page.locator('[row-index="2"] [col-id="_malzKar"]').click();
+  await page.keyboard.press('ArrowRight');
   await expect(marka).toHaveClass(/ag-cell-focus/);
   await page.keyboard.press('Control+c');
   await expect(page.getByText(/hücre kopyalandı/).first()).toBeVisible();
