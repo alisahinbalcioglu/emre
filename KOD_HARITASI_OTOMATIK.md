@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 933
-Toplam satir: 256658
+Toplam satir: 256663
 Uc nokta: 239
 test:* scripti: 172
 
@@ -757,7 +757,7 @@ test:* scripti: 172
 | `frontend/ozellik/kimlik/kapatma-onizleme-getir.ts` | 47 |
 | `frontend/ozellik/kimlik/kurumsal-baslat.ts` | 114 |
 | `frontend/ozellik/kimlik/kurumsal-giris.test.ts` | 440 |
-| `frontend/ozellik/kimlik/verileri-indir.test.ts` | 146 |
+| `frontend/ozellik/kimlik/verileri-indir.test.ts` | 151 |
 | `frontend/ozellik/kimlik/verileri-indir.ts` | 99 |
 | `frontend/ozellik/kimlik/yonetici-eposta-kodu.test.ts` | 127 |
 | `frontend/ozellik/kurumsal/KurumsalSayfa.tsx` | 60 |
