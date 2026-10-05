@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 926
-Toplam satir: 254379
+Toplam satir: 254469
 Uc nokta: 239
 test:* scripti: 169
 
@@ -147,12 +147,12 @@ test:* scripti: 169
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 116 |
 | `backend/src/ozellik/eslestirme/matching/matching.module.ts` | 16 |
 | `backend/src/ozellik/eslestirme/matching/matching.service.ts` | 1337 |
-| `backend/src/ozellik/eslestirme/matching/normalizer.ts` | 753 |
+| `backend/src/ozellik/eslestirme/matching/normalizer.ts` | 752 |
 | `backend/src/ozellik/eslestirme/matching/shared-tag-matcher.ts` | 165 |
 | `backend/src/ozellik/eslestirme/matching/tag-generator.ts` | 162 |
 | `backend/src/ozellik/eslestirme/matching/terminology.service.ts` | 370 |
 | `backend/src/ozellik/eslestirme/matching/types.ts` | 169 |
-| `backend/src/ozellik/eslestirme/utils/build-material-context.ts` | 134 |
+| `backend/src/ozellik/eslestirme/utils/build-material-context.ts` | 171 |
 | `backend/src/ozellik/eslestirme/utils/etiket-display.ts` | 70 |
 | `backend/src/ozellik/firma/davet-kabul.controller.ts` | 38 |
 | `backend/src/ozellik/firma/dto/davet-bilgi.dto.ts` | 8 |
@@ -357,7 +357,7 @@ test:* scripti: 169
 | `backend/test/ekip-izinleri-test.ts` | 568 |
 | `backend/test/erisim-kapisi-test.ts` | 695 |
 | `backend/test/erken-kurtarma-test.ts` | 402 |
-| `backend/test/etiket-katmani-test.ts` | 108 |
+| `backend/test/etiket-katmani-test.ts` | 162 |
 | `backend/test/excel-grid-test.ts` | 257 |
 | `backend/test/export-format-test.ts` | 442 |
 | `backend/test/export-live-sim-test.ts` | 425 |
