@@ -316,4 +316,24 @@ describe('mergeMultiSheet — Excel yeniden yukleme veri korumasi', () => {
   it('D6-15 ★ sabit sema: baslik yalniz kaynak metninde (_kaynak)', () => {
     expect(sonra((m) => ({ _rowIdx: 0, _isDataRow: false, _isHeaderRow: false, _no: '', _ad: '', _kaynak: { col3: m } }))).toEqual(BEKLENEN);
   });
+  // Inceleme (05.10, D6'dan ONCE de vardi): fitting kapsami ayni sayfadaki satirlarin
+  // `_rowIdx` listesidir; birlestirme satirlari YENIDEN numaralar. Kapsam eski
+  // numarada kalinca fitting tutari BASKA satirlardan hesaplaniyordu.
+  it('D6-16 ★ fitting kapsami yeni satir numaralarina cevrilir', () => {
+    const prev = sheet('S1', [
+      baslik('KAT 1'),
+      row('', 'VANA', '2', { 'Birim Fiyat': '100' }),
+      row('', 'BORU', '10', { 'Birim Fiyat': '50' }),
+      row('', 'Fitting', '5', { _fitting: { kapsam: [1, 2, 4, 5] } }),
+      row('', 'MANUEL', '1', { 'Birim Fiyat': '30' }), // dosyada yok → sona korunur, kapsamda KALIR
+      row('', '', '1'), // anahtarsiz → tabloya tasinmaz, kapsamdan DUSER
+    ]);
+    const inc = sheet('S1', [baslik('BODRUM'), row('', 'POMPA', '1'), baslik('KAT 1'), row('', 'VANA', '2'), row('', 'BORU', '10')]);
+    const { merged } = mergeMultiSheet(prev, { 0: prev.sheets[0].rowData }, inc);
+    const rows = merged.sheets[0].rowData;
+    const fit = rows.find((r) => r.Ad === 'Fitting')!;
+    const kapsamAdlari = (fit._fitting as { kapsam: number[] }).kapsam.map((i) => rows.find((r) => r._rowIdx === i)?.Ad);
+    expect(kapsamAdlari).toEqual(['VANA', 'BORU', 'MANUEL']);
+    expect(prev.sheets[0].rowData[3]._fitting, 'eski satir nesnesi degismez').toEqual({ kapsam: [1, 2, 4, 5] });
+  });
 });

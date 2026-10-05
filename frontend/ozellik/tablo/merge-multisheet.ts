@@ -152,6 +152,7 @@ function mergeSheetRows(
   const eslesme = eslestir(prevAnahtar, anahtarla(incoming.rowData ?? [], roles));
   const consumed = new Set<ExcelRowData>(eslesme.values());
   const merged: ExcelRowData[] = [];
+  const yeniNo = new Map<number, number>(); // eski satirin _rowIdx'i → birlesik tablodaki _rowIdx
   let idx = 0;
 
   for (const inc of incoming.rowData ?? []) {
@@ -165,6 +166,7 @@ function mergeSheetRows(
       stats.matchedRows++;
       // Taban: yeni dosya satiri (kaynak hucreler guncel — miktar/birim/ad)
       const out: ExcelRowData = { ...prev, ...inc, _rowIdx: idx++ };
+      yeniNo.set(prev._rowIdx, out._rowIdx);
       // Sistem alanlari eski satirdan geri yaz (kullanici emegi)
       for (const f of SYSTEM_FIELDS) {
         if (prev[f] !== undefined) (out as any)[f] = prev[f];
@@ -199,15 +201,23 @@ function mergeSheetRows(
   for (const r of prevRows) {
     if (!prevAnahtar.has(r) || consumed.has(r)) continue;
     stats.preservedRows++;
+    yeniNo.set(r._rowIdx, idx);
     merged.push({ ...r, _rowIdx: idx++ });
   }
+
+  // Fitting kapsami ayni sayfadaki satirlarin `_rowIdx` listesidir; yukarida satirlar
+  // YENIDEN numaralandi. Kapsam eski numarada kalirsa fitting tutari BASKA satirlardan
+  // hesaplanir (inceleme 05.10). Tabloda artik olmayan satir kapsamdan duser.
+  const rows = merged.map((r) => (r._fitting && Array.isArray(r._fitting.kapsam)
+    ? { ...r, _fitting: { ...r._fitting, kapsam: r._fitting.kapsam.map((i) => yeniNo.get(i)).filter((i): i is number => i !== undefined) } }
+    : r));
 
   // Sutunlar: dosyanin yapisi taban + kullanicinin ekledigi ozel sutunlar
   const incFields = new Set((incoming.columnDefs ?? []).map((c) => c.field));
   const extraDefs = prevDefs.filter((c) => !incFields.has(c.field));
   const columnDefs = [...(incoming.columnDefs ?? []), ...extraDefs];
 
-  return { rows: merged, columnDefs };
+  return { rows, columnDefs };
 }
 
 export function mergeMultiSheet(
