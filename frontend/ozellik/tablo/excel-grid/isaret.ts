@@ -285,6 +285,33 @@ export const HAVUZA_DON_EYLEMI = 'Havuz fiyatına dön';
  * cikis havuza donmektir.
  */
 export function kutuphaneFiyatAyrisimi(d: unknown): { stil: IsaretStili; ipucu: string } | null {
+  const a = fiyatAyrisimiOku(d);
+  if (!a) return null;
+  const fiyatlar = `Özel fiyat ${a.ozelMetni} · havuz liste fiyatı ${a.havuzMetni}`;
+  const eylem = `üstteki «${HAVUZA_DON_EYLEMI}» düğmesine basın`;
+  return {
+    stil: SARI,
+    ipucu: a.birimFarkli
+      ? `${fiyatlar} — para birimleri farklı; havuz fiyatına geçmek için ${eylem}`
+      : `${fiyatlar} — havuz fiyatı değişmiş; geçerli fiyatı bu hücreye yazın ya da ${eylem}`,
+  };
+}
+
+/** `_fiyatAyrisik` sinyalinin okunmus hali (simgeli tutarlar). */
+export interface OkunanFiyatAyrisimi {
+  ozel: number;
+  havuz: number;
+  ozelMetni: string;
+  havuzMetni: string;
+  birimFarkli: boolean;
+}
+
+/**
+ * K1/C3 sinyalinin TEK okuyucusu: hucre ipucu (`kutuphaneFiyatAyrisimi`) ve
+ * marka sayfasinin «Havuz fiyatına dön» listesi (havuza-donus.ts) ayni
+ * kuraldan beslenir. Sinyal yok ya da bozuksa null.
+ */
+export function fiyatAyrisimiOku(d: unknown): OkunanFiyatAyrisimi | null {
   const satir = d as {
     _fiyatAyrisik?: { ozel?: unknown; havuz?: unknown; ozelBirim?: unknown; havuzBirim?: unknown };
     _currency?: unknown;
@@ -297,12 +324,10 @@ export function kutuphaneFiyatAyrisimi(d: unknown): { stil: IsaretStili; ipucu: 
   const satirBirimi = String(satir?._currency ?? 'TRY');
   const ozelBirim = typeof a.ozelBirim === 'string' ? a.ozelBirim : satirBirimi;
   const havuzBirim = typeof a.havuzBirim === 'string' ? a.havuzBirim : satirBirimi;
-  const fiyatlar = `Özel fiyat ${paraMetni(ozel, ozelBirim)} · havuz liste fiyatı ${paraMetni(havuz, havuzBirim)}`;
-  const eylem = `üstteki «${HAVUZA_DON_EYLEMI}» düğmesine basın`;
   return {
-    stil: SARI,
-    ipucu: birimKodu(ozelBirim) === birimKodu(havuzBirim)
-      ? `${fiyatlar} — havuz fiyatı değişmiş; geçerli fiyatı bu hücreye yazın ya da ${eylem}`
-      : `${fiyatlar} — para birimleri farklı; havuz fiyatına geçmek için ${eylem}`,
+    ozel, havuz,
+    ozelMetni: paraMetni(ozel, ozelBirim),
+    havuzMetni: paraMetni(havuz, havuzBirim),
+    birimFarkli: birimKodu(ozelBirim) !== birimKodu(havuzBirim),
   };
 }

@@ -3,7 +3,7 @@
 // Cloudflare Pages icin Edge Runtime (dynamic route)
 export const runtime = 'edge';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -17,6 +17,12 @@ import { confirm } from '@/ortak/hooks/use-confirm';
 import { ExcelGrid, type ExcelGridHandle } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import type { ExcelGridData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
 import { sayiOku } from '@/ozellik/fiyat/sayi-alani';
+import { degisenMalzemeAdi, malzemeAdlari } from '@/ozellik/kutuphane/malzeme-ad-imzasi';
+import { markaKaldirmaOnayi } from '@/ozellik/kutuphane/marka-kaldirma-onayi';
+import { hataMetni } from '@/ozellik/kutuphane/hata-metni';
+import { havuzaDonusAdaylari, havuzFiyatinaDondur } from '@/ozellik/kutuphane/havuza-donus';
+import { HavuzaDonusDiyalogu } from '@/ozellik/kutuphane/library/HavuzaDonusDiyalogu';
+import { HAVUZA_DON_EYLEMI } from '@/ozellik/tablo/excel-grid/isaret';
 
 interface BrandLibraryResponse {
   id: string;
@@ -99,8 +105,14 @@ export default function LibraryBrandDetailPage() {
   // okurdu → yeni malzeme kaçar/kaydedilmez. Ref senkron.
   const liveRowsRef = useRef<ExcelRowData[]>([]);
   const gridRef = useRef<ExcelGridHandle>(null); // save öncesi stopEditing()+getRowData()
+  // Yüklenen satırların ad hücreleri — kayıtta ad YALNIZ bundan farklıysa
+  // gönderilir (malzeme-ad-imzasi.ts; işçilik ikizi ilkAdImzalariRef).
+  const ilkAdlarRef = useRef<Map<string, string>>(new Map());
   const [dirtyCount, setDirtyCount] = useState(0); // mevcut satir fiyat/iskonto degisikligi
   const [newCount, setNewCount] = useState(0);     // yeni girilen malzeme satiri
+  // «Havuz fiyatına dön» penceresi (havuza-donus.ts)
+  const [havuzaDonusAcik, setHavuzaDonusAcik] = useState(false);
+  const [havuzaDonuluyor, setHavuzaDonuluyor] = useState(false);
 
   /** Liste sekmelerini ceker (backend NULL satirlari varsayilan listeye gocurur). */
   const fetchLists = useCallback(async (): Promise<LibraryListInfo[]> => {
@@ -137,6 +149,7 @@ export default function LibraryBrandDetailPage() {
       colDefsRef.current = firstSheet.columnDefs ?? [];
       colRolesRef.current = firstSheet.columnRoles;
       const existing: ExcelRowData[] = firstSheet.rowData ?? [];
+      ilkAdlarRef.current = malzemeAdlari(existing, firstSheet.columnRoles?.nameField);
 
       // Inline giris: en alta 30 bos satir + 1 spare (autoAppendRow devami)
       const maxIdx = existing.reduce((m: number, r: any) => Math.max(m, r._rowIdx ?? 0), 0);
@@ -157,6 +170,7 @@ export default function LibraryBrandDetailPage() {
       setDirtyCount(0);
       setNewCount(0);
     } catch (e: any) {
+      ilkAdlarRef.current = new Map(); // başka listenin adları kullanılmaz
       toast({ title: 'Yuklenemedi', description: e?.response?.data?.message, variant: 'destructive' });
       router.push('/library');
     } finally {
@@ -199,6 +213,7 @@ export default function LibraryBrandDetailPage() {
     const rowData: ExcelRowData[] = [];
     for (let i = 0; i < BLANK_ROW_COUNT; i++) rowData.push(makeBlankLibRow(cols, i));
     rowData.push(makeBlankLibRow(cols, BLANK_ROW_COUNT, true));
+    ilkAdlarRef.current = new Map(); // yeni listede kayıtlı satır yok
     setGridData({
       columnDefs: cols,
       rowData,
@@ -309,7 +324,10 @@ export default function LibraryBrandDetailPage() {
           // dokunmaz, yalniz kullanicinin KENDI `UserLibrary` satirini yazar
           // (backend testi C1 bunu olcer). Bedeli su oldu: kullanici adi
           // degistiriyor, ekran "Kaydedildi" diyor, ad eski kaliyordu.
-          materialName: String(r[nameField] ?? '').trim() || undefined,
+          // P4b Parti 3 (05.10): YALNIZ ad hucresi yuklendigi halden farkliysa
+          // — kirli her satirda giden ad, ekran acikken baska yerde yapilan ad
+          // duzeltmesini (ekip arkadasi) eski adla geri aliyordu.
+          materialName: degisenMalzemeAdi(r, nameField, ilkAdlarRef.current),
         }));
         const { data } = await api.post(`/library/brand/${brandId}/save-sheets`, { dirtyRows: payload });
         updated = data.updated ?? 0;
@@ -394,18 +412,76 @@ export default function LibraryBrandDetailPage() {
     }
   }, [nameField]);
 
+  /** Markayi kutuphaneden kaldir — onay KAYBI soyler (iskonto, ozel fiyat, ad
+   *  duzeltmesi; yeniden aktarim geri getirmez — marka-kaldirma-onayi.ts). */
   async function handleRemoveBrand() {
-    if (!(await confirm(`"${brandName}" kütüphanenizden tamamen kaldırılsın mı?`))) return;
+    const malzemeSayisi = lists.reduce((t, l) => t + (l._count?.items ?? 0), 0);
+    if (!(await confirm(markaKaldirmaOnayi(brandName, malzemeSayisi)))) return;
     try {
       await api.delete(`/library/brand/${brandId}`);
       toast({ title: 'Silindi' });
       router.push('/library/mechanical-brands');
-    } catch {
-      toast({ title: 'Hata', variant: 'destructive' });
+    } catch (e: unknown) {
+      toast({ title: 'Kaldırılamadı', description: hataMetni(e, 'Marka kütüphaneden kaldırılamadı.'), variant: 'destructive' });
     }
   }
 
   const pendingCount = dirtyCount + newCount;
+  // Ayrisan ozel fiyatli satirlar (sari hucreler) — «Havuz fiyatına dön» adaylari
+  const ayrisanlar = useMemo(
+    () => (newListMode ? [] : havuzaDonusAdaylari(liveRows as any[], nameField)),
+    [liveRows, nameField, newListMode],
+  );
+
+  /** Izgarada kaydedilmemis degisiklik var mi — once ACIK duzenleyici islenir:
+   *  cizim anindaki `pendingCount` tiklama anindaki son duzenlemeyi henuz
+   *  gormemis olabilir. «Havuz fiyatına dön» listeyi yeniden yukler; kaydedilmemis
+   *  degisiklik orada sessizce kaybolurdu. */
+  function kaydedilmemisVar(): boolean {
+    gridRef.current?.stopEditing();
+    const gridRows = gridRef.current?.getRowData();
+    const rows = (gridRows && gridRows.length) ? gridRows : liveRowsRef.current;
+    return rows.some((r: any) => r._isDataRow && (r._libraryItemId
+      ? !!r._dirty
+      : String(r[nameField] ?? '').trim() !== ''));
+  }
+  const ONCE_KAYDET = `«${HAVUZA_DON_EYLEMI}» listeyi yeniden yükler — önce değişiklikleri kaydedin.`;
+
+  function havuzaDonusuAc() {
+    if (kaydedilmemisVar()) {
+      toast({ title: 'Kaydedilmemiş değişiklik var', description: ONCE_KAYDET });
+      return;
+    }
+    setHavuzaDonusAcik(true);
+  }
+
+  /** «Havuz fiyatına dön»: secilen satirlarin OZEL fiyati silinir, satir havuzu
+   *  izler (havuza-donus.ts). Basarisiz satir yutulmaz: sayi + sunucu metni. */
+  async function havuzaDon(idler: string[]) {
+    if (!activeListId || idler.length === 0) return;
+    if (kaydedilmemisVar()) {
+      setHavuzaDonusAcik(false);
+      toast({ title: 'Kaydedilmemiş değişiklik var', description: ONCE_KAYDET, variant: 'destructive' });
+      return;
+    }
+    setHavuzaDonuluyor(true);
+    try {
+      const s = await havuzFiyatinaDondur(idler, (id) => api.put(`/library/${id}`, { customPrice: null }));
+      if (s.donmeyen === 0) {
+        toast({ title: 'Havuz fiyatına dönüldü', description: `${s.donen} satır` });
+      } else {
+        toast({
+          title: `${s.donmeyen} satır havuz fiyatına dönemedi`,
+          description: `${s.donen} satır döndü · ${hataMetni(s.ilkHata, 'Sunucu satırı güncelleyemedi.')}`,
+          variant: 'destructive',
+        });
+      }
+      setHavuzaDonusAcik(false);
+      if (s.donen > 0) await fetchData(activeListId);
+    } finally {
+      setHavuzaDonuluyor(false);
+    }
+  }
 
   // beforeunload — kaydedilmemis degisiklik/yeni malzeme varken uyar
   useEffect(() => {
@@ -505,6 +581,23 @@ export default function LibraryBrandDetailPage() {
         </div>
       )}
 
+      {/* P4b Parti 3 (C3): ozel fiyat havuzdan ayrismis satirlar — karar kullanicinin */}
+      {ayrisanlar.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-900">
+          <span>
+            <b>{ayrisanlar.length} malzemede</b> özel fiyat havuz liste fiyatından ayrışmış
+            (sarı hücreler — üzerine gelince iki fiyat görünür).
+          </span>
+          {!saltOkunur && (pendingCount === 0 ? (
+            <Button size="sm" variant="outline" className="ml-auto h-7 text-xs" onClick={havuzaDonusuAc}>
+              {HAVUZA_DON_EYLEMI}…
+            </Button>
+          ) : (
+            <span className="ml-auto italic">«{HAVUZA_DON_EYLEMI}» için önce değişiklikleri kaydedin</span>
+          ))}
+        </div>
+      )}
+
       <Card className="overflow-hidden">
         <ExcelGrid
           key={newListMode ? 'yeni-liste' : (activeListId ?? 'liste')}
@@ -522,6 +615,14 @@ export default function LibraryBrandDetailPage() {
           onRowDataChange={handleRowsChange}
         />
       </Card>
+
+      <HavuzaDonusDiyalogu
+        acik={havuzaDonusAcik}
+        adaylar={ayrisanlar}
+        calisiyor={havuzaDonuluyor}
+        onKapat={() => setHavuzaDonusAcik(false)}
+        onOnayla={havuzaDon}
+      />
     </div>
   );
 }
