@@ -19,7 +19,7 @@ import type { ExcelGridData, MatchCandidate } from '@/ozellik/tablo/excel-grid/t
 // Loglar REACT DISI tutulur (window.__olay): setState her sorguda parent'i
 // re-render edip AG Grid hucrelerini remount ettiriyordu → popup state'i
 // ucuyordu. Canli sayfada handler'lar memoize oldugu icin bu tuzak yok.
-declare global { interface Window { __olay?: string[] } }
+declare global { interface Window { __olay?: string[]; __kurBayat?: boolean } }
 const kaydet = (m: string) => {
   if (typeof window === 'undefined') return;
   (window.__olay = window.__olay ?? []).push(m);
@@ -75,6 +75,18 @@ export default function GridTestPage() {
   // (SSR/istemci hydration uyusmazligi); cozum grid'i bir tik geciktirmek.
   const [gridHazir, setGridHazir] = useState(false);
   const [kutuphaneDoviz, setKutuphaneDoviz] = useState(false);
+  // C10 (P4b Parti 3 madde 2): `?kur=bayat` → DOLAR MARKA / DOLAR USTA kurunu
+  // BAYAT (3 is gunu) dondurur — fiyat hucresinde amber serit + kur notu
+  // olculur. REF: sorgu mock'lari bos bagimlilikla memoize (handler kimligi
+  // degisirse hucreler yeniden kurulur — bkz. sayfa basindaki not).
+  // `window.__kurBayat = true` sayfa ACIKKEN kuru bayatlatir, DEGERI ayni
+  // kalir: ayni firma/marka yeniden secilince fiyat metni degismez — serit
+  // yine de gorunmeli (inceleme MEDIUM-1, iscilik hucresi zorla tazelenir).
+  const kurBayatRef = useRef(false);
+  const dolarKuru = () => ({
+    currency: 'USD', kur: 40, tarih: '2026-10-05',
+    ...(kurBayatRef.current || window.__kurBayat ? { bayat: true, yasIsGunu: 3 } : {}),
+  });
   React.useEffect(() => {
     const arama = new URLSearchParams(window.location.search);
     const kip = arama.get('iscilik');
@@ -92,6 +104,7 @@ export default function GridTestPage() {
     // KUTUPHANE DOVIZ NETI (05.10): `?kutuphaneDoviz=1` → kutuphane modunda satir 2
     // USD ve liste 10,55 (₺ kurali $10,60 gosterirdi). Varsayilan KAPALI.
     if (arama.get('kutuphaneDoviz') === '1') setKutuphaneDoviz(true);
+    kurBayatRef.current = arama.get('kur') === 'bayat';
     setGridHazir(true); // ayni tikte toplanir → grid ilk render'da DOGRU degeri gorur
     if (kip === 'gec') {
       const t = setTimeout(() => setIscilikAcik(true), 300);
@@ -252,7 +265,7 @@ export default function GridTestPage() {
     // izgara TL alanlarini yazar (bugunku davranis).
     if (brandId === 'b-dolar') {
       const usd = (n: number) => ({ currency: 'USD', net: n, list: n, discount: 0 });
-      const kur = { currency: 'USD', kur: 40, tarih: '2026-10-05' };
+      const kur = dolarKuru();
       if (materialName.includes("1''")) {
         return {
           netPrice: 0, confidence: 'multi', reason: '2 seçenek',
@@ -353,7 +366,7 @@ export default function GridTestPage() {
       const net = capI ? LAB_FIYAT[capI] / 40 : 0;
       if (!net) return { netPrice: 0, confidence: 'none', reason: 'Bu firmada yok.' } as any;
       return { netPrice: Math.round(net * 40 * 100) / 100, confidence: 'high', matchedName: `Dolar işçilik · ${capI}`, variantTags: ['v:usd'],
-        kaynakKur: { currency: 'USD', kur: 40, tarih: '2026-10-05' }, kaynakFiyat: { currency: 'USD', net, list: net, discount: 0 } } as any;
+        kaynakKur: dolarKuru(), kaynakFiyat: { currency: 'USD', net, list: net, discount: 0 } } as any;
     }
 
     // D2 IKIZI (30.09): HAKAN USTA bu sorguda YAVAS ve FARKLI fiyat doner.

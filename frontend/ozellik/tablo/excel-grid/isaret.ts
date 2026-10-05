@@ -78,6 +78,9 @@ export interface IsaretGirdisi {
    *  ⚠ Cagiran `kurBilgi`yi verirken BUNU da vermeli: yoksa karisik kipteki $
    *  hucresi TL sayilir. */
   tarafBirimi?: unknown;
+  /** Secicilerin tiklanamadigi salt-okunur ekran (teklif goruntuleme, `seciciSaltOkunur`):
+   *  bayat kur notu EYLEM onermez — "menuden yeniden secin" orada yapilamaz (SD6). */
+  saltOkunur?: boolean;
 }
 
 /** Hucre arka plani (textAlign cagirana ait — bu modul yalniz RENGI karara baglar). */
@@ -151,7 +154,8 @@ function bayatKur(g: IsaretGirdisi): BayatKur | null {
 function bayatKurNotu(b: BayatKur, g: IsaretGirdisi): string {
   const ayrinti = [b.kur != null && b.birim ? `1 ${b.birim} = ₺${trSayi(b.kur, 2, 4)}` : '', b.tarih].filter(Boolean).join(', ');
   const bas = b.yas != null ? `Fiyatlandırıldığında kur ${b.yas} iş günü eskiydi` : 'Fiyatlandırıldığında kur eskiydi';
-  return `${bas}${ayrinti ? ` (${ayrinti})` : ''} — güncel kur için ${menuAdi(g)} menüsünden yeniden seçin ya da fiyatı elle yazın`;
+  const eylem = g.saltOkunur ? '' : ` — güncel kur için ${menuAdi(g)} menüsünden yeniden seçin ya da fiyatı elle yazın`;
+  return `${bas}${ayrinti ? ` (${ayrinti})` : ''}${eylem}`;
 }
 
 /**
