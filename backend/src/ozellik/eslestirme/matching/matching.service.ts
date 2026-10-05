@@ -62,6 +62,23 @@ type OneriHavuzu = {
  *  satir ayni anda isterse de havuz bir kez hazirlanir. */
 type OneriBellegi = { malzeme?: Promise<OneriHavuzu | null>; iscilik?: Promise<OneriHavuzu | null> };
 
+/**
+ * SALDIRI TAVANI (P2 ad uzunlugu B, 05.10 — olculdu): satir adi sinirsiz bir
+ * API girdisidir ve aile cozumunun maliyeti adin YAPISINA gore karesele yakin
+ * buyur (25327c0 sonrasi da "aile basta + uzun nitelik zinciri" tipinde).
+ * Olculen en uzun GERCEK ad 1.475 karakter (e2e kesif fikstürü; canlida
+ * 05.10 en uzun 44) — tavan onun ustunde, iki kulliyatta etkilenen ad 0.
+ * Satir REDDEDILMEZ (teklifi kirardi): motor adin ilk AD_AZAMI_UZUNLUK
+ * karakteriyle calisir, sonuc ORIJINAL ada yazilir. Hafiza imzasi da ayni
+ * kirpik adla kurulur (`buildImza` / `buildKindImza`) → remember ↔ eslestirme
+ * anahtari simetrik kalir. Duz kirpma 300-800 karakterde sonucu DEGISTIRIYORDU
+ * (olculdu) — bu yuzden tavan saldiri sinirinda, kalite sinirinda DEGIL.
+ */
+export const AD_AZAMI_UZUNLUK = 2000;
+export function sorguAdi(ad: string): string {
+  return ad.length > AD_AZAMI_UZUNLUK ? ad.slice(0, AD_AZAMI_UZUNLUK) : ad;
+}
+
 @Injectable()
 export class MatchingService {
   constructor(
@@ -463,7 +480,9 @@ export class MatchingService {
       // TypeError atiyor ve TUM toplu istek dusuyordu (olculdu). Yalniz KENDI
       // anahtari ve METIN deger okunur. (`Object.hasOwn` ES2022; hedef ES2021.)
       const ham = units && Object.prototype.hasOwnProperty.call(units, name) ? units[name] : undefined;
-      const line = parseLine(name, typeof ham === 'string' ? ham : undefined);
+      // B (05.10): motor kirpik adla calisir, birim ve sonuc ORIJINAL adin anahtariyla.
+      const sorgu = sorguAdi(name);
+      const line = parseLine(sorgu, typeof ham === 'string' ? ham : undefined);
 
       // TS vakasi (24.07/27.07): alias secimi KADEMELI — guard'a takilan
       // (veya motorun kullanamadigi) alias atlanir, SIRADAKI denenir. Eski
@@ -478,7 +497,7 @@ export class MatchingService {
       // (yalniz adinda "Temiz Su Borusu" geçen PVC-U kaliyordu; HAKAN'da ise
       // hic aday kalmiyordu). impliedType'li alias TAM ceviridir (aile +
       // kelime yutma) — sinif-onsezili alias'tan her kosulda ustundur.
-      const adayTum = this.terminology.resolveAliasAdaylari(name, aliases);
+      const adayTum = this.terminology.resolveAliasAdaylari(sorgu, aliases);
       const adaylar = [...adayTum.filter((a) => a.impliedType), ...adayTum.filter((a) => !a.impliedType)];
       let hint: AliasHint | null = null;
       let atlanan = 0;
@@ -560,7 +579,7 @@ export class MatchingService {
 
       // OGRENME HAFIZASI + CINS TERCIHI — v1 ile AYNI kural (on-secili
       // getirir, OTOMATIK DOLDURMAZ). Motor-bagimsiz ortak yol.
-      r = await this.hafizaOnSecim(k.userId, brandId, name, r, aliases);
+      r = await this.hafizaOnSecim(k.userId, brandId, sorgu, r, aliases);
 
       // M3: "bu markada yok" cevabi ALTERNATIFSIZ birakilmaz (PRD Bolum 3).
       // Faz 2b genislemesi: satirin yazili kelimesi bu markada DOGRULANAMADIYSA
@@ -1233,7 +1252,8 @@ export class MatchingService {
    *  devre disi kalir; secimler yeniden ogrenilir — on-secim kaybi gecici.)
    *  ⚠ Ayni gerekce bu turda da gecerli: format degistigi icin eski tam-imza
    *  kayitlari eslesmez olur. BILINCLI ve kabul edilmis yan etkidir. */
-  private buildImza(excelName: string, brandId: string): string | null {
+  private buildImza(excelNameHam: string, brandId: string): string | null {
+    const excelName = sorguAdi(excelNameHam); // B: remember ↔ eslestirme ayni kirpik ad
     const tags = generateTags(excelName);
     const olcu = tags.tags.filter((t) => t.startsWith('dn') || t.startsWith('od-')).sort().join(',');
     if (!olcu) return null;
@@ -1249,7 +1269,8 @@ export class MatchingService {
    *  tercihi PPR hattinda "onceki tercihiniz" olarak GORUNMEZ. Aile = satir
    *  ham cinsleri, yoksa sozluk cinsleri, yoksa 'genel'. (Eski imza formati
    *  farkli — eski kind-tercihleri dogal olarak devre disi kalir.) */
-  private buildKindImza(excelName: string, brandId: string, aliases: AliasHint[]): string {
+  private buildKindImza(excelNameHam: string, brandId: string, aliases: AliasHint[]): string {
+    const excelName = sorguAdi(excelNameHam); // B: remember ↔ eslestirme ayni kirpik ad
     const tags = generateTags(excelName);
     const raw = extractMaterialKind(excelName).filter((k) => KIND_TAGS.has(k));
     const hint = this.terminology.resolveAlias(excelName, aliases);
