@@ -547,8 +547,9 @@ describe('K7 — salt-okunur mod: görür, girer, indirir; işlem YAPAMAZ', () =
     const sayfalar: Array<[string, string[], number]> = [
       ['library/mechanical-brands/page.tsx', ['setManualOpen(true)', 'setPdfOpen(true)'], 2],
       ['library/electrical-brands/page.tsx', ['setAddOpen(true)', 'setPdfOpen(true)'], 2],
+      // P4b Parti 3 (05.10): «Havuz fiyatına dön» de yazma girişi (özel fiyatı siler)
       ['library/brand/[brandId]/page.tsx',
-        ['handleSave', 'handleRemoveBrand', 'enterNewListMode', 'deleteActiveList'], 4],
+        ['handleSave', 'handleRemoveBrand', 'enterNewListMode', 'deleteActiveList', 'havuzaDonusuAc'], 5],
     ];
     for (const [yol, girisler, adet] of sayfalar) {
       const kod = kodu(oku(`app/(protected)/${yol}`));
