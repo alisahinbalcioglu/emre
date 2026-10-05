@@ -1015,6 +1015,14 @@ const SUITES: Suite[] = [
   //    yok sessiz geçer). Prototip: "__proto__" adlı satırın sonucu yanıtta
   //    kalır (P4 notu 2'nin yazma yanı). Gerçek motor, sahte Prisma. DB/AĞ YOK.
   { ad: 'P4b motor: alias yükleme hatası yutulmaz (C9) · "__proto__" satırı yanıtta kalır (T/P)', script: 'test:p4b-motor', zincir: 'Z2' },
+  // ── 05.10.2026 — P4b PARTİ 2a (kütüphane). C3: özel fiyat girildiği birimde
+  //    kalır (aktarım dokunmaz, liste fiyatına yabancı birim yazılmaz, ızgara
+  //    kendi birimini gösterir). C7: ad yalnız GÖSTERİLEN addan farklıysa
+  //    düzeltme — sahipli üründe indeks (kimlik sabit, tek işlem), ortak üründe
+  //    kullaniciAdi (aktarım ezmez, başka firma etkilenmez). Manuel ürün +
+  //    yeniden indeksleme türetilmiş alanları TEK listeden. Gerçek servisler,
+  //    bellek-prisma. DB/AĞ GEREKTİRMEZ.
+  { ad: 'P4b kütüphane: özel fiyat birimi (C3) · ad düzeltmesi (C7) · tek indeks alan listesi (F/A/M/H/R)', script: 'test:p4b-kutuphane', zincir: 'Z1' },
 ];
 
 // ── SKIP DEFTERI (B1, para dogrulugu turu 14.09.2026) ──────────────────────

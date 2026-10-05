@@ -4,11 +4,19 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+/** Malzeme adinin azami uzunlugu — urun olusturma (bu DTO), tekil kutuphane
+ *  kalemi (`CreateLibraryItemDto`) ve kutuphane izgarasindaki ad duzeltmesi
+ *  (`saveBrandSheets`) AYNI sinir. Ad urun
+ *  indeksine gider: `buildProductIndex` adin uzunluguyla karesel buyur
+ *  (P4b guvenlik incelemesi 05.10: 10 bin karakter 3-4 sn, 20 bin 12-16 sn
+ *  olay dongusu). */
+export const MALZEME_ADI_AZAMI = 500;
+
 /** Kullanicinin "Marka Ekle" bos tablosunda doldurdugu TEK satir.
  *  Alan adlari ProductIndex 11-kolon kaynak sadakatiyle birebir. */
 export class ManualBrandRowDto {
   @IsString()
-  @MaxLength(500)
+  @MaxLength(MALZEME_ADI_AZAMI)
   ad: string; // Malzeme Adi — ZORUNLU (aile bucket'inin kaynagi)
 
   @IsOptional() @IsString() @MaxLength(200) cins?: string;

@@ -46,6 +46,7 @@ import {
 } from '../utils/import-fidelity';
 import { deriveEtiketler, isValidAdOverride } from '../../eslestirme/utils/etiket-display';
 import { buildProductIndex, rebuildIndexFields, INDEX_VERSION, ProductColumns } from '../../eslestirme/matching/index/product-index';
+import { turetilmisIndeksAlanlari } from '../urun-indeksi-alanlari';
 import { SilmeEtkisi, ekonomiVar } from '../silme-etkisi';
 import { paraBirimiKodu, paraBirimleriniDogrula, satirAdi } from '../../fiyat/exchange-rates/exchange-rates.service';
 
@@ -1700,14 +1701,9 @@ export class AdminService {
         birim: pcols.birim, price, currency: pcols.paraBirimi ?? 'TRY',
         urunKodu: pcols.urunKodu, not: pcols.not,
         sheetName: pcols.sheetName, sourceRow: pcols.sourceRow, sortOrder: pcols.sortOrder,
-        adSlug: idx.adSlug, adBucket: idx.adBucket, adTokens: idx.adTokens,
-        cinsNorm: idx.cinsNorm, cinsTokens: idx.cinsTokens,
-        baglantiNorm: idx.baglantiNorm, baglantiTokens: idx.baglantiTokens,
-        sizeClass: idx.sizeClass, capTags: idx.capTags, capNorm: idx.capNorm,
-        // S4/S5: malzeme etiketi + zayif-aile bayragi da INDEKSTE saklanir
-        malzemeler: idx.malzemeler, aileZayif: idx.aileZayif,
-        boyTag: idx.boyTag, displayName: idx.displayName, rowKey: idx.rowKey,
-        indexVersion: idx.indexVersion, belirsiz: idx.belirsiz,
+        // Turetilmis alanlar ORTAK listeden (P4b, 05.10): S4/S5 malzeme etiketi
+        // + zayif-aile bayragi dahil; yazicilar arasinda alan kaymasi olmasin.
+        ...turetilmisIndeksAlanlari(idx), rowKey: idx.rowKey,
       };
       await (this.prisma as any).productIndex.upsert({
         where: { priceListId_rowKey: { priceListId: priceList.id, rowKey: idx.rowKey } },
@@ -1997,13 +1993,7 @@ export class AdminService {
           birim: pcols.birim, price: unitPrice, currency: 'TRY',
           urunKodu: null, not: null,
           sheetName: pcols.sheetName, sourceRow: pcols.sourceRow, sortOrder: pcols.sortOrder,
-          adSlug: idx.adSlug, adBucket: idx.adBucket, adTokens: idx.adTokens,
-          cinsNorm: idx.cinsNorm, cinsTokens: idx.cinsTokens,
-          baglantiNorm: idx.baglantiNorm, baglantiTokens: idx.baglantiTokens,
-          sizeClass: idx.sizeClass, capTags: idx.capTags, capNorm: idx.capNorm,
-          malzemeler: idx.malzemeler, aileZayif: idx.aileZayif,
-          boyTag: idx.boyTag, displayName: idx.displayName, rowKey: idx.rowKey,
-          indexVersion: idx.indexVersion, belirsiz: idx.belirsiz,
+          ...turetilmisIndeksAlanlari(idx), rowKey: idx.rowKey, // alan listesi ortak (P4b)
         };
         await (this.prisma as any).productIndex.upsert({
           where: { priceListId_rowKey: { priceListId: priceList.id, rowKey: idx.rowKey } },
@@ -2163,20 +2153,21 @@ export class AdminService {
           ogrenilecekAileler.set(kapsam, aileler);
         }
       }
-      await (this.prisma as any).productIndex.update({
-        where: { id: r.id },
-        // rowKey BILEREK YOK (P9d): '#2' sonekli mukerrerler ezilmesin
-        data: {
-          adSlug: f.adSlug, adBucket: f.adBucket, adTokens: f.adTokens,
-          cinsNorm: f.cinsNorm, cinsTokens: f.cinsTokens,
-          baglantiNorm: f.baglantiNorm, baglantiTokens: f.baglantiTokens,
-          sizeClass: f.sizeClass, capTags: f.capTags, capNorm: f.capNorm,
-          malzemeler: f.malzemeler, aileZayif: f.aileZayif,
-          boyTag: f.boyTag, displayName: f.displayName,
-          belirsiz: f.belirsiz, indexVersion: f.indexVersion,
-        },
-      });
-      guncellenen++;
+      // KOSULLU YAZIM (P4b DB incelemesi 05.10): satirlar dongu basinda okundu;
+      // arada sahipli urun yeniden adlandirildiysa (ad + turetilmisler + guncel
+      // surum) eski addan hesaplanan alanlar onu EZMEZ — kosul tutmaz (P2025),
+      // satir atlanir.
+      try {
+        await (this.prisma as any).productIndex.update({
+          where: { id: r.id, indexVersion: r.indexVersion, ad: r.ad },
+          // rowKey BILEREK YOK (P9d): '#2' sonekli mukerrerler ezilmesin
+          data: turetilmisIndeksAlanlari(f), // alan listesi TEK yerde (urun-indeksi-alanlari.ts)
+        });
+        guncellenen++;
+      } catch (e) {
+        if ((e as { code?: string })?.code !== 'P2025') throw e;
+        atlanan++;
+      }
     }
 
     // GUNLUK DOGRULUGU (05.10, koordinator notu): eskiden "N aile ogrenildi"

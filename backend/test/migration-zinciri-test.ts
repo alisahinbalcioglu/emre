@@ -453,6 +453,7 @@ async function main() {
   await iscilikKalemiSahipligi(db, klasorler);
   await teklifNoTekilligi(db, klasorler);
   await iscilikListeCascade(db, klasorler);
+  await ozelFiyatBirimi(db, klasorler);
 
   await db.close();
 
@@ -1124,6 +1125,110 @@ async function iscilikListeCascade(db: PGlite, klasorler: string[]): Promise<voi
   check('LC2 başka listenin satırları duruyor (kapsam yalnız silinen liste)',
     JSON.stringify(kalan.rows) === JSON.stringify([{ id: 'lc-p2', priceListId: 'lc-L2' }, { id: 'lc-p3', priceListId: 'lc-L2' }]),
     JSON.stringify(kalan.rows));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  OB — ÖZEL FİYAT BİRİMİ · KULLANICI ADI · LİSTE İNDEKSİ
+//       (göç *_kutuphane_ozel_fiyat_birimi_kullanici_adi, P4b C3/C7/S1, 05.10.2026)
+//    Dolum göçten ÖNCE var olan satır ister: işlem içinde dosyanın GERİ ALMA
+//    satırları koşulur (kolonlar + indeks kalkar), göç öncesi satırlar kurulur,
+//    GERÇEK göç dosyası yeniden koşulur, dolum ölçülür, işlem geri alınır.
+// ═════════════════════════════════════════════════════════════════════════
+async function ozelFiyatBirimi(db: PGlite, klasorler: string[]): Promise<void> {
+  console.log('\n── OB · ÖZEL FİYAT BİRİMİ + KULLANICI ADI + LİSTE İNDEKSİ ──');
+  const klasor = klasorler.find((k) => k.endsWith('_kutuphane_ozel_fiyat_birimi_kullanici_adi'));
+  check('OB-OLCUT göç zincirde', !!klasor, JSON.stringify(klasorler.slice(-3)));
+  if (!klasor) return;
+  const lc = klasorler.find((k) => k.endsWith('_iscilik_liste_silme_cascade'));
+  check('OB-OLCUT göç 04.10 liste silme göçünden SONRA sıralanıyor (ad sırası = uygulama sırası)',
+    !!lc && klasorler.indexOf(klasor) > klasorler.indexOf(lc), `${lc} · ${klasor}`);
+  const sql = fs.readFileSync(path.join(MIGRATIONS, klasor, 'migration.sql'), 'utf8');
+  // SQL METNİ SABİT: DDL `prisma migrate diff` çıktısıyla BİREBİR; arada
+  // yalnız dolum + sayım bildirimi (yorum dışı satırlar).
+  const govde = sql.split('\n').filter((l) => l.trim() && !l.trim().startsWith('--')).join('\n');
+  check('OB-SQL göçün yorum dışı SQL metni BİREBİR (migrate diff DDL + dolum + NOTICE)',
+    govde === [
+      'ALTER TABLE "UserLibrary" ADD COLUMN     "customPriceCurrency" TEXT,',
+      'ADD COLUMN     "kullaniciAdi" TEXT;',
+      'UPDATE "UserLibrary" SET "customPriceCurrency" = "currency" WHERE "customPrice" IS NOT NULL;',
+      'DO $$',
+      'DECLARE',
+      '  dolan integer;',
+      'BEGIN',
+      '  SELECT count(*) INTO dolan FROM "UserLibrary" WHERE "customPriceCurrency" IS NOT NULL;',
+      '  RAISE NOTICE \'P4b C3: % ozel fiyatli kutuphane satirinin birimi donduruldu\', dolan;',
+      'END $$;',
+      'CREATE INDEX "LaborPrice_priceListId_idx" ON "LaborPrice"("priceListId");',
+    ].join('\n'),
+    govde);
+
+  const kolonlar = async () => (await db.query<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }>(
+    `SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns
+      WHERE table_name = 'UserLibrary' AND column_name IN ('customPriceCurrency', 'kullaniciAdi') ORDER BY column_name`,
+  )).rows;
+  const indeks = async () => (await db.query<{ indexdef: string }>(
+    `SELECT indexdef FROM pg_indexes WHERE tablename = 'LaborPrice' AND indexname = 'LaborPrice_priceListId_idx'`,
+  )).rows;
+  const k0 = await kolonlar();
+  check('OB0 iki kolon: TEXT, NULL olabilir, varsayılansız',
+    JSON.stringify(k0) === JSON.stringify([
+      { column_name: 'customPriceCurrency', data_type: 'text', is_nullable: 'YES', column_default: null },
+      { column_name: 'kullaniciAdi', data_type: 'text', is_nullable: 'YES', column_default: null },
+    ]), JSON.stringify(k0));
+  const i0 = await indeks();
+  check('OB0b LaborPrice_priceListId_idx var, TEK kolon (priceListId), tekil DEĞİL',
+    i0.length === 1 && /\("priceListId"\)$/.test(i0[0].indexdef) && !/UNIQUE/.test(i0[0].indexdef), JSON.stringify(i0));
+
+  const geriAlma = sql.split('\n').filter((l) => /^--\s+(DROP INDEX|ALTER TABLE)/.test(l)).map((l) => l.replace(/^--\s+/, '')).join('\n');
+  const bildirimler: string[] = [];
+  let islemde: { kolonGeri: number; indeksGeri: number; satirlar: any[]; kolon: any[]; indeks: any[]; ozelli: number; hata?: string } | null = null;
+  await db.exec('BEGIN');
+  try {
+    await db.exec(geriAlma);
+    const kolonGeri = (await kolonlar()).length;
+    const indeksGeri = (await indeks()).length;
+    // Göç ÖNCESİ satırlar: özel fiyatlı (0 dahil — NULL değildir) ve özel fiyatsız, farklı birimler
+    await db.exec(`
+      INSERT INTO "Firma" ("id","ad") VALUES ('ob-F','OB');
+      INSERT INTO "User" ("id","email","password","firmaId") VALUES ('ob-u','ob@x.com','h','ob-F');
+      INSERT INTO "Brand" ("id","name") VALUES ('ob-B','OB Marka');
+      INSERT INTO "UserLibrary" ("id","userId","firmaId","brandId","materialName","listPrice","customPrice","currency") VALUES
+        ('ob-1','ob-u','ob-F','ob-B','Ozel TRY',100,120,'TRY'),
+        ('ob-2','ob-u','ob-F','ob-B','Ozel EUR',50,45,'EUR'),
+        ('ob-3','ob-u','ob-F','ob-B','Ozelsiz USD',10,NULL,'USD'),
+        ('ob-4','ob-u','ob-F','ob-B','Ozel sifir',7,0,'TRY'),
+        ('ob-5','ob-u','ob-F','ob-B','Ozelsiz TRY',3,NULL,'TRY');
+    `);
+    // Zincirin onceki bloklarinin satirlari da tabloda: beklenen sayi DB'den (ozel fiyatli TUM satirlar)
+    const ozelli = Number((await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM "UserLibrary" WHERE "customPrice" IS NOT NULL`)).rows[0].n);
+    await db.exec(sql, { onNotice: (n: any) => bildirimler.push(String(n?.message ?? n)) } as any);
+    const satirlar = (await db.query<{ id: string; customPriceCurrency: string | null; kullaniciAdi: string | null }>(
+      `SELECT id, "customPriceCurrency", "kullaniciAdi" FROM "UserLibrary" WHERE id LIKE 'ob-%' ORDER BY id`,
+    )).rows;
+    islemde = { kolonGeri, indeksGeri, satirlar, kolon: await kolonlar(), indeks: await indeks(), ozelli };
+  } catch (e) {
+    islemde = { kolonGeri: -1, indeksGeri: -1, satirlar: [], kolon: [], indeks: [], ozelli: -1, hata: e instanceof Error ? e.message : String(e) };
+  } finally {
+    await db.exec('ROLLBACK');
+  }
+  check('OB-GERI dosyadaki GERİ ALMA satırları çalışır (işlemde iki kolon ve indeks kalkar)',
+    geriAlma.split('\n').length === 2 && islemde?.kolonGeri === 0 && islemde?.indeksGeri === 0,
+    `satir=${geriAlma.split('\n').length} ${JSON.stringify(islemde && { k: islemde.kolonGeri, i: islemde.indeksGeri, hata: islemde.hata })}`);
+  const birim = (id: string) => islemde?.satirlar.find((r) => r.id === id)?.customPriceCurrency;
+  check('OB1 ⭐ dolum: özel fiyatlı satır (0 dahil) özel fiyat girildiğindeki satır birimini alır',
+    birim('ob-1') === 'TRY' && birim('ob-2') === 'EUR' && birim('ob-4') === 'TRY', JSON.stringify(islemde?.satirlar));
+  check('OB2 ⭐ özel fiyatsız satır BOŞ kalır (birim yalnız özel fiyatla doğar)',
+    birim('ob-3') === null && birim('ob-5') === null, JSON.stringify(islemde?.satirlar));
+  check('OB3 geçmiş TAŞINMAZ: kullaniciAdi hiçbir satırda dolmaz',
+    (islemde?.satirlar.length ?? 0) === 5 && islemde!.satirlar.every((r) => r.kullaniciAdi === null), JSON.stringify(islemde?.satirlar));
+  check('OB4 bildirim dolan satırı sayar (= özel fiyatlı satır sayısı; göç öncesi 3 satır dahil)',
+    (islemde?.ozelli ?? 0) >= 3 && bildirimler.length === 1 && bildirimler[0] === `P4b C3: ${islemde?.ozelli} ozel fiyatli kutuphane satirinin birimi donduruldu`,
+    JSON.stringify({ ozelli: islemde?.ozelli, bildirimler }));
+  check('OB5 göç yeniden koşunca kolonlar + indeks yine kurulur; işlem geri alınınca zincir durumu kalır',
+    islemde?.kolon.length === 2 && islemde?.indeks.length === 1 &&
+      JSON.stringify(await kolonlar()) === JSON.stringify(k0) && (await indeks()).length === 1 &&
+      (await db.query(`SELECT 1 FROM "UserLibrary" WHERE id LIKE 'ob-%'`)).rows.length === 0,
+    JSON.stringify(islemde && { k: islemde.kolon.length, i: islemde.indeks.length }));
 }
 
 bitmezseKirmizi(main().catch((e) => {

@@ -6,9 +6,10 @@ import { UpdateLibraryItemDto } from './dto/update-library-item.dto';
 import { ImportPriceListDto } from './dto/import-price-list.dto';
 import { BulkDiscountDto } from './dto/bulk-discount.dto';
 import { BulkUpdateItemsDto } from './dto/bulk-update-items.dto';
-import { CreateManualBrandDto, ManualBrandRowDto } from './dto/create-manual-brand.dto';
+import { CreateManualBrandDto, MALZEME_ADI_AZAMI, ManualBrandRowDto } from './dto/create-manual-brand.dto';
 import { AddLibraryRowsDto } from './dto/add-library-rows.dto';
-import { buildLibrarySheetRows, havuzFiyatAyrisimi } from './library-sheet-builder';
+import { ayniBirim, buildLibrarySheetRows, gosterilenAd, gosterilenFiyatBirimi, havuzFiyatAyrisimi } from './library-sheet-builder';
+import { turetilmisIndeksAlanlari } from '../urun-indeksi-alanlari';
 import {
   buildProductIndex,
   ProductColumns,
@@ -18,6 +19,7 @@ import { paraBirimleriniDogrula, satirAdi } from '../../fiyat/exchange-rates/exc
 import { GECERSIZ_SATIR_KIMLIGI, satirHatalari, satirKimligiGecerli } from '../satir-hatalari';
 
 const GECERSIZ_SATIR_VERISI = 'Geçersiz satır verisi (fiyat ve iskonto sayı, ad ve birim metin olmalı).';
+const AD_COK_UZUN = `Malzeme adı en fazla ${MALZEME_ADI_AZAMI} karakter olabilir.`;
 
 /** Izgara kaydi satirinin alan turleri (P4a): sayi alanlari sonlu sayi, metin
  *  alanlari dize ya da HIC yok (undefined) — yoksa DB'ye gitmez. `null` de
@@ -100,6 +102,8 @@ export class LibraryService {
         materialName: resolvedName,
         brandId: dto.brandId,
         customPrice: dto.customPrice ?? null,
+        // C3 (P4b): ozel fiyat satirin birimiyle (varsayilan TRY) dondurulur
+        customPriceCurrency: dto.customPrice != null ? 'TRY' : null,
         discountRate: dto.discountRate ?? null,
       },
       include: { material: true, brand: true },
@@ -262,12 +266,12 @@ export class LibraryService {
           birim: pcols.birim, price, currency: pcols.paraBirimi ?? 'TRY',
           urunKodu: pcols.urunKodu, not: pcols.not,
           sheetName: pcols.sheetName, sourceRow: pcols.sourceRow, sortOrder: pcols.sortOrder,
-          adSlug: idx.adSlug, adBucket: idx.adBucket, adTokens: idx.adTokens,
-          cinsNorm: idx.cinsNorm, cinsTokens: idx.cinsTokens,
-          baglantiNorm: idx.baglantiNorm, baglantiTokens: idx.baglantiTokens,
-          sizeClass: idx.sizeClass, capTags: idx.capTags, capNorm: idx.capNorm,
-          boyTag: idx.boyTag, displayName: idx.displayName, rowKey,
-          indexVersion: idx.indexVersion, belirsiz: idx.belirsiz,
+          // Turetilmis alanlar ORTAK listeden (P4b 05.10): elle yazilan liste
+          // S4/S5'in `malzemeler`/`aileZayif` alanlarini atliyordu — manuel
+          // urun surum atlamasina dek varsayilanla ([] / false) kaliyordu
+          // (yeniden indeksleme guncel surumu atlar).
+          ...turetilmisIndeksAlanlari(idx),
+          rowKey,
         },
       });
 
@@ -285,6 +289,7 @@ export class LibraryService {
           listPrice: price,
           customPrice: price,
           currency: pcols.paraBirimi ?? 'TRY',
+          customPriceCurrency: pcols.paraBirimi ?? 'TRY', // C3 (P4b): ozel fiyat liste birimiyle dogar
           unit: pcols.birim || 'Adet',
           kategori: pcols.kategori,
           cins: pcols.cins,
@@ -314,7 +319,11 @@ export class LibraryService {
 
     const data: Record<string, unknown> = {};
     if (dto.brandId !== undefined) data.brandId = dto.brandId;
-    if (dto.customPrice !== undefined) data.customPrice = dto.customPrice;
+    if (dto.customPrice !== undefined) {
+      data.customPrice = dto.customPrice;
+      // C3 (P4b): ozel fiyat ekranda GOSTERILEN birimde girilir ve o birimde kalir
+      data.customPriceCurrency = dto.customPrice === null ? null : gosterilenFiyatBirimi(item);
+    }
     if (dto.discountRate !== undefined) data.discountRate = dto.discountRate;
     if (dto.listPrice !== undefined) data.listPrice = dto.listPrice;
 
@@ -671,10 +680,12 @@ export class LibraryService {
       id: item.id,
       materialName: item.materialName,
       adRaw: item.adRaw,
+      kullaniciAdi: item.kullaniciAdi ?? null,
       unit: item.unit,
       listPrice: item.customPrice ?? item.listPrice ?? 0,
       discountRate: item.discountRate,
-      currency: item.currency,
+      // C3 (P4b): gosterilen fiyatin BIRIMI — ozel fiyat varsa kendi birimi
+      currency: gosterilenFiyatBirimi(item),
       kategori: item.kategori,
       cins: item.cins,
       cap: item.cap,
@@ -892,6 +903,9 @@ export class LibraryService {
         continue;
       }
       try {
+        // Urun (ProductIndex) burada OKUNMAZ: yalniz ad gercekten degisince
+        // gerekir (asagida) — toplu iskonto kaydinda binlerce satira ek sorgu
+        // olurdu (P4b incelemesi 05.10).
         const item = await this.prisma.userLibrary.findFirst({
           where: { id: row.libraryItemId, firmaId: k.firmaId, brandId },
         });
@@ -913,23 +927,59 @@ export class LibraryService {
           // `if (newVal === oldVal) return;`.
           const gosterilen = item.customPrice ?? item.listPrice;
           if (gosterilen == null || row.listPrice !== gosterilen) {
-            data.listPrice = row.listPrice;
+            // C3 (P4b 05.10, Emre karari 01.10): fiyat ekranda GOSTERILEN birimde
+            // girildi — ozel fiyat O birimde dondurulur ("Kutuphaneme Aktar"
+            // liste birimini degistirse de kalir). Liste fiyati yalniz AYNI
+            // birimdeyse yazilir: aksi halde yabanci birimli sayi `listPrice`a
+            // duserdi (aktarimdan sonra ozel birim ≠ liste birimi olabilir).
+            const birim = gosterilenFiyatBirimi(item);
             data.customPrice = row.listPrice;
+            data.customPriceCurrency = birim;
+            if (ayniBirim(birim, item.currency)) data.listPrice = row.listPrice;
           }
         }
         if (row.discountRate !== undefined && !isNaN(row.discountRate)) {
           data.discountRate = Math.max(0, Math.min(100, row.discountRate));
         }
-        if (row.materialName && row.materialName.trim().length >= 2) {
-          const yeniAd = row.materialName.trim();
+        // C7 (P4b 05.10): on yuz adi HER kirli satirda yollar — ad yalniz
+        // GOSTERILEN addan farkliysa duzeltmedir (kosulsuz yazmak ortak urunde
+        // havuz adini kullanici duzeltmesi diye dondururdu).
+        const yeniAdHam = row.materialName?.trim();
+        let sahipliAdlandirma: { pi: any; yeniAd: string } | null = null;
+        if (yeniAdHam && yeniAdHam.length >= 2 && yeniAdHam !== gosterilenAd(item).trim()) {
+          // Sinir yalniz DEGISEN adda: on yuz degismeyen adi da yollar, sinirdan
+          // uzun eski bir adin fiyat duzenlemesi reddedilmemeli.
+          if (yeniAdHam.length > MALZEME_ADI_AZAMI) {
+            errors.push({ id: row.libraryItemId, error: AD_COK_UZUN });
+            continue;
+          }
+          const yeniAd = yeniAdHam;
+          // Duzeltmenin yeri urunun SAHIBINE gore (Emre karari 01.10):
+          //  · sahipli (bu firmanin yukledigi indeks) → ProductIndex'in kendisi;
+          //    motor adi oradan okur, rowKey/kimlik degismez. Indekse BASKA
+          //    firmanin satiri da bagliysa (eski karisik liste) indeks ortak
+          //    sayilir — yeniden adlandirma o firmanin motorunu da degistirirdi.
+          //  · digerleri (havuz, baska firmanin indeksi, indekssiz satir) →
+          //    `kullaniciAdi`: yalniz bu firmada gecerli, aktarim ezmez. Havuz
+          //    adina geri donmek alani temizler.
+          const pi = item.productIndexId
+            ? await this.prisma.productIndex.findUnique({ where: { id: item.productIndexId } })
+            : null;
+          if (pi && pi.ownerFirmaId === k.firmaId && !(await this.baskaFirmaninSatiriVar(k, pi.id))) {
+            sahipliAdlandirma = { pi, yeniAd };
+            if (item.kullaniciAdi != null) data.kullaniciAdi = null;
+          } else {
+            data.kullaniciAdi = pi && yeniAd === pi.ad.trim() ? null : yeniAd;
+          }
           data.materialName = yeniAd;
           // ── IKI ALAN BIRDEN (06.08 kullanici bildirimi) ────────────────────
-          // Sheet uretici adi `col1 = adRaw ?? materialName` sirasiyla okur
-          // (library-sheet-builder). Yani `adRaw` DOLUYKEN yalniz materialName
-          // yazmak, degisikligi kullanicinin GORMEDIGI bir alana yazmaktir:
-          // ekran "Kaydedildi" der, ad eski kalir. Bug tam olarak buydu.
+          // Sheet uretici adi `col1 = kullaniciAdi ?? adRaw ?? materialName`
+          // sirasiyla okur (`gosterilenAd`). Yani `adRaw` DOLUYKEN yalniz
+          // materialName yazmak, degisikligi kullanicinin GORMEDIGI bir alana
+          // yazmaktir: ekran "Kaydedildi" der, ad eski kalir. Bug tam olarak
+          // buydu (ayni sebeple sahipli dal eski `kullaniciAdi`ni temizler).
           //
-          // ⚠ KAYNAK SADAKATI BOZULMAZ: bu iki alan da `UserLibrary`ye, yani
+          // ⚠ KAYNAK SADAKATI BOZULMAZ: bu alanlar `UserLibrary`ye, yani
           // kullanicinin KENDI kopyasina aittir. Paylasilan `Material` katalogu
           // bu yoldan HIC guncellenmez (test C1 bunu olcer). "Adi ezmeyelim"
           // endisesi dogruydu ama BASKA bir alan icindi.
@@ -937,7 +987,8 @@ export class LibraryService {
         }
         if (row.unit !== undefined) data.unit = row.unit.trim() || 'Adet';
 
-        await this.prisma.userLibrary.update({ where: { id: item.id }, data });
+        if (sahipliAdlandirma) await this.sahipliUrunuYenidenAdlandir(k, sahipliAdlandirma.pi, sahipliAdlandirma.yeniAd, item.id, data);
+        else await this.prisma.userLibrary.update({ where: { id: item.id, firmaId: k.firmaId }, data });
         updated++;
       } catch (e: unknown) {
         errors.push(hatalar.ekle(row.libraryItemId, e));
@@ -949,6 +1000,56 @@ export class LibraryService {
     await this.rebuildUserBrandLibrary(k, brandId);
 
     return { updated, errors };
+  }
+
+  /**
+   * C7 (P4b 05.10, Emre karari 01.10): SAHIPLI urunun (bu firmanin yukledigi
+   * ProductIndex) adi duzeltilince indeksin KENDISI guncellenir — motor adayin
+   * adini ProductIndex'ten okur (UserLibrary.materialName yalniz indekssiz
+   * satirda). Ham `ad` + turetilmis alanlar (`turetilmisIndeksAlanlari`,
+   * yonetici yeniden indekslemesiyle AYNI liste); rowKey/kimlik DEGISMEZ.
+   * `buildProductIndex` DOGRUDAN: `rebuildIndexFields`in "yeni hesap belirsizse
+   * eski slug'i koru" kurtarmasi yeniden adlandirmada eski adin ailesini yeni
+   * ada yapistirirdi. Kiraci kosulu SORGUDA (ownerFirmaId). Indeks ve
+   * kutuphane satiri TEK islemde: biri duserse ikisi de geri alinir (ekranin
+   * adi ile motorun adi ayrismaz). Sozluksuz (self-family) yeni ad, urun
+   * olusturulurken oldugu gibi SAHIBININ (ownerUserId) sozlugune ogrenilir;
+   * sahibi kisi olmayan urun ogrenilmez (C5 kapsami — yeniden indekslemeyle
+   * ayni kural; null ortak sozluk olurdu).
+   */
+  private async sahipliUrunuYenidenAdlandir(
+    k: Kimlik, pi: any, yeniAd: string, satirId: string, satirVerisi: Record<string, unknown>,
+  ): Promise<void> {
+    const cols: ProductColumns = {
+      kategori: pi.kategori, ad: yeniAd, cins: pi.cins, baglanti: pi.baglanti,
+      cap: pi.capRaw, boy: pi.boyMm, birim: pi.birim, price: pi.price,
+      paraBirimi: pi.currency, urunKodu: pi.urunKodu, not: pi.not,
+      sheetName: pi.sheetName, sourceRow: pi.sourceRow, sortOrder: pi.sortOrder,
+    };
+    const { rowKey: _kimlikDegismez, ...f } = buildProductIndex(cols);
+    await this.prisma.$transaction(async (tx) => {
+      const r = await tx.productIndex.updateMany({
+        where: { id: pi.id, ownerFirmaId: k.firmaId },
+        data: { ad: yeniAd, ...turetilmisIndeksAlanlari(f) },
+      });
+      if (r.count !== 1) throw new Error('Sahipli urun guncellenemedi');
+      await tx.userLibrary.update({ where: { id: satirId, firmaId: k.firmaId }, data: satirVerisi });
+    });
+    if (f.selfFamily && pi.ownerUserId) {
+      await this.terminology.learnFamilyAliases([{ adBucket: f.adBucket, canonical: yeniAd }], pi.ownerUserId)
+        .catch((e) => this.logger.warn(`aile ogrenme atlandi: ${(e as Error).message}`));
+    }
+  }
+
+  /** C7 savunmasi (P4b incelemesi 05.10): sahipli indekse BASKA firmanin
+   *  kutuphane satiri da bagli mi? Eski kisisel liste deseninde (liste
+   *  sahipsiz, indeks sahipli) baska firma listeyi aktarabilmisti. */
+  private async baskaFirmaninSatiriVar(k: Kimlik, piId: string): Promise<boolean> {
+    // firmaId NULL (atanmamis) satir da "baska" sayilir: SQL '<>' NULL'u disarida birakirdi.
+    const n = await this.prisma.userLibrary.count({
+      where: { productIndexId: piId, OR: [{ firmaId: { not: k.firmaId } }, { firmaId: null }] },
+    });
+    return n > 0;
   }
 
   // Kullanici markayi kutuphanesinden tamamen cikarir

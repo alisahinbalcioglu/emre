@@ -429,7 +429,15 @@ test('KP28 ★ KUTUPHANE IKIZI: secili araliga dagitim orada da calisir', async 
   }
 });
 
-test('KP29 ★ EDITORDE son veri satirinda ↓ — rakamlar AYNI hucrede birlesmez', async ({ page }) => {
+// ⚠ KARANTINA (05.10, koordinator karari — kararsiz test kurali: adiyla).
+// OLCUM (kapinin kendi komutu, `--repeat-each=15`): kutuphane doviz neti dalinda
+// 3/15, HEAD duzenek + ExcelGrid ile (degisiklik geri alinmis) 1/15 dustu —
+// degisiklikten bagimsiz. Belirti KP17 ile ayni: hucre BOS kaliyor (yazilan 300
+// de 400 de kayboluyor). Kok adres KP17 notundaki: ExcelGrid editor ↓/↑
+// gezinmesi (stopEditing → setFocusedCell + rAF ikinci odak). Insan hizinda
+// deger kaybi olup olmadigi AYRICA olculuyor (koordinator, 05.10); kok duzeltme
+// o olcume gore siralanir. Duzeltilince `test.fixme` → `test`.
+test.fixme('KP29 ★ EDITORDE son veri satirinda ↓ — rakamlar AYNI hucrede birlesmez', async ({ page }) => {
   // Sinirda editor acik birakilsaydi kullanici ↓ basip yazmaya devam edince
   // yeni rakamlar eski degerin ucuna eklenirdi (300 ↓ 400 → "300400").
   await moduAyarla(page, 'quote');
