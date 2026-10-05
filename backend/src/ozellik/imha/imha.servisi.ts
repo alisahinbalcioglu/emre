@@ -192,14 +192,17 @@ export class ImhaServisi {
         kimlikSaglayici: saglayiciIdler,
       };
 
+      // Ayni model birden cok kuralla silinebilir (bkz. KutuphaneOzelFiyatYedegi):
+      // sayi TOPLANIR, sonraki kural oncekinin sayisini EZMEZ (§5.6 denetim kaydi).
       const sayilar: Record<string, number> = {};
       for (const kural of SILINECEKLER) {
-        sayilar[kural.model] = await this.kuraliUygula(
+        const silinen = await this.kuraliUygula(
           tx,
           kural,
           kimlikKumeleri,
           kullaniciIdler,
         );
+        sayilar[kural.model] = (sayilar[kural.model] ?? 0) + silinen;
       }
 
       // ── §5.2 — kullanicilarin kisisel bilgileri ──────────────────────────
@@ -259,7 +262,10 @@ export class ImhaServisi {
       // Kisiye ait oturum/dogrulama/dis kimlik artiklari da kisisel veridir;
       // birakilirsa anonimlesmis hesap kurumsal girisle GERI ACILABILIRDI.
       for (const model of ['PasswordResetToken', 'EmailVerificationToken', 'MfaKurtarmaKodu', 'KullaniciDisKimlik']) {
-        const kural = SILINECEKLER.find((k) => k.model === model)!;
+        // Kural EKSENLE secilir: ayni model birden cok kuralla silinebilir (bkz.
+        // KutuphaneOzelFiyatYedegi); onde bir firma kurali olsaydi `firmaId ∈
+        // [userId]` SESSIZCE 0 satir silerdi.
+        const kural = SILINECEKLER.find((k) => k.model === model && k.eksen === 'kullanici')!;
         sayilar[model] = await this.parcaliSil(tx[kural.erisimci], kural.kolon, [userId]);
       }
       sayilar['SsoAkisi'] = await this.parcaliSil(tx.ssoAkisi, 'baslatanUserId', [userId]);
@@ -403,7 +409,10 @@ export class ImhaServisi {
     }
     const kimlikler = kimlikKumeleri[anahtar] as string[];
     this.kapsamDegeri(kural, kimlikler);
-    return this.parcaliSil(tablo, kural.kolon, kimlikler);
+    // Etiketli satir firma ekseninde ayri kuralla gider; burada yalniz etiketi
+    // BOS olanlar — kimligi bu kumeye dusen BASKA firmanin etiketli satiri kalir.
+    const ek = kural.yalnizBosEtiket ? { [kural.yalnizBosEtiket]: null } : undefined;
+    return this.parcaliSil(tablo, kural.kolon, kimlikler, ek);
   }
 
   /**
@@ -446,11 +455,16 @@ export class ImhaServisi {
   }
 
   /** `{ in: [...] }` ile parcali silme; bos dizi = 0 satir, sorgu atilmaz. */
-  private async parcaliSil(tablo: any, kolon: string, kimlikler: string[]): Promise<number> {
+  private async parcaliSil(
+    tablo: any,
+    kolon: string,
+    kimlikler: string[],
+    ek?: Record<string, null>,
+  ): Promise<number> {
     let toplam = 0;
     for (let i = 0; i < kimlikler.length; i += PARCA) {
       const { count } = await tablo.deleteMany({
-        where: { [kolon]: { in: kimlikler.slice(i, i + PARCA) } },
+        where: { ...ek, [kolon]: { in: kimlikler.slice(i, i + PARCA) } },
       });
       toplam += count;
     }

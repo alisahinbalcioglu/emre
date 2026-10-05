@@ -35,6 +35,7 @@ import {
   kapsamDisiModeller,
   semadaOlmayanKayitlar,
 } from '../src/ozellik/imha/imha-listesi';
+import type { SilmeKurali } from '../src/ozellik/imha/imha-listesi';
 import {
   CaprazFirmaBagiHatasi,
   IMHA_AKTORU,
@@ -355,6 +356,13 @@ function fixture(): Record<string, Satir[]> {
       { userLibraryId: 'ulA1', firmaId: 'A', eskiCustomPrice: 10 },
       { userLibraryId: 'ulA2', firmaId: null, eskiCustomPrice: 11 },
       { userLibraryId: 'ulB', firmaId: 'B', eskiCustomPrice: 12 },
+      // OKSUZ izler: kutuphane satiri imhadan ONCE silinmis (marka kaldirma,
+      // sekme ya da tek satir silme; yedekte FK yok, iz kalir). Satir
+      // kumesinden GORUNMEZLER, yalniz firma etiketini tasirlar.
+      { userLibraryId: 'ulA-oksuz', firmaId: 'A', eskiCustomPrice: 13 },
+      { userLibraryId: 'ulB-oksuz', firmaId: 'B', eskiCustomPrice: 14 },
+      // Etiketsiz VE satirsiz iz: kime ait oldugu BILINMEZ — tahminle silinmez.
+      { userLibraryId: 'ul-etiketsiz-oksuz', firmaId: null, eskiCustomPrice: 15 },
     ],
     libraryList: [
       { id: 'llA', firmaId: 'A', userId: 'A1' },
@@ -503,6 +511,7 @@ const B_SATIRLARI: Array<[string, string, string]> = [
   ['quoteFormat', 'id', 'fB'],
   ['userLibrary', 'id', 'ulB'],
   ['kutuphaneOzelFiyatYedegi', 'userLibraryId', 'ulB'],
+  ['kutuphaneOzelFiyatYedegi', 'userLibraryId', 'ulB-oksuz'],
   ['libraryList', 'id', 'llB'],
   ['userBrandLibrary', 'id', 'ubB'],
   ['priceList', 'id', 'plB'],
@@ -543,6 +552,7 @@ const A_SATIRLARI: Array<[string, string, string]> = [
   ['userLibrary', 'id', 'ulA2'],
   ['kutuphaneOzelFiyatYedegi', 'userLibraryId', 'ulA1'],
   ['kutuphaneOzelFiyatYedegi', 'userLibraryId', 'ulA2'],
+  ['kutuphaneOzelFiyatYedegi', 'userLibraryId', 'ulA-oksuz'],
   ['libraryList', 'id', 'llA'],
   ['userBrandLibrary', 'id', 'ubA'],
   ['priceList', 'id', 'plA'],
@@ -637,6 +647,33 @@ function bolumK(): void {
   const oluBayrak = SILINECEKLER.filter((k) => k.mirasFirmasizDaAl && k.eksen !== 'firma');
   check('K11 `mirasFirmasizDaAl` yalniz firma ekseninde (olu bayrak yok)',
     oluBayrak.length === 0, oluBayrak.map((k) => k.model).join(','));
+  // `yalnizBosEtiket` yalniz kimlik kumesi eksenlerinde okunur; firma ekseninde
+  // yazilmis olsaydi servis onu YOK sayardi (olu bayrak).
+  const oluEtiket = SILINECEKLER.filter((k) => k.yalnizBosEtiket && k.eksen === 'firma');
+  check('K11b `yalnizBosEtiket` firma ekseninde YOK (olu bayrak yok)',
+    oluEtiket.length === 0, oluEtiket.map((k) => k.model).join(','));
+
+  // ⚠ SEMA-KOLON KAPISI (06.10, guvenlik incelemesi LOW-1): sahte Prisma
+  //   bilinmeyen OPERATORE firlatir ama bilinmeyen ALANI sessizce eslemez.
+  //   Kuralin kolonu ya da miras kisi kolonu semada yoksa bu kapi yesil kalir,
+  //   gercek Prisma "Unknown argument" ile firlatir ve her gece TUM firmalarin
+  //   imhasi geri sarilir (or. komsulari gibi `mirasFirmasizDaAl` eklenen
+  //   ozel fiyat izi kurali: modelde `userId` yok).
+  const modelBlogu = (m: string) =>
+    new RegExp(`^model ${m} \\{[\\s\\S]*?^\\}`, 'm').exec(sema)?.[0] ?? '';
+  const kolonVar = (m: string, kolon: string) =>
+    new RegExp(`^\\s+${kolon}\\s`, 'm').test(modelBlogu(m));
+  check('K16a OLCUT: kolon arayici var olani bulur, olmayani bulmaz',
+    kolonVar('KutuphaneOzelFiyatYedegi', 'firmaId') && kolonVar('Quote', 'userId') &&
+      !kolonVar('KutuphaneOzelFiyatYedegi', 'userId') && !kolonVar('Quote', 'userIdX'));
+  const eksikKolon = SILINECEKLER.flatMap((k) => {
+    const gereken = [k.kolon];
+    if (k.mirasFirmasizDaAl) gereken.push(k.mirasKullaniciKolonu ?? 'userId');
+    if (k.yalnizBosEtiket) gereken.push(k.yalnizBosEtiket);
+    return gereken.filter((c) => !kolonVar(k.model, c)).map((c) => `${k.model}.${c}`);
+  });
+  check('K16 her kuralin kullandigi kolonlar SEMADA var', eksikKolon.length === 0,
+    eksikKolon.join(', '));
 
   // §5.5 adiyla istenen dort koruma listede mi?
   for (const m of ['Fatura', 'Abonelik', 'DenemeKullanimi', 'YoneticiOlayi']) {
@@ -718,6 +755,13 @@ async function bolumEIS(): Promise<void> {
     !varMi(veri, 'laborPrice', 'id', 'lpA') && (sonuc.sayilar['LaborPrice'] ?? 0) === 1);
   check('E5 SsoAkisi IKI koldan da temizlendi (saglayici + baslatan kullanici)',
     !varMi(veri, 'ssoAkisi', 'id', 'ssoA') && !varMi(veri, 'ssoAkisi', 'id', 'ssoA2'));
+  check('E5b ⚠ OKSUZ ozel fiyat izi (satiri onceden silinmis, firmaId=A) da silindi',
+    !varMi(veri, 'kutuphaneOzelFiyatYedegi', 'userLibraryId', 'ulA-oksuz'));
+  check('E5c ozel fiyat izi sayisi bagli + miras + oksuz = 3 (iki kuralin TOPLAMI)',
+    sonuc.sayilar['KutuphaneOzelFiyatYedegi'] === 3,
+    `sayi=${sonuc.sayilar['KutuphaneOzelFiyatYedegi']}`);
+  check('E5d SsoAkisi sayisi iki koldan = 2 (sonraki kural oncekini EZMEZ)',
+    sonuc.sayilar['SsoAkisi'] === 2, `sayi=${sonuc.sayilar['SsoAkisi']}`);
 
   // ── §5.2 firma satiri KALIR, alanlari bosalir ─────────────────────────
   const firmaA = satir(veri, 'firma', 'A');
@@ -753,6 +797,10 @@ async function bolumEIS(): Promise<void> {
   const firmaB = satir(veri, 'firma', 'B');
   check('I3 B firmasinin alanlari DEGISMEDI',
     firmaB.unvan === 'B Muhendislik AS' && firmaB.logoBytes === 'B-LOGO');
+  check('I3b B firmasinin OKSUZ ozel fiyat izi DURUYOR (etiket B)',
+    varMi(veri, 'kutuphaneOzelFiyatYedegi', 'userLibraryId', 'ulB-oksuz'));
+  check('I3c etiketsiz oksuz iz (firmasi bilinmiyor) TAHMINLE silinmedi',
+    varMi(veri, 'kutuphaneOzelFiyatYedegi', 'userLibraryId', 'ul-etiketsiz-oksuz'));
   check('I4 SUZGECSIZ deleteMany HIC cagrilmadi',
     !(p._iz.ham as string[]).some((h) => h.startsWith('SUZGECSIZ-DELETEMANY')),
     (p._iz.ham as string[]).filter((h) => h.startsWith('SUZGECSIZ')).join(','));
@@ -981,6 +1029,60 @@ async function bolumU(): Promise<void> {
     veri['yoneticiOlayi'].some((o) => o.tip === IMHA_UYE_TIPI && o.hedefKullaniciId === 'B1'));
   check('U10 A firmasinin satirlarina DOKUNULMADI',
     varMi(veri, 'quote', 'id', 'qA1') && satir(veri, 'user', 'A1').email === 'a1@a.test');
+
+  // Ayni model birden cok kuralla silinebiliyor (O blogu). Uye imhasi kurali
+  // EKSENLE secmeli: onde bir firma kurali dursaydi `firmaId ∈ [userId]` 0 satir
+  // silerdi. Liste ANLIK genisletilir, HER DURUMDA geri alinir.
+  const liste = SILINECEKLER as SilmeKurali[];
+  const ondeFirmaKurali: SilmeKurali = {
+    model: 'PasswordResetToken', erisimci: 'passwordResetToken', kolon: 'firmaId', eksen: 'firma',
+    neden: 'TEST: ayni modelde onde duran firma kurali (eksen secimini olcer)',
+  };
+  liste.unshift(ondeFirmaKurali);
+  try {
+    const veri2 = fixture();
+    await servisYap(sahtePrisma(veri2)).uyeImhaEt('B1');
+    check('U11 onde firma kurali varken de uye imhasi KULLANICI kuralini secer (token silindi)',
+      !varMi(veri2, 'passwordResetToken', 'id', 'prB'));
+  } finally {
+    const i = liste.indexOf(ondeFirmaKurali);
+    if (i >= 0) liste.splice(i, 1);
+  }
+  check('U12 kural listesi geri alindi', !SILINECEKLER.includes(ondeFirmaKurali));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  O — OZEL FIYAT IZI: etiket sahipligi (06.10)
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * Iz FIRMA ETIKETIYLE gider; satir kumesi yalniz etiketi BOS miras izi alir.
+ * BASKA firmanin etiketli izi, kimligi A'nin satirina dusse bile A imhasinda
+ * KALIR — o iz B'nin verisidir, B'nin imhasinda gider. Bugun kod bu durumu
+ * uretmiyor (`UserLibrary.firmaId` kurulustan sonra degismiyor; guvenlik
+ * incelemesi 06.10) — yalitim kuralin kendisinden gelir, bu varsayimdan degil.
+ */
+async function bolumO(): Promise<void> {
+  const veri = fixture();
+  veri['userLibrary'].push({ id: 'ulA3', firmaId: 'A', userId: 'A1' });
+  veri['kutuphaneOzelFiyatYedegi'].push({ userLibraryId: 'ulA3', firmaId: 'B', eskiCustomPrice: 16 });
+  const p = sahtePrisma(veri);
+  const izVar = (u: string) => varMi(veri, 'kutuphaneOzelFiyatYedegi', 'userLibraryId', u);
+
+  const sonucA = await servisYap(p).firmaImhaEt('A');
+  check('O1 FIXTURE: A\'nin satiri (ulA3) imhada gitti', !varMi(veri, 'userLibrary', 'id', 'ulA3'));
+  check('O2 ⭐ B etiketli iz, kimligi A\'nin satirina dusse de A imhasinda KALDI', izVar('ulA3'));
+  check('O3 A\'nin izleri yine tam gitti (bagli + miras + oksuz = 3)',
+    !izVar('ulA1') && !izVar('ulA2') && !izVar('ulA-oksuz') &&
+      sonucA.sayilar['KutuphaneOzelFiyatYedegi'] === 3,
+    `sayi=${sonucA.sayilar['KutuphaneOzelFiyatYedegi']}`);
+
+  const sonucB = await servisYap(p).firmaImhaEt('B');
+  check('O4 B imhasinda B etiketli izlerin HEPSI gitti (ulA3 dahil)',
+    !izVar('ulA3') && !izVar('ulB') && !izVar('ulB-oksuz') &&
+      sonucB.sayilar['KutuphaneOzelFiyatYedegi'] === 3,
+    `sayi=${sonucB.sayilar['KutuphaneOzelFiyatYedegi']}`);
+  check('O5 etiketsiz oksuz iz iki imhadan sonra da DURUYOR (sahibi bilinmiyor)',
+    izVar('ul-etiketsiz-oksuz'));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1196,6 +1298,7 @@ async function main(): Promise<void> {
   await bolum('A', bolumA);
   await bolum('C', bolumC);
   await bolum('U', bolumU);
+  await bolum('O', bolumO);
   await bolum('G', bolumG);
   await bolum('Y', bolumY);
   await bolum('J', bolumJ);

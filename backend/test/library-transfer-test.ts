@@ -64,6 +64,12 @@ const item = (id: string, name: string, kategori: string | null, extra: Partial<
   check('L1 cins kolonu var + dolu', s.columnDefs.some((c) => c.field === 'col_cins') && row.col_cins === 'Boyalı');
   check('L1 cap kolonu var + dolu', s.columnDefs.some((c) => c.field === 'col_cap') && row.col_cap === '2"');
   check('Z4 _currency tasinir', row._currency === 'USD', `got ${row._currency}`);
+  // Z4b (P4b Parti 3): eski kayittaki HAM yazim kanonik koda — izgara simgeyi ve
+  // net yuvarlamasini tam eslesmeyle secer ('EURO' ₺ kuralina dusuyordu).
+  const yazimlar: Array<[string | null, string]> = [['EURO', 'EUR'], ['TL', 'TRY'], [' usd ', 'USD'], ['€', 'EUR'], [null, 'TRY'], ['gbp', 'GBP']];
+  const kanonik = yazimlar.map(([ham]) => buildLibrarySheetRows([item('k', 'Vana', null, { currency: ham })]).rowData.find((r) => r._isDataRow)!._currency);
+  check('Z4b ham para birimi yazimi KANONIK koda (EURO→EUR, TL→TRY, bosluk/kucuk harf, €, yok→TRY, taninmayan aynen)',
+    JSON.stringify(kanonik) === JSON.stringify(yazimlar.map(([, k]) => k)), `got ${JSON.stringify(kanonik)}`);
   check('Iskonto korunur (_libraryDiscountRate)', row._libraryDiscountRate === 15, `got ${row._libraryDiscountRate}`);
 
   // TEK TIP DUZEN (kullanici istegi): veri olmasa da kolonlar HEP cizilir —

@@ -185,8 +185,12 @@ export function buildLibrarySheetRows(items: LibrarySheetItem[]): LibrarySheet {
       _isHeaderRow: false,
       _libraryItemId: item.id,
       _libraryDiscountRate: item.discountRate ?? 0,
-      // Z4: satirin para birimi — fiyat/net kolonlari kendi sembolunu basar
-      _currency: item.currency ?? 'TRY',
+      // Z4: satirin para birimi — fiyat/net kolonlari kendi sembolunu basar.
+      // KANONIK KOD (P4b Parti 3, 05.10): eski kayitta ham yazim olabilir
+      // ('EURO', 'TL', '€'); izgara simgeyi ve net yuvarlamasini (doviz 2 hane)
+      // TAM eslesmeyle secer — ham yazimda ₺ kuralina dusuyordu. Okuma tablosu
+      // `paraBirimiKodu`; taninmayan yazim buyuk harfle aynen (₺ uydurulmaz).
+      _currency: birimKodu(item.currency ?? 'TRY'),
       // L3: grup uyeligi (daralt/genislet + grup bazli toplu iskonto)
       _groupKey: kategori ?? '',
       col0: String(dataNo),

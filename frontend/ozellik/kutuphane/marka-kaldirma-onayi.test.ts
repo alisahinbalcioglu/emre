@@ -87,3 +87,39 @@ describe('⭐ BAĞLANTI: marka sayfası onayı ve hata metnini kullanıyor', () 
     expect(kaldir).toContain('hataMetni(e,');
   });
 });
+
+/**
+ * Markanın SON satırı tek tek silinince sunucu sekmeleri ve marka kaydını da
+ * siler (06.10, `markaBosaldiysaKaldir`). Sayfa sekmesiz kalmamalı: yeni
+ * satırın kaydedileceği sekme yok (kayıt 404 alırdı). Sekme silmenin
+ * (`deleteActiveList`) zaten yaptığı gibi marka listesine dönülür.
+ */
+describe('⭐ BAĞLANTI: son satır silinince marka listesine dönülür', () => {
+  const satirSil = govde(sayfaKodu, 'const handleRowDelete = useCallback(async');
+  const sekmeSil = govde(sayfaKodu, 'async function deleteActiveList');
+
+  it('FIXTURE: iki silme fonksiyonu bulundu', () => {
+    expect(satirSil).toContain('/library/${itemId}');
+    expect(sekmeSil).toContain('/lists/${liste.id}');
+  });
+
+  it('satır silindikten SONRA sekmeler tazelenir ve boşsa marka listesine gidilir', () => {
+    const sil = satirSil.indexOf('api.delete(');
+    const tazele = satirSil.indexOf('fetchLists()');
+    expect(sil).toBeGreaterThan(0);
+    expect(tazele).toBeGreaterThan(sil);
+    expect(satirSil.slice(tazele)).toMatch(
+      /\.then\(\(kalan\) => \{\s*if \(kalan\.length === 0\) router\.push\('\/library\/mechanical-brands'\);\s*\}\)/,
+    );
+  });
+
+  it('sekme silmeyle AYNI hedef (iki yol ayrışmasın)', () => {
+    expect(sekmeSil).toContain("router.push('/library/mechanical-brands')");
+  });
+
+  it('kullanılan router ve fetchLists bağımlılıklarda (bayat kapanış yok)', () => {
+    const bas = sayfaKodu.indexOf('const handleRowDelete = useCallback(async');
+    const bitis = sayfaKodu.indexOf('}, [', bas);
+    expect(sayfaKodu.slice(bitis, sayfaKodu.indexOf(']);', bitis) + 3)).toBe('}, [nameField, fetchLists, router]);');
+  });
+});
