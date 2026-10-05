@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 892
-Toplam satir: 247474
+Toplam satir: 247483
 Uc nokta: 239
 test:* scripti: 145
 
@@ -345,7 +345,7 @@ test:* scripti: 145
 | `backend/test/dwg-geometri-akis-test.ts` | 528 |
 | `backend/test/dwg-istemci-koptu-test.ts` | 449 |
 | `backend/test/dwg-kiraci-dedup-test.ts` | 463 |
-| `backend/test/dwg-yukleme-test.ts` | 857 |
+| `backend/test/dwg-yukleme-test.ts` | 866 |
 | `backend/test/ekip-izinleri-test.ts` | 568 |
 | `backend/test/erisim-kapisi-test.ts` | 695 |
 | `backend/test/erken-kurtarma-test.ts` | 402 |
