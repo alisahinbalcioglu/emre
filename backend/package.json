@@ -194,7 +194,8 @@
     "test:govde-dogrulama": "ts-node test/govde-dogrulama-test.ts",
     "test:ci-ek-notu": "ts-node test/ci-ek-notu-test.ts",
     "test:p4b-motor": "ts-node test/p4b-motor-test.ts",
-    "test:ex-karisik": "ts-node test/cikti-karisik-test.ts"
+    "test:ex-karisik": "ts-node test/cikti-karisik-test.ts",
+    "test:net-fiyat-ikiz": "ts-node test/net-fiyat-ikiz-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

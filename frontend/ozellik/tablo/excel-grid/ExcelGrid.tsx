@@ -22,8 +22,8 @@ import { planYapistir, type PasteKolon, type PasteSatir } from './yapistir';
 import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, type Nokta } from './kopyala';
 import { isaretStili, isaretTooltip, secimBekliyor, kutuphaneFiyatAyrisimi, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
-import { hesaplaNetFiyat, hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
-import { paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, paraIsaretiniAyikla, PARA_SEMBOLU, birimliToplamlar, fittingBirimli, cokluTutarMetni, type ParaBirimi } from '@/ozellik/fiyat/taraf-para-birimi';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
+import { paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, paraIsaretiniAyikla, PARA_SEMBOLU, birimliToplamlar, fittingBirimli, cokluTutarMetni, netFiyatBiriminde, type ParaBirimi } from '@/ozellik/fiyat/taraf-para-birimi';
 // FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
 import {
   FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
@@ -4424,8 +4424,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           // 12 okuyordu. Hucre MAKINE sinirinda (ayristirici/yapistirma yazdi).
           const listPrice = sayiOku(row[priceField ?? '']) ?? 0;
           const discount = Number(row._draftDiscount ?? 0);
-          // SPEC ASAMA A: net = liste×(1-iskonto), YUKARI 1 hane
-          return hesaplaNetFiyat(listPrice, discount);
+          // SPEC ASAMA A: net = liste×(1-iskonto), satirin KENDI biriminde yukari
+          // (₺ 1 hane, USD/EUR 2 hane — kural `netFiyatBiriminde`, 05.10)
+          return netFiyatBiriminde(listPrice, discount, row._currency);
         },
         valueFormatter: (p: any) => {
           const v = sayiOku(p.value) ?? NaN; // A2: getter sayisi — tek makine okuyucusu

@@ -15,7 +15,7 @@
  *
  * Gosterim sayi dili `paraBicim` (pricing.ts) — tek kaynak.
  */
-import { ONDALIK, kurusTamsayi, paraBicim, sayfaToplamlari, fittingHesapla, type SayfaToplamOzeti, type TarafSuzgeci } from './pricing';
+import { ONDALIK, kurusTamsayi, paraBicim, sayfaToplamlari, fittingHesapla, hesaplaNetFiyat, hesaplaNetFiyatDoviz, type SayfaToplamOzeti, type TarafSuzgeci } from './pricing';
 
 export type ParaBirimi = 'TRY' | 'USD' | 'EUR';
 
@@ -26,6 +26,17 @@ const GECERLI = new Set<string>(['TRY', 'USD', 'EUR']);
 /** Karar 4: dovizde 2 hane, ₺'de bugunku 1 hane (birim yoksa ₺). */
 export function paraHanesi(pb?: ParaBirimi | null): number {
   return pb === 'USD' || pb === 'EUR' ? 2 : ONDALIK;
+}
+
+/**
+ * KUTUPHANE NETI (05.10, P2 notu): liste × (1 − iskonto) satirin KENDI biriminde
+ * yuvarlanir — USD/EUR 2 hane yukari, TRY (ve birimsiz / taninmayan) bugunku ₺
+ * kurali. Kutuphane ekraninin "Net Fiyat" kolonu dovizli satirda ₺ kuraliyla
+ * yuvarliyordu ($10,55 → $10,60); motorun kaynak neti (F1) ve TL neti (C6) 2
+ * hane. Kural TEK yerde: kutuphane gosterimi (C3) de buradan okur.
+ */
+export function netFiyatBiriminde(listeFiyat: number, iskontoYuzde: number, pb: unknown): number {
+  return pb === 'USD' || pb === 'EUR' ? hesaplaNetFiyatDoviz(listeFiyat, iskontoYuzde) : hesaplaNetFiyat(listeFiyat, iskontoYuzde);
 }
 
 /** Satirin TARAF birimi; alan yoksa ya da taninmiyorsa TRY. */
