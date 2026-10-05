@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 920
-Toplam satir: 253607
+Toplam satir: 253645
 Uc nokta: 239
 test:* scripti: 164
 
@@ -810,12 +810,12 @@ test:* scripti: 164
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5357 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5309 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
-| `frontend/ozellik/tablo/excel-grid/build-material-context.test.ts` | 65 |
-| `frontend/ozellik/tablo/excel-grid/build-material-context.ts` | 61 |
+| `frontend/ozellik/tablo/excel-grid/build-material-context.test.ts` | 96 |
+| `frontend/ozellik/tablo/excel-grid/build-material-context.ts` | 116 |
 | `frontend/ozellik/tablo/excel-grid/cap-sorguda.test.ts` | 130 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.test.ts` | 65 |
 | `frontend/ozellik/tablo/excel-grid/discount-utils.ts` | 66 |

@@ -58,3 +58,58 @@ export function isSelfSufficientRow(text: string): boolean {
     .replace(/[^a-zçğıöşü]/gi, '');
   return stripped.length >= 12;
 }
+
+/**
+ * Bir metinden cap (DN) kodu cikarir — baslik baglaminin cap sanity check'i
+ * (ExcelGrid `buildMaterialContextDetailed`). IKIZ: arka uc
+ * `eslestirme/utils/build-material-context.ts` `extractCapFromText`.
+ */
+export function extractCapFromText(text: string): string | null {
+  if (!text) return null;
+  // Unicode kesirleri ASCII'ye cevir
+  let normalized = text
+    .replace(/2½/g, '2 1/2').replace(/1½/g, '1 1/2').replace(/1¼/g, '1 1/4')
+    .replace(/½/g, '1/2').replace(/¼/g, '1/4').replace(/¾/g, '3/4')
+    .toLowerCase();
+
+  const inchToDn: Record<string, string> = {
+    '1/2': 'dn15', '3/4': 'dn20', '1': 'dn25',
+    '1 1/4': 'dn32', '1 1/2': 'dn40', '2': 'dn50',
+    '2 1/2': 'dn65', '3': 'dn80', '4': 'dn100',
+    '5': 'dn125', '6': 'dn150', '8': 'dn200',
+  };
+
+  // DN kodu varsa direkt kullan
+  const dnMatch = normalized.match(/dn\s*(\d+)/);
+  if (dnMatch) return `dn${dnMatch[1]}`;
+
+  // Tum inc olculeri bul, EN SON kullaniyani al (gercek malzeme cap'i sonda olur)
+  const matches: { value: string; index: number }[] = [];
+  // 2 1/2", 1 1/4" gibi bilesik kesirler
+  const compoundRegex = /(\d+)\s+(\d+)\/(\d+)/g;
+  let m;
+  while ((m = compoundRegex.exec(normalized)) !== null) {
+    matches.push({ value: `${m[1]} ${m[2]}/${m[3]}`, index: m.index });
+  }
+  // 1/2", 3/4" gibi tek kesirler (ama compound'un parcasi olmamali)
+  const fractionRegex = /(?<!\d\s)(\d+)\/(\d+)/g;
+  while ((m = fractionRegex.exec(normalized)) !== null) {
+    // Compound'un icindeyse atla
+    const overlap = matches.some(x => x.index <= m!.index && x.index + x.value.length >= m!.index + m![0].length);
+    if (!overlap) matches.push({ value: `${m[1]}/${m[2]}`, index: m.index });
+  }
+  // 1", 2", 3" gibi tam sayilar. SOL SINIR (05.10): kesrin paydasi ("3/4"in 4"u)
+  // ya da bilesik kesrin parcasi tam sayi inc DEGILDIR — eskiden "en sondaki cap"
+  // o payda oluyordu: 3/4" dn100, 1/2" dn50, 1 1/4" dn100.
+  const intRegex = /(?<![\d/])(\d+)"/g;
+  while ((m = intRegex.exec(normalized)) !== null) {
+    const overlap = matches.some(x => x.index <= m!.index && x.index + x.value.length >= m!.index + m![0].length);
+    if (!overlap) matches.push({ value: m[1], index: m.index });
+  }
+
+  if (matches.length === 0) return null;
+  // En son bulunan cap (en yuksek index) — gercek malzeme adi sonda olur
+  matches.sort((a, b) => b.index - a.index);
+  const lastCap = matches[0].value;
+  return inchToDn[lastCap] ?? null;
+}
