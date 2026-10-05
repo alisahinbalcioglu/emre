@@ -127,6 +127,7 @@ const SUITES: Suite[] = [
   { ad: 'Satır ölçü yazımı: 110\'LUK · izolasyon kalınlığı çap değil (FAZ C2)', script: 'test:satir-olcu-yazimi', zincir: 'Z2' },
   { ad: 'Ürün indeksi v20: steel≠tee · DN 6/8 ve 4 hane · inç öneki/parmak (FAZ C3)', script: 'test:urun-indeksi-v20', zincir: 'Z1' },
   { ad: 'Ad uzunluğu hızı: önek kovası + çağrı içi bellek — sonuç birebir, iş sayısı düşük (P2)', script: 'test:ad-uzunlugu', zincir: 'Z2' },
+  { ad: 'Parantez içi nitelik: havuzda tanınan parantez sözcüğü yumuşak ayırıcı, tanınmayan kısıt değil (P2)', script: 'test:parantez-niteligi', zincir: 'Z2' },
   // ── S2+S3 (06.08.2026): ÖNERİ KUTUSU. Çapraz-marka/firma önerisi ana
   //    motoru çağırıyor ve motorun "onaylat" dediği tek adayı KESİN gibi
   //    sunuyordu. İki kural mühürlendi: kanıt gücü yetmeyen aday (çapı ya da

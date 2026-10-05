@@ -21,6 +21,7 @@ import { confirm } from '@/ortak/hooks/use-confirm';
 import { cn } from '@/ortak/lib/utils';
 import { formSayisiOku } from '@/ozellik/fiyat/sayi-alani';
 import { iscilikKatalogAdresi } from '@/ozellik/kutuphane/iscilik-katalog-adresi';
+import { hataMetni } from '@/ozellik/kutuphane/hata-metni';
 
 interface LaborItem {
   id: string;
@@ -105,7 +106,7 @@ export default function LaborLibraryPage() {
         setItems([]);
         setKisitli({ mesaj: veri.mesaj ?? 'Erişiminiz kısıtlı', aciklama: veri.aciklama });
       } else {
-        toast({ title: 'Hata', description: 'İşçilik kalemleri yüklenemedi.', variant: 'destructive' });
+        toast({ title: 'Yüklenemedi', description: hataMetni(e, 'İşçilik kalemleri yüklenemedi.'), variant: 'destructive' });
       }
     } finally { setIsLoading(false); }
   }, [activeDiscipline, rol]);
@@ -154,8 +155,10 @@ export default function LaborLibraryPage() {
       }
       setDialogOpen(false);
       await fetchItems();
-    } catch { toast({ title: 'Hata', variant: 'destructive' }); }
-    finally { setIsSaving(false); }
+    } catch (e: unknown) {
+      // LOW-4 (P4b Parti 3): yalın "Hata" sebebi yutuyordu — sunucu metni (doğrulama dizisi dahil) gösterilir
+      toast({ title: 'Kaydedilemedi', description: hataMetni(e, 'İşçilik kalemi kaydedilemedi.'), variant: 'destructive' });
+    } finally { setIsSaving(false); }
   }
 
   async function handleDelete(item: LaborItem) {
@@ -164,7 +167,9 @@ export default function LaborLibraryPage() {
       await api.delete(`/labor/${item.id}`);
       toast({ title: 'Silindi' });
       await fetchItems();
-    } catch { toast({ title: 'Hata', variant: 'destructive' }); }
+    } catch (e: unknown) {
+      toast({ title: 'Silinemedi', description: hataMetni(e, 'İşçilik kalemi silinemedi.'), variant: 'destructive' });
+    }
   }
 
   if (rol === 'diger') {

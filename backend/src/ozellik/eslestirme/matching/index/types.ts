@@ -62,6 +62,14 @@ export interface LineQuery {
    * diyordu — YALAN (aileyi zaten o kelimeler cozdu).
    */
   aileKelimeleri: string[];
+  /**
+   * PARANTEZ ICI NITELIK (P2, 05.10): parantez blogu kisit token'i DEGILDIR
+   * (Faz 2b H1/R6 — "(ROZET DAHİL)" notu aileyi kaciriyordu), ama urun adi
+   * parantezi TASIR ("Küresel Vana (tam geçişli)"). Bu belirtecler yalniz
+   * havuzda TANINIRSA yumusak ayirici olur (query-engine ad asamasi); asla
+   * bilinmeyen-sozcuk kisiti uretmez. `tokens`ta OLMAYANLAR.
+   */
+  parantezTokenlari?: string[];
   capInfo: SizeInfo | null;
   boyTag: string | null;
   /** Satirin ham birimi (I9): 'adet' → boru dayatilamaz */

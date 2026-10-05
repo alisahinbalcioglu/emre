@@ -19,6 +19,8 @@ import type { FirmEntryHandle } from '@/ozellik/kutuphane/library/InlineFirmEntr
 import type { ExcelGridData, ExcelRowData } from '@/ozellik/tablo/excel-grid/types';
 import { sayiOku } from '@/ozellik/fiyat/sayi-alani';
 import { adDegistiMi, adImzalari } from '@/ozellik/kutuphane/iscilik-ad-imzasi';
+import { iscilikListesiSilmeOnayi } from '@/ozellik/kutuphane/iscilik-silme-onayi';
+import { hataMetni } from '@/ozellik/kutuphane/hata-metni';
 
 interface LaborFirm {
   id: string;
@@ -99,6 +101,20 @@ export default function LaborFirmDetailPage() {
     fetchFirma();
   }, [fetchFirma]);
 
+  /** LOW-4 (P4b Parti 3): silmeden sonra sekme sayaçları ve "bekleyen" rozeti.
+   *  SESSİZ — `fetchFirma` yükleme hatasında sayfadan atar; başarılı bir
+   *  silmenin ardındaki tazeleme hatası kullanıcıyı firmalar listesine
+   *  göndermemeli (bir sonraki yüklemede düzelir; malzeme ikizi `fetchLists`). */
+  const sayaclariTazele = useCallback(async () => {
+    try {
+      const { data } = await api.get<{ priceLists: PriceList[]; bekleyen?: number }>(`/labor-firms/${firmaId}/price-lists`);
+      setPriceLists(data.priceLists);
+      setBekleyen(data.bekleyen ?? 0);
+    } catch (e: unknown) {
+      console.warn('[labor-firms detay] sayac tazelemesi basarisiz', e);
+    }
+  }, [firmaId]);
+
   const fetchSheets = useCallback(async (listId: string) => {
     try {
       const { data } = await api.get(`/labor-firms/price-lists/${listId}/sheets`);
@@ -178,17 +194,19 @@ export default function LaborFirmDetailPage() {
     try {
       await api.delete(`/labor-firms/price-items/${priceItemId}`);
       toast({ title: 'Silindi', description: ad });
+      // LOW-4: sekme sayacı (liste silme onayındaki sayı) ve bekleyen rozeti tazelensin
+      void sayaclariTazele();
       return true;
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Sessiz basarisizlik YASAK: silinemediyse satir EKRANDA KALIR.
       toast({
         title: 'Silinemedi',
-        description: e?.response?.data?.message ?? 'Sunucu kalemi silemedi.',
+        description: hataMetni(e, 'Sunucu kalemi silemedi.'),
         variant: 'destructive',
       });
       return false;
     }
-  }, [gridData]);
+  }, [gridData, sayaclariTazele]);
 
   /** Kayit okuyucusu — hucre MAKINE sinirinda (A2, tur 3; malzeme ikizi `numOrU`
    *  ile AYNI okuyucu). Eski kopya `parseFloat` "24 kW"yi 24 yaziyordu. */
@@ -329,18 +347,30 @@ export default function LaborFirmDetailPage() {
     }
   }
 
+  /**
+   * LOW-4 (P4b Parti 3, 05.10): onay KAÇ kalemin gideceğini söyler (liste
+   * silinince fiyat satırları da silinir — CASCADE); silinen etkin listenin
+   * yerine kalan ilk liste açılır (eskiden ekran boş kalıyordu) ve onun
+   * kaydedilmemiş sayacı sıfırlanır; sekme sayaçları ve "bekleyen kalem"
+   * rozeti sunucudan tazelenir (`sayaclariTazele` — etkin OLMAYAN liste
+   * silinince `fetchFirma` efekti koşmaz); hata sunucunun metniyle.
+   */
   async function deletePriceList(listId: string) {
-    if (!(await confirm('Bu fiyat listesi silinsin mi?'))) return;
+    const liste = priceLists.find((pl) => pl.id === listId);
+    if (!(await confirm(iscilikListesiSilmeOnayi(liste?.name ?? '', liste?._count?.prices)))) return;
     try {
       await api.delete(`/labor-firms/price-lists/${listId}`);
-      setPriceLists((prev) => prev.filter((pl) => pl.id !== listId));
+      const kalan = priceLists.filter((pl) => pl.id !== listId);
+      setPriceLists(kalan);
       if (activeListId === listId) {
-        setActiveListId(null);
         setGridData(null);
+        setDirtyCount(0); // silinen listenin düzenlemeleri onunla gitti
+        setActiveListId(kalan[0]?.id ?? null);
       }
-      toast({ title: 'Silindi' });
-    } catch {
-      toast({ title: 'Hata', variant: 'destructive' });
+      toast({ title: 'Silindi', description: liste?.name });
+      await sayaclariTazele();
+    } catch (e: unknown) {
+      toast({ title: 'Silinemedi', description: hataMetni(e, 'Fiyat listesi silinemedi.'), variant: 'destructive' });
     }
   }
 

@@ -319,7 +319,18 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     // diyor. Boylece soru da doguru yere kayar: alt-ad degil, BAGLANTI (K3).
     //
     // Tam eslesme = token kumeleri ESIT (alt-kume + ayni sayida).
-    const tam = rows.filter(
+    //
+    // PARANTEZ ICI NITELIK (P2, 05.10 — P4 bulgusu, olculdu): satirin parantez
+    // belirtecleri (`line.parantezTokenlari`, kisit DEGIL) yalniz bu havuzda bir
+    // urun adinda GECIYORSA ayiricidir: tam ad once "ad + parantez" ile aranir
+    // ("Küresel Vana (tam geçişli) 1\"" → duz "Küresel Vana" degil tam geçişli),
+    // bulunamazsa bugunku ad testi aynen kosar. Taninmayan parantez (not:
+    // "(Yeni Planlanan)", "(ROZET DAHİL)") hicbir yerde kullanilmaz, bilinmeyen
+    // listesine GIRMEZ (Faz 2b korumasi).
+    const parantezAd = (line.parantezTokenlari ?? [])
+      .filter((t) => !adTest.some((a) => tokenEsit(a, t)))
+      .filter((t) => rows.some((r) => r.urun.adTokens.some((x) => tokenEsit(t, x))));
+    const tamAdUyan = (test: string[]) => rows.filter(
       (r) => {
         // A3 NOTU — "tam ad kiyasinda aci sozcugunu URUN tarafindan da at"
         // maddesi DENENDI ve GERI ALINDI (02.10, olculdu): hicbir senaryoda
@@ -337,9 +348,11 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
         // fazlalik DEGILDIR. (Satir yazmadiysa ust-kume kalir — davranis ayni.)
         const urunCekirdek = r.urun.adTokens.filter((x) => !(familySlug && tokenEsit(x, familySlug))
           && !yol.cins.some((c) => tokenEsit(c, x)));
-        return urunCekirdek.length === adTest.length && altKume(adTest, urunCekirdek);
+        return urunCekirdek.length === test.length && altKume(test, urunCekirdek);
       },
     );
+    const tamParantezli = parantezAd.length > 0 ? tamAdUyan([...adTest, ...parantezAd]) : [];
+    const tam = tamParantezli.length > 0 ? tamParantezli : tamAdUyan(adTest);
     if (tam.length > 0) {
       // ── SUPERSET ADLAR SONA (kullanici karari 17.07, islak alarm vakasi) ──
       // "Islak Alarm Vanası" satiri tam bucket'i kilitleyince "...takımı" /
@@ -356,7 +369,13 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     } else {
       // Tam ad yok → alt-kume: teklif UST ad yazmis olabilir ("kompansatör"),
       // ya da urun adi daha uzundur ("Omega V-Flex dilatasyon kompansatörü").
-      const daralt = rows.filter((r) => altKume(adTest, r.urun.adTokens));
+      let daralt = rows.filter((r) => altKume(adTest, r.urun.adTokens));
+      // P2 parantez: coklu aday kaldiysa parantez nitelikleriyle YUMUSAK daralt
+      // (hepsini tasiyan yoksa daraltma yapilmaz — kisit degil).
+      if (daralt.length > 1 && parantezAd.length > 0) {
+        const parantezli = daralt.filter((r) => altKume(parantezAd, r.urun.adTokens));
+        if (parantezli.length > 0) daralt = parantezli;
+      }
       if (daralt.length > 0) rows = daralt;
       else {
         // ── AD-TOKEN DUSURME (canli vaka 16.07: izleme anahtarli) ────

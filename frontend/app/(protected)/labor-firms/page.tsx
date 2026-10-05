@@ -12,6 +12,8 @@ import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
+import { hataMetni } from '@/ozellik/kutuphane/hata-metni';
+import { iscilikFirmasiSilmeOnayi } from '@/ozellik/kutuphane/iscilik-silme-onayi';
 
 interface LaborFirm {
   id: string;
@@ -91,8 +93,8 @@ export default function LaborFirmsPage() {
     try {
       const { data } = await api.get<LaborFirm[]>('/labor-firms');
       setFirms(data);
-    } catch {
-      toast({ title: 'Firmalar yüklenemedi', variant: 'destructive' });
+    } catch (e: unknown) {
+      toast({ title: 'Firmalar yüklenemedi', description: hataMetni(e, 'Sunucuya ulaşılamadı, sayfayı yenileyin.'), variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -109,21 +111,23 @@ export default function LaborFirmsPage() {
       setFirms((prev) => [...prev, { ...data, _count: { priceLists: 0, laborPrices: 0 } }]);
       setNewName('');
       toast({ title: 'Firma eklendi', description: data.name });
-    } catch (e: any) {
-      toast({ title: 'Hata', description: e?.response?.data?.message ?? 'Eklenemedi', variant: 'destructive' });
+    } catch (e: unknown) {
+      // LOW-4 (P4b Parti 3): sunucu metni ortak kuralla (dizi mesaj birleşir, boş mesaj yedeğe düşer)
+      toast({ title: 'Eklenemedi', description: hataMetni(e, 'Firma eklenemedi.'), variant: 'destructive' });
     } finally {
       setCreating(false);
     }
   }
 
   async function deleteFirm(firm: LaborFirm) {
-    if (!(await confirm({ title: `"${firm.name}" silinsin mi?`, description: 'Tüm fiyat listeleri de silinecek.' }))) return;
+    // LOW-4: onay KAÇ liste ve fiyatın gideceğini söyler (ikisi de firmaya CASCADE)
+    if (!(await confirm(iscilikFirmasiSilmeOnayi(firm.name, firm._count?.priceLists, firm._count?.laborPrices)))) return;
     try {
       await api.delete(`/labor-firms/${firm.id}`);
       setFirms((prev) => prev.filter((f) => f.id !== firm.id));
-      toast({ title: 'Silindi' });
-    } catch {
-      toast({ title: 'Hata', variant: 'destructive' });
+      toast({ title: 'Silindi', description: firm.name });
+    } catch (e: unknown) {
+      toast({ title: 'Silinemedi', description: hataMetni(e, 'Firma silinemedi.'), variant: 'destructive' });
     }
   }
 
