@@ -612,7 +612,25 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     const urunAkiskan = extractFluid(`${r.urun.ad ?? ''} ${r.urun.cins ?? ''} ${r.urun.kategori ?? ''}`);
     return akiskanTok.every((t) => extractFluid(t) === urunAkiskan);
   };
-  const otoVaryant = (aday: IndexedRow, d: string | null): QueryOutcome => {
+  /**
+   * B10 FIYAT BIRIMI (FAZ B, 05.10 olculdu): urunun fiyati kg / boy / paket
+   * basinaysa ve satir metre / adet sayiyorsa miktar × fiyat kat kat yanlis
+   * olur — "SİYAH ÇELİK BORU 2"" (mt) satirina kg fiyatli boru 'high'
+   * yaziliyordu. Iki taraf da TANINIYOR ve FARKLI tabandaysa celiski;
+   * birimsiz / taninmayan birim kanit DEGILDIR (L6 ile ayni cizgi). Aday
+   * ELENMEZ — otomatik yazim kapanir ('fiyat-birimi'). L6 (birimSert,
+   * iscilik) degismez: tanidigi farkli birimi zaten ELER.
+   * Kapi: test/fiyat-birimi-test.ts
+   */
+  const satirFiyatBirimi = fiyatBirimiSinifi(line.unit);
+  const fiyatBirimiFarkli = (r: IndexedRow): boolean => {
+    if (!satirFiyatBirimi) return false;
+    const u = fiyatBirimiSinifi(r.urun.birim);
+    return u !== null && u !== satirFiyatBirimi;
+  };
+  const fiyatBirimiNotuOf = (r: IndexedRow) =>
+    `Fiyat birimi farklı: ürün "${(r.urun.birim ?? '').trim()}" başına, satır "${(line.unit ?? '').trim()}" — kontrol edin`;
+  const otoVaryantHam = (aday: IndexedRow, d: string | null): QueryOutcome => {
     if (capAutoYasak(aday)) return capsizOnay(aday);
     if (!akiskanUyar(aday)) {
       return {
@@ -622,6 +640,18 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
       };
     }
     return { kind: 'auto-variant', row: aday, donusum: d };
+  };
+  // B10: otomatik varyant donusleri celiski zincirine ULASMAZ (akiskanla ayni
+  // ders) — fiyat birimi burada da denetlenir. Baska kapi zaten aciksa onun
+  // notu kalir, 'fiyat-birimi' kapi listesine EKLENIR (S3: atesleyen TUM kapilar).
+  const otoVaryant = (aday: IndexedRow, d: string | null): QueryOutcome => {
+    const o = otoVaryantHam(aday, d);
+    if (!fiyatBirimiFarkli(aday)) return o;
+    if (o.kind === 'ask') return { ...o, kapilar: [...(o.kapilar ?? []), 'fiyat-birimi'] };
+    return {
+      kind: 'ask', askColumn: 'urun', rows: [aday], bilinmeyen, donusum: d,
+      uyariNot: fiyatBirimiNotuOf(aday), kapilar: ['fiyat-birimi'],
+    };
   };
   const varyantTagUyar = (v: string[]) => (r: IndexedRow) => {
     const aday = urunVariantTags(r);
@@ -1419,6 +1449,14 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   const kapilar: KanitKapisi[] = [];
   if (yuzeyCeliskiNotu) kapilar.push('yuzey-celiskisi');
   if (unitConflict) kapilar.push('birim-celiskisi');
+  // B10: tek adayda o adayin, coklu adayda HERHANGI birinin fiyat birimi
+  // farkli. Coklu soruda yalniz uyari notu + kapi kaydi (S3: atesleyen tum
+  // kapilar); hafiza otoyazisi zaten yalniz TEK adayda calisir (matching.service).
+  const fiyatBirimiAdaylari = rows.filter(fiyatBirimiFarkli);
+  const fiyatBirimiNotu = fiyatBirimiAdaylari.length === 0 ? null
+    : rows.length === 1 ? fiyatBirimiNotuOf(rows[0])
+    : `Fiyat birimi farklı aday var (${[...new Set(fiyatBirimiAdaylari.map((r) => (r.urun.birim ?? '').trim()))].join(', ')}) — satır "${(line.unit ?? '').trim()}", kontrol edin`;
+  if (fiyatBirimiNotu) kapilar.push('fiyat-birimi');
   if (surfaceConflict) kapilar.push('taban-celiskisi');
   if (malzemeConflict || satirMalzemeNotu) kapilar.push('malzeme-celiskisi');
   if (aileZayifNotu) kapilar.push('aile-zayif');
@@ -1432,13 +1470,13 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
 
   // ── SONUC: UC YOL, DORDUNCU YOK ──────────────────────────────────
   if (rows.length === 1) {
-    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? capBelirsizNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? bilinmeyenNotu ?? aileNotu ?? satirMalzemeNotu;
+    const celiski = yuzeyCeliskiNotu ?? unitConflict ?? malzemeConflict ?? surfaceConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? capBelirsizNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? fiyatBirimiNotu ?? bilinmeyenNotu ?? aileNotu ?? satirMalzemeNotu;
     if (celiski) {
       return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: celiski, kapilar };
     }
     return { kind: 'single', row: rows[0], donusum };
   }
-  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? capBelirsizNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? undefined, kapilar };
+  return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? capBelirsizNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? fiyatBirimiNotu ?? undefined, kapilar };
 }
 
 /**
@@ -1452,6 +1490,35 @@ export function birimKanonik(u: string | null | undefined): string | null {
   if (/^(mt|m|mtul|mtül|metre|meter)\.?$/.test(s)) return 'metre';
   if (/^(ad|adet|pcs|pc|piece)\.?$/.test(s)) return 'adet';
   if (/^(tk|takim|takım|set)\.?$/.test(s)) return 'takim';
+  return null;
+}
+
+/**
+ * FIYAT BIRIMI TABANI (B10, 05.10) — "bu fiyat neyin basina?" Taninan yazim
+ * → taban; taninmayan / bos → null (kanit yok, kapi acilmaz).
+ * `birimKanonik`ten (iscilik L6, ELEYEN kural) AYRIDIR ve onu degistirmez:
+ * burada adet ile takim AYNI tabandir (ikisi de sayi; "1 takim" bir birimdir),
+ * L6 ise iscilikte onlari ayirir. Bu siniflama yalniz KAPI acar, elemez.
+ * Kapi: test/fiyat-birimi-test.ts (S1)
+ */
+const FIYAT_BIRIMI_TABANLARI: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^(m|mt|mtl|mtul|mtül|metre|meter)$/, 'metre'],
+  [/^(ad|adet|pcs|pc|piece|tk|takim|takım|set)$/, 'sayi'],
+  [/^(cift|çift)$/, 'cift'],
+  [/^(kg|kilo|kilogram)$/, 'kg'],
+  [/^(ton|tn)$/, 'ton'],
+  [/^boy$/, 'boy'],
+  [/^(rulo|top)$/, 'rulo'],
+  [/^(paket|pk|pkt)$/, 'paket'],
+  [/^(kutu|koli)$/, 'kutu'],
+  [/^(m2|m²|mt2|metrekare)$/, 'm2'],
+  [/^(m3|m³|mt3|metreküp|metrekup)$/, 'm3'],
+  [/^(lt|litre)$/, 'lt'],
+];
+export function fiyatBirimiSinifi(u: string | null | undefined): string | null {
+  const s = (u ?? '').trim().toLocaleLowerCase('tr').replace(/\.+$/, '').replace(/\s+/g, '');
+  if (!s) return null;
+  for (const [re, taban] of FIYAT_BIRIMI_TABANLARI) if (re.test(s)) return taban;
   return null;
 }
 
@@ -1547,6 +1614,10 @@ export function varyantTagEsit(a: string, b: string): boolean {
 export const HAFIZA_OTOYAZ_ENGELI: readonly KanitKapisi[] = [
   'capsiz-dusum', 'aile-zayif', 'aile-uyusmazligi', 'ad-gevsetildi',
   'yuzey-genisletildi', 'cap-cevrilemedi', 'dn-koprusu', 'cap-belirsiz',
+  // B10 (05.10): kimlik kapisi DEGIL ama gecmis onay onu da cevaplamaz —
+  // hafiza satirin birimini hatirlamaz ve fiyat tabani farki her kosumda
+  // AYNI para hatasini uretir (kg fiyati metreye). Kapi: test/fiyat-birimi-test.ts
+  'fiyat-birimi',
 ];
 
 /**

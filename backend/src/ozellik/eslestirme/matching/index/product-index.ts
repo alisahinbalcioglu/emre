@@ -181,6 +181,11 @@ export interface ProductIndexFields {
 //     duzeltilmeden bu artis yapilamazdi: bayat dal capi ADINDAN okumuyordu.
 // v19 (04.10, FAZ B parti 1): olcu okuyucu — PN sonrasi kesir (B4/B5), CAP x ET
 // (B6), Φ/⌀/∅ (B9), DN65xDN15 (A5) urunun cap SUTUNUNU da etkiler → capTags.
+//     + parti 2b (05.10, AYNI surum — koordinator karari: parti 1 ve 2 BIRLIKTE
+//     deploy, tek yeniden indeksleme): malzemesiz pis su borusu plastic
+//     (sizeClass → capTags) · "PE 100"/"PE 80" → pe100/pe80 kanonu (adTokens).
+//     ⚠ Parti 1 parti 2'siz canliya CIKARSA bu iki degisiklik v19 satirlarina
+//     ULASMAZ — surum ayni oldugu icin bayat sayilmazlar.
 export const INDEX_VERSION = 19;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
@@ -285,6 +290,12 @@ const KANONIK_ESANLAM: ReadonlyArray<[RegExp, string]> = [
   // acmak yerine kanoniklestirme secildi: 'te' oneki 'tesisat', 'teflon',
   // 'termostat' gibi kelimeleri de yutardi.
   [/\btee\b/g, 'te'],
+  // pe 100 / pe 80 → pe100 / pe80 (FAZ B parti 2b, 05.10 olculdu): "PE 100
+  // BORU 63 mm" satiri ['pe','100'], "PE100 Boru" urunu 'pe100' → "100"
+  // bilinmeyen kelime, dogru urun ONAYA dusuyordu; ters yon de ayni. Tireli
+  // yazim ("PE-100") zaten birlesiyordu. Yalniz PE SINIFLARI (100, 80) —
+  // ayri yazilmis cap ("PE 125") birlesmez.
+  [/\bpe\s+(100|80)\b/g, 'pe$1'],
 ];
 
 /**
@@ -537,6 +548,13 @@ export function resolveProductSizeClass(ad: string, cins?: string | null, katego
   const cinsKarar = govde(normalizeText(`${cins ?? ''} ${ad}`));
   if (cinsKarar) return cinsKarar;
   const slug = resolveFamily(ad, kategori);
+  // FAZ B parti 2b (05.10, koordinator karari — "dar kural"): ADINDA pis su /
+  // atik su / gider gecen MALZEMESIZ boru plastiktir. Olculdu: "Atık su borusu
+  // 110 mm" (malzemesiz) asagidaki varsayilanla steel → dn100 oluyor, pis su
+  // satirinin PLASTIK sinif suzgecinde eleniyordu (kutuphanede varken
+  // "bulunamadi"). Yalniz AD (kategori degil — karar metni) ve yalniz boru;
+  // malzemesi yazili olan (dokum pis su borusu) yukarida kendi sinifini aldi.
+  if (slug === 'boru' && /\b(?:pis\s*su|atik\s*su|gider)\b/.test(adNorm)) return 'plastic';
   if (slug && (AD_DNLI_SLUGS.has(slug) || slug === 'boru' || slug === 'vana' || slug === 'fitting')) {
     return 'steel';
   }

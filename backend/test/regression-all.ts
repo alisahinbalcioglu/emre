@@ -117,6 +117,10 @@ const SUITES: Suite[] = [
   { ad: 'P4 motor notları: günlük · prototip · bayat kur · öneri havuzu', script: 'test:p4-motor-notlari', zincir: 'Z2' },
   { ad: 'Ölçü okuyucu: PN kesri · et kalınlığı · çap simgeleri · DN reduksiyon (FAZ B parti 1)', script: 'test:olcu-okuyucu', zincir: 'Z2' },
   { ad: 'Kimlik süzgeçleri: addaki nitelik · çevrilemeyen çap · köprü barajı · tek harf T (FAZ B parti 2a)', script: 'test:kimlik-suzgecleri', zincir: 'Z2' },
+  { ad: 'Ürün indeksi v19: malzemesiz pis su borusu plastik · PE 100 = PE100 (FAZ B parti 2b)', script: 'test:urun-indeksi-v19', zincir: 'Z1' },
+  { ad: 'Fiyat birimi kapısı: kg/boy/paket fiyatı metre/adet satırına otomatik yazılmaz (B10)', script: 'test:fiyat-birimi', zincir: 'Z2' },
+  { ad: 'Döviz net yuvarlaması: önce kaynak birimde net, sonra çevrim (C6, karar c)', script: 'test:doviz-net-yuvarlama', zincir: 'Z2' },
+  { ad: 'Yeniden indeksleme günlüğü: aile denendi / yeni (FAZ B parti 2b)', script: 'test:reindex-gunlugu', zincir: 'Z1' },
   // ── S2+S3 (06.08.2026): ÖNERİ KUTUSU. Çapraz-marka/firma önerisi ana
   //    motoru çağırıyor ve motorun "onaylat" dediği tek adayı KESİN gibi
   //    sunuyordu. İki kural mühürlendi: kanıt gücü yetmeyen aday (çapı ya da
