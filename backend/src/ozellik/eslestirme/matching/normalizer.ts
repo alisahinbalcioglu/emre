@@ -429,7 +429,9 @@ const MATERIAL_PATTERNS: { pattern: RegExp; tag: string; degilse?: RegExp }[] = 
   // FAZ C B18 (05.10): "PE / PVC Basınçlı Boru" plastik basinc borusudur —
   // malzeme YAZILIYSA bu cikarim yapilmaz (malzemesiz "Basınçlı Boru" celik kalir).
   { pattern: /basincli\s*boru/i, tag: 'celik', degilse: PLASTIK_YAZILI },
-  { pattern: /siyah.*boru|boru.*siyah/i, tag: 'celik' },
+  // P2-EK (05.10 olculdu): "Siyah PE100 Boru" / "Siyah HDPE Boru" (siyah PE
+  // boru yaygindir) celik+pe etiketi aliyordu — basincli boru kuralinin ikizi.
+  { pattern: /siyah.*boru|boru.*siyah/i, tag: 'celik', degilse: PLASTIK_YAZILI },
   // "PP KURESEL VANA" gibi kullanimlarda PP = polipropilen (M4: PP vana,
   // pirinc/celik vanayla AYNI aile degildir — cins filtresi ayirir)
   { pattern: /\bppr\b|\bpprc\b|\bpp-?r?\b|polipropilen/i, tag: 'ppr' },
@@ -516,15 +518,12 @@ export function extractODiameter(text: string): string | null {
   const match = norm.match(/[øφ⌀∅]\s*(\d+)\s*mm/) ?? norm.match(/[øφ⌀∅]\s*(\d{2,3})\b(?![.,]\d)/);
   if (!match) return null;
   const mm = parseInt(match[1], 10);
-  // mm → DN eslestirme
-  const mmToDn: Record<number, string> = {
-    15: 'dn15', 20: 'dn20', 25: 'dn25', 32: 'dn32',
-    40: 'dn40', 50: 'dn50', 65: 'dn65', 70: 'dn65',
-    80: 'dn80', 100: 'dn100', 110: 'dn100',
-    125: 'dn125', 150: 'dn150', 160: 'dn150',
-    200: 'dn200', 250: 'dn250', 300: 'dn300',
-  };
-  return mmToDn[mm] ?? `od-${mm}`;
+  // P2-EK (05.10 olculdu): burada AYRI bir mm→DN tablosu vardi ve MM_TO_DN'den
+  // eksikti — ayni boru iki yazimda FARKLI hafiza anahtari aliyordu ("Ø22 Boru"
+  // od-22 ↔ "22 mm Boru" dn15; 28/60/114 de). Tek tablo: MM_TO_DN. Yerel
+  // tablonun MM_TO_DN'de olmayan tek girdisi (70 → dn65, standart disi olcu)
+  // dustu: "Ø70" artik "70 mm" gibi od-70.
+  return MM_TO_DN[mm] ?? `od-${mm}`;
 }
 
 // ────────────────────────────────────────────
