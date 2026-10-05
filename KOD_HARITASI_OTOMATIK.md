@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 932
-Toplam satir: 256526
+Toplam satir: 256852
 Uc nokta: 239
 test:* scripti: 171
 
@@ -837,8 +837,8 @@ test:* scripti: 171
 | `frontend/ozellik/tablo/excel-grid/fitting.ts` | 184 |
 | `frontend/ozellik/tablo/excel-grid/gosterim-baglantisi.test.ts` | 274 |
 | `frontend/ozellik/tablo/excel-grid/grup-iskonto-girisi.test.ts` | 186 |
-| `frontend/ozellik/tablo/excel-grid/isaret.test.ts` | 294 |
-| `frontend/ozellik/tablo/excel-grid/isaret.ts` | 186 |
+| `frontend/ozellik/tablo/excel-grid/isaret.test.ts` | 497 |
+| `frontend/ozellik/tablo/excel-grid/isaret.ts` | 309 |
 | `frontend/ozellik/tablo/excel-grid/kar-yayilimi.test.ts` | 63 |
 | `frontend/ozellik/tablo/excel-grid/kopyala.test.ts` | 206 |
 | `frontend/ozellik/tablo/excel-grid/kopyala.ts` | 133 |
