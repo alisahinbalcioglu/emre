@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 943
-Toplam satir: 258495
+Toplam satir: 258505
 Uc nokta: 239
 test:* scripti: 173
 
@@ -228,7 +228,7 @@ test:* scripti: 173
 | `backend/src/ozellik/kutuphane/library/dto/create-manual-brand.dto.ts` | 59 |
 | `backend/src/ozellik/kutuphane/library/dto/import-price-list.dto.ts` | 10 |
 | `backend/src/ozellik/kutuphane/library/dto/update-library-item.dto.ts` | 27 |
-| `backend/src/ozellik/kutuphane/library/library-sheet-builder.ts` | 213 |
+| `backend/src/ozellik/kutuphane/library/library-sheet-builder.ts` | 217 |
 | `backend/src/ozellik/kutuphane/library/library.controller.ts` | 169 |
 | `backend/src/ozellik/kutuphane/library/library.module.ts` | 14 |
 | `backend/src/ozellik/kutuphane/library/library.service.ts` | 1075 |
@@ -427,7 +427,7 @@ test:* scripti: 173
 | `backend/test/kutuphane-liste-test.ts` | 237 |
 | `backend/test/labor-matching-test.ts` | 255 |
 | `backend/test/labor-sheet-test.ts` | 111 |
-| `backend/test/library-transfer-test.ts` | 96 |
+| `backend/test/library-transfer-test.ts` | 102 |
 | `backend/test/manifest-kapisi.ts` | 224 |
 | `backend/test/matching-regression.ts` | 282 |
 | `backend/test/matching-unit-test.ts` | 714 |
