@@ -13,6 +13,8 @@
  *        ayri, bloklamayan "Döviz kuru alınamadı" uyarisi; kalem TL karsiligi 0.
  *  Y4k  KONTROL: kur varken uyari yok.
  *  Y5 ★★ fiyatlanmamis YENI teklif sayfa yenilenince karisik KALIR (taslak kipi tasir).
+ *  Y13 ★★ gercek sayfada "$12 ↓ 400": ₺ fiyatli sayfaya ilk $ alt satirlari 2 → 4 yapar —
+ *        ikinci hucrenin acik editoru KESILMEMELI (400 kayboluyordu; F3'ten beri, F6b ile her gun).
  *  ⚠ Tohum yalniz ILK yuklemede: addInitScript yenilemede de kosar — yeniden tohumlasa
  *  ice aktarma taslagin yerine gecerdi (bilinen tuzak).
  */
@@ -161,4 +163,22 @@ test('Y5 ★★ fiyatlanmamis YENI teklif yenilemede karisik KALIR (taslak kipi 
   await expect(page.locator('[row-index="0"] [col-id="col1"]')).toHaveText(/Kelebek Vana DN65/, { timeout: 30_000 });
   await fiyatYaz(page, '$12');
   await expect(page.locator('[row-index="0"] [col-id="_matBirim"]')).toHaveText('$12,00');
+});
+
+test('Y13 ★★ "$12 ↓ 400": ilk $ alt satir sayisini degistirir — ikinci hucrenin editoru KESILMEZ', async ({ page }) => {
+  const UC = [
+    { ...SATIR, _matBirim: '100.0', _matToplam: '200.0' },
+    { ...SATIR, _rowIdx: 1, col0: '2', col1: 'Küresel Vana DN50' },
+    { ...SATIR, _rowIdx: 2, col0: '3', col1: 'Çekvalf DN40' },
+  ];
+  const ICE = { fileName: 'uc.xlsx', multiSheetData: { sheets: [sayfa({ rowData: UC })], brands: [] } };
+  await ac(page, { iceAktarma: ICE });
+  await page.locator('[row-index="1"] [col-id="_matBirim"]').dblclick();
+  await expect(page.locator('.ag-cell-inline-editing input')).toBeVisible();
+  await page.keyboard.type('$12');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.type('400', { delay: 40 });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[row-index="1"] [col-id="_matBirim"]')).toHaveText('$12,00');
+  await expect(page.locator('[row-index="2"] [col-id="_matBirim"]')).toHaveText('₺400,00');
 });
