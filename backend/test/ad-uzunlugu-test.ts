@@ -81,10 +81,13 @@ function basIsimReferans(text: string): string | null {
   return null;
 }
 
-/** Eski tanimla aileKelimeleri (bagimsiz referans cozucuyle, bellek ve suzgec yok). */
+/** aileKelimeleri tanimi (bagimsiz referans cozucuyle, bellek ve suzgec yok). 55 AD (05.10):
+ *  token birlesimi satirin ailesini cozmuyorsa aile kelimesi YOK (test:aile-kelimesi). */
 function referansAileKelimeleri(tokens: string[], familySlug: string | null): string[] {
   const out: string[] = [];
-  if (familySlug) for (const t of tokens) if (basIsimReferans(tokens.filter((x) => x !== t).join(' ')) !== familySlug) out.push(t);
+  if (familySlug && basIsimReferans(tokens.join(' ')) === familySlug) {
+    for (const t of tokens) if (basIsimReferans(tokens.filter((x) => x !== t).join(' ')) !== familySlug) out.push(t);
+  }
   return out;
 }
 
