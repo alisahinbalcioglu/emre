@@ -41,7 +41,7 @@ import {
 } from '../../cikti/quote-formats/format-engine';
 import { karisikDoldur } from '../../cikti/quote-formats/format-karisik';
 import { StandartSayfaBilgi, standartSayfaYaz } from './standart-cikti';
-import { BIRIM_SIRASI, BIRIM_SUTUNLARI, BirimKovasi, ParaBirimi, karisikKipMi } from './cikti-karisik';
+import { BIRIM_SIRASI, BIRIM_SUTUNLARI, BirimKovasi, ParaBirimi, dovizliTarafVarMi } from './cikti-karisik';
 import { paraBicimi } from './cikti-stil';
 import type { AntetBilgi } from '../../cikti/utils/antet';
 
@@ -396,7 +396,7 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   let yenidenHesaplanan = 0;
   // İCMAL (05.10): karisik teklifte liste sayfalari fiyatli yolun karisik
   // duzeninde (taraf kendi biriminde, gizli J/K); İCMAL sayfa × birim.
-  const karisik = karisikKipMi(g.sheetsArr ?? []);
+  const karisik = dovizliTarafVarMi(g.sheetsArr ?? []); // F6a: yalniz $/€ varken
   for (const sh of g.sheetsArr ?? []) {
     if (!sh || sh.isEmpty) continue;
     // EX8: standart tablo DOGRUDAN format workbook'una yazilir.

@@ -51,7 +51,7 @@ import { indeksUyarilari } from '@/lib/indeks-sagligi';
 import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/ozellik/teklif/dwg-teklif-sema';
 import { kalemUret } from '@/ozellik/teklif/teklif-kalem';
 import { restoreRematch } from '@/ozellik/teklif/restore-rematch';
-import { karisikKipMi, type TlKurlari } from '@/ozellik/fiyat/taraf-para-birimi';
+import { karisikKipMi, digerSayfalardaDovizVar, type TlKurlari } from '@/ozellik/fiyat/taraf-para-birimi';
 import { TASLAK_ANAHTARI, TASLAK_SURUMU, taslakUyarisiGerekirMi, TASLAK_YAZILAMADI_UYARISI, type TaslakYazimDurumu } from '@/ozellik/teklif/taslak';
 // Y4: doldurma ozeti tost metni tek yerde (isçilik "firmada yok").
 import { doldurmaOzetMetni } from '@/ozellik/teklif/doldurma-ozeti';
@@ -447,6 +447,14 @@ export default function NewQuotePage() {
   const karisikKip = useMemo(
     () => karisikKipMi(multiSheet?.sheets.map((s) => ({ rowData: liveRowDataBySheet[s.index] ?? s.rowData })) ?? []),
     [multiSheet, liveRowDataBySheet],
+  );
+  // F6a (karar K1): gorunum teklif genelinde tek duzen — BASKA sayfada $/€ varsa
+  // yalniz-₺ aktif sayfa da birim basina gorunur. Aktif sayfayi izgara canli olcer.
+  const digerSayfalardaDoviz = useMemo(
+    () => (karisikKip && multiSheet?.sheets // TL teklifte tarama yok (inceleme L6)
+      ? digerSayfalardaDovizVar(multiSheet.sheets, multiSheet.sheets[activeSheetIndex]?.index ?? -1, liveRowDataBySheet)
+      : false),
+    [karisikKip, multiSheet, activeSheetIndex, liveRowDataBySheet],
   );
   const [sheetMatchCounts, setSheetMatchCounts] = useState<Record<number, { total: number; matched: number }>>({});
   // PRD v3.0 Bolum B: "Otomatik varyant atama" toggle KALDIRILDI (global gate yok);
@@ -2197,6 +2205,7 @@ export default function NewQuotePage() {
           currencySymbol={paraSimgesi(gosterimCurrency)}
           conversionRate={conversionRate}
           paraBirimiKipi={karisikKip ? 'karisik' : 'tl'}
+          digerSayfalardaDoviz={digerSayfalardaDoviz}
           laborFirms={laborFirms}
           sheetDiscipline={(() => {
             const idx = activeSheetIndex;

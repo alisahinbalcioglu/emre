@@ -23,7 +23,7 @@ import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, 
 import { isaretStili, isaretTooltip, secimBekliyor, kutuphaneFiyatAyrisimi, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
-import { paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, paraIsaretiniAyikla, PARA_SEMBOLU, birimliToplamlar, fittingBirimli, cokluTutarMetni, netFiyatBiriminde, type ParaBirimi } from '@/ozellik/fiyat/taraf-para-birimi';
+import { paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, paraIsaretiniAyikla, PARA_SEMBOLU, birimliToplamlar, fittingBirimli, cokluTutarMetni, netFiyatBiriminde, dovizliSatirVarMi, type ParaBirimi } from '@/ozellik/fiyat/taraf-para-birimi';
 // FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
 import {
   FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
@@ -295,8 +295,15 @@ interface Props {
    * Varsayilan 'tl' — bugunku davranis BIREBIR (hicbir birim alani yazilmaz).
    * ⚠ F2 asamasi: sayfa toplamlari / KAR / fitting (F3) karisik kipi HENUZ
    * bilmiyor — uretim sayfasi bu bayragi F6'ya dek GECIRMEZ (yalniz harness).
+   * F6a (karar K1): karisik YAZIM kipidir; birim basina GORUNUM yalniz $/€
+   * taraf varken (bu sayfada canli ya da `digerSayfalardaDoviz`). Yalniz-₺
+   * karisik sayfa TL sayfasiyla ayni gorunur.
    */
   paraBirimiKipi?: 'tl' | 'karisik';
+  /** F6a: aktif sayfa DISINDA dovizli taraf var (sayfa `digerSayfalardaDovizVar` ile
+   *  hesaplar) — gorunum teklif genelinde tek duzen. Bu sayfanin dovizini izgara
+   *  kendi satirlarindan CANLI olcer. */
+  digerSayfalardaDoviz?: boolean;
   // library mode'da hangi fiyat alanini kullanir? (material veya labor)
   libraryPriceField?: 'materialUnitPriceField' | 'laborUnitPriceField';
   currencySymbol: string;
@@ -1851,9 +1858,25 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   onAutoVariantApplied,
   floorFields,
   paraBirimiKipi = 'tl',
+  digerSayfalardaDoviz = false,
 }, ref) {
   const gridRef = useRef<AgGridReact<ExcelRowData>>(null);
   const karisik = paraBirimiKipi === 'karisik';
+  // ── F6a (karar K1): BIRIM BASINA GORUNUM yalniz dovizli taraf varken ──────
+  // Karisik YAZIM kipidir; gorunum (alt satirlar birim basina, hucre kendi
+  // biriminde cevrimsiz, fitting "₺x + $y") $/€ taraf varken. Bu sayfanin
+  // dovizi REF'te: `updatePinnedBottom` her geciste olcer, degisince tum
+  // hucreleri tazeler. State OLSAYDI ilk $ fiyatinda izgara yeniden cizilir,
+  // acik duzenleyiciyi kapatabilirdi (KP17/KP29 ailesi).
+  // Tembel ilk deger (inceleme L3): `useRef(arg)` argumani HER render'da hesaplardi.
+  const buSayfadaDovizRef = useRef<boolean | null>(null);
+  if (buSayfadaDovizRef.current === null) buSayfadaDovizRef.current = karisik && dovizliSatirVarMi(data?.rowData ?? []);
+  const digerSayfaDovizRef = useRef<boolean>(digerSayfalardaDoviz);
+  digerSayfaDovizRef.current = digerSayfalardaDoviz;
+  const birimBasinaGorunum = useCallback(
+    () => karisik && (digerSayfaDovizRef.current || !!buSayfadaDovizRef.current),
+    [karisik],
+  );
 
   // V4: grup (baslik) → secilen varyant. Cell renderer'lar paylasir.
   const groupVariantsRef = useRef<GroupVariantMap>({});
@@ -3468,17 +3491,22 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     if (karisik) {
       const Rk = data.columnRoles as any;
       const toplamAlanlari = new Set([Rk.materialTotalField, Rk.laborTotalField, Rk.grandTotalField].filter(Boolean));
-      hucreler = hucreler.map((h) => (toplamAlanlari.has(h.alan) ? { ...h, deger: '' } : h));
+      // F6a (K1): YALNIZ dovizli parcasi olan fitting'in toplam hucreleri bosalir;
+      // yalniz-₺ kapsamda hucre TL degerini tasir (tl kipiyle ayni — ekran, kayit
+      // ve tek birimli Excel yolu onu okur).
+      const dovizliFitting = new Set<string>();
       for (const r of satirlar) {
         if (!r._fitting) continue;
         const node = api.getRowNode(String(r._rowIdx));
         if (!node?.data) continue;
         const yeni = fittingBirimli(node.data, satirlar, Rk);
+        if ([...yeni.mat, ...yeni.lab].some((x) => x.pb !== 'TRY')) dovizliFitting.add(String(r._rowIdx));
         if (JSON.stringify((node.data as any)._fittingBirimli ?? null) !== JSON.stringify(yeni)) {
           (node.data as any)._fittingBirimli = yeni;
           fittingYenilenen.push(node);
         }
       }
+      hucreler = hucreler.map((h) => (toplamAlanlari.has(h.alan) && dovizliFitting.has(String(h.rowIdx)) ? { ...h, deger: '' } : h));
     }
     fittingYaziyorRef.current = true;
     try {
@@ -3514,6 +3542,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     if (!gridRef.current?.api) return;
     // FITTING (02.09): once turetilen satirlar, sonra sayfa toplami — ayni gecis
     fittingSatirlariniYenile();
+    const satirlar: any[] = [];
+    gridRef.current.api.forEachNode((node) => { if (node.data) satirlar.push(node.data); });
+    // F6a: bu sayfanin dovizi CANLI — ilk $ fiyatiyla gorunum birim basina doner
+    // (ve son $ gidince geri). Degisince bicimlendiriciler tum hucrede yeniden kosar.
+    // ⚠ Toplam sutunsuz sayfanin erken donusunden ONCE (inceleme H1: olcum altta
+    // kaldiginda $ fiyat o sayfada ₺ bicimiyle gorunuyordu).
+    const dovizSimdi = karisik && dovizliSatirVarMi(satirlar);
+    if (dovizSimdi !== buSayfadaDovizRef.current) {
+      buSayfadaDovizRef.current = dovizSimdi;
+      gridRef.current.api.refreshCells({ force: true });
+    }
     const { grandUnitPriceField, grandTotalField, materialTotalField, laborTotalField, nameField } = data.columnRoles;
     // Dosyada grandTotalField yoksa bile, materialTotal + laborTotal toplamini goster
     if (!grandTotalField && !materialTotalField && !laborTotalField) {
@@ -3527,14 +3566,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // (30.07 kullanici karari: Icmal cift sayardi) fonksiyonun ICINDE yasar.
     // KAR SATIRI (ADIM 10) ayni cagrinin matKar/labKar/toplamKar alanlarina
     // binecek — kar icin ikinci bir hesap yeri ACILMAZ.
-    const satirlar: any[] = [];
-    gridRef.current.api.forEachNode((node) => { if (node.data) satirlar.push(node.data); });
     // ── COKLU PARA BIRIMI F3: KARISIK KIP — BIRIM BASINA ALT SATIRLAR ────────
     // Her birim kendi "GENEL TOPLAM ₺/$/€" ve "KÂR ₺/$/€" satirini alir; dolar
     // liraya EKLENMEZ. Degerler birimin kendisinde (cevrim yok — `_gosterim`
     // ham degeri tasir), sembol satirin `_currency`sinden (bicimlendirici zaten
     // okur). Hesap TEK yerden: `birimliToplamlar` (taraf-para-birimi.ts).
-    if (karisik) {
+    // F6a: yalniz dovizli taraf varken; yalniz-₺ karisik sayfa asagidaki TL dalini alir.
+    if (birimBasinaGorunum()) {
       const R = data.columnRoles as any;
       const genelAlanK = R.grandTotalField ?? R.grandUnitPriceField;
       const kovalar = birimliToplamlar(satirlar, R);
@@ -3617,11 +3655,20 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     } else {
       ozetSatirlariniYaz([pinnedRow]);
     }
-  }, [data.columnRoles, mode, fittingSatirlariniYenile, conversionRate, karisik, ozetSatirlariniYaz]);
+  }, [data.columnRoles, mode, fittingSatirlariniYenile, conversionRate, karisik, birimBasinaGorunum, ozetSatirlariniYaz]);
   updatePinnedBottomRef.current = updatePinnedBottom;
   // Kur yuklenince / birim degisince pinned YENIDEN kurulur: data.rowData efekti
   // kendi yayinimizda (sonYayinRef) erken doner, ona guvenilemez.
   React.useEffect(() => { updatePinnedBottomRef.current?.(); }, [conversionRate]);
+  // F6a: baska sayfanin dovizi degisince (sayfa gecisi, kayit acilisi) gorunum bu
+  // sayfada da degisir — hucreler ve alt satirlar yeniden kurulur. Ilk kurulumda
+  // gerek yok (ref zaten dogru; `updatePinnedBottom` veri yuklenince kosar).
+  const ilkDigerDoviz = useRef(true);
+  React.useEffect(() => {
+    if (ilkDigerDoviz.current) { ilkDigerDoviz.current = false; return; }
+    try { gridRef.current?.api?.refreshCells({ force: true }); } catch { /* grid gitti */ }
+    updatePinnedBottomRef.current?.();
+  }, [digerSayfalardaDoviz]);
 
   // ── FITTING (02.09): Ctrl+tik → kapsama ekle/cikar; rozet ✕ → bagi kaldir ──
   const fittingKapsamToggle = useCallback((hedef: ExcelRowData) => {
@@ -4237,7 +4284,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           // PARCALARDAN: ayni birimde tek tutar, farkli birimde iki tutar yan
           // yana (karar 1). Bu hucrelerin SAKLI degeri karisik kipte anlamsizdir
           // (F4 kayit/F5 cikti parcalardan okur). Pinned satirlar F3'te.
-          if (karisik && !params.node?.rowPinned && (params.data as any)?._isDataRow) {
+          // F6a: yalniz birim basina gorunumde; yalniz-₺ karisik sayfa asagidaki TL bicimini alir.
+          // Satirin KENDI dovizi de yeter (inceleme H1/L1): sayfa olcumu bir tik sonra
+          // kosar — o arada $ fiyat ₺ (ya da ekran USD'de cevrilmis) gorunmesin.
+          if ((birimBasinaGorunum() || (karisik && dovizliSatirVarMi([params.data as any])))
+            && !params.node?.rowPinned && (params.data as any)?._isDataRow) {
             const dK = params.data as any;
             const R = data.columnRoles;
             const alanK2 = params.colDef?.field as string;
@@ -4527,7 +4578,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       fittingDuzenlenebilir,
       // D9 + I1: bayrak burada OLMAZSA kolonlar yeniden kurulmaz ve salt okunur
       // cizim HIC uygulanmaz (sessiz olu kod).
-      seciciSaltOkunur, sayaciTazele, paraYazildi, karisik]);
+      seciciSaltOkunur, sayaciTazele, paraYazildi, karisik]); // birimBasinaGorunum kimligi yalniz karisik ile degisir
 
   // Ceviri kalemi gorunurlugu degisince ad kolonu yeniden cizilir: renderer
   // ref okuyor, AG Grid kendiliginden tazelemez (fitting tazelemesiyle ayni desen).
@@ -4816,7 +4867,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       // "$12"/"₺12"/"€12" yazimi birimi secer. Tazelemeden ONCE yazilir —
       // hucre yeni birimin sembolüyle cizilsin. tl kipinde birim yazilmaz.
       const elleMatPB = karisik ? elleBirimiAl(e, 'malzeme') : null;
-      if (elleMatPB) yazVeriHucre(e.node, '_matPB', elleMatPB);
+      // F6a (inceleme M1): fiyat silinince (0) taraf birimi de gider — F2 kurali
+      // "fiyat yoksa taraf birimi yok" (`fiyatiTemizle`, surukle-doldur ikizi). Yoksa
+      // bos $ tarafi yalniz-₺ teklifi birim basina gorunumde ve karisik Excel'de tutardi.
+      if (elleMatPB) yazVeriHucre(e.node, '_matPB', enteredPrice === 0 ? null : elleMatPB);
       // ⚠ `setDataValue` BURADA CALISMAZ: `_matStatus` bir grid KOLONU degil,
       // yalnizca satir verisinde yasayan bir isaret alani. AG Grid kolonu
       // bulamayinca cagriyi SESSIZCE dusurur (`return false`) — yani kirmizi
@@ -4857,7 +4911,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       yazVeriHucre(e.node, '_labNetPrice', net);
       row._labKurBilgi = null; // elle girilen TL fiyatin kaynak kuru yoktur
       const elleLabPB = karisik ? elleBirimiAl(e, 'iscilik') : null; // F2 ikizi (karar 3)
-      if (elleLabPB) yazVeriHucre(e.node, '_labPB', elleLabPB);
+      if (elleLabPB) yazVeriHucre(e.node, '_labPB', enteredPrice === 0 ? null : elleLabPB); // F6a M1 ikizi
       // IKIZ (bu turda eklendi): isaret temizleme MALZEMEDE vardi, iscilikte
       // HIC YAZILMAMISTI. `isaret.ts` iki dali da okuyor; firma surukleyip
       // doldurunca eslesmeyen satirlar kirmizi kaliyor ve kullanici fiyati

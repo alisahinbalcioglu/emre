@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, PARA_SEMBOLU, paraIsaretiniAyikla, netFiyatBiriminde,
+  dovizliTarafVarMi, dovizliSatirVarMi, digerSayfalardaDovizVar, karisikKipMi,
 } from './taraf-para-birimi';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam } from './pricing';
 
@@ -124,5 +125,57 @@ describe('netFiyatBiriminde — kutuphane neti satirin biriminde', () => {
   it('iskonto sinirlanir (0-100), ayni formul', () => {
     expect(netFiyatBiriminde(100, 150, 'USD')).toBe(0);
     expect(netFiyatBiriminde(100, -5, 'USD')).toBe(100);
+  });
+});
+
+// ══ F6a — GORUNUM KURALI: birim basina gorunum YALNIZ dovizli taraf varken ═══
+// Karar K1 (05.10, Emre'nin onerilen onayi): karisik = YAZIM yetenegi ($ liste
+// fiyati $ kalir); birim basina GORUNUM (ekran toplamlari, fiyatli Excel, İCMAL)
+// yalniz $/€ taraf varken. Yalniz-₺ karisik teklif TL teklifle bayt bayt ayni
+// gorunur — "yeni teklif karisik" ile "yalniz-TL teklifin ekrani ve Excel'i
+// ayni" ancak boyle birlikte tutar. IKIZ: arka uc `cikti-karisik.ts`
+// `dovizliTarafVarMi` (test:ex-karisik KR0 ayni girdilerle karsilastirir).
+describe('dovizliTarafVarMi — F6a gorunum kurali', () => {
+  it('$ ya da € tarafi olan satir → dovizli', () => {
+    expect(dovizliSatirVarMi([{ _matPB: 'USD' }])).toBe(true);
+    expect(dovizliSatirVarMi([{ _labPB: 'EUR' }])).toBe(true);
+    expect(dovizliTarafVarMi([{ rowData: [{ _matPB: 'TRY' }] }, { rowData: [{ _labPB: 'USD' }] }])).toBe(true);
+  });
+  it('yalniz ₺ birimli karisik satirlar DOVIZLI DEGIL (TL gibi gorunur) — yazim kipi yine karisik', () => {
+    const satirlar = [{ _matPB: 'TRY', _labPB: 'TRY' }, { _matPB: 'TRY' }];
+    expect(dovizliSatirVarMi(satirlar)).toBe(false);
+    expect(karisikKipMi([{ rowData: satirlar }])).toBe(true); // KONTROL: yazim kipi ayri kural
+  });
+  it('fitting birim parcalarinda doviz → dovizli; yalniz ₺ parca → degil', () => {
+    expect(dovizliSatirVarMi([{ _fitting: { kapsam: [1] }, _fittingBirimli: { mat: [{ pb: 'TRY', toplam: 5 }], lab: [{ pb: 'USD', toplam: 1 }] } }])).toBe(true);
+    expect(dovizliSatirVarMi([{ _fitting: { kapsam: [1] }, _fittingBirimli: { mat: [{ pb: 'TRY', toplam: 5 }], lab: [] } }])).toBe(false);
+  });
+  it('gecersiz birim, alan yok, bos/null sayfa → dovizli degil', () => {
+    expect(dovizliSatirVarMi([{ _matPB: 'GBP' }, { _matBirim: '5' }, null as any])).toBe(false);
+    expect(dovizliTarafVarMi([{ rowData: null }, { rowData: [] }])).toBe(false);
+    expect(dovizliTarafVarMi(null)).toBe(false);
+  });
+  it('bozuk fitting kaydi (dizi olmayan mat/lab) COKERTMEZ (inceleme L4)', () => {
+    expect(() => dovizliSatirVarMi([{ _fittingBirimli: { mat: 5, lab: { pb: 'USD' } } }])).not.toThrow();
+    expect(dovizliSatirVarMi([{ _fittingBirimli: { mat: 5, lab: { pb: 'USD' } } }])).toBe(false);
+  });
+});
+
+describe('digerSayfalardaDovizVar — aktif sayfa DISINDAKI sayfalar (sayfa izgaraya gecirir)', () => {
+  const sayfalar = [
+    { index: 0, rowData: [{ _matPB: 'TRY' }] },
+    { index: 1, rowData: [{ _matPB: 'USD' }] },
+    { index: 2, rowData: [{ _labPB: 'TRY' }] },
+  ];
+  it('aktif sayfanin kendi dovizi SAYILMAZ (izgara onu canli olcer)', () => {
+    expect(digerSayfalardaDovizVar(sayfalar, 1)).toBe(false);
+  });
+  it('baska sayfada $ varsa aktif yalniz-₺ sayfa da birim basina gorunur', () => {
+    expect(digerSayfalardaDovizVar(sayfalar, 0)).toBe(true);
+    expect(digerSayfalardaDovizVar(sayfalar, 2)).toBe(true);
+  });
+  it('canli satirlar kayittakinin YERINE gecer (duzenlenmis sayfa)', () => {
+    expect(digerSayfalardaDovizVar(sayfalar, 0, { 1: [{ _matPB: 'TRY' }] })).toBe(false);
+    expect(digerSayfalardaDovizVar(sayfalar, 1, { 2: [{ _labPB: 'EUR' }] })).toBe(true);
   });
 });

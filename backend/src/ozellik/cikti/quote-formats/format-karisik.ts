@@ -5,7 +5,7 @@
 // yalniz musteri formatindaki tek hucre yer tutucularinda, kendi formatimizda
 // para birimi basina satir". Dolar liraya EKLENMEZ, cevrim YAPILMAZ (karar 04.10).
 //
-// Teklif karisik kipteyse (`karisikKipMi` — satirlarda taraf birimi var)
+// Teklif karisik duzendeyse (`dovizliTarafVarMi` — $/€ taraf var; F6a'dan beri yalniz-₺ teklif tek birimli yolu alir)
 // "Teklif formatında aktar":
 //  · İCMAL satirlari sayfa × birim ("Mekanik ₺", "Mekanik $"): malzeme ve
 //    iscilik liste sayfasinin gizli J/K birim sutunlarina SUMIF ile bagli

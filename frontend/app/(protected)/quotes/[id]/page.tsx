@@ -26,7 +26,7 @@ import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/ozellik/tablo/excel-grid/SheetTabs';
 import type { ExcelGridData } from '@/ozellik/tablo/excel-grid/types';
 import { useCurrency, paraSimgesi } from '@/ozellik/fiyat/use-currency';
-import { karisikKipMi } from '@/ozellik/fiyat/taraf-para-birimi';
+import { karisikKipMi, digerSayfalardaDovizVar } from '@/ozellik/fiyat/taraf-para-birimi';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { adDisiplinTahmini } from '@/ozellik/tablo/disiplin';
 import type { Currency, LaborFirm } from '@/ortak/types/quotes';
@@ -267,6 +267,14 @@ export default function QuoteDetailPage() {
     [gorunenSayfalar],
   );
   const activeSheet = sheets[activeSheetIndex] ?? sheets[0];
+  // F6a IKIZI (quotes/new): baska sayfada $/€ varsa bu sayfa da birim basina — yalniz
+  // karisik teklifte ve hafizali (inceleme L6: her render'da tum sayfalari tariyordu)
+  const digerSayfaDovizDetay = useMemo(
+    () => (karisikKipMi(sheets)
+      ? digerSayfalardaDovizVar(sheets.map((s: any, i: number) => ({ index: i, rowData: s.rowData })), activeSheetIndex)
+      : false),
+    [sheets, activeSheetIndex],
+  );
 
   const gridData: ExcelGridData | null = useMemo(() => {
     if (!activeSheet) return null;
@@ -719,6 +727,7 @@ export default function QuoteDetailPage() {
               // COKLU PARA BIRIMI F4: kip KAYITTAN turetilir — karisik teklif
               // dovizli tarafi kendi biriminde, toplamlari birim basina gosterir.
               paraBirimiKipi={karisikKipMi(sheets) ? 'karisik' : 'tl'}
+              digerSayfalardaDoviz={digerSayfaDovizDetay}
               onBrandChange={SALT_OKUNUR_MARKA}
               // D9 + Y1 (30.09): BU SAYFA GORUNTULEME SAYFASIDIR. Marka ve
               // Isc. Firma hucreleri gercek acilir listeydi ve secim satir

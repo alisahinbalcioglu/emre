@@ -44,3 +44,15 @@ describe('F4 BAGLANTI — karisik kip sayfalara ve kayda ulasir', () => {
     expect(detay).toMatch(/paraBirimiKipi=\{karisikKipMi\(sheets\) \? 'karisik' : 'tl'\}/);
   });
 });
+
+// ── F6a (06.10): gorunum teklif genelinde tek duzen — baska sayfanin dovizi izgaraya ulasir ──
+describe('F6a BAGLANTI — baska sayfadaki doviz izgaraya gecer (iki sayfa)', () => {
+  it('★★ duzenleme sayfasi: aktif sayfanin KENDI index alaniyla, canli satirlarla hesaplar ve gecirir', () => {
+    expect(sayfa).toMatch(/karisikKip && multiSheet\?\.sheets[\s\S]{0,80}digerSayfalardaDovizVar\(multiSheet\.sheets, multiSheet\.sheets\[activeSheetIndex\]\?\.index \?\? -1, liveRowDataBySheet\)/);
+    expect(sayfa).toMatch(/digerSayfalardaDoviz=\{digerSayfalardaDoviz\}/);
+  });
+  it('★★ goruntuleme sayfasi (ikiz) da gecirir', () => {
+    expect(detay).toMatch(/karisikKipMi\(sheets\)[\s\S]{0,40}digerSayfalardaDovizVar\(sheets\.map\(\(s: any, i: number\) => \(\{ index: i, rowData: s\.rowData \}\)\), activeSheetIndex\)/);
+    expect(detay).toMatch(/digerSayfalardaDoviz=\{digerSayfaDovizDetay\}/);
+  });
+});

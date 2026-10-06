@@ -67,6 +67,9 @@ export default function GridTestPage() {
   // gerilemeyi olcer. Varsayilan: acik (mevcut tum e2e'ler etkilenmez).
   const [iscilikAcik, setIscilikAcik] = useState(true);
   const [paraKipi, setParaKipi] = useState<'tl' | 'karisik'>('tl');
+  const [digerDoviz, setDigerDoviz] = useState(false);
+  const [gorunumUSD, setGorunumUSD] = useState(false);
+  const [toplamsiz, setToplamsiz] = useState(false);
   // ⚠ GRID BAYRAKLAR OKUNDUKTAN SONRA MOUNT EDILIR. Ilk halinde grid ilk
   // render'da `iscilikAcik=true` goruyordu; `?iscilik=gec` boylece gercek
   // dunyanin TERSINI (once acik, sonra kapali, sonra acik) suruyordu ve
@@ -101,6 +104,12 @@ export default function GridTestPage() {
     // COKLU PARA BIRIMI F2 (05.10): `?para=karisik` → izgara karisik kipte
     // (taraf para birimi). Uretim sayfasi F6'ya dek GECIRMEZ.
     if (arama.get('para') === 'karisik') setParaKipi('karisik');
+    // F6a: `?digerDoviz=1` → baska sayfada doviz var (uretim sayfasi `digerSayfalardaDovizVar`la gecirir).
+    if (arama.get('digerDoviz') === '1') setDigerDoviz(true);
+    // F6a: `?gorunumUSD=1` → ekran USD (kur 40) — sayfanin TL/USD/EUR anahtari gibi
+    if (arama.get('gorunumUSD') === '1') setGorunumUSD(true);
+    // F6a (inceleme H1): `?toplamsiz=1` → sayfada TOPLAM sutunu rolu yok (yalniz birim fiyat)
+    if (arama.get('toplamsiz') === '1') setToplamsiz(true);
     // KUTUPHANE DOVIZ NETI (05.10): `?kutuphaneDoviz=1` → kutuphane modunda satir 2
     // USD ve liste 10,55 (₺ kurali $10,60 gosterirdi). Varsayilan KAPALI.
     if (arama.get('kutuphaneDoviz') === '1') setKutuphaneDoviz(true);
@@ -224,13 +233,14 @@ export default function GridTestPage() {
       ],
       columnRoles: {
         nameField: 'col1', noField: 'col0', quantityField: 'col2', unitField: 'col3',
-        materialUnitPriceField: '_matBirim', materialTotalField: '_matToplam', grandTotalField: '_toplam',
-        laborUnitPriceField: '_labBirim', laborTotalField: '_labToplam',
+        materialUnitPriceField: '_matBirim',
+        laborUnitPriceField: '_labBirim',
+        ...(toplamsiz ? {} : { materialTotalField: '_matToplam', grandTotalField: '_toplam', laborTotalField: '_labToplam' }),
       },
       brands: [],
       headerEndRow: 0,
     };
-  }, [mod, kutuphaneDoviz]);
+  }, [mod, kutuphaneDoviz, toplamsiz]);
 
   const onBrandChange = useCallback(async (rowIdx: number, brandId: string, materialName: string, opts?: { variantTags?: string[]; silent?: boolean }) => {
     cagriSayisi.current++;
@@ -434,6 +444,15 @@ export default function GridTestPage() {
           style={{ border: '1px solid #cbd5e1', borderRadius: 4, padding: '1px 6px', fontSize: 12 }}
         >
           moda geç
+        </button>{' '}
+        {/* F6a: sayfa gecisi taklidi — baska sayfanin dovizi izgara kurulduktan SONRA degisir */}
+        <button
+          type="button"
+          data-testid="diger-doviz"
+          onClick={() => setDigerDoviz((v) => !v)}
+          style={{ border: '1px solid #cbd5e1', borderRadius: 4, padding: '1px 6px', fontSize: 12 }}
+        >
+          diğer sayfa döviz: {digerDoviz ? 'var' : 'yok'}
         </button>
       </div>
       {gridHazir && <ExcelGrid
@@ -443,6 +462,7 @@ export default function GridTestPage() {
         onBrandChange={onBrandChange as any}
         seciciSaltOkunur={saltOkunurSecici}
         paraBirimiKipi={paraKipi}
+        digerSayfalardaDoviz={digerDoviz}
         autoVariantEnabled={autoVariant}
         onAutoVariantChange={onAutoVariantChange}
         onAutoVariantApplied={onAutoVariantApplied}
@@ -453,8 +473,8 @@ export default function GridTestPage() {
         onFirmaChange={onFirmaChange as any}
         mode={mod}
         libraryPriceField="materialUnitPriceField"
-        currencySymbol="₺"
-        conversionRate={1}
+        currencySymbol={gorunumUSD ? '$' : '₺'}
+        conversionRate={gorunumUSD ? 1 / 40 : 1}
         // ⚠ GERCEK TEKLIF GRIDIYLE HIZA (29.09): `quotes/new` bu prop'u veriyor
         // ve FITTING kapsam kipi buna baglidir (`fittingDuzenlenebilir =
         // enableStructureEdit`). Harness onu vermedigi icin fitting kipi
