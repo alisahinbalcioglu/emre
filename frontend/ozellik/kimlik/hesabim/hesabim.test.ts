@@ -362,9 +362,12 @@ describe('⭐ BAĞLANTI — Firma sekmesi', () => {
     expect(firma).toMatch(/\.get<Blob>\('\/firma\/logo', \{ responseType: 'blob' \}\)/);
     expect(firma).toContain('URL.revokeObjectURL(olusturulan)');
     expect(firma).not.toMatch(/src=\{`[^`]*\/firma\/logo/);
-    // Ölçüt: sunucu kimliği YALNIZ Authorization başlığından okuyor.
+    // Ölçüt: sunucu kimliği YALNIZ Authorization başlığından okuyor. 06.10
+    // (güvenlik HIGH-1): passport-jwt çıkarıcısı yerine ortak doğrusal
+    // `bearerToken` — kaynak yine yalnız başlık (çerez/sorgu/gövde yok).
     const strateji = kodu(oku('../backend/src/altyapi/auth/strategies/jwt.strategy.ts'));
-    expect(strateji).toContain('ExtractJwt.fromAuthHeaderAsBearerToken()');
+    expect(strateji).toMatch(/jwtFromRequest: \([^)]*\) => bearerToken\(req\?\.headers\?\.authorization\)/);
+    expect(strateji).not.toMatch(/ExtractJwt\.|fromUrlQueryParameter|fromBodyField|cookie/i);
   });
 
   it('⭐ antet ölçümü: görünen ad antete GİRMİYOR, telefon ve logo giriyor', () => {
