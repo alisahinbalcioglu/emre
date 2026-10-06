@@ -214,7 +214,7 @@ describe('B · deneme satırı ve metinler', () => {
   });
 
   it('bölüm kartı metinleri: bilinen bölümler + bilinmeyen için genel metin', () => {
-    expect(vitrinBolumBasligi('/library/mechanical-brands')).toBe('Kütüphanem paket seçince açılır');
+    expect(vitrinBolumBasligi('/library/mechanical-brands')).toBe('Firma kütüphanesi paket seçince açılır');
     expect(vitrinBolumBasligi('/labor-firms')).toBe('İşçilik paket seçince açılır');
     expect(vitrinBolumBasligi('/quotes/new')).toBe('Yeni teklif paket seçince açılır');
     expect(vitrinBolumBasligi('/quotes/abc')).toBe('Teklif ekranı paket seçince açılır');
@@ -226,7 +226,7 @@ describe('B · deneme satırı ve metinler', () => {
 describe('C · bölüm kartı çizilir', () => {
   it('⭐ başlık + açıklama + /abonelik + Ana Sayfa bağlantısı (çıkmaz sokak yok)', () => {
     const html = renderToStaticMarkup(createElement(VitrinBolumKarti, { yol: '/library/mechanical-brands' }));
-    expect(html).toContain('Kütüphanem paket seçince açılır');
+    expect(html).toContain('Firma kütüphanesi paket seçince açılır');
     expect(html).toContain(vitrinBolumu('/library/mechanical-brands').aciklama);
     expect(html).toContain('href="/abonelik"');
     expect(html).toContain('href="/dashboard"');
@@ -409,7 +409,7 @@ describe('E · havale bekleyen firma: pencere + kilitli kart paket seçtirmez', 
 
   it('⭐ kilitli kart: "dekontunuz onaylanınca açılır", /abonelik bağlantısı YOK, Ana Sayfa VAR', () => {
     const html = renderToStaticMarkup(createElement(VitrinBolumKarti, { yol: '/library/mechanical-brands', havale: true }));
-    expect(html).toContain('Kütüphanem dekontunuz onaylanınca açılır');
+    expect(html).toContain('Firma kütüphanesi dekontunuz onaylanınca açılır');
     expect(html).toContain(vitrinBolumu('/library/mechanical-brands').aciklama);
     expect(html).not.toContain('href="/abonelik"');
     expect(html).not.toContain('Paketleri gör');

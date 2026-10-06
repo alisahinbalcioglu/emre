@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Info, X } from 'lucide-react';
-import { izinlerAyniMi, type UyeIzni } from './izin-metinleri';
+import { izinSecimiGecerli, izinSirala, izinlerAyniMi, type UyeIzni } from './izin-metinleri';
 import { basHarfler, uyeSatirMetni } from './kisi-metinleri';
 import type { PanelHedefi } from './ekip-tipleri';
 import { IzinSecici } from './IzinSecici';
@@ -35,8 +35,15 @@ function kisiBilgisi(hedef: PanelHedefi, yonetici: boolean) {
 }
 
 /**
- * "Üye izinleri" paneli — sağdan açılır (~480 px; 23.09.2026 ikinci tasarım
- * · ekran 3). Aktif üyede ve bekleyen davette aynı dört anahtar.
+ * "Üye yetkileri" paneli — sağdan açılır (~480 px; 23.09.2026 ikinci tasarım
+ * · ekran 3). Aktif üyede ve bekleyen davette aynı yetki anahtarları.
+ * 06.10: ekrandaki dil "yetki" (kod adları `izin…` olarak KALDI).
+ *
+ * ⚠ EN AZ BİR YETKİ (06.10): hiç yetki seçili değilken "Kaydet"
+ *   `aria-disabled` (odaklanabilir, ipucunu anar; tık `kaydet`te erken döner)
+ *   ve "En az bir yetki seçin" yazar; sunucu da boş listeyi reddeder. Eski bir
+ *   anahtar (`excel`) seçim sayılmaz — kararı `izinSecimiGecerli` verir;
+ *   başlangıç da `izinSirala`dan geçer ki durum yalnız bilinen anahtar tutsun.
  *
  * ⚠ BEKLEYEN DAVETİN İZNİ: sunucuda ayrı bir "davet izni değiştir" ucu YOK
  *   (bu tur API'ye dokunulmadı). Tek yol `POST /firma/davetler { eposta,
@@ -64,11 +71,11 @@ export function UyeIzinPaneli({
   onRolDegistir: () => void;
   onKapat: () => void;
 }) {
-  const baslangic: UyeIzni[] =
-    hedef.tur === 'uye' ? [...(hedef.uye.izinler ?? [])] : [...(hedef.davet.izinler ?? [])];
+  const baslangic: UyeIzni[] = izinSirala(hedef.tur === 'uye' ? hedef.uye.izinler : hedef.davet.izinler);
   const [secili, setSecili] = useState<UyeIzni[]>(baslangic);
   const yonetici = hedef.tur === 'uye' && hedef.uye.firmaRol === 'sahip';
   const degisti = !izinlerAyniMi(secili, baslangic);
+  const izinSecildi = izinSecimiGecerli(secili);
 
   useEffect(() => {
     const tus = (e: KeyboardEvent) => {
@@ -79,7 +86,7 @@ export function UyeIzinPaneli({
   }, [islemde, onKapat]);
 
   async function kaydet() {
-    if (!degisti || islemde) return;
+    if (!degisti || !izinSecildi || islemde) return;
     const tamam = await onKaydet(secili);
     if (tamam) onKapat();
   }
@@ -104,7 +111,7 @@ export function UyeIzinPaneli({
       >
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#eef0f3] pl-6 pr-5">
           <h2 id="izin-baslik" className="text-[17px] font-semibold text-gray-900">
-            Üye izinleri
+            Üye yetkileri
           </h2>
           <button
             type="button"
@@ -142,18 +149,18 @@ export function UyeIzinPaneli({
             <div className="mb-2 text-[13px] font-semibold text-gray-900">Erişim</div>
             {yonetici ? (
               <p className="rounded-[10px] border border-[#e5e7eb] px-3.5 py-3 text-[13px] text-gray-600">
-                Yönetici tüm bölümlere erişir; izinleri kapatılamaz.
+                Yönetici tüm bölümlere erişir; yetkileri kapatılamaz.
               </p>
             ) : (
               <>
-                <IzinSecici secili={secili} onDegis={setSecili} pasif={islemde} />
+                <IzinSecici secili={secili} onDegis={setSecili} pasif={islemde} ipucuId="panel-izin-ipucu" />
                 <div className="mt-2.5 flex items-start gap-2 text-xs text-gray-500">
                   <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   {hedef.tur === 'uye' ? (
                     <span>Kaydettiğin anda geçerli olur.</span>
                   ) : (
                     <span>
-                      Kaydedince davet e-postası yeni izinlerle yeniden gider; önceki davet
+                      Kaydedince davet e-postası yeni yetkilerle yeniden gider; önceki davet
                       bağlantısı geçersiz olur.
                     </span>
                   )}
@@ -169,8 +176,8 @@ export function UyeIzinPaneli({
               </div>
               <div className="mt-1 text-xs leading-normal text-gray-500">
                 {yonetici
-                  ? 'Erişimi kayıtlı izinlerine göre daralır; ekibi ve aboneliği yönetemez.'
-                  : 'Tüm bölümlere erişir; ekibi, aboneliği ve izinleri yönetebilir.'}
+                  ? 'Erişimi kayıtlı yetkilerine göre daralır; ekibi ve aboneliği yönetemez.'
+                  : 'Tüm bölümlere erişir; ekibi, aboneliği ve yetkileri yönetebilir.'}
               </div>
               <button
                 type="button"
@@ -196,11 +203,16 @@ export function UyeIzinPaneli({
             {yonetici ? 'Kapat' : 'Vazgeç'}
           </button>
           {!yonetici && (
+            // Yetki seçilmemişken `disabled` DEĞİL `aria-disabled`: düğme
+            // odaklanabilir kalır ve ipucunu anar; tık `kaydet`te erken döner.
+            // İstek sürerken ya da değişiklik yokken gerçekten pasif.
             <button
               type="button"
               onClick={() => void kaydet()}
               disabled={islemde || !degisti}
-              className="inline-flex h-10 items-center rounded-lg bg-[#0f172a] px-[18px] text-sm font-semibold text-white transition-colors hover:bg-[#1e293b] disabled:opacity-50"
+              aria-disabled={izinSecildi ? undefined : true}
+              aria-describedby={izinSecildi ? undefined : 'panel-izin-ipucu'}
+              className="inline-flex h-10 items-center rounded-lg bg-[#0f172a] px-[18px] text-sm font-semibold text-white transition-colors hover:bg-[#1e293b] disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:bg-[#0f172a]"
             >
               Kaydet
             </button>

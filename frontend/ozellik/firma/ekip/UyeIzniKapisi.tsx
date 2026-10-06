@@ -13,7 +13,7 @@ import { useFirmaYoneticisi } from './useFirmaYoneticisi';
 /**
  * 23.09.2026 — UYE IZNI KAPISI (kabukta, `ErisimKapisi`nin ICINDE).
  *
- * Izni kapali alt kullanici `/library`, `/labor-firms` ya da `/dwg-workspace`e
+ * Izni kapali alt kullanici `/library`, `/labor-firms`, `/quote-formats` ya da `/dwg-workspace`e
  * girerse sayfa icerigi yerine "<Bölüm>'e erişimin yok" sayfasi cizilir
  * (ikinci tasarim · ekran 5); sayfa hic mount olmaz, yani 403 alacak istekler
  * YOLA CIKMAZ (kirmizi bildirim olmaz).

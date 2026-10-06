@@ -29,7 +29,8 @@ import {
 const EKLEME_SATIR_KURALI: DiziKurali = { alan: 'rows', tavan: KUTUPHANE_EKLEME_SATIR_TAVANI, ogeAdi: 'satır' };
 
 /**
- * 23.09.2026 — `@UyeIzniGerekli('kutuphane')` SINIF DUZEYINDE: bu
+ * 23.09.2026 (06.10: eski `kutuphane` izni artik `fiyat` yetkisi) —
+ * `@UyeIzniGerekli('fiyat')` SINIF DUZEYINDE: bu
  * denetleyicinin HER ucu firmanin kendi fiyat kutuphanesidir (marka, birim
  * fiyat, iskonto, liste). Kapali hesap izni (`@KapaliHesapIzinli`) gibi uc uc
  * verilmesi gerekmez — burada okuma da yazma da AYNI izne baglidir. Kapiyi
@@ -37,7 +38,7 @@ const EKLEME_SATIR_KURALI: DiziKurali = { alan: 'rows', tavan: KUTUPHANE_EKLEME_
  */
 @Controller('library')
 @UseGuards(JwtAuthGuard, ErisimGuard)
-@UyeIzniGerekli('kutuphane')
+@UyeIzniGerekli('fiyat')
 export class LibraryController {
   constructor(private libraryService: LibraryService) {}
 

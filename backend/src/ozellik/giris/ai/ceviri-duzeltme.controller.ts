@@ -39,7 +39,7 @@ export class CeviriDuzeltmeController {
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { ttl: 60_000, limit: 60 } })
   listele(@CurrentUser() user: unknown, @Query() sorgu: CeviriDuzeltmeSorgusuDto) {
-    // 23.09: teklif OKUYAN uc → `teklifKimligiCoz` (Son teklifler izni kapsami).
+    // 23.09: teklif OKUYAN uc → `teklifKimligiCoz` (`fiyat` yetkisi kapsami).
     return this.duzeltme.listele(teklifKimligiCoz(user), sorgu.quoteId, sorgu.hedefDil ?? 'en');
   }
 

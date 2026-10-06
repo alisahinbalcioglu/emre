@@ -1,22 +1,25 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  23.09.2026 — UYE IZINLERI (saf, DB YOK) · "Ekip & Izinler" ekrani
+ *  UYE YETKILERI (saf, DB YOK) · "Ekip & Izinler" ekrani
+ *  23.09.2026 dort izin · 06.10.2026 IKI YETKIYE indi (ekip/yetki plani B)
  * ═══════════════════════════════════════════════════════════════════════════
  *
- *  Firma sahibi, alt kullanicinin (uye) hangi modullere girebilecegini secer.
+ *  Firma sahibi, alt kullanicinin (uye) hangi islere girebilecegini secer.
  *  Kural TEK YERDE durur: kapi (`erisim.guard.ts`), kimlik (`kimlik.ts`
  *  teklif kapsami), `/auth/me` ve ekip listesi bu dosyayi okur. Ikiz yazilsaydi
  *  ekran "kapali" der, uc acik kalirdi — bu depoda olculmus hata sinifi.
  *
- *  ── DORT IZIN ────────────────────────────────────────────────────────────
- *   excel           → Excel kesif yukleme (`Yetenek.EXCEL_YUKLE` uclari)
- *   dwg             → DWG/DXF metraj (`Yetenek.DWG_YUKLE` uclari)
- *   firmaTeklifleri → firmanin TUM teklifleri ve tutarlari. KAPALIYSA kisi
- *                     YALNIZ KENDI hazirladigi teklifleri gorur (Emre karari
- *                     23.09: "Yalniz kendi teklifleri"). Liste, pano karti,
- *                     teklif ekrani, cikti ve ceviri AYNI kosuldan gecer.
- *   kutuphane       → Kutuphanem (marka + birim fiyat + iskonto), iscilik
- *                     firmalari ve kutuphaneden fiyat ESLESTIRME.
+ *  ── IKI YETKI (Emre 30.09 plani; goc 20261006100000_uye_yetkileri_fiyat_dwg)
+ *   fiyat → Excel kesif yukleme (`Yetenek.EXCEL_YUKLE` uclari), fiyat
+ *           ESLESTIRME, Firma kutuphanesi (marka + birim fiyat + iskonto),
+ *           iscilik firmalari, teklif formatlari ve firmanin TUM teklifleri.
+ *           Eski `excel` + `kutuphane` + `firmaTeklifleri` birlesimi.
+ *           KAPALIYSA kisi YALNIZ KENDI hazirladigi teklifleri gorur (Emre
+ *           karari 23.09: "Yalniz kendi teklifleri"). Liste, pano karti,
+ *           teklif ekrani, cikti ve ceviri AYNI kosuldan gecer.
+ *   dwg   → DWG/DXF metraj (`Yetenek.DWG_YUKLE` uclari).
+ *  Goc: eski `excel` → `fiyat`, `dwg` → `dwg`; `firmaTeklifleri` ve
+ *  `kutuphane` duser (Emre karari 7: Excel acik uye fiyat gormeye baslar).
  *
  *  ── SAHIP HER ZAMAN TAM YETKILI ─────────────────────────────────────────
  *  `firmaRol === 'sahip'` icin saklanan liste OKUNMAZ. Sahibi kendi
@@ -34,24 +37,18 @@
  */
 
 /** Semadaki `UyeIzni` enum'unun dizge karsiligi. */
-export type UyeIzni = 'excel' | 'dwg' | 'firmaTeklifleri' | 'kutuphane';
+export type UyeIzni = 'fiyat' | 'dwg';
 
 /**
  * KANONIK SIRA — ekran sutunlari, denetim kaydi ve DB'ye yazilan dizi bu
  * sirayla. Sira sabit olmazsa ayni izin kumesi denetimde "degisti" gorunurdu.
  */
-export const UYE_IZINLERI: readonly UyeIzni[] = [
-  'excel',
-  'dwg',
-  'firmaTeklifleri',
-  'kutuphane',
-];
+export const UYE_IZINLERI: readonly UyeIzni[] = ['fiyat', 'dwg'];
 
 /**
- * Yeni uyenin izni ACIKCA verilmediginde (eski istemci, kurumsal girisle
- * otomatik katilim) kullanilan kume: HEPSI. Bugunku davranis budur — izin
- * ozelligi gelmeden once her uye her seyi goruyordu; varsayilani daraltmak
- * dunku bir davetin yarin "neden goremiyorum" demesi olurdu.
+ * Yeni uyenin yetkisi ACIKCA verilmediginde (eski istemci, kurumsal girisle
+ * davetsiz otomatik katilim) kullanilan kume: HEPSI. Davetli katilim
+ * davetteki secimi tasir; davet ve yetki degistirme EN AZ BIR yetki ister.
  * ⚠ Semadaki `@default([...])` ve migration'daki `DEFAULT ARRAY[...]` ile
  * BIREBIR ayni olmak zorunda — kapi uc yeri karsilastirir.
  */
@@ -77,19 +74,22 @@ export function izinVarMi(u: IzinKimligi | null | undefined, izin: UyeIzni): boo
   return Array.isArray(u.izinler) && u.izinler.includes(izin);
 }
 
-/** Kisinin ETKIN izinleri (sahip → dordu), kanonik sirada. */
+/** Kisinin ETKIN izinleri (sahip → ikisi), kanonik sirada. */
 export function etkinIzinler(u: IzinKimligi | null | undefined): UyeIzni[] {
   return UYE_IZINLERI.filter((i) => izinVarMi(u, i));
 }
 
 /**
  * GIRDI SUZGECI — istemciden gelen diziyi kanonik kumeye cevirir.
- * Gecersiz (dizi degil / bilinmeyen deger) → `null`; cagiran 400 doner.
- * Tekrarlar atilir, sira kanoniklesir.
+ * Gecersiz (dizi degil / bilinmeyen deger — eski izin adlari DAHIL) → `null`;
+ * cagiran 400 doner. Tekrarlar atilir, sira kanoniklesir.
  *
  * ⚠ DTO'daki `@IsIn` birinci katmandir; bu fonksiyon servis icinde IKINCI
  * katmandir — DTO'yu atlayan bir yol (dogrudan servis cagrisi, gelecekteki
  * baska bir uc) bilinmeyen bir izni DB'ye yazamasin.
+ * ⚠ BOS DIZI burada GECERLIDIR (okuma yolu: bozuk kayit → `[]`, fail-closed).
+ * "En az bir yetki" kurali YAZMA yollarinda ayrica uygulanir
+ * (`yetkiSecimiGecerli`).
  */
 export function izinleriSuz(ham: unknown): UyeIzni[] | null {
   if (!Array.isArray(ham)) return null;
@@ -100,9 +100,17 @@ export function izinleriSuz(ham: unknown): UyeIzni[] | null {
 }
 
 /**
+ * YAZMA KURALI (davet + yetki degistirme): secim gecerli VE en az bir yetki.
+ * Yetkisiz uye hicbir isi yapamazdi; koltugu bos yere doldururdu.
+ */
+export function yetkiSecimiGecerli(secim: readonly UyeIzni[] | null): secim is UyeIzni[] {
+  return Array.isArray(secim) && secim.length > 0;
+}
+
+/**
  * YETENEK → IZIN esligi. Excel ve DWG yuklemesi zaten `@GerekliYetenek` ile
  * isaretli; izin kapisi bu isareti OKUR, ayri bir dekorator istemez. Boylece
- * yarin `EXCEL_YUKLE` tasiyan yeni bir uc eklendiginde izni de kendiliginden
+ * yarin `EXCEL_YUKLE` tasiyan yeni bir uc eklendiginde yetkisi de kendiliginden
  * uygulanir — unutmanin yonu guvenli taraftir.
  *
  * ⚠ Anahtarlar `Yetenek` enum'unun DIZGE degerleridir (bu dosya Nest
@@ -110,7 +118,7 @@ export function izinleriSuz(ham: unknown): UyeIzni[] | null {
  * anahtarin enum degerleriyle birebir ayni kaldigini olcer.
  */
 export const YETENEK_IZNI: Readonly<Record<string, UyeIzni>> = {
-  'excel.yukle': 'excel',
+  'excel.yukle': 'fiyat',
   'dwg.yukle': 'dwg',
 };
 
@@ -126,20 +134,19 @@ export function yeteneklerinIzinleri(yetenekler: readonly string[] | null | unde
 
 /**
  * TEKLIF KAPSAMI — `firma`: firmanin tum teklifleri · `kendi`: yalniz yazari
- * oldugu teklifler (`Quote.userId`). Karar `firmaTeklifleri` izninden gelir.
+ * oldugu teklifler (`Quote.userId`). Karar `fiyat` yetkisinden gelir.
  */
 export type TeklifKapsami = 'firma' | 'kendi';
 
 export function teklifKapsamiCoz(u: IzinKimligi | null | undefined): TeklifKapsami {
-  return izinVarMi(u, 'firmaTeklifleri') ? 'firma' : 'kendi';
+  return izinVarMi(u, 'fiyat') ? 'firma' : 'kendi';
 }
 
 /** Kapinin 403 govdesindeki kisa ad — ekranda "X izniniz yok" cumlesi. */
 export const IZIN_ADI: Readonly<Record<UyeIzni, string>> = {
-  excel: 'Excel keşif',
-  dwg: 'DWG proje',
-  firmaTeklifleri: 'Son teklifler ve tutarlar',
-  kutuphane: 'Kütüphanem',
+  fiyat: 'Fiyatlandırma ve teklifler',
+  // Tipografik kesme isareti (’): on yuz metinleriyle ayni (duz `'` React'te kacislanir).
+  dwg: 'DWG’den metraj',
 };
 
 /**
@@ -156,12 +163,12 @@ export function uyeIzniYokGovdesi(izin: UyeIzni): {
     kod: 'UYE_IZNI_YOK',
     izin,
     mesaj:
-      `Bu bölüm için izniniz yok (${IZIN_ADI[izin]}). ` +
-      'İzinleri firmanızın ana kullanıcısı Ekip sayfasından açabilir.',
+      `Bu bölüm için yetkiniz yok (${IZIN_ADI[izin]}). ` +
+      'Yetkileri firmanızın ana kullanıcısı Ekip sayfasından açabilir.',
   };
 }
 
-/** Denetim kaydi icin kararli metin: "excel,dwg" (bos kume "-"). */
+/** Denetim kaydi icin kararli metin: "fiyat,dwg" (bos kume "-"). */
 export function izinMetni(izinler: readonly UyeIzni[]): string {
   return izinler.length ? izinler.join(',') : '-';
 }

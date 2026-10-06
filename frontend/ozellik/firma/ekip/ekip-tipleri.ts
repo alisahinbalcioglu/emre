@@ -17,7 +17,8 @@ export type Uye = {
   /** FAZ 7 F2b: uyenin iki adimli girisi acik mi (sunucu hesaplar). */
   mfaAcik?: boolean;
   /**
-   * 23.09: ETKIN izinler (sahip → dordu). `null` = bu satirin izinleri SANA
+   * 23.09: ETKIN izinler (sahip → hepsi; 06.10'dan beri iki yetki: fiyat,
+   * dwg). `null` = bu satirin izinleri SANA
    * gosterilmiyor (uye yalniz kendi satirini ve ana kullaniciyi gorur). Alan
    * hic yoksa (eski sunucu) `undefined`.
    */
