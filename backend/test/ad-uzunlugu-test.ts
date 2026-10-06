@@ -23,7 +23,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseLine, resolveLineFamily } from '../src/ozellik/eslestirme/matching/index/line-parser';
-import { AILE_COZUCU_OLCUM, resolveFamily } from '../src/ozellik/eslestirme/matching/index/product-index';
+import { AILE_COZUCU_OLCUM, resolveFamily, tokenize } from '../src/ozellik/eslestirme/matching/index/product-index';
 import { resolveAdDetayli, resolveAdDetayliFiltresiz, sozlukKapsayan, AD_COZUCU_OLCUM } from '../src/ozellik/eslestirme/matching/ad-resolver';
 import { AD_SOZLUGU, AD_ZENGINLESTIRME } from '../src/ozellik/eslestirme/matching/ad-cins-sozlugu';
 import { normalizeText, extractMaterialTypeDetayli } from '../src/ozellik/eslestirme/matching/normalizer';
@@ -130,6 +130,16 @@ function referansAileKelimeleri(tokens: string[], familySlug: string | null): st
   return out;
 }
 
+/** UZUN SARTNAME (P2, 06.10 — test:sartname-ilk-satir): cok satirli metinde aile kelimeleri
+ *  ailenin GELDIGI metnin belirtecleriyle sinirlidir. Referans kesisimi BAGIMSIZ kurar:
+ *  parantezsiz ilk satir tek basina satirin ailesine cozuluyorsa kume = ilk satirin belirtecleri. */
+function kaynakKumesi(metin: string, tokens: string[], aile: string): string[] {
+  const satirlar = metin.replace(/\([^)]*\)/g, ' ').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  if (satirlar.length < 2 || basIsimReferans(satirlar[0]) !== aile) return tokens;
+  const ilk = new Set(tokenize(satirlar[0]));
+  return tokens.filter((t) => ilk.has(t));
+}
+
 /** IS SAYACI icin: uretim cozucusu belleksiz (eski dongunun yaptigi is). */
 function belleksizDongu(tokens: string[], familySlug: string | null): void {
   if (familySlug) for (const t of tokens) resolveLineFamily(tokens.filter((x) => x !== t).join(' '));
@@ -158,13 +168,30 @@ async function main() {
   // ══ H1 · aileKelimeleri: bellekli == belleksiz referans (tum fikstür metinleri) ══
   console.warn = () => {};
   let karsilastirilan = 0; let uzunKarsilastirilan = 0; const farklar: string[] = [];
+  const kesisimli: string[] = []; // ilk satir kesisimi TUM belirteclerden farkli sonuc veren metinler
   for (const a of metinler) {
     const q = parseLine(a, null);
     if (!q.familySlug || q.tokens.length < 2) continue;
     karsilastirilan++;
     if (a.length > 1000) uzunKarsilastirilan++;
-    const ref = referansAileKelimeleri(q.tokens, q.familySlug);
+    const ref = referansAileKelimeleri(kaynakKumesi(a, q.tokens, q.familySlug), q.familySlug);
+    if (js(ref) !== js(referansAileKelimeleri(q.tokens, q.familySlug))) kesisimli.push(`${a.split(/\r?\n/)[0].trim()} → ${js(ref)}`);
     if (js(ref) !== js(q.aileKelimeleri) && farklar.length < 5) farklar.push(`${a.length} kar: ${js(q.aileKelimeleri).slice(0, 80)} ≠ ${js(ref).slice(0, 80)}`);
+  }
+  if (process.env.H1_DOK) kesisimli.forEach((x) => log(`  KESISIM: ${x}`));
+  check(`FIXTURE KANITI: H1 kesisim dali kosuyor — ${kesisimli.length} cok satirli metinde ilk satir kumesi sonucu degistiriyor (≥ 5)`, kesisimli.length >= 5, `${kesisimli.length}`);
+  // BILINCLI FARK (P2 uzun sartname, 06.10): aile AYNI, aile kelimesi ilk satirdan — eski tanim (tum
+  // belirtecler) bu metinlerde bos ya da baska kelime veriyordu. Adlariyla sabit:
+  const bilincli: Array<[string, string[]]> = [
+    ['SİNYALİZASYON KABLOSU', ['kablosu']], ['DİKDÖRTGEN KANAL İZOLASYONU', ['izolasyonu']],
+    ['AG PANOLARI', ['panolari']], ['ALÇAK GERİLİM KABLOLARI', ['kablolari']],
+  ];
+  for (const [ilkSatir, beklenen] of bilincli) {
+    const hedefler = metinler.filter((a) => a.split(/\r?\n/).length >= 2 && a.split(/\r?\n/)[0].trim() === ilkSatir);
+    const sonuc = hedefler.map((a) => { const q = parseLine(a, null); return { ak: q.aileKelimeleri, eski: referansAileKelimeleri(q.tokens, q.familySlug) }; });
+    const degisen = sonuc.filter((x) => js(x.ak) !== js(x.eski));
+    check(`H1b BILINCLI "${ilkSatir}" (${hedefler.length} metin, ${degisen.length} degisen): degisenlerin aile kelimesi ${js(beklenen)}`,
+      degisen.length >= 1 && degisen.every((x) => js(x.ak) === js(beklenen)), js(sonuc));
   }
   console.warn = warn;
   check(`FIXTURE KANITI: ${karsilastirilan} aileli ad karsilastirildi (≥ 500), ${uzunKarsilastirilan} tanesi 1.000 karakterden uzun (≥ 1)`, karsilastirilan >= 500 && uzunKarsilastirilan >= 1);
