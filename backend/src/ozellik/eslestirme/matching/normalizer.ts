@@ -381,6 +381,9 @@ const TYPE_PATTERNS: { pattern: RegExp; type: string }[] = [
   { pattern: /kazan/i, type: 'kazan' },
   { pattern: /dogalgaz|dogal.?gaz/i, type: 'dogalgaz-boru' },
 ];
+// Global ikizler — `extractMaterialTypeDetayli` kabul suzgeciyle TUM eslesmeleri
+// gezer. Bos eslesme ureten desen YOK: `lastIndex` her eslesmede ilerler.
+const TYPE_PATTERNS_TUMU = TYPE_PATTERNS.map(({ pattern, type }) => ({ rx: new RegExp(pattern.source, `${pattern.flags}g`), type }));
 
 export function extractMaterialType(text: string): string {
   const normalized = normalizeText(text);
@@ -405,12 +408,26 @@ export function extractMaterialType(text: string): string {
  */
 export function extractMaterialTypeDetayli(
   text: string,
+  // SIFAT EKI (6a, 06.10): verilirse REDDEDILEN eslesme atlanir, ayni desenin
+  // sonraki eslesmesi ve sonraki desenler denenir (aile cozucu "Hortumlu"yu
+  // bas isim saymasin diye). Verilmezse davranis aynen eskisi.
+  kabul?: (index: number, uzunluk: number, metin: string) => boolean,
 ): { type: string; index: number; length: number } | null {
   const normalized = normalizeText(text);
-  for (const { pattern, type } of TYPE_PATTERNS) {
-    // Global olmayan regex'lerde exec state tasimaz — guvenle kullanilir.
-    const m = pattern.exec(normalized);
-    if (m) return { type, index: m.index, length: m[0].length };
+  if (!kabul) {
+    for (const { pattern, type } of TYPE_PATTERNS) {
+      // Global olmayan regex'lerde exec state tasimaz — guvenle kullanilir.
+      const m = pattern.exec(normalized);
+      if (m) return { type, index: m.index, length: m[0].length };
+    }
+    return null;
+  }
+  for (const { rx, type } of TYPE_PATTERNS_TUMU) {
+    rx.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = rx.exec(normalized)) !== null) {
+      if (kabul(m.index, m[0].length, normalized)) return { type, index: m.index, length: m[0].length };
+    }
   }
   return null;
 }
