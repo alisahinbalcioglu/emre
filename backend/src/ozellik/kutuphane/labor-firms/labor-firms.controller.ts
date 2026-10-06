@@ -14,6 +14,16 @@ import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { TierGuard, RequireTier } from '../../../altyapi/auth/guards/tier.guard';
 import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
+import {
+  DiziTavani,
+  ISCILIK_SATIR_TAVANI,
+  ISCILIK_SAYFA_TAVANI,
+  sayfaSatirToplami,
+  type DiziKurali,
+} from '../../../altyapi/http/dizi-tavani';
+
+/** 06.10: satir basina sorgu atan iscilik uclarinin ortak kurali (dizi-tavani.ts). */
+const iscilikSatirKurali = (alan: string): DiziKurali => ({ alan, tavan: ISCILIK_SATIR_TAVANI, ogeAdi: 'satır' });
 
 /**
  * 23.09.2026 — iscilik firmalari ve fiyat listeleri Kutuphanem'in IKIZIDIR
@@ -115,6 +125,7 @@ export class LaborFirmsController {
   @Post('price-items/bulk-update')
   @RequireTier('pro')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
+  @DiziTavani(iscilikSatirKurali('items'))
   bulkUpdatePriceItems(
     @CurrentUser() user: any,
     @Body() body: { items: Array<{ id: string; unitPrice?: number; discountRate?: number; unit?: string; laborItemName?: string }> },
@@ -142,6 +153,7 @@ export class LaborFirmsController {
   @Post('price-lists/:listId/save-sheets')
   @RequireTier('pro')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
+  @DiziTavani(iscilikSatirKurali('dirtyRows'))
   savePriceListSheets(
     @CurrentUser() user: any,
     @Param('listId') listId: string,
@@ -163,6 +175,7 @@ export class LaborFirmsController {
   @Post(':id/save-bulk')
   @RequireTier('pro')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
+  @DiziTavani(iscilikSatirKurali('items'))
   saveBulkPrices(
     @CurrentUser() user: any,
     @Param('id') firmaId: string,
@@ -197,6 +210,11 @@ export class LaborFirmsController {
   @Post(':id/save-from-sheets')
   @RequireTier('pro')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
+  // Her sayfa ayri fiyat listesi olur: sayfa sayisi VE sayfalarin TOPLAM satiri.
+  @DiziTavani(
+    { alan: 'sheets', tavan: ISCILIK_SAYFA_TAVANI, ogeAdi: 'sayfa' },
+    { ...iscilikSatirKurali('sheets'), say: (g) => sayfaSatirToplami(g?.sheets) },
+  )
   saveFromSheets(
     @CurrentUser() user: any,
     @Param('id') firmaId: string,

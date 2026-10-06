@@ -1,5 +1,8 @@
 import { Transform } from 'class-transformer';
-import { IsArray, IsNotEmpty, IsOptional, IsString, ValidateBy, buildMessage, type ValidationOptions } from 'class-validator';
+import {
+  ArrayMaxSize, IsArray, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateBy, buildMessage, type ValidationOptions,
+} from 'class-validator';
+import { ALIAS_TUR_TAVANI } from '../../../../altyapi/http/dizi-tavani';
 
 /**
  * ESLESTIRME UCLARININ GOVDESI (C11, Paket 4a, 01.10.2026).
@@ -11,8 +14,9 @@ import { IsArray, IsNotEmpty, IsOptional, IsString, ValidateBy, buildMessage, ty
  * `../../labor-matching/dto/iscilik-eslestirme-govdesi.dto.ts`.
  *
  * ⚠ `whitelist: true` DEKORATORSUZ alani SESSIZCE siler: her alan dekoratorlu.
- * Boyut tavani YOK: on yuz bir markanin TUM benzersiz adlarini tek istekte
- * gonderir (quotes/new) — olculmeden konan tavan buyuk teklifi kirardi.
+ * Boyut tavani DTO'da DEGIL, uctaki `@DiziTavani`da (06.10, olculdu: on yuz bir
+ * markanin TUM benzersiz adlarini tek istekte gonderir, canlida en cok 682 ad;
+ * tavan 20.000) — pipe'tan ONCE keser, bkz. `altyapi/http/dizi-tavani.ts`.
  */
 
 const duzNesneMi = (v: unknown): v is Record<string, unknown> =>
@@ -75,4 +79,35 @@ export class EslestirmeHafizasiDto {
 
   @IsString()
   secilenAd!: string;
+}
+
+/**
+ * POST /matching/aliases (06.10, güvenlik incelemesi HIGH-2). Satır içi tipti:
+ * `kinds` sınırsız ve türü denetlenmeden DEPOYA yazılıyordu; sonraki her
+ * bulk-match onu işler. Canlı (06.10): 267 kayıt, en çok 2 tür. Sayı tavanı
+ * uçta `@DiziTavani` ile pipe'tan ÖNCE; burada tür ve öğe biçimi.
+ */
+export class SozlukKaydiDto {
+  @IsString()
+  @IsNotEmpty()
+  alias!: string;
+
+  @IsOptional()
+  @IsString()
+  canonical?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(ALIAS_TUR_TAVANI)
+  @IsString({ each: true })
+  @MaxLength(64, { each: true })
+  kinds?: string[];
+
+  @IsOptional()
+  @IsString()
+  impliedType?: string | null;
+
+  @IsOptional()
+  @IsString()
+  sizeClass?: string | null;
 }

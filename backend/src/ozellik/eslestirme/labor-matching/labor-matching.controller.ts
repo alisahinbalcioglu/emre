@@ -10,6 +10,7 @@ import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
 import { TierGuard, RequireTier } from '../../../altyapi/auth/guards/tier.guard';
 import { IscilikHafizasiDto, IscilikTopluEslestirmeDto } from './dto/iscilik-eslestirme-govdesi.dto';
+import { DiziTavani, eslestirmeKurallari } from '../../../altyapi/http/dizi-tavani';
 
 @Controller('labor-matching')
 @UseGuards(JwtAuthGuard, TierGuard, ErisimGuard)
@@ -23,6 +24,8 @@ export class LaborMatchingController {
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
   // 23.09: iscilik fiyati KUTUPHANEDEN (iscilik firmalari) gelir.
   @UyeIzniGerekli('kutuphane')
+  // 06.10: malzeme ikiziyle AYNI dizi tavani (tek tanim — dizi-tavani.ts).
+  @DiziTavani(...eslestirmeKurallari('laborNames', 'işçilik adı'))
   bulkMatch(
     @CurrentUser() user: any,
     // C11 (P4a, 01.10.2026): SINIF DTO — satir ici tip ValidationPipe'i atliyordu.

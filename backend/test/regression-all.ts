@@ -1011,6 +1011,15 @@ const SUITES: Suite[] = [
   //    biçimsiz kimliği DB'ye göndermez. GERÇEK denetleyiciler HTTP üzerinden,
   //    ValidationPipe main.ts ile aynı. DB/AĞ GEREKTİRMEZ.
   { ad: 'Gövde doğrulama: eşleştirme uçları DTO · kütüphane ızgara kaydı satır hataları (G/S)', script: 'test:govde-dogrulama', zincir: 'Z0' },
+  // ── 06.10.2026 — DİZİ TAVANI (ayrı iş 2). Dizinin boyuyla büyüyen 13 uç
+  //    (bulk-match ×2, kütüphane ızgara kaydı + toplu iskonto + satır ekleme ×2,
+  //    işçilik ×4, teklif oluştur/güncelle, sözlük kaydı): tavanı aşan istek
+  //    ValidationPipe'tan ÖNCE 413 + Türkçe mesaj, servis çağrılmaz, kimliksiz
+  //    tek WARN; dizi olmayan değer 400. Toplu iskonto kimlikleri 1.000'lik
+  //    parçalarla TEK işlemde; sözlük türleri bulk-match'te yayılmaz. Gerçek
+  //    denetleyiciler HTTP üzerinden, gövde ayrıştırıcısı main.ts gibi 50 MB.
+  //    DB/AĞ GEREKTİRMEZ.
+  { ad: 'Dizi tavanı: 13 uçta 413 pipe\'tan önce · dizi değişmezi · toplu iskonto parçalı tek işlem (U/M/B/H/P/Y)', script: 'test:dizi-tavani', zincir: 'Z0' },
   // ── 04.10.2026 — CI EK NOTU (koordinatör). Actions günlüğü girişsiz 403;
   //    kırmızı işin tek ek notu "exit code 1" idi. Bu koşucu GITHUB_ACTIONS
   //    iken düşen paketi `::error` notu olarak yazar. Saf kurallar + bu

@@ -16,6 +16,23 @@ import { memoryStorage } from 'multer';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
+import {
+  DiziTavani,
+  TEKLIF_KALEM_TAVANI,
+  TEKLIF_SATIR_TAVANI,
+  TEKLIF_SAYFA_TAVANI,
+  sayfaSatirToplami,
+  type DiziKurali,
+} from '../../../altyapi/http/dizi-tavani';
+
+/** 06.10: iç içe DTO öğe öğe kurulur — kalem ve ızgara tavanları ValidationPipe'tan
+ *  ÖNCE (413). Sayfa kuralı satır kuralından ÖNCE: satır sayacı en çok
+ *  `TEKLIF_SAYFA_TAVANI` sayfayı dolaşır. */
+const TEKLIF_KURALLARI: DiziKurali[] = [
+  { alan: 'items', tavan: TEKLIF_KALEM_TAVANI, ogeAdi: 'kalem' },
+  { alan: 'sheets', tavan: TEKLIF_SAYFA_TAVANI, ogeAdi: 'sayfa' },
+  { alan: 'sheets', tavan: TEKLIF_SATIR_TAVANI, ogeAdi: 'satır', say: (g) => sayfaSatirToplami(g?.sheets) },
+];
 
 /**
  * ⚠⚠ `@KapaliHesapIzinli` SINIF DUZEYINE KONMAZ — UC UC verilir (22.09.2026).
@@ -52,6 +69,7 @@ export class QuotesController {
 
   @Post()
   @GerekliYetenek(Yetenek.TEKLIF_OLUSTUR)
+  @DiziTavani(...TEKLIF_KURALLARI)
   create(@CurrentUser() user: any, @Body() dto: CreateQuoteDto) {
     return this.quotesService.create(teklifKimligiCoz(user), dto);
   }
@@ -70,6 +88,7 @@ export class QuotesController {
    */
   @Put(':id')
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
+  @DiziTavani(...TEKLIF_KURALLARI)
   update(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: CreateQuoteDto) {
     return this.quotesService.create(teklifKimligiCoz(user), dto, id);
   }

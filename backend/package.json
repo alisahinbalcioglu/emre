@@ -194,6 +194,7 @@
     "test:yonetici-paket": "ts-node test/yonetici-paket-test.ts",
     "test:kiraci-siniri": "ts-node test/kiraci-siniri-test.ts",
     "test:govde-dogrulama": "ts-node test/govde-dogrulama-test.ts",
+    "test:dizi-tavani": "ts-node test/dizi-tavani-test.ts",
     "test:ci-ek-notu": "ts-node test/ci-ek-notu-test.ts",
     "test:p4b-motor": "ts-node test/p4b-motor-test.ts",
     "test:ex-karisik": "ts-node test/cikti-karisik-test.ts",

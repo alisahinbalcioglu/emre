@@ -517,7 +517,9 @@ export class MatchingService {
         // duserdi.
         if (!aday.impliedType && !aday.sizeClass
             && !aday.kinds.some((k) => k === 'siyah' || k === 'galvaniz')
-            && malzemeEtiketleri(...aday.kinds).length === 0) { atlanan++; continue; }
+            // Dizi YAYILMAZ (06.10, güvenlik HIGH-2): depodaki kayıt büyükse
+            // yayma yığını taşırırdı; birleşik metin aynı etiketleri verir.
+            && malzemeEtiketleri(aday.kinds.join(' ')).length === 0) { atlanan++; continue; }
         hint = aday;
         break;
       }
@@ -545,7 +547,7 @@ export class MatchingService {
         // (yaziliSinif) sozluk varsayimi DAYATILMAZ — o kelime zaten K4 sert
         // filtresi olarak calisir, ustune bir de siralama baskisi koymak
         // "PVC yazdim, PVC elendi" celiskisini dogururdu.
-        hintMalzeme: yaziliSinif ? [] : malzemeEtiketleri(...(hint?.kinds ?? [])),
+        hintMalzeme: yaziliSinif ? [] : malzemeEtiketleri((hint?.kinds ?? []).join(' ')),
         // KARAR (a): pis su → PP ailesi ELENIR. Satirda malzeme yaziliysa
         // ("PP PİS SU BORUSU") satir kazanir — kullanicinin kelimesi serttir.
         // canonical KULLANICI alias'indan da gelebilir: yalniz tablonun KENDI
