@@ -15,6 +15,7 @@ import { kurusTamsayi } from '../../fiyat/matching/pricing';
 // A2 (tur 3): kullanicinin yazdigi override metni INSAN sinirindadir — tek sayi kurali
 import { insanSayiOku } from '../../kutuphane/utils/import-fidelity';
 import { BIRIM_SIRASI, ParaBirimi, SEMBOL, paraMetni } from '../../teklif/quotes/cikti-karisik';
+import { satirEkle } from './satir-ekleme';
 
 /** PRD §2 tablosu — bilinen yer tutucular. Disindaki her {{ETIKET}} T3
  *  geregi "taninmayan" olarak uyarilir (ama hucreye DOKUNULMAZ). */
@@ -411,8 +412,11 @@ export function icmalSatirlariniYaz(wb: ExcelJS.Workbook, satirlar: readonly Icm
     return null;
   }
   // Sablon satiri N-1 kez cogalt (stil kopyalanir — T5 "bicim formatin
-  // satirindan"); eklenenler sablonun ALTINA girer.
-  if (n > 1) ws.duplicateRow(tplRow, n - 1, true);
+  // satirindan"); eklenenler sablonun ALTINA girer. ExcelJS alttaki hucreleri
+  // kaydirir ama formul BASVURULARINI guncellemez — musterinin kendi formulleri
+  // (ARA TOPLAM/KDV, KAPAK'tan basvuru) yanlis hucreye bakiyordu (06.10, olculdu):
+  // `satirEkle` Excel'in ekleme/kopyalama kuralini uygular (satir-ekleme.ts).
+  if (n > 1) satirEkle(wb, ws, tplRow, n - 1);
   for (let i = 0; i < n; i++) {
     const s = satirlar[i];
     const r = tplRow + i;
