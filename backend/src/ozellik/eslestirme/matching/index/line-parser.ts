@@ -225,9 +225,18 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   // metnin TAMAMIYLA yeniden kosar — uzun sartname adinda parseLine suresinin
   // %93-99'u buradaydi (1.475 karakter ~0,7 sn). Sondan-parca denetimleri cagri
   // ici BELLEKLE paylasilir; sonuc `resolveLineFamily` ile birebir ayni.
+  // 55 AD (P2, 05.10 olculdu): tanim TOKEN kumesine goredir. Aile token'larda
+  // OLMAYAN bir kelimeden geliyorsa (durak sozcugu "montajı"; uzun sartnamenin
+  // sonundaki "Basınç Anahtarı") token birlesimi o aileyi HIC cozmez → hicbir
+  // token'in kaldirilmasi "bozamaz" ve eskiden HER token aile kelimesi sayilip
+  // query-engine'in bilinmeyen-sozcuk denetiminden TOPTAN muaf kaliyordu
+  // (kulliyatta 136 tum-token-aile adinin 20'si; 116'si dogru: tek token ya da
+  // cok kelimeli aile adi). Token birlesimi aileyi cozmuyorsa aile kelimesi YOK
+  // — muafiyet kalkar, taninmayan sozcuk yine "dogrulanamadi" olur.
   const aileKelimeleri: string[] = [];
-  if (familySlug) {
-    const bellek: AileBellegi = new Map();
+  const aileBellegi: AileBellegi = new Map();
+  if (familySlug && resolveFamilyBellekli(tokens.join(' '), aileBellegi) === familySlug) {
+    const bellek = aileBellegi;
     for (const t of tokens) {
       const kalan = tokens.filter((x) => x !== t).join(' ');
       if (resolveFamilyBellekli(kalan, bellek) !== familySlug) aileKelimeleri.push(t);
