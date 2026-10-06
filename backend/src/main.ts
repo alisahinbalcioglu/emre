@@ -6,8 +6,13 @@ import { AppModule } from './app.module';
 import { guvenlikBasliklariniKur } from './altyapi/http/guvenlik-basliklari';
 import { govdeHatalariniKur, govdeSinirlariniKur } from './altyapi/http/govde-siniri';
 import { corsSecenekleri } from './altyapi/http/cors';
+import { sinifDonusturucuYamasiniKur } from './altyapi/http/sinif-donusturucu-yamasi';
 
 async function bootstrap() {
+  // 06.10 (güvenlik HIGH-3): class-transformer'ın karesel anahtar
+  // tekilleştirmesi — uygulama ve ValidationPipe kurulmadan ÖNCE, TEK yerden.
+  // Sürüm uymazsa kurulmaz ve açılışta ERROR yazar (kapı: test:govde-genisligi).
+  sinifDonusturucuYamasiniKur();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Caddy ters vekilinin arkasindayiz: backend disariya acik degil (compose'da
