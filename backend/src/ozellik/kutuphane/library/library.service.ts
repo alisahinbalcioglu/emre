@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../altyapi/db/prisma.service';
 import { Kimlik } from '../../../altyapi/auth/kimlik';
 import { CreateLibraryItemDto } from './dto/create-library-item.dto';
@@ -356,7 +357,30 @@ export class LibraryService {
   async remove(k: Kimlik, id: string) {
     const item = await this.prisma.userLibrary.findFirst({ where: { id, firmaId: k.firmaId } });
     if (!item) throw new NotFoundException('Library item not found');
-    return this.prisma.userLibrary.delete({ where: { id } });
+    // P4b Parti 3 (06.10): markanin SON satiri silinince marka kutuphaneden
+    // cikmis olur — sekmeleri ve kaydi da (ayni islemde; `markaBosaldiysaKaldir`).
+    return this.prisma.$transaction(async (tx) => {
+      const silinen = await tx.userLibrary.delete({ where: { id } });
+      await this.markaBosaldiysaKaldir(tx, k, item.brandId);
+      return silinen;
+    });
+  }
+
+  /**
+   * Firma bu markada SATIRSIZ kaldiysa marka kutuphaneden cikmistir: liste
+   * sekmeleri ve marka kaydi da gider — `removeBrandFromLibrary` ile ayni
+   * sonuc. Satir silen yollar (tek satir, sekme) ISLEMIN ICINDE cagirir.
+   * Eskiden tek tek silmede sekmeler ve eski gorunum JSON'lu marka kaydi
+   * kaliyordu; yeniden aktarimda satirlar en eski artik sekmeye baglanir,
+   * digerleri "(0)" gelirdi (inceleme LOW-1, 05.10; canlida artik 0).
+   * Doner: marka bosaldi mi (kayit silindiyse yeniden kurulacak gorunum yok).
+   */
+  private async markaBosaldiysaKaldir(tx: Prisma.TransactionClient, k: Kimlik, brandId: string): Promise<boolean> {
+    const kalan = await tx.userLibrary.count({ where: { firmaId: k.firmaId, brandId } });
+    if (kalan > 0) return false;
+    await tx.libraryList.deleteMany({ where: { firmaId: k.firmaId, brandId } });
+    await tx.userBrandLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId } });
+    return true;
   }
 
   async importPriceList(k: Kimlik, dto: ImportPriceListDto) {
@@ -858,12 +882,22 @@ export class LibraryService {
     const p = this.prisma as any;
     const liste = await p.libraryList.findFirst({ where: { id: listId, firmaId: k.firmaId, brandId } });
     if (!liste) throw new NotFoundException('Liste bulunamadi');
-    const silinen = await this.prisma.userLibrary.deleteMany({
-      where: { firmaId: k.firmaId, brandId, libraryListId: listId } as any,
+    // P4b Parti 3 (06.10): satirlar + sekme + (marka bosaldiysa) kalan bos
+    // sekmeler ve kayit TEK islemde — eskiden ardisikti, bos sekmeler kaliyordu.
+    const { silinen, bosaldi } = await this.prisma.$transaction(async (tx) => {
+      const s = await tx.userLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId, libraryListId: listId } });
+      await tx.libraryList.delete({ where: { id: listId } });
+      return { silinen: s, bosaldi: await this.markaBosaldiysaKaldir(tx, k, brandId) };
     });
-    await p.libraryList.delete({ where: { id: listId } });
-    // 0 satir kaldiysa rebuild UserBrandLibrary'yi de siler (marka kutuphaneden duser).
-    await this.rebuildUserBrandLibrary(k, brandId);
+    // Silme KESINLESTI. Satir kaldiysa marka gorunumu (sheets JSON) yeniden
+    // kurulur; kurulamazsa istek yine basarili doner — 500 "Silinemedi"
+    // dedirtir, kullanici artik olmayan sekmeyi yeniden silmeye calisir (404).
+    // Kayit her okumada yeniden kuruluyor; bayat kalmasi gosterimi bozmaz.
+    if (!bosaldi) {
+      await this.rebuildUserBrandLibrary(k, brandId).catch((e) =>
+        this.logger.warn(`Sekme silindi, marka gorunumu yeniden kurulamadi (${brandId}): ${(e as Error).message}`),
+      );
+    }
     return { ok: true, deletedRows: silinen.count };
   }
 
@@ -1052,10 +1086,23 @@ export class LibraryService {
     return n > 0;
   }
 
-  // Kullanici markayi kutuphanesinden tamamen cikarir
+  /**
+   * Kullanici markayi kutuphanesinden tamamen cikarir — satirlar, liste
+   * SEKMELERI ve marka kaydi TEK islemde.
+   *
+   * P4b Parti 3 yan bulgusu (05.10, gercek servisle olculdu): sekmeler
+   * (`LibraryList`) silinmiyordu. Marka kaldirilinca "Fiyat Listesi" 0 kalemle
+   * kaliyor; yeniden aktarimda `getBrandLists`in tembel gocu satirlari EN ESKI
+   * artik sekmeye bagliyor, diger artiklar "(0)" sekme olarak geri geliyordu.
+   * Canli (05.10, salt okuma): 13 sekmenin 13'u satirli, artik 0 — goc gerekmez.
+   * Siralama: once satirlar (sekmeye SetNull bagli), sonra sekmeler.
+   */
   async removeBrandFromLibrary(k: Kimlik, brandId: string) {
-    await this.prisma.userLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId } });
-    await this.prisma.userBrandLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.userLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId } });
+      await tx.libraryList.deleteMany({ where: { firmaId: k.firmaId, brandId } });
+      await tx.userBrandLibrary.deleteMany({ where: { firmaId: k.firmaId, brandId } });
+    });
     return { ok: true };
   }
 }
