@@ -27,6 +27,33 @@ import type { LineQuery, FamilyVocab, RoutedTokens, IndexedRow } from './types';
  */
 const NOT_PRODUCT_RE = /\borani?\b|\biscilik\b|\bmontaj\b|\bnakliye\b|\bdevreye\s*alma\b|\bgenel\s*gider|fittings?\s*(orani|bedeli|oran)\b|boru\s*\+\s*fitting|\bsarf\b|\bkazi\b|\bdolgu\b|\bboyama\b|\bprojelendirme\b|\bmuhendislik\b|\btasima\b|\bimalat(lar)?i?\s*$/;
 
+/** Sartname nitelik satirinin anahtari: "Montaj Biçimi : Dik" → "Montaj Biçimi :". */
+const NITELIK_ANAHTARI = /^[^:]{1,40}:\s*/;
+
+/**
+ * UZUN SARTNAME — ilk satirin ailesini kalemin adi yapamayan ZAYIF KAYNAKLAR
+ * (normalize metinde): kelime ici eslesme ("Priz Kombinasyon Kutusu" → kombi,
+ * "PHOENIX CONTACT" → conta) ve yer tamlamasi ("Pompa Odası Gider Sistemi",
+ * "POMPA DAİRESİ" → pompa). Kulliyatta ilk satir kurali tam olarak bunlari
+ * GETIRIYORDU (sigorta → kombi 2, boru → conta 1, suzgec → pompa 1).
+ * ⚠ Cozucunun KENDISI degistirilmedi: "Kombine Dedektör" urunu ve satiri ikisi de
+ * 'kombi' ailesinde oldugu icin bugun OTOMATIK eslesiyor; cozucuyu duzeltmek
+ * ikisini de ailesiz birakip fiyati onaya dusuruyordu (yerel motor olcumu) —
+ * dogru duzeltme sozluge 'dedektor' ailesi eklemektir (ayri is, olcum ister).
+ */
+const ZAYIF_KAYNAK = /kombi(?=nasyon|ne)|conta(?=ct)|\S+\s+(?:oda(?:si|lari)|daire(?:si|leri))\S*/g;
+/** Ilk satirin ailesi zayif kaynaklar silinince de AYNI mi? */
+function zayifKaynaksiz(metin: string, aile: string): boolean {
+  const n = normalizeText(metin);
+  const maskeli = n.replace(ZAYIF_KAYNAK, ' ');
+  return maskeli === n || resolveLineFamily(maskeli) === aile;
+}
+
+/** Tek harf "T" → "te" (FAZ B B8; kosul ve istisnalar parseLine'daki notta). */
+function teCevir(metin: string): string {
+  return metin.replace(/(?<![\p{L}\p{N}\-])(?<!(?:^|[^\d/.,"'])\d+(?:[.,]\d+)?\s*)[Tt](?![\p{L}\p{N}\-])(?!\s*[tT][iİıI][pP])/gu, 'te');
+}
+
 /**
  * Satirin ailesini cozer. Urun tarafiyla AYNI iki kaynak (regex → sozluk),
  * boylece iki taraf ayni kelime dagarcigini konusur.
@@ -64,8 +91,26 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   // ("İşçilik (mekanik)") kelimeyi parantez DISINDA tasidigi icin yine
   // yakalanir. Parantez icerigi token/cap cikarimina AYNEN girmeye devam
   // eder (yalniz bu tarama muaf).
-  const hizmetTarama = normalizeText(raw.replace(/\([^)]*\)/g, ' '));
-  if (NOT_PRODUCT_RE.test(hizmetTarama)) {
+  // ── UZUN SARTNAME (P2, 06.10 — kulliyat 9.005 metin, 295 cok satirli) ──
+  // Cok satirli hucrede ilk satir kalemin ADIDIR ("Kelebek Vana, DN150"),
+  // sonrakiler NITELIKTIR ("Türü : Yivli", "Montaj Biçimi : Dik"). Nitelik
+  // ANAHTARI ne hizmettir ne urun: "Montaj Biçimi" satiri hizmete ceviriyordu
+  // (vana 13, aski, hidrant, nozul… kalemleri hic urun aramiyordu),
+  // "Manometre : 0-20 Bar" vanayi manometre ailesine kaydiriyordu. GOVDE =
+  // ilk satir + sonraki satirlar ANAHTARSIZ; hizmet ve aile taramasi onda.
+  // Kapsam notu ("… montaj ve sarf malzemeleri dahil") anahtar degildir,
+  // hizmet KALIR. Tek satirli metinde govde = metnin kendisi (degismez).
+  // Ilk satir AYRICA taranir: satir SONUNA demirli desen ("… İmalatı",
+  // S5) govdede metnin sonuna bakar — "Hidrant Koruyucu İmalatı ⏎ Türü : …"
+  // tek satirda hizmet, cok satirda urun olurdu (kod incelemesi M1).
+  const satirlar = raw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  const govde = satirlar.length >= 2
+    ? [satirlar[0], ...satirlar.slice(1).map((s) => s.replace(NITELIK_ANAHTARI, ''))].join('\n')
+    : raw;
+  const aileGovdesi = govde.replace(/\([^)]*\)/g, ' ');
+  const ilkSatir = aileGovdesi.split(/\r?\n/).map((s) => s.trim()).find(Boolean) ?? '';
+  const hizmetTarama = normalizeText(aileGovdesi);
+  if (NOT_PRODUCT_RE.test(hizmetTarama) || NOT_PRODUCT_RE.test(normalizeText(ilkSatir))) {
     return { raw, notProduct: true, familySlug: null, tokens: [], aileKelimeleri: [], capInfo: null, boyTag: null, unit: unit ?? null, unitSignal };
   }
 
@@ -83,14 +128,34 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   // TIP belirtecidir ("Tek Taraf İç Dişli T Çekvalf") — kosulsuz ceviri bu
   // 12 satira "te bulunamadi" notu ekliyordu (once/sonra karsilastirmasi).
   // T ancak satirin bas ismiyse te'dir: aile yalniz te ile cozuluyorsa.
+  // UZUN SARTNAME (P2, 06.10): bas isim SONDAN aranir — cok satirli metinde
+  // son satirdaki isim kaziniyordu ("6\"-DN150 Kollektör … / Siyah Dikişli
+  // Borudan İmal Edilecek" → boru). Govdenin ILK satiri tek basina bir aileye
+  // cozuluyorsa aile ODUR; cozulmuyorsa govdenin tamami. Ilk satir PARANTEZ
+  // soyulduktan sonra alinir (satir asan "( KELEPÇE, TİJ … VS. )" notu not kalir).
+  // Baglacla biten ilk satir ("Yangın Dolabı İçin ⏎ Yangın Hortumu") yarimdir,
+  // ad degildir → govdenin tamami. Ailesi ZAYIF KAYNAKTAN gelen ilk satir
+  // (kelime ici "Kombinasyon"/"Contact", yer adi "Pompa Odası") da atlanir.
+  // Belirtecler (kisitlar) eskisi gibi ham metnin tamamindan cikar.
+  // BILINEN SINIR (kod incelemesi M2, kulliyatta 0): baglacsiz satir sarmasi
+  // ("Boru ⏎ Kelepçesi 1\"") ilk satirin ailesini alir — test:sartname-ilk-satir B1.
   let parantezsiz = raw.replace(/\([^)]*\)/g, ' ');
-  let familySlug = resolveLineFamily(parantezsiz);
-  if (!familySlug) {
-    const teMetni = parantezsiz
-      .replace(/(?<![\p{L}\p{N}\-])(?<!(?:^|[^\d/.,"'])\d+(?:[.,]\d+)?\s*)[Tt](?![\p{L}\p{N}\-])(?!\s*[tT][iİıI][pP])/gu, 'te');
-    const teAilesi = teMetni !== parantezsiz ? resolveLineFamily(teMetni) : null;
-    if (teAilesi) { parantezsiz = teMetni; familySlug = teAilesi; }
+  const ilkSatirYarim = /(?:^|\s)(?:ve|ile|icin|veya)$/.test(normalizeText(ilkSatir));
+  const ilkAday = ilkSatir !== aileGovdesi.trim() && !ilkSatirYarim;
+  let aileMetni: string | null = null;
+  let familySlug: string | null = null;
+  for (const aday of ilkAday ? [ilkSatir, aileGovdesi] : [aileGovdesi]) {
+    familySlug = resolveLineFamily(aday);
+    if (familySlug && ilkAday && aday === ilkSatir && !zayifKaynaksiz(aday, familySlug)) { familySlug = null; continue; }
+    if (!familySlug) {
+      const teMetni = teCevir(aday);
+      const teAilesi = teMetni !== aday ? resolveLineFamily(teMetni) : null;
+      if (teAilesi) { parantezsiz = teCevir(parantezsiz); familySlug = teAilesi; aileMetni = teMetni; break; }
+    }
+    if (familySlug) { aileMetni = aday; break; }
   }
+  // (yalniz hiz: tek satirda aile metni = parantezsiz, kesisim tum belirteclerdir)
+  if (aileMetni === parantezsiz) aileMetni = null;
 
   // SAHA KISALTMALARI (18.07, Trakya "Glvz." vakasi): satir SERBEST metindir,
   // yaygin kisaltmalar ACILIR ki cins filtresi calisabilsin — "Glvz. Nipel"
@@ -110,11 +175,11 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   // Bu artik ad kelimesi sanilip dogru urunu ONAYA dusuruyordu. Kesirli olcu
   // ifadesi belirtec metninden AYIKLANIR (cap ham metinden okunur, kayip yok).
   // `tokenize` urun indeksinde de kullanildigi icin ORADA degistirilmedi.
-  const belirtecMetni = parantezsiz
+  const belirtecler = (metin: string): string[] => Array.from(new Set(tokenize(metin
     .replace(/(?<!\d)\d{1,3}(?:\s+|-)\d{1,2}\/\d{1,2}/g, ' ')
-    .replace(/(?<!\d)\d{1,2}\/\d{1,2}/g, ' ');
-  const adaylar = Array.from(new Set(tokenize(belirtecMetni).map((t) =>
+    .replace(/(?<!\d)\d{1,2}\/\d{1,2}/g, ' ')).map((t) =>
     (Object.prototype.hasOwnProperty.call(KISALTMALAR, t) ? KISALTMALAR[t] : t))));
+  const adaylar = belirtecler(parantezsiz);
 
   // Cap: kaynak-farkinda (DN mi, inc mi, mm mi yazilmis?) — cevrim tablosu
   // secimi buna bagli (PPR'de DN=mm, celikte DN≠mm). v1 ile ayni primitif.
@@ -208,10 +273,7 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   // dişli)") ayirt edilemiyordu. Belirtecler AYNI hattan cikarilir; kisit
   // DEGILDIR — query-engine yalniz havuzda taninanlari yumusak ayirici yapar.
   const parantezMetni = (raw.match(/\([^)]*\)/g) ?? []).map((p) => p.slice(1, -1)).join(' ');
-  const parantezTokenlari = parantezMetni.trim() === '' ? [] : Array.from(new Set(tokenize(parantezMetni
-    .replace(/(?<!\d)\d{1,3}(?:\s+|-)\d{1,2}\/\d{1,2}/g, ' ')
-    .replace(/(?<!\d)\d{1,2}\/\d{1,2}/g, ' ')).map((t) =>
-    (Object.prototype.hasOwnProperty.call(KISALTMALAR, t) ? KISALTMALAR[t] : t))))
+  const parantezTokenlari = parantezMetni.trim() === '' ? [] : belirtecler(parantezMetni)
     .filter((t) => olcuDisi(t) && !tokens.includes(t));
 
   // ── AILEYI COZEN KELIMELER ───────────────────────────────────────
@@ -225,11 +287,26 @@ export function parseLine(text: string, unit?: string | null): LineQuery {
   // metnin TAMAMIYLA yeniden kosar — uzun sartname adinda parseLine suresinin
   // %93-99'u buradaydi (1.475 karakter ~0,7 sn). Sondan-parca denetimleri cagri
   // ici BELLEKLE paylasilir; sonuc `resolveLineFamily` ile birebir ayni.
+  // 55 AD (P2, 05.10 olculdu): tanim TOKEN kumesine goredir. Aile token'larda
+  // OLMAYAN bir kelimeden geliyorsa (durak sozcugu "montajı"; uzun sartnamenin
+  // sonundaki "Basınç Anahtarı") token birlesimi o aileyi HIC cozmez → hicbir
+  // token'in kaldirilmasi "bozamaz" ve eskiden HER token aile kelimesi sayilip
+  // query-engine'in bilinmeyen-sozcuk denetiminden TOPTAN muaf kaliyordu
+  // (kulliyatta 136 tum-token-aile adinin 20'si; 116'si dogru: tek token ya da
+  // cok kelimeli aile adi). Token birlesimi aileyi cozmuyorsa aile kelimesi YOK
+  // — muafiyet kalkar, taninmayan sozcuk yine "dogrulanamadi" olur.
+  // UZUN SARTNAME (06.10): token kumesi ailenin GELDIGI metninkidir (ilk satir
+  // ya da anahtarsiz govde; tek satirda aileMetni null → tum belirtecler).
+  const aileKumesi = aileMetni === null ? tokens : (() => {
+    const aileBelirtecleri = new Set(belirtecler(aileMetni));
+    return tokens.filter((t) => aileBelirtecleri.has(t));
+  })();
   const aileKelimeleri: string[] = [];
-  if (familySlug) {
-    const bellek: AileBellegi = new Map();
-    for (const t of tokens) {
-      const kalan = tokens.filter((x) => x !== t).join(' ');
+  const aileBellegi: AileBellegi = new Map();
+  if (familySlug && resolveFamilyBellekli(aileKumesi.join(' '), aileBellegi) === familySlug) {
+    const bellek = aileBellegi;
+    for (const t of aileKumesi) {
+      const kalan = aileKumesi.filter((x) => x !== t).join(' ');
       if (resolveFamilyBellekli(kalan, bellek) !== familySlug) aileKelimeleri.push(t);
     }
   }

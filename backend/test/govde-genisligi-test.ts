@@ -590,9 +590,9 @@ function kBlogu(): void {
   check('K2 yama TEK yerden kurulur', (ana.match(/sinifDonusturucuYamasiniKur\(/g) ?? []).length === 1);
   // 06.10 (HIGH-A ile birleşme, koordinatör): iki güvenlik kurulumunun SIRASI —
   // gövde tavanları ayrıştırıcılardan önce, güvenli doğrulama borusu en sonda.
-  const sira = ['sinifDonusturucuYamasiniKur()', 'NestFactory.create', 'govdeSinirlariniKur(app)', 'app.use(json(',
-    'app.use(urlencoded(', 'govdeHatalariniKur(app)', 'useGlobalPipes('].map((s) => ({ s, i: ana.indexOf(s) }));
-  check('K4 ⭐ main.ts KURULUM SIRASI: yama → uygulama → yol başı tavanlar → global ayrıştırıcılar → hata katmanı → GÜVENLİ doğrulama borusu',
+  const sira = ['sinifDonusturucuYamasiniKur()', 'NestFactory.create', 'govdeSinirlariniKur(app)', 'buyukGovdeUclariniKur(app)',
+    'app.use(json(', 'app.use(urlencoded(', 'govdeHatalariniKur(app)', 'useGlobalPipes('].map((s) => ({ s, i: ana.indexOf(s) }));
+  check('K4 ⭐ main.ts KURULUM SIRASI: yama → uygulama → yol başı küçük tavanlar → büyük gövde uçları → global ayrıştırıcılar → hata katmanı → GÜVENLİ doğrulama borusu',
     sira.every((x, k) => x.i > 0 && (k === 0 || x.i > sira[k - 1].i)) && /useGlobalPipes\(\s*new GuvenliValidationPipe\(/.test(ana),
     js(sira));
   const sinir = (yol: string) => GOVDE_SINIRLARI.find((s) => s.yol === yol)?.sinir;

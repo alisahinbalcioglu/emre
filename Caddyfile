@@ -79,7 +79,9 @@ www.{$DOMAIN} {
         # KUCUK olurdu. Hep MiB yazin. Kapi: `test:dwg-yukleme` C blogu.
         #  · DWG yukleme: Nest tavani 250 MiB (dwg-yukleme-kapisi.ts) + cok
         #    parcali zarf payi → 260 MiB. Olculen en buyuk gercek DWG 98,8 MB.
-        #  · Diger /api: en buyuk mesru govde 50 MB JSON (main.ts) → 60 MiB.
+        #  · Diger /api: Nest'in en genis JSON tavani 32 MiB (yonetici ice aktarma;
+        #    yol basi tavanlar `buyuk-govde.ts`, global 1 MB — 06.10) → 60 MiB.
+        #    Kapi `test:dwg-yukleme` C5: bu tavan en genis Nest tavanini da gecirir.
         @dwgYukleme path /api/dwg-engine/upload
         request_body @dwgYukleme {
             max_size 260MiB

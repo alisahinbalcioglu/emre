@@ -98,12 +98,16 @@ export function resolveAd(text: string): string | null {
  */
 export function resolveAdDetayli(
   text: string,
+  // SIFAT EKI (6a, 06.10): verilirse reddedilen gecis atlanir, ayni desenin
+  // sonraki gecisi denenir; verilmezse davranis aynen eskisi.
+  kabul?: (index: number, uzunluk: number, metin: string) => boolean,
 ): { slug: string; desen: string; index: number } | null {
   const norm = normalizeText(text);
   for (const i of onekAdaylari(norm)) {
     const { p, slug } = PATTERNS[i];
     AD_COZUCU_OLCUM.desenDenemesi++;
-    const index = norm.indexOf(p);
+    let index = norm.indexOf(p);
+    if (kabul) while (index >= 0 && !kabul(index, p.length, norm)) index = norm.indexOf(p, index + 1);
     if (index < 0) continue;
     const guard = NEGATIVE_GUARDS[slug];
     if (guard && guard.test(norm)) continue;

@@ -14,7 +14,7 @@ const LABEL_MAP: Record<string, string> = {
   materials: 'Malzeme Havuzu',
   mechanical: 'Mekanik',
   electrical: 'Elektrik',
-  library: 'Kütüphanem',
+  library: 'Firma kütüphanesi',
   'mechanical-brands': 'Mekanik Markalar',
   'electrical-brands': 'Elektrik Markalar',
   brand: 'Marka',

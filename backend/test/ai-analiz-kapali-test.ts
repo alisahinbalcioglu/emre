@@ -169,7 +169,7 @@ function yBlogu(): void {
     js(Reflect.getMetadata(TIER_KEY, uc)) === js(['pro']), js(Reflect.getMetadata(TIER_KEY, uc)));
   check('Y2 yetenek kapısı (AI_ANALIZ) korundu',
     js(Reflect.getMetadata(YETENEK_KEY, uc)) === js([Yetenek.AI_ANALIZ]), js(Reflect.getMetadata(YETENEK_KEY, uc)));
-  check("Y3 üye izni 'kutuphane' korundu", Reflect.getMetadata(UYE_IZNI_KEY, uc) === 'kutuphane');
+  check("Y3 üye izni 'fiyat' korundu (06.10 ekip/yetki B: eski 'kutuphane')", Reflect.getMetadata(UYE_IZNI_KEY, uc) === 'fiyat');
   check('Y4 dosya ayrıştırıcısı (interceptor) YOK — gövde okunmaz (metot VE sınıf düzeyi)',
     (Reflect.getMetadata(INTERCEPTORS_METADATA, uc) ?? []).length === 0
       && (Reflect.getMetadata(INTERCEPTORS_METADATA, AiController) ?? []).length === 0,

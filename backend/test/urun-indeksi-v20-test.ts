@@ -49,7 +49,8 @@ const capOf = (t: string) => { const s = extractSizeInfo(t); return s ? `${s.sou
 async function main() {
   const warn = console.warn; console.warn = () => {};
   try {
-    check('SURUM: INDEX_VERSION 20', (INDEX_VERSION as number) === 20, String(INDEX_VERSION));
+    // >= : sonraki surum artislari (v21 P2 6a) bu partinin sartini bozmaz
+    check('SURUM: INDEX_VERSION >= 20', (INDEX_VERSION as number) >= 20, String(INDEX_VERSION));
 
     // ══ B12 · "steel" tee DEGILDIR ══════════════════════════════════════
     for (const t of ['Paslanmaz Steel', 'Galvanized Steel', 'Carbon Steel Sheet']) {

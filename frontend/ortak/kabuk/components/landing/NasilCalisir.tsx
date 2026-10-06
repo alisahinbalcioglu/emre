@@ -95,7 +95,7 @@ const ADIMLAR: Adim[] = [
     tikler: [
       {
         kalin: 'Hazır marka listeleri',
-        devam: 'havuzda yapılandırılmış tablo olarak durur; "Kütüphaneme Aktar" ile kopyalarsınız',
+        devam: 'havuzda yapılandırılmış tablo olarak durur; "Firma kütüphanesine aktar" ile kopyalarsınız',
       },
       {
         kalin: 'İskonto',
@@ -109,7 +109,7 @@ const ADIMLAR: Adim[] = [
     gorseller: [
       {
         sekme: 'Havuzdan aktar',
-        etiket: 'Kütüphaneme aktar',
+        etiket: 'Firma kütüphanesine aktar',
         renk: '',
         dosya: 'a1-havuz-aktar',
         alt: 'Marka fiyat listesini kütüphaneye aktarma ekranı',

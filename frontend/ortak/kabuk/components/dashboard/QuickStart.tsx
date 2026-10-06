@@ -65,7 +65,8 @@ export default function QuickStart({
   //   "Yöneticin bu özelliği senin için kapattı." + "Yöneticine yaz");
   //   "Paket seç"/"Pro pakete yükselt" YAZILMAZ — alt kullanici paket alamaz.
   //   Sunucu zaten 403 `UYE_IZNI_YOK` donuyor (`ErisimGuard`).
-  const excelUyeKapali = !yeteneklerYukleniyor && !izinVar('excel');
+  //   06.10.2026: Excel kesif `fiyat` yetkisine baglandi (iki yetki).
+  const excelUyeKapali = !yeteneklerYukleniyor && !izinVar('fiyat');
   const dwgUyeKapali = !yeteneklerYukleniyor && !izinVar('dwg');
   // Yonetici adresi yalniz kilitli kart cizilecekse istenir (fazladan istek yok).
   const yonetici = useFirmaYoneticisi(firmaRol === 'uye' && (excelUyeKapali || dwgUyeKapali));
@@ -155,7 +156,7 @@ export default function QuickStart({
           <div className="grid grid-cols-2 gap-4">
             {/* Excel Upload Zone — izni kapali uyede KILITLI KART (23.09). */}
             {excelUyeKapali ? (
-              <KilitliOzellikKarti baslik="Excel Keşif" izin="excel" yonetici={yonetici} />
+              <KilitliOzellikKarti baslik="Excel Keşif" izin="fiyat" yonetici={yonetici} />
             ) : vitrin ? (
               <VitrinYuklemeKutusu tur="excel" onAc={pencereAc} />
             ) : (

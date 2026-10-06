@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { Send, X } from 'lucide-react';
-import { VARSAYILAN_DAVET_IZINLERI, type UyeIzni } from './izin-metinleri';
+import { VARSAYILAN_DAVET_IZINLERI, izinSecimiGecerli, type UyeIzni } from './izin-metinleri';
 import { DAVET_EPOSTA_HATA_METNI, davetEpostaHatasi } from './davet-kurallari';
 import type { Davet, Uye } from './ekip-tipleri';
 import { IzinSecici } from './IzinSecici';
@@ -11,7 +11,9 @@ import { IzinSecici } from './IzinSecici';
  * "Ekibe üye davet et" penceresi (23.09.2026 ikinci tasarım · ekran 2).
  *
  * ⚠ İzinler GÖNDERİLİR (`onGonder(eposta, izinler)` → `POST /firma/davetler
- * { eposta, izinler }`); açılış seçimi tasarımdaki gibi Excel + DWG.
+ * { eposta, izinler }`). Açılış seçimi BOŞ (06.10: en az yetki); en az bir
+ * yetki seçilene dek "Davet gönder" `aria-disabled` (odaklanabilir, ipucunu
+ * anar) ve `gonder` erken döner (sunucu da boş listeyi reddeder).
  * ⚠ E-posta denetimi KOLAYLIK (`davet-kurallari.ts`): biçim ve "zaten
  * ekipte". Son söz sunucuda (`@IsEmail`, `ZATEN_EKIPTE`, koltuk kapısı).
  * ⚠ Pencere başarıda KAPANIR; hata olursa açık kalır (sayfa bildirim basar),
@@ -46,11 +48,12 @@ export function DavetPenceresi({
 
   const hata = davetEpostaHatasi(eposta, ekip);
   const hataGoster = denetle && hata !== null;
+  const izinSecildi = izinSecimiGecerli(izinler);
 
   async function gonder(e: FormEvent) {
     e.preventDefault();
     setDenetle(true);
-    if (hata !== null || islemde) return;
+    if (hata !== null || !izinSecildi || islemde) return;
     const tamam = await onGonder(eposta.trim(), izinler);
     if (tamam) onKapat();
   }
@@ -125,7 +128,7 @@ export function DavetPenceresi({
                 <span className="text-[13px] font-semibold text-gray-900">Neleri görebilsin?</span>
                 <span className="text-xs text-gray-500">Sonradan değiştirebilirsin</span>
               </div>
-              <IzinSecici secili={izinler} onDegis={setIzinler} pasif={islemde} />
+              <IzinSecici secili={izinler} onDegis={setIzinler} pasif={islemde} ipucuId="davet-izin-ipucu" />
             </div>
           </div>
 
@@ -140,10 +143,16 @@ export function DavetPenceresi({
               >
                 Vazgeç
               </button>
+              {/* Yetki seçilmemişken `disabled` DEĞİL `aria-disabled`: düğme
+                  odaklanabilir kalır, ekran okuyucu ipucunu (`aria-describedby`)
+                  okur; tık da Enter da `gonder`de erken döner. İstek sürerken
+                  ise gerçekten pasif (`disabled`). */}
               <button
                 type="submit"
                 disabled={islemde}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#0f172a] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1e293b] disabled:opacity-50"
+                aria-disabled={izinSecildi ? undefined : true}
+                aria-describedby={izinSecildi ? undefined : 'davet-izin-ipucu'}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#0f172a] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1e293b] disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:bg-[#0f172a]"
               >
                 <Send className="h-4 w-4" aria-hidden="true" />
                 Davet gönder

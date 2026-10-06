@@ -41,6 +41,7 @@ import {
   izinleriSuz,
   izinMetni,
   TUM_IZINLER,
+  yetkiSecimiGecerli,
   type UyeIzni,
 } from './uye-izinleri';
 
@@ -153,7 +154,7 @@ export class UyelikServisi {
         katildi: u.createdAt,
         durduruldu,
         mfaAcik: !!u.mfaAcikAt,
-        // 23.09.2026 — ETKIN izinler (sahip → dordu; `uye-izinleri.ts`).
+        // 23.09.2026 — ETKIN yetkiler (sahip → ikisi; `uye-izinleri.ts`).
         // ⚠ Uye yalniz KENDI satirinin izinlerini gorur: kimin hangi modulu
         //   actigi firmanin yonetim bilgisidir, ekip arkadasina acik degil.
         //   `null` = "sana gosterilmiyor" (bos dizi "hicbir izni yok" demek).
@@ -247,6 +248,8 @@ export class UyelikServisi {
     const simdi = new Date();
     const izinler = hamIzinler === undefined ? [...TUM_IZINLER] : izinleriSuz(hamIzinler);
     if (!izinler) throw new BadRequestException(IZIN_GECERSIZ);
+    // 06.10 (ekip/yetki B): en az bir yetki — DTO'nun IKINCI katmani.
+    if (!yetkiSecimiGecerli(izinler)) throw new BadRequestException(YETKI_SECILMEDI);
 
     const sonuc = await firmaKilitliIslem(this.prisma, k.firmaId, async (tx) => {
       const aktor = await this.sahipOku(tx, k);
@@ -447,7 +450,7 @@ export class UyelikServisi {
           firmaId: davet.firmaId,
           firmaRol: 'uye',
           // ⚠ 23.09 — IZINLER DAVETTEN. Satir silinirse sema varsayilani
-          //   (DORT izin) yazilir ve sahibin davette kapattigi modul sessizce
+          //   (iki yetki) yazilir ve sahibin davette kapattigi yetki sessizce
           //   ACILIRDI. Bozuk/bos deger → `[]` (fail-closed: hic modul yok).
           izinler: izinleriSuz(davet.izinler) ?? [],
           role: 'user',
@@ -544,6 +547,8 @@ export class UyelikServisi {
   async izinleriDegistir(k: Kimlik, hedefId: string, hamIzinler: unknown) {
     const izinler = izinleriSuz(hamIzinler);
     if (!izinler) throw new BadRequestException(IZIN_GECERSIZ);
+    // 06.10 (ekip/yetki B): en az bir yetki — DTO'nun IKINCI katmani.
+    if (!yetkiSecimiGecerli(izinler)) throw new BadRequestException(YETKI_SECILMEDI);
 
     return firmaKilitliIslem(this.prisma, k.firmaId, async (tx) => {
       const aktor = await this.sahipOku(tx, k);
@@ -964,7 +969,12 @@ const UYE_YOK = { kod: 'UYE_YOK', mesaj: 'Üye bulunamadı.' };
 
 const IZIN_GECERSIZ = {
   kod: 'IZIN_GECERSIZ',
-  mesaj: 'İzin listesi geçersiz. Sayfayı yenileyip tekrar deneyin.',
+  mesaj: 'Yetki listesi geçersiz. Sayfayı yenileyip tekrar deneyin.',
+};
+
+const YETKI_SECILMEDI = {
+  kod: 'YETKI_SECILMEDI',
+  mesaj: 'En az bir yetki seçin.',
 };
 
 const SAHIP_TAM_YETKILI = {

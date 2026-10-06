@@ -362,9 +362,12 @@ describe('⭐ BAĞLANTI — Firma sekmesi', () => {
     expect(firma).toMatch(/\.get<Blob>\('\/firma\/logo', \{ responseType: 'blob' \}\)/);
     expect(firma).toContain('URL.revokeObjectURL(olusturulan)');
     expect(firma).not.toMatch(/src=\{`[^`]*\/firma\/logo/);
-    // Ölçüt: sunucu kimliği YALNIZ Authorization başlığından okuyor.
+    // Ölçüt: sunucu kimliği YALNIZ Authorization başlığından okuyor. 06.10
+    // (güvenlik HIGH-1): passport-jwt çıkarıcısı yerine ortak doğrusal
+    // `bearerToken` — kaynak yine yalnız başlık (çerez/sorgu/gövde yok).
     const strateji = kodu(oku('../backend/src/altyapi/auth/strategies/jwt.strategy.ts'));
-    expect(strateji).toContain('ExtractJwt.fromAuthHeaderAsBearerToken()');
+    expect(strateji).toMatch(/jwtFromRequest: \([^)]*\) => bearerToken\(req\?\.headers\?\.authorization\)/);
+    expect(strateji).not.toMatch(/ExtractJwt\.|fromUrlQueryParameter|fromBodyField|cookie/i);
   });
 
   it('⭐ antet ölçümü: görünen ad antete GİRMİYOR, telefon ve logo giriyor', () => {
@@ -405,7 +408,7 @@ describe('⭐ BAĞLANTI — Veriler sekmesi metni ürünle çelişmiyor', () => 
   });
 });
 
-describe('⭐ BAĞLANTI — Ekip erişimim sekmesi: dört izin satırı', () => {
+describe('⭐ BAĞLANTI — Ekip erişimim sekmesi: yetki satırları (06.10: iki yetki)', () => {
   const sekme = kodu(oku(`${H}/EkipErisimiSekmesi.tsx`));
 
   it('⭐ izinler SAĞLAYICIDAN (aynı `/auth/me` yanıtı) — ayrı istek yok', () => {
@@ -419,7 +422,7 @@ describe('⭐ BAĞLANTI — Ekip erişimim sekmesi: dört izin satırı', () => 
     // Sözlükten ikinci bir içe aktarma (ör. `IZIN_TANIMLARI`) yok: satırlar elle kurulamaz.
     expect(sekme.split("from '@/ozellik/firma/ekip/izin-metinleri'").length - 1).toBe(1);
     // `izinSatirlari(izinler ?? [])` ya da ikinci bir çağrı eski sunucuda
-    // "dördü kapalı" diye YANLIŞ bir beyan çizerdi (kod incelemesi ölçtü).
+    // "hepsi kapalı" diye YANLIŞ bir beyan çizerdi (kod incelemesi ölçtü).
     expect(sekme.split('izinSatirlari(').length - 1).toBe(1);
     expect(sekme).toContain('const satirlar = izinSatirlari(izinler);');
   });
@@ -442,8 +445,9 @@ describe('⭐ BAĞLANTI — Ekip erişimim sekmesi: dört izin satırı', () => 
         if (m) expect(sekme, `${t.anahtar}: ${m}`).not.toContain(m);
       }
     }
-    // Elle kurulan (ya da yeniden yazılan) her sözlük izin adını anmak zorunda.
-    expect(sekme).not.toMatch(/\b(excel|dwg|firmaTeklifleri|kutuphane)\b/i);
+    // Elle kurulan (ya da yeniden yazılan) her sözlük izin adını anmak zorunda
+    // (06.10 anahtarları + eski dördü: eski sözlüğün geri dönüşü de yakalanır).
+    expect(sekme).not.toMatch(/\b(fiyat|dwg|excel|firmaTeklifleri|kutuphane)\b/i);
     expect(sekme).not.toMatch(/\b(FileSpreadsheet|Ruler|Banknote|BookOpen|IZIN_SIMGELERI)\b/);
   });
 
@@ -479,8 +483,9 @@ describe('⭐ ÇİZİM — IzinDurumListesi gerçekten çizilir, GÖRÜNEN metni
   });
 
   it('⭐ her satırın görünen metni TAM OLARAK sözlük + rozet — fazladan tek sözcük yok', () => {
-    const html = ciz(izinSatirlari(['excel', 'kutuphane']));
-    const acik = [true, false, false, true];
+    // Yalnız DWG: fiyat KAPALI (kapalı metni), DWG AÇIK — iki dal birlikte.
+    const html = ciz(izinSatirlari(['dwg']));
+    const acik = [false, true];
     const li = satirlar(html);
     expect(li.length).toBe(IZIN_TANIMLARI.length);
     IZIN_TANIMLARI.forEach((t, i) => expect(metin(li[i]), t.anahtar).toBe(beklenen(t, acik[i])));
@@ -490,34 +495,46 @@ describe('⭐ ÇİZİM — IzinDurumListesi gerçekten çizilir, GÖRÜNEN metni
     expect(html).not.toMatch(/\s(aria-label|title)=/);
   });
 
-  it('⭐ "Son teklifler" kapalıyken üye YALNIZ KENDİ tekliflerini gördüğünü okur (Emre 23.09)', () => {
-    const m = metin(ciz(izinSatirlari([])));
-    expect(m).toContain('Son teklifler ve tutarları Yalnız kendi hazırladığı teklifleri görebilir Kapalı');
-    expect(m).not.toContain('Firmanın teklif listesini');
+  it('⭐ fiyat kapalıyken üye neyin kapalı olduğunu ve YALNIZ KENDİ tekliflerini gördüğünü okur (Emre 23.09)', () => {
+    const m = metin(ciz(izinSatirlari(['dwg'])));
+    expect(m).toContain(
+      'Fiyatlandırma ve teklifler (Excel keşif) Excel keşif, fiyat eşleştirme ve firma kütüphanesi kapalı; yalnız kendi hazırladığı teklifleri görür. Kapalı',
+    );
+    expect(m).not.toContain('Firmanın tüm tekliflerini');
+    // Bu sürümde kendi teklifinin tutarını görür: "fiyat göremez" YAZILMAZ.
+    expect(m).not.toMatch(/göremez|görmez/);
+    // Açıkken firmanın tüm teklifleri.
+    expect(metin(ciz(izinSatirlari(['fiyat'])))).toContain('Firmanın tüm tekliflerini görür.');
   });
 
-  it('boş liste = dördü KAPALI; hepsi açık = dördü AÇIK', () => {
+  it('boş liste = ikisi KAPALI; hepsi açık = ikisi AÇIK', () => {
     const kapali = metin(ciz(izinSatirlari([])));
     const acik = metin(ciz(izinSatirlari([...IZIN_SIRASI])));
-    expect(kapali.split('Kapalı').length - 1).toBe(4);
+    // ⚠ "Kapalı" kapalı metninin İÇİNDE de geçiyor ("… kütüphanesi kapalı;"):
+    // küçük harfli, rozet büyük harfli — sayım rozeti sayar.
+    expect(kapali.split('Kapalı').length - 1).toBe(2);
     expect(kapali).not.toContain('Açık');
-    expect(acik.split('Açık').length - 1).toBe(4);
+    expect(acik.split('Açık').length - 1).toBe(2);
     expect(acik).not.toContain('Kapalı');
   });
 
-  it('rozet: açık = yeşil + tik, kapalı = gri + kilit', () => {
-    const li = satirlar(ciz(izinSatirlari(['excel'])));
+  it('rozet: açık = yeşil + tik, kapalı = gri + kilit (iki sırada da)', () => {
+    const li = satirlar(ciz(izinSatirlari(['fiyat'])));
     expect(li[0]).toContain(IZIN_ROZETI_ACIK);
     expect(li[0]).toContain('lucide-check');
     expect(li[0]).not.toContain('lucide-lock');
     expect(li[1]).toContain(IZIN_ROZETI_KAPALI);
     expect(li[1]).toContain('lucide-lock');
     expect(li[1]).not.toContain('lucide-check');
+    const ters = satirlar(ciz(izinSatirlari(['dwg'])));
+    expect(ters[0]).toContain(IZIN_ROZETI_KAPALI);
+    expect(ters[1]).toContain(IZIN_ROZETI_ACIK);
   });
 
   it('simgeler lucide, tasarımdaki sırayla; emoji yok', () => {
     const li = satirlar(ciz(izinSatirlari([])));
-    ['lucide-file-spreadsheet', 'lucide-ruler', 'lucide-banknote', 'lucide-book-open'].forEach((s, i) => {
+    expect(li.length).toBe(2);
+    ['lucide-banknote', 'lucide-ruler'].forEach((s, i) => {
       expect(li[i], s).toContain(s);
     });
     expect(EMOJI.test(ciz(izinSatirlari([...IZIN_SIRASI])))).toBe(false);
@@ -533,7 +550,7 @@ describe('⭐ ÇİZİM — IzinDurumListesi gerçekten çizilir, GÖRÜNEN metni
     expect(liste).toContain('{s.baslik}');
     expect(liste).toContain('{s.aciklama}');
     expect(liste).toContain('const Simge = IZIN_SIMGELERI[s.anahtar];');
-    expect(liste).not.toMatch(/\b(excel|dwg|firmaTeklifleri|kutuphane)\b/i);
+    expect(liste).not.toMatch(/\b(fiyat|dwg|excel|firmaTeklifleri|kutuphane)\b/i);
     for (const t of IZIN_TANIMLARI) {
       for (const m of [t.baslik, t.aciklama, t.kapaliAciklamasi]) {
         if (m) expect(liste, `${t.anahtar}: ${m}`).not.toContain(m);

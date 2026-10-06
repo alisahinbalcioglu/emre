@@ -138,9 +138,12 @@ function main(): void {
     limitler.length === 2,
     `bulunan limit sayisi: ${limitler.length}`,
   );
+  // 06.10 (MEDIUM-B/C): global tavan 1 MB; teklif kaydi (canlida en buyuk
+  // ≈1,07 MB) ve fiyat listesi ice aktarimi yol basi GENIS tavanla
+  // (`buyuk-govde.ts`) — o kurulum yoksa global tavan bu uclari kirar.
   check(
-    'C3 limit 10mb DEGIL (olculdu: kaydedilen teklif govdesi ve fiyat listesi ice aktarimi 10mb`i asiyor)',
-    !/limit:\s*['"]10mb['"]/.test(mainTs),
+    'C3 toplu uclar global tavana takilmaz: main.ts yol basi genis tavani kurar (buyukGovdeUclariniKur)',
+    /buyukGovdeUclariniKur\(app\)/.test(mainTs),
   );
 
   // ── D. CORS ───────────────────────────────────────────────────────────

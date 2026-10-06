@@ -73,13 +73,13 @@ async function main() {
     temizlik.user.push(u1.id, u2.id, u3.id);
 
     // 23.09.2026: teklif uclari `teklifKimligiCoz` ile cozulur (JwtStrategy
-    // `firmaRol` + `izinler` tasir). K2 migration VARSAYILANIYLA (dort izin)
+    // `firmaRol` + `izinler` tasir). K2 migration VARSAYILANIYLA (06.10: iki yetki)
     // katilmis uyedir — bu paketin I1/I2e olcumleri o hali olcer; izni
     // DARALTILMIS uye asagida I6'da AYRICA olculur.
     const K1 = teklifKimligiCoz({ id: u1.id, firmaId: f1.id, firmaRol: 'sahip' });   // F1 sahibi
     const K2 = teklifKimligiCoz({                                                     // F1 uyesi (DAVET EDILEN)
       id: u2.id, firmaId: f1.id, firmaRol: 'uye',
-      izinler: ['excel', 'dwg', 'firmaTeklifleri', 'kutuphane'],
+      izinler: ['fiyat', 'dwg'],
     });
     const K3 = teklifKimligiCoz({ id: u3.id, firmaId: f2.id, firmaRol: 'sahip' });   // BASKA firma
 
@@ -131,12 +131,12 @@ async function main() {
     sina('I2e ⭐', 'ayni firmanin uyesi teklifi REVIZE edebilir',
       baslikRevize?.title === `${damga}-revize`, `baslik=${baslikRevize?.title}`);
 
-    // ── I6: "SON TEKLIFLER" IZNI KAPALI UYE (23.09.2026, Emre karari) ───
+    // ── I6: FIYAT YETKISI KAPALI UYE (23.09.2026 "Son teklifler", 06.10 `fiyat`) ─
     // Ayni kisi (u2), izni daraltilmis haliyle: firmanin teklifi GORUNMEZ,
     // ACILMAZ, REVIZE/SILME yapilamaz; KENDI teklifi aynen calisir ve sahip
     // onu gorur. Gercek DB'de, gercek servisle.
     const K2k = teklifKimligiCoz({
-      id: u2.id, firmaId: f1.id, firmaRol: 'uye', izinler: ['excel', 'dwg', 'kutuphane'],
+      id: u2.id, firmaId: f1.id, firmaRol: 'uye', izinler: ['dwg'], // ['fiyat','dwg'] DEGIL: korlesirdi
     });
     const { kayitlar: listeK2k } = await svc.findAll(K2k);
     sina('I6a ⭐', 'izni kapali uye firmanin teklifini LISTEDE gormez',

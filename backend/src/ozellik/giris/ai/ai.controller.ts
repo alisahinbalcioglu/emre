@@ -61,7 +61,8 @@ export class AiController {
    * fiyatı para birimsiz okuyordu (EUR özel fiyat TL sayılıyordu). KARAR
    * (koordinatör, Emre'nin ön onayıyla — Emre dönünce bilgilendirilecek ürün
    * kararı): 410, servis kodu silindi. Biri hâlâ çağırıyorsa görünsün diye
-   * kimliksiz tek WARN. Yetki meta verisi KORUNDU: kimliksiz/yetkisiz istek
+   * kimliksiz tek WARN. Yetki meta verisi KORUNDU (üye izni 06.10'dan beri
+   * `fiyat`, ekip/yetki B): kimliksiz/yetkisiz istek
    * eskisi gibi 401/403 alır, WARN'ı yalnız yetkili üye tetikler, başka
    * kapıların fikstürü bozulmaz. Dosya gövdesi ayrıştırılmaz.
    * Geri gelirse yeni tasarım ister. Kapı: `test:ai-analiz-kapali`.
@@ -74,7 +75,7 @@ export class AiController {
   @Post('analyze')
   @RequireTier('pro')
   @GerekliYetenek(Yetenek.AI_ANALIZ)
-  @UyeIzniGerekli('kutuphane')
+  @UyeIzniGerekli('fiyat')
   analyze(): never {
     this.logger.warn('Kapali uc cagrildi: POST /ai/analyze (410)');
     throw new GoneException(AI_ANALIZ_KAPALI_MESAJI);
@@ -89,7 +90,7 @@ export class AiController {
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   translate(@CurrentUser() user: unknown, @Body() body: CeviriIstegiDto) {
-    // 23.09: teklif OKUYAN uc → `teklifKimligiCoz` (Son teklifler izni kapsami).
+    // 23.09: teklif OKUYAN uc → `teklifKimligiCoz` (`fiyat` yetkisi kapsami).
     return this.ceviriService.teklifiCevir(teklifKimligiCoz(user), body.quoteId, body.hedefDil ?? 'en');
   }
 

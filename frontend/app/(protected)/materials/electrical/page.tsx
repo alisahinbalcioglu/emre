@@ -136,9 +136,9 @@ export default function ElectricalPoolPage() {
                         <Trash2 className="mr-1 h-3 w-3" />Kaldır
                       </Button>
                     )}
-                    {/* 23.09.2026: aktarim KUTUPHANEYE yazar — Kutuphanem izni kapali alt
+                    {/* 23.09.2026: aktarim KUTUPHANEYE yazar — `fiyat` yetkisi kapali alt
                         kullanicida dugme cizilmez (uc 403 `UYE_IZNI_YOK`). */}
-                    {izinVar('kutuphane') && (
+                    {izinVar('fiyat') && (
                     <Button variant="ghost" size="sm" className="h-7 w-full text-[11px] text-primary hover:bg-primary/10"
                       onClick={async (e) => {
                         e.preventDefault();
@@ -151,7 +151,7 @@ export default function ElectricalPoolPage() {
                           toast({ title: 'Aktarıldı', description: `${res.data.imported} malzeme kütüphanenize eklendi.` });
                         } catch { toast({ title: 'Hata', variant: 'destructive' }); }
                       }}>
-                      <BookmarkPlus className="mr-1 h-3 w-3" />Kütüphaneme Aktar
+                      <BookmarkPlus className="mr-1 h-3 w-3" />Firma kütüphanesine aktar
                     </Button>
                     )}
                   </div>

@@ -420,15 +420,16 @@ async function bolumD() {
 
   // ── 23.09.2026 (Ekip & Izinler): TEKLIF SAYACI TEKLIF KAPSAMIYLA ────────
   // F1'in 3 teklifinin ucunu de sahip A yazdi; uye A2'nin KENDI teklifi yok.
-  // "Son teklifler" izni kapali uye panoda firmanin teklif ADEDINI de
-  // gormemeli (liste ile ayni kosul). Izni acik uye firmanin tamamini sayar.
+  // `fiyat` yetkisi (06.10; eski "Son teklifler") olmayan uye panoda firmanin
+  // teklif ADEDINI de gormemeli (liste ile ayni kosul). Yetkili uye tamamini sayar.
+  // ⚠ Yetkisiz fikstur YALNIZ dwg — ['fiyat','dwg'] olsaydi D5b korlesirdi.
   const izinsiz = await dene(async () =>
-    controller.ozet({ id: 'A2', firmaId: 'F1', firmaRol: 'uye', izinler: ['excel', 'dwg', 'kutuphane'] }));
-  check('D5b "Son teklifler" izni KAPALI uye: teklif sayaci YALNIZ kendi (0, firmanin 3u DEGIL)',
+    controller.ozet({ id: 'A2', firmaId: 'F1', firmaRol: 'uye', izinler: ['dwg'] }));
+  check('D5b `fiyat` yetkisi KAPALI uye: teklif sayaci YALNIZ kendi (0, firmanin 3u DEGIL)',
     (izinsiz.deger as any)?.teklifSayisi === 0, JSON.stringify(izinsiz.deger));
   const izinli = await dene(async () =>
-    controller.ozet({ id: 'A2', firmaId: 'F1', firmaRol: 'uye', izinler: ['firmaTeklifleri'] }));
-  check('D5c izni ACIK uye firmanin TUM tekliflerini sayar (3) — D5b olcutu kendi kendine 0 vermiyor',
+    controller.ozet({ id: 'A2', firmaId: 'F1', firmaRol: 'uye', izinler: ['fiyat'] }));
+  check('D5c `fiyat` yetkili uye firmanin TUM tekliflerini sayar (3) — D5b olcutu kendi kendine 0 vermiyor',
     (izinli.deger as any)?.teklifSayisi === 3, JSON.stringify(izinli.deger));
 
   const app = kodu(oku('backend/src/app.module.ts'));

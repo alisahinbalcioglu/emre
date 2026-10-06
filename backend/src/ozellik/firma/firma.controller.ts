@@ -57,8 +57,8 @@ export class FirmaController {
   }
 
   /**
-   * ⚠ `limits` YAZILMASI SART. `main.ts`teki 50mb'lik `express.json` limiti
-   * multipart'i KAPSAMAZ; multer'in varsayilani SINIRSIZDIR ve tek istekle
+   * ⚠ `limits` YAZILMASI SART. `main.ts`teki `express.json` limiti (1 MB;
+   * toplu uclarda `buyuk-govde.ts`) multipart'i KAPSAMAZ; multer'in varsayilani SINIRSIZDIR ve tek istekle
    * bellek tuketilebilir. Depodaki iki mevcut yukleme ucu (quote-formats)
    * limitsiz — bu bir ORNEK DEGIL, kopyalanmamasi gereken bir KUSURDUR.
    */

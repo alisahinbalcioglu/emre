@@ -49,7 +49,7 @@ const TEKLIF_KURALLARI: DiziKurali[] = [
  */
 /*
  * 23.09.2026 — TEKLIF KAPSAMI: teklif okuyan/yazan her uc `teklifKimligiCoz`
- * kullanir (`kimlikCoz` DEGIL). "Son teklifler & tutar" izni kapali alt
+ * kullanir (`kimlikCoz` DEGIL). `fiyat` yetkisi kapali alt
  * kullanici yalniz KENDI hazirladigi teklifleri gorur; servis metotlari
  * `TeklifKimligi` ister, duz kimlik gecen cagri DERLENMEZ.
  */

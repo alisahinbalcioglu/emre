@@ -128,6 +128,11 @@ const SUITES: Suite[] = [
   { ad: 'Ürün indeksi v20: steel≠tee · DN 6/8 ve 4 hane · inç öneki/parmak (FAZ C3)', script: 'test:urun-indeksi-v20', zincir: 'Z1' },
   { ad: 'Ad uzunluğu hızı: önek kovası + çağrı içi bellek — sonuç birebir, iş sayısı düşük (P2)', script: 'test:ad-uzunlugu', zincir: 'Z2' },
   { ad: 'Parantez içi nitelik: havuzda tanınan parantez sözcüğü yumuşak ayırıcı, tanınmayan kısıt değil (P2)', script: 'test:parantez-niteligi', zincir: 'Z2' },
+  { ad: 'Ünsüz yumuşaması: dirsek ↔ dirseği ↔ dirsekler token eşitliği, aile çözümüne girmez (P2 c)', script: 'test:unsuz-yumusamasi', zincir: 'Z2' },
+  { ad: 'Aile kelimesi muafiyeti token kümesine göre: aile token’lardan gelmiyorsa hiçbir token muaf değil (P2 55 ad)', script: 'test:aile-kelimesi', zincir: 'Z2' },
+  { ad: 'Sondaki sıfat baş isim değil: "Yangın Dolabı … Hortumlu" hortum değil, sağda kelime varsa eski sonuç (P2 6a)', script: 'test:sifat-eki', zincir: 'Z2' },
+  { ad: 'Soru listesinde sondaki ürün türü sıfatlı ürün ("… Aktüatörlü") sona: elenmez, fiyat davranışı aynı (P2 6a-sıra)', script: 'test:sifat-sirasi', zincir: 'Z2' },
+  { ad: 'Uzun şartname: ilk satır kalemin adı, nitelik anahtarı ("Montaj Biçimi :") hizmet/aile değil (P2)', script: 'test:sartname-ilk-satir', zincir: 'Z2' },
   // ── S2+S3 (06.08.2026): ÖNERİ KUTUSU. Çapraz-marka/firma önerisi ana
   //    motoru çağırıyor ve motorun "onaylat" dediği tek adayı KESİN gibi
   //    sunuyordu. İki kural mühürlendi: kanıt gücü yetmeyen aday (çapı ya da
@@ -237,6 +242,8 @@ const SUITES: Suite[] = [
   //    reddi kalkti): İCMAL sayfa × birim (SUMIF J/K), yerlesikte birim basina toplam
   //    blogu, musteri formatinda satir eklenmez + eksiz etiket karma metin.
   { ad: 'Karışık para birimli teklif formatı (İCMAL)', script: 'test:export-karisik', zincir: 'Z4' },
+  { ad: 'Müşteri formatı İCMAL satır eklemesi (formül kayması)', script: 'test:format-satir-ekleme', zincir: 'Z4' },
+  { ad: 'Müşteri formüllerinin önbelleği (Korumalı Görünüm)', script: 'test:format-onbellek', zincir: 'Z4' },
   // 05.10.2026: kutuphane doviz neti — on yuz hesaplaNetFiyat/Doviz arka uc ikizleriyle
   //    her girdide ayni; kutuphanenin "Net Fiyat"i satirin biriminde (₺ 1 hane, $/€ 2 hane).
   { ad: 'Net fiyat ikizi (kütüphane döviz neti)', script: 'test:net-fiyat-ikiz', zincir: 'Z2' },
@@ -1024,7 +1031,8 @@ const SUITES: Suite[] = [
   //    ValidationPipe'tan ÖNCE 413 + Türkçe mesaj, servis çağrılmaz, kimliksiz
   //    tek WARN; dizi olmayan değer 400. Toplu iskonto kimlikleri 1.000'lik
   //    parçalarla TEK işlemde; sözlük türleri bulk-match'te yayılmaz. Gerçek
-  //    denetleyiciler HTTP üzerinden, gövde ayrıştırıcısı main.ts gibi 50 MB.
+  //    denetleyiciler HTTP üzerinden, gövde ayrıştırıcısı 50 MB (main.ts'in
+  //    06.10 öncesi global tavanı; üretimde toplu uçlar `buyuk-govde.ts`).
   //    DB/AĞ GEREKTİRMEZ.
   { ad: 'Dizi tavanı: 13 uçta 413 pipe\'tan önce · dizi değişmezi · toplu iskonto parçalı tek işlem (U/M/B/H/P/Y)', script: 'test:dizi-tavani', zincir: 'Z0' },
   // ── 06.10.2026 — DOĞRULAMA BORUSU (güvenlik HIGH-A). İç içe nesnenin KENDİ
@@ -1040,6 +1048,14 @@ const SUITES: Suite[] = [
   //    (mevcut 413 ile bayt bayt aynı) + sürüme kilitli doğrusal hızlı yol;
   //    depodaki TÜM DTO'larla özgün ↔ yamalı eşdeğerlik. DB/AĞ GEREKTİRMEZ.
   { ad: 'Gövde genişliği: kimliksiz yollarda bayt tavanı · class-transformer karesel yol yaması · eşdeğerlik (A/B/E/K)', script: 'test:govde-genisligi', zincir: 'Z0' },
+  // ── 06.10.2026 — BÜYÜK GÖVDE (güvenlik MEDIUM-B/C). Ayrıştırma JWT kapısından
+  //    ÖNCE koşar: global 50 MB tavanla kimliksiz istek her yolda 50 MB
+  //    JSON.parse ettiriyordu. Global 1 MB; büyük gövde yalnız ölçülmüş toplu
+  //    uçlarda ve yalnız imzası geçerli token'la; token geçersizse gövde HİÇ
+  //    okunmaz, kapı eskisi gibi 401/403. Gerçek denetleyicilerle bağlantı,
+  //    passport-jwt'nin gerçek kararıyla eşdeğerlik, eski düzenin tıkanması
+  //    FIXTURE. DB/AĞ GEREKTİRMEZ.
+  { ad: 'Büyük gövde: global 1 MB · toplu uçlara token sonrası geniş tavan · geçersiz token gövdeyi okutmaz · ortak doğrusal Bearer · gzip açılmaz (B/T/K/H)', script: 'test:buyuk-govde', zincir: 'Z0' },
   // ── 04.10.2026 — CI EK NOTU (koordinatör). Actions günlüğü girişsiz 403;
   //    kırmızı işin tek ek notu "exit code 1" idi. Bu koşucu GITHUB_ACTIONS
   //    iken düşen paketi `::error` notu olarak yazar. Saf kurallar + bu

@@ -136,15 +136,15 @@ enum FirmaRol {
   uye
 }
 
-/// 23.09.2026 — ALT KULLANICI IZINLERI ("Ekip & Izinler"). Kural tek yerde:
+/// ALT KULLANICI YETKILERI ("Ekip & Izinler"). 23.09.2026 dort izin, 06.10.2026
+/// IKI YETKI (goc 20261006100000_uye_yetkileri_fiyat_dwg: excel → fiyat,
+/// firmaTeklifleri ve kutuphane dustu). Kural tek yerde:
 /// `backend/src/ozellik/firma/uye-izinleri.ts`. `sahip` icin liste OKUNMAZ
-/// (her zaman tam yetkili). `firmaTeklifleri` kapaliysa kisi YALNIZ kendi
-/// hazirladigi teklifleri gorur (Emre karari).
+/// (her zaman tam yetkili). `fiyat` kapaliysa kisi YALNIZ kendi hazirladigi
+/// teklifleri gorur (Emre karari).
 enum UyeIzni {
-  excel
+  fiyat
   dwg
-  firmaTeklifleri
-  kutuphane
 }
 
 model User {
@@ -159,10 +159,10 @@ model User {
   firma             Firma?     @relation(fields: [firmaId], references: [id])
   firmaRol          FirmaRol   @default(sahip)
   /// 23.09.2026 — alt kullanicinin ACIK modulleri (izin listesi, "allow-list").
-  /// Varsayilan DORDU: ozellik gelmeden once her uye her seyi goruyordu;
-  /// mevcut satirlar migration'da bu varsayilanla dolar, kimsenin erisimi
-  /// kesilmez. Davetle katilan uye davetteki secimi tasir.
-  izinler           UyeIzni[]  @default([excel, dwg, firmaTeklifleri, kutuphane])
+  /// Varsayilan IKISI: ozellik gelmeden once her uye her seyi goruyordu;
+  /// davetsiz katilim (kurumsal giris) bu varsayilanla acilir. Davetle katilan
+  /// uye davetteki secimi tasir.
+  izinler           UyeIzni[]  @default([fiyat, dwg])
   createdAt         DateTime   @default(now())
   /// YUMUSAK SILME. Dolu ise hesap silinmis sayilir: listede gorunmez, GIRIS
   /// YAPAMAZ ve mevcut token'i da gecersizdir (auth.service + jwt.strategy).
@@ -2074,7 +2074,7 @@ model FirmaDavet {
   davetEdenEposta String
   /// 23.09.2026 — sahibin davet aninda sectigi izinler. Kabulde yeni hesaba
   /// AYNEN kopyalanir (`uyelik.servisi.ts` `davetKabul`).
-  izinler         UyeIzni[] @default([excel, dwg, firmaTeklifleri, kutuphane])
+  izinler         UyeIzni[] @default([fiyat, dwg])
   gonderimSayisi  Int       @default(1)
   sonGonderimAt   DateTime  @default(now())
   olusturuldu     DateTime  @default(now())
