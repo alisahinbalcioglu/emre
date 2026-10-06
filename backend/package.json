@@ -71,6 +71,7 @@
     "test:parantez-niteligi": "ts-node test/parantez-niteligi-test.ts",
     "test:unsuz-yumusamasi": "ts-node test/unsuz-yumusamasi-test.ts",
     "test:aile-kelimesi": "ts-node test/aile-kelimesi-test.ts",
+    "test:sifat-eki": "ts-node test/sifat-eki-test.ts",
     "test:grid": "ts-node test/excel-grid-test.ts",
     "test:labor-sheet": "ts-node test/labor-sheet-test.ts",
     "test:kl": "ts-node test/kl-liste-ekleme-test.ts",

@@ -130,6 +130,7 @@ const SUITES: Suite[] = [
   { ad: 'Parantez içi nitelik: havuzda tanınan parantez sözcüğü yumuşak ayırıcı, tanınmayan kısıt değil (P2)', script: 'test:parantez-niteligi', zincir: 'Z2' },
   { ad: 'Ünsüz yumuşaması: dirsek ↔ dirseği ↔ dirsekler token eşitliği, aile çözümüne girmez (P2 c)', script: 'test:unsuz-yumusamasi', zincir: 'Z2' },
   { ad: 'Aile kelimesi muafiyeti token kümesine göre: aile token’lardan gelmiyorsa hiçbir token muaf değil (P2 55 ad)', script: 'test:aile-kelimesi', zincir: 'Z2' },
+  { ad: 'Sondaki sıfat baş isim değil: "Yangın Dolabı … Hortumlu" hortum değil, sağda kelime varsa eski sonuç (P2 6a)', script: 'test:sifat-eki', zincir: 'Z2' },
   // ── S2+S3 (06.08.2026): ÖNERİ KUTUSU. Çapraz-marka/firma önerisi ana
   //    motoru çağırıyor ve motorun "onaylat" dediği tek adayı KESİN gibi
   //    sunuyordu. İki kural mühürlendi: kanıt gücü yetmeyen aday (çapı ya da

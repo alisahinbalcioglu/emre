@@ -189,7 +189,11 @@ export interface ProductIndexFields {
 // v20 (05.10, FAZ C3): aile ve cap yolu — "steel" icindeki tee artik fitting
 // degil (B12, adSlug/aile) · DN 6/8 ve 4 haneli DN (A10, capTags) · inc oneki ve
 // "parmak" (B15, capTags). Yeniden indeksleme: v19 ile ayni komut (idempotent).
-export const INDEX_VERSION = 20;
+// v21 (06.10, P2 6a, test:sifat-eki): sondaki -li/-lu sifati bas isim degil
+// (adSlug). Canli olcum (v5, salt okuma): 153 havuz urunu aile degistirir —
+// 144 aktuator → vana ("… Vana … Aktüatörlü"), 9 fitting → vana; firma urunu 0.
+// Yeniden indeksleme: ayni komut (idempotent).
+export const INDEX_VERSION = 21;
 
 /** adSlug cozulemeyen satirin tasidigi isaret — eslestirmeye ADAY OLAMAZ. */
 export const BELIRSIZ_SLUG = 'belirsiz';
@@ -474,6 +478,23 @@ export function malzemeEtiketleri(...metinler: Array<string | null | undefined>)
  * Boylece "en uzun desen kazanir" sozluk kurali da dogru calisir: aile
  * kelimesi ADIN SONUNDA arandigi icin bastaki nitelemeler ("dekoratif boru")
  * aileyi kacirtmaz.
+ *
+ * SIFAT EKI BAS ISIM DEGILDIR (6a, 06.10 — canli bulgu, `test:sifat-eki`):
+ * iki cozucu da kelimenin ICINI yakalar (/hortum/, "icerir" sozluk eslesmesi),
+ * "-li/-lu" sifati ("Hortumlu" = hortumu olan) bas isim sayiliyordu:
+ *   "Yangın Dolabı 1'' - 30 m Hortumlu" → 'hortum' (canli 8 teklif satiri; motor
+ *   tek aday olarak "Yangın Hortumu" oneriyordu).
+ * Eslesmenin bittigi kelimenin KALANI yalniz sifat ekiyse VE sifatin SAGINDA
+ * anlamli kelime yoksa (yalniz olcu/birim/noktalama: "Hortumlu - 200 lt/dk",
+ * "(30m Hortumlu)") eslesme bas isim sayilmaz — sifat SOLDAKI kalemi niteler.
+ * Sagda kelime varsa sifat ONU niteler ("Montajlı G.Hatlı İkili Priz Sortisi"):
+ * bas isim sagdaki, sozlukte olmayan kelimedir; sola gecmek yanlis aile verir
+ * (olculdu: "Kanala" → 'kanal', aile kilidi dogru "Priz Sortisi" adayini
+ * DUSURUYORDU — 6 kulliyat satiri). Reddedilen eslesme ELENMEZ, SONA kalir:
+ * hicbir parca kabul edilmezse ESKI sonuc doner — en kisa parcadaki eski
+ * denetim, yani eski kodun dondurdugu deger birebir ("taban yuzey siralar,
+ * elemez"). Elemek olculdu: Pimtas'ta 7 "Redüksiyonlu Adaptör" fitting
+ * ailesini kaybediyordu ("Adaptör" sozlukte yok).
  */
 function basIsimAilesi(text: string, bellek?: AileBellegi): string | null {
   const tam = normalizeText(text);
@@ -481,6 +502,7 @@ function basIsimAilesi(text: string, bellek?: AileBellegi): string | null {
   // Sondan-parca ARTIMLI kurulur (`kelimeler.slice(i).join(' ')` ile ayni dize;
   // her adimda bastan birlestirmek uzun metinde karesel is yapiyordu).
   let parca = '';
+  let yedek: { ofset: number; e: ParcaEslesmesi } | null = null;
   for (let i = kelimeler.length - 1; i >= 0; i--) {
     parca = parca === '' ? kelimeler[i] : `${kelimeler[i]} ${parca}`;
     // parca DAIMA metnin sonundadir → tam metindeki basi basit fark.
@@ -490,18 +512,48 @@ function basIsimAilesi(text: string, bellek?: AileBellegi): string | null {
       s = parcaDenetle(parca);
       bellek?.set(parca, s);
     }
-    if (s) return kapsayanVarsaOnuAl(tam, ofset, s.index, s.uzunluk, s.slug);
+    if (s.kabul) return kapsayanVarsaOnuAl(tam, ofset, s.kabul.index, s.kabul.uzunluk, s.kabul.slug);
+    if (s.yedek && !yedek) yedek = { ofset, e: s.yedek };
   }
-  return null;
+  return yedek ? kapsayanVarsaOnuAl(tam, yedek.ofset, yedek.e.index, yedek.e.uzunluk, yedek.e.slug) : null;
 }
 
-/** Sondan-parca denetimi — yalniz PARCANIN fonksiyonu (sozluk/desen sabitleri). */
-type ParcaSonucu = { index: number; uzunluk: number; slug: string } | null;
+/**
+ * Eslesme sondaki bir sifat mi? Kelimenin kalani yalniz sifat eki ("hortum|lu",
+ * "sprink|lerli") ve sagdaki 3+ harfli kelimelerin HEPSI de sifat ("Vanalı
+ * Hortumlu": ikisi de soldaki kalemi niteler). Birim istisnasi (bar, psi…)
+ * olculdu, kulliyatta etkisi 0 — eklenmedi.
+ */
+const SIFAT_EKI = /^(?:l[ae]r)?l[iu]$/;
+const SIFAT_KELIMESI = /l[iu]$/;
+function sondakiSifat(index: number, uzunluk: number, metin: string): boolean {
+  const sag = metin.slice(index + uzunluk);
+  const kalan = /^[\p{L}\p{N}]*/u.exec(sag)![0];
+  return SIFAT_EKI.test(kalan) && (sag.slice(kalan.length).match(/\p{L}{3,}/gu) ?? []).every((k) => SIFAT_KELIMESI.test(k));
+}
+
+/**
+ * Sondan-parca denetimi — yalniz PARCANIN fonksiyonu (sozluk/desen sabitleri).
+ * `kabul`: sifat ekine takilmayan ilk eslesme. `yedek`: parcada eslesme vardi ama
+ * hepsi sifat ekliydi → ESKI kuralin bu parcadaki sonucu (sifat suzgecsiz).
+ */
+type ParcaEslesmesi = { index: number; uzunluk: number; slug: string };
+type ParcaSonucu = { kabul: ParcaEslesmesi | null; yedek: ParcaEslesmesi | null };
 function parcaDenetle(parca: string): ParcaSonucu {
   AILE_COZUCU_OLCUM.parcaDenetimi++;
-  const rx = extractMaterialTypeDetayli(parca);
+  let reddedildi = false;
+  const basIsimOlabilir = (index: number, uzunluk: number, metin: string): boolean => {
+    if (!sondakiSifat(index, uzunluk, metin)) return true;
+    reddedildi = true;
+    return false;
+  };
+  const kabul = desenDenetimi(parca, basIsimOlabilir);
+  return { kabul, yedek: kabul || !reddedildi ? null : desenDenetimi(parca) };
+}
+function desenDenetimi(parca: string, kabul?: (index: number, uzunluk: number, metin: string) => boolean): ParcaEslesmesi | null {
+  const rx = extractMaterialTypeDetayli(parca, kabul);
   if (rx && rx.type !== 'diger') return { index: rx.index, uzunluk: rx.length, slug: rx.type };
-  const dc = resolveAdDetayli(parca);
+  const dc = resolveAdDetayli(parca, kabul);
   if (dc) return { index: dc.index, uzunluk: dc.desen.length, slug: dc.slug };
   return null;
 }

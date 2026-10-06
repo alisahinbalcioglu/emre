@@ -67,7 +67,7 @@ function fiksturMetinleri(): string[] {
  * artimli parca + bellek + onek kovasi yolu BUNA karsi olculur — uretim
  * fonksiyonunu kendisiyle karsilastirmak kurulum hatasini gizlerdi.
  */
-function basIsimReferans(text: string): string | null {
+function basIsimEski(text: string): string | null {
   const tam = normalizeText(text);
   const kelimeler = tam.split(/\s+/).filter(Boolean);
   for (let i = kelimeler.length - 1; i >= 0; i--) {
@@ -79,6 +79,45 @@ function basIsimReferans(text: string): string | null {
     if (dc) { const kap = sozlukKapsayan(tam, ofset + dc.index, ofset + dc.index + dc.desen.length); return kap ? kap.slug : dc.slug; }
   }
   return null;
+}
+
+/**
+ * SIFAT EKI (6a, test:sifat-eki) referansi — uretimden BAGIMSIZ mekanizma: kabul
+ * suzgeci yerine reddedilen eslesmenin SON harfi '#' ile maskelenir ve cozucu
+ * (suzgecsiz) yeniden cagrilir; hicbir parca kabul edilmezse eski algoritma.
+ * Sondaki sifat: kelimenin kalani yalniz -li/-lu (onunde cogul olabilir) ve
+ * sagdaki 3+ harfli kelimelerin hepsi de -li/-lu ile biter.
+ */
+function sondakiSifatRef(metin: string, son: number): boolean {
+  const sag = metin.slice(son);
+  const kalan = (/^[\p{L}\p{N}]*/u.exec(sag) ?? [''])[0];
+  if (!/^(?:l[ae]r)?l[iu]$/.test(kalan)) return false;
+  return (sag.slice(kalan.length).match(/\p{L}{3,}/gu) ?? []).every((k) => /l[iu]$/.test(k));
+}
+const maskele = (s: string, son: number) => `${s.slice(0, son - 1)}#${s.slice(son)}`;
+function parcaRef(parca: string): { index: number; uzunluk: number; slug: string } | null {
+  let m = parca;
+  for (let rx = extractMaterialTypeDetayli(m); rx && rx.type !== 'diger'; rx = extractMaterialTypeDetayli(m)) {
+    if (!sondakiSifatRef(parca, rx.index + rx.length)) return { index: rx.index, uzunluk: rx.length, slug: rx.type };
+    m = maskele(m, rx.index + rx.length);
+  }
+  m = parca;
+  for (let dc = resolveAdDetayliFiltresiz(m); dc; dc = resolveAdDetayliFiltresiz(m)) {
+    if (!sondakiSifatRef(parca, dc.index + dc.desen.length)) return { index: dc.index, uzunluk: dc.desen.length, slug: dc.slug };
+    m = maskele(m, dc.index + dc.desen.length);
+  }
+  return null;
+}
+function basIsimReferans(text: string): string | null {
+  const tam = normalizeText(text);
+  const kelimeler = tam.split(/\s+/).filter(Boolean);
+  for (let i = kelimeler.length - 1; i >= 0; i--) {
+    const parca = kelimeler.slice(i).join(' ');
+    const ofset = tam.length - parca.length;
+    const p = parcaRef(parca);
+    if (p) { const kap = sozlukKapsayan(tam, ofset + p.index, ofset + p.index + p.uzunluk); return kap ? kap.slug : p.slug; }
+  }
+  return basIsimEski(text);
 }
 
 /** aileKelimeleri tanimi (bagimsiz referans cozucuyle, bellek ve suzgec yok). 55 AD (05.10):
@@ -105,14 +144,16 @@ async function main() {
   // ══ H0 · aile cozucu: artimli parca + onek kovasi == eski algoritma ══════════
   console.warn = () => {};
   const cozucuGirdileri = [...metinler, ...normalizeText(enUzun).split(/\s+/).filter(Boolean).map((_, i, w) => w.slice(i).join(' '))];
-  let aileBulunan = 0; const farkA: string[] = [];
+  let aileBulunan = 0; let sifatEtkili = 0; const farkA: string[] = [];
   for (const a of cozucuGirdileri) {
     const y = resolveFamily(a); const r = basIsimReferans(a);
+    if (r !== basIsimEski(a)) sifatEtkili++;
     if (y === r) { if (y) aileBulunan++; } else if (farkA.length < 5) farkA.push(`${js(a).slice(0, 40)}: ${y} ≠ ${r}`);
   }
   console.warn = warn;
   check(`FIXTURE KANITI: ${cozucuGirdileri.length} girdi, ${aileBulunan} tanesinde aile cozuldu (≥ 1.000)`, aileBulunan >= 1000);
-  check('★ H0 resolveFamily: artimli sondan-parca + onek kovasi ESKI algoritmayla birebir', farkA.length === 0, farkA.join(' | '));
+  check(`FIXTURE KANITI: ${sifatEtkili} girdide sondaki sifat aileyi degistiriyor (≥ 5) — H0 yeni kurali da olcer`, sifatEtkili >= 5, `${sifatEtkili}`);
+  check('★ H0 resolveFamily: artimli sondan-parca + onek kovasi + sondaki sifat BAGIMSIZ referansla birebir', farkA.length === 0, farkA.join(' | '));
 
   // ══ H1 · aileKelimeleri: bellekli == belleksiz referans (tum fikstür metinleri) ══
   console.warn = () => {};
