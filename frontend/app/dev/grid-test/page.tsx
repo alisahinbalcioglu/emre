@@ -70,6 +70,10 @@ export default function GridTestPage() {
   const [digerDoviz, setDigerDoviz] = useState(false);
   const [gorunumUSD, setGorunumUSD] = useState(false);
   const [toplamsiz, setToplamsiz] = useState(false);
+  // F6c: `?tumu=TRY|USD|EUR` → "Tumu X" gorunumu; canli kur 1 $ = ₺41, 1 € = ₺45 —
+  // DOLAR MARKA'nin DONUK kuru (40) bilerek farkli: "once donuk kur" olculsun.
+  const [tumu, setTumu] = useState<'TRY' | 'USD' | 'EUR' | null>(null);
+  const tumuGorunum = useMemo(() => (tumu ? { hedef: tumu, tlKuru: { USD: 41, EUR: 45 } } : null), [tumu]);
   // ⚠ GRID BAYRAKLAR OKUNDUKTAN SONRA MOUNT EDILIR. Ilk halinde grid ilk
   // render'da `iscilikAcik=true` goruyordu; `?iscilik=gec` boylece gercek
   // dunyanin TERSINI (once acik, sonra kapali, sonra acik) suruyordu ve
@@ -110,6 +114,8 @@ export default function GridTestPage() {
     if (arama.get('gorunumUSD') === '1') setGorunumUSD(true);
     // F6a (inceleme H1): `?toplamsiz=1` → sayfada TOPLAM sutunu rolu yok (yalniz birim fiyat)
     if (arama.get('toplamsiz') === '1') setToplamsiz(true);
+    const tumuSorgu = arama.get('tumu');
+    if (tumuSorgu === 'TRY' || tumuSorgu === 'USD' || tumuSorgu === 'EUR') setTumu(tumuSorgu);
     // KUTUPHANE DOVIZ NETI (05.10): `?kutuphaneDoviz=1` → kutuphane modunda satir 2
     // USD ve liste 10,55 (₺ kurali $10,60 gosterirdi). Varsayilan KAPALI.
     if (arama.get('kutuphaneDoviz') === '1') setKutuphaneDoviz(true);
@@ -453,6 +459,15 @@ export default function GridTestPage() {
           style={{ border: '1px solid #cbd5e1', borderRadius: 4, padding: '1px 6px', fontSize: 12 }}
         >
           diğer sayfa döviz: {digerDoviz ? 'var' : 'yok'}
+        </button>{' '}
+        {/* F6c: gorunum anahtari taklidi — Karisik → Tumu ₺ → Tumu USD → Karisik */}
+        <button
+          type="button"
+          data-testid="tumu-dongu"
+          onClick={() => setTumu((t) => (t === null ? 'TRY' : t === 'TRY' ? 'USD' : null))}
+          style={{ border: '1px solid #cbd5e1', borderRadius: 4, padding: '1px 6px', fontSize: 12 }}
+        >
+          görünüm: {tumu ?? 'karışık'}
         </button>
       </div>
       {gridHazir && <ExcelGrid
@@ -463,6 +478,7 @@ export default function GridTestPage() {
         seciciSaltOkunur={saltOkunurSecici}
         paraBirimiKipi={paraKipi}
         digerSayfalardaDoviz={digerDoviz}
+        tumuGorunum={tumuGorunum}
         autoVariantEnabled={autoVariant}
         onAutoVariantChange={onAutoVariantChange}
         onAutoVariantApplied={onAutoVariantApplied}
@@ -473,8 +489,8 @@ export default function GridTestPage() {
         onFirmaChange={onFirmaChange as any}
         mode={mod}
         libraryPriceField="materialUnitPriceField"
-        currencySymbol={gorunumUSD ? '$' : '₺'}
-        conversionRate={gorunumUSD ? 1 / 40 : 1}
+        currencySymbol={tumu ? { TRY: '₺', USD: '$', EUR: '€' }[tumu] : gorunumUSD ? '$' : '₺'}
+        conversionRate={tumu === 'USD' ? 1 / 41 : tumu === 'EUR' ? 1 / 45 : gorunumUSD ? 1 / 40 : 1}
         // ⚠ GERCEK TEKLIF GRIDIYLE HIZA (29.09): `quotes/new` bu prop'u veriyor
         // ve FITTING kapsam kipi buna baglidir (`fittingDuzenlenebilir =
         // enableStructureEdit`). Harness onu vermedigi icin fitting kipi

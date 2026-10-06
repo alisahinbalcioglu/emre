@@ -18,16 +18,17 @@ import { fillAlanlari } from './fill-alanlari';
 import { clampDiscount, parseDiscountInput, parseDiscountPaste, iskontoHucresiOku } from './discount-utils';
 import { CustomDropdown } from './CustomDropdown';
 import { fillDown, karYayilimi } from './fill-down';
+import { tumuHucresi, tumuOzeti, type TumuGorunum } from '@/ozellik/fiyat/tumu-gorunum';
 import { planYapistir, type PasteKolon, type PasteSatir } from './yapistir';
 import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, type Nokta } from './kopyala';
 import { isaretStili, isaretTooltip, secimBekliyor, kutuphaneFiyatAyrisimi, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
-import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
+import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim, type SayfaToplamOzeti } from '@/ozellik/fiyat/pricing';
 import { paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, paraIsaretiniAyikla, PARA_SEMBOLU, birimliToplamlar, fittingBirimli, cokluTutarMetni, netFiyatBiriminde, dovizliSatirVarMi, adayFiyatEtiketi, type ParaBirimi } from '@/ozellik/fiyat/taraf-para-birimi';
 // FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
 import {
   FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
-  oranMetniniNormalize, fittingRozetMetni, kilitliEditable, yapistirmaHedefiMi, fittingHucreleri,
+  oranMetniniNormalize, fittingRozetMetni, kilitliEditable, gorunumKilidi, yapistirmaHedefiMi, fittingHucreleri,
   fittingOncekiAl, fittingOncekiFiyatVarMi, fittingParaAlanlari, FITTING_ONCEKI_SISTEM_ALANLARI, fittingSatiriHazirla,
 } from './fitting';
 // Satir siniflandirma terfisi (03.09): dosyadan gelen bos satira elle yazilinca
@@ -304,6 +305,15 @@ interface Props {
    *  hesaplar) — gorunum teklif genelinde tek duzen. Bu sayfanin dovizini izgara
    *  kendi satirlarindan CANLI olcer. */
   digerSayfalardaDoviz?: boolean;
+  /** F6c (karar K2): "Tumu X" — dovizli karisik teklif tek birimde, CEVRILEREK
+   *  gosterilir (kural `tumu-gorunum.ts`; sayfa `tumuGorunumu` ile karar verir).
+   *  Yalniz gorunum: satir verisi degismez, para hucreleri salt okunur. null = Karisik. */
+  tumuGorunum?: TumuGorunum | null;
+  /** F6c: bu sayfanin CANLI doviz durumu degisince (ilk $/€ geldi / son $/€ gitti)
+   *  bildirilir — sayfa gorunum anahtarini (Karisik secenegi) buna gore cizer.
+   *  Yalniz DEGISIMDE cagrilir (nadir, duzenleme bittikten sonra): sayfa her hucre
+   *  yazimini BILEREK almaz (`onRowDataChange` acik editoru iptal ederdi). */
+  onBuSayfaDovizDegisti?: (doviz: boolean) => void;
   // library mode'da hangi fiyat alanini kullanir? (material veya labor)
   libraryPriceField?: 'materialUnitPriceField' | 'laborUnitPriceField';
   currencySymbol: string;
@@ -1853,6 +1863,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   mode = 'quote',
   libraryPriceField = 'materialUnitPriceField',
   currencySymbol, conversionRate,
+  tumuGorunum = null,
+  onBuSayfaDovizDegisti,
   autoVariantEnabled = true,
   onAutoVariantChange,
   onAutoVariantApplied,
@@ -1884,6 +1896,20 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   // kipinin "panodaki metnin hangi kurdan geldigi bilinmez" kurali gecerli kalir.
   const kurOraniRef = useRef(conversionRate);
   kurOraniRef.current = conversionRate;
+  // F6c (karar K2): "Tumu X" gorunumu yalniz teklif izgarasinda, karisik YAZIM kipinde.
+  // Ref'ten okunur: bicimlendirici / editable / isaret columnDefs memo'sunu yeniden
+  // kurmaz — gorunum degisince asagidaki efekt hucreleri ve alt satirlari tazeler.
+  const tumuRef = useRef<TumuGorunum | null>(tumuGorunum);
+  tumuRef.current = tumuGorunum;
+  const dovizBildirRef = useRef(onBuSayfaDovizDegisti);
+  dovizBildirRef.current = onBuSayfaDovizDegisti;
+  // Inceleme H1: sayfaya SON bildirilen deger — ilk olcum de bildirilir (kayitli $
+  // satiriyla acilan sayfada `buSayfadaDovizRef` zaten dogru baslar, degisim olmaz).
+  const sonBildirilenRef = useRef<boolean | null>(null);
+  const tumuEtkin = useCallback(
+    (): TumuGorunum | null => (karisik && mode === 'quote' ? tumuRef.current : null),
+    [karisik, mode],
+  );
   const isaretliFiyatKabul = useCallback(
     () => karisik && (birimBasinaGorunum() || kurOraniRef.current === 1),
     [karisik, birimBasinaGorunum],
@@ -3580,6 +3606,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       buSayfadaDovizRef.current = dovizSimdi;
       gridRef.current.api.refreshCells({ force: true });
     }
+    // F6c: sayfanin gorunum anahtari bu sayfanin dovizini buradan ogrenir. Acik
+    // editor varken ERTELENIR: sayfa render'i izgaraya yeni kolon tanimlari verir ve
+    // editoru keser (inceleme M1, olculdu "$12 ↓ 400") — editor kapaninca yeniden kosar.
+    if (dovizSimdi !== sonBildirilenRef.current) {
+      if (gridRef.current.api.getEditingCells().length > 0) ertelenenOzetRef.current = true;
+      else { sonBildirilenRef.current = dovizSimdi; dovizBildirRef.current?.(dovizSimdi); }
+    }
     const { grandUnitPriceField, grandTotalField, materialTotalField, laborTotalField, nameField } = data.columnRoles;
     // Dosyada grandTotalField yoksa bile, materialTotal + laborTotal toplamini goster
     if (!grandTotalField && !materialTotalField && !laborTotalField) {
@@ -3599,34 +3632,49 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // ham degeri tasir), sembol satirin `_currency`sinden (bicimlendirici zaten
     // okur). Hesap TEK yerden: `birimliToplamlar` (taraf-para-birimi.ts).
     // F6a: yalniz dovizli taraf varken; yalniz-₺ karisik sayfa asagidaki TL dalini alir.
+    // Bir birimin GENEL TOPLAM / KÂR alt satiri (F3 + F6c): degerler BIRIMIN
+    // KENDISINDE (`_gosterim` ham — ikinci carpma yok), sembol satirin `_currency`si.
+    // `ek`: ad soneki — F3'te " ₺/$/€", Tumu X'te bos (tek birim). Hesap cagiranda.
+    const R = data.columnRoles as any;
+    const genelAlanK = R.grandTotalField ?? R.grandUnitPriceField;
+    const toplamSatiri = (oz: SayfaToplamOzeti, pb: ParaBirimi, ek: string, i: number) => {
+      const s: any = { _rowIdx: -1 - i * 10, _isDataRow: false, _isHeaderRow: false, _isPinnedTotal: true, _currency: pb };
+      if (nameField) s[nameField] = `GENEL TOPLAM${ek}`;
+      if (materialTotalField) s[materialTotalField] = oz.matToplam.toFixed(PARA_ONDALIK);
+      if (laborTotalField) s[laborTotalField] = oz.labToplam.toFixed(PARA_ONDALIK);
+      if (grandTotalField) s[grandTotalField] = oz.genelToplam.toFixed(PARA_ONDALIK);
+      if (!grandTotalField && grandUnitPriceField) s[grandUnitPriceField] = oz.genelToplam.toFixed(PARA_ONDALIK);
+      if (grandUnitPriceField && grandTotalField) s[grandUnitPriceField] = '';
+      s._gosterim = { oran: conversionRate };
+      if (materialTotalField) s._gosterim[materialTotalField] = oz.matToplam;
+      if (laborTotalField) s._gosterim[laborTotalField] = oz.labToplam;
+      if (genelAlanK) s._gosterim[genelAlanK] = oz.genelToplam;
+      return s;
+    };
+    const birimKarSatiri = (oz: SayfaToplamOzeti, pb: ParaBirimi, ek: string, i: number) => {
+      const k: any = karSatiri(oz, R, nameField);
+      k._rowIdx = -2 - i * 10;
+      k._currency = pb;
+      if (nameField) k[nameField] = `KÂR${ek}`;
+      k._gosterim = { oran: conversionRate };
+      for (const alan of [materialTotalField, laborTotalField, genelAlanK]) if (alan) k._gosterim[alan] = k[alan];
+      return k;
+    };
+    // ── COKLU PARA BIRIMI F6c (karar K2): "TUMU X" — teklif TEK birimde ──────
+    // Tek "GENEL TOPLAM" + "KÂR" (birim basina degil). Satir satir, taraf taraf
+    // cevrilir (`tumuOzeti`: donuk kur, yoksa canli) — "Tumu ₺" toplami teklif
+    // listesindekiyle ayni. Degerler zaten X'te.
+    const tumu = tumuEtkin();
+    if (tumu) {
+      const oz = tumuOzeti(satirlar, R, tumu);
+      ozetSatirlariniYaz([toplamSatiri(oz, tumu.hedef, '', 0), birimKarSatiri(oz, tumu.hedef, '', 0)]);
+      return;
+    }
     if (birimBasinaGorunum()) {
-      const R = data.columnRoles as any;
-      const genelAlanK = R.grandTotalField ?? R.grandUnitPriceField;
       const kovalar = birimliToplamlar(satirlar, R);
-      const toplamSatirlari = kovalar.map(({ pb, ozet: oz }, i) => {
-        const s: any = { _rowIdx: -1 - i * 10, _isDataRow: false, _isHeaderRow: false, _isPinnedTotal: true, _currency: pb };
-        if (nameField) s[nameField] = `GENEL TOPLAM ${PARA_SEMBOLU[pb]}`;
-        if (materialTotalField) s[materialTotalField] = oz.matToplam.toFixed(PARA_ONDALIK);
-        if (laborTotalField) s[laborTotalField] = oz.labToplam.toFixed(PARA_ONDALIK);
-        if (grandTotalField) s[grandTotalField] = oz.genelToplam.toFixed(PARA_ONDALIK);
-        if (!grandTotalField && grandUnitPriceField) s[grandUnitPriceField] = oz.genelToplam.toFixed(PARA_ONDALIK);
-        if (grandUnitPriceField && grandTotalField) s[grandUnitPriceField] = '';
-        s._gosterim = { oran: conversionRate };
-        if (materialTotalField) s._gosterim[materialTotalField] = oz.matToplam;
-        if (laborTotalField) s._gosterim[laborTotalField] = oz.labToplam;
-        if (genelAlanK) s._gosterim[genelAlanK] = oz.genelToplam;
-        return s;
-      });
+      const toplamSatirlari = kovalar.map(({ pb, ozet: oz }, i) => toplamSatiri(oz, pb, ` ${PARA_SEMBOLU[pb]}`, i));
       if (mode === 'library') { ozetSatirlariniYaz(toplamSatirlari); return; }
-      const karSatirlari = kovalar.map(({ pb, ozet: oz }, i) => {
-        const k: any = karSatiri(oz, R, nameField);
-        k._rowIdx = -2 - i * 10;
-        k._currency = pb;
-        if (nameField) k[nameField] = `KÂR ${PARA_SEMBOLU[pb]}`;
-        k._gosterim = { oran: conversionRate };
-        for (const alan of [materialTotalField, laborTotalField, genelAlanK]) if (alan) k._gosterim[alan] = k[alan];
-        return k;
-      });
+      const karSatirlari = kovalar.map(({ pb, ozet: oz }, i) => birimKarSatiri(oz, pb, ` ${PARA_SEMBOLU[pb]}`, i));
       ozetSatirlariniYaz([...toplamSatirlari, ...karSatirlari]);
       return;
     }
@@ -3682,11 +3730,19 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     } else {
       ozetSatirlariniYaz([pinnedRow]);
     }
-  }, [data.columnRoles, mode, fittingSatirlariniYenile, conversionRate, karisik, birimBasinaGorunum, ozetSatirlariniYaz]);
+  }, [data.columnRoles, mode, fittingSatirlariniYenile, conversionRate, karisik, birimBasinaGorunum, tumuEtkin, ozetSatirlariniYaz]);
   updatePinnedBottomRef.current = updatePinnedBottom;
   // Kur yuklenince / birim degisince pinned YENIDEN kurulur: data.rowData efekti
   // kendi yayinimizda (sonYayinRef) erken doner, ona guvenilemez.
   React.useEffect(() => { updatePinnedBottomRef.current?.(); }, [conversionRate]);
+  // F6c: "Tumu X" gorunumu degisince (Karisik ↔ tek birim, hedef, kur) satir verisi
+  // DEGISMEZ — hucreler (bicim, serit) ve alt satirlar yeniden cizilir.
+  const tumuAnahtari = tumuGorunum
+    ? `${tumuGorunum.hedef}|${tumuGorunum.tlKuru.USD ?? ''}|${tumuGorunum.tlKuru.EUR ?? ''}` : '';
+  React.useEffect(() => {
+    gridRef.current?.api?.refreshCells({ force: true });
+    updatePinnedBottomRef.current?.();
+  }, [tumuAnahtari]);
   // F6a: baska sayfanin dovizi degisince (sayfa gecisi, kayit acilisi) gorunum bu
   // sayfada da degisir — hucreler ve alt satirlar yeniden kurulur. Ilk kurulumda
   // gerek yok (ref zaten dogru; `updatePinnedBottom` veri yuklenince kosar).
@@ -3872,8 +3928,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   const duzenlemeBitti = useCallback((e?: { newValue?: unknown; valueChanged?: boolean; node?: any; colDef?: { field?: string } }) => {
     const gecersiz = !!bekleyenSayiUyarisiRef.current;
     sayiUyarisiniGoster(e);
-    // Editor acikken ertelenen alt satirlar simdi (bir tik sonra: degisiklik olayi
-    // once islensin; yeni editor acildiysa yine ertelenir).
+    // Inceleme M1: editor acikken ertelenen alt satirlar / doviz bildirimi simdi
+    // (bir tik sonra: degisiklik olayi once islensin; yeni editor acildiysa yine ertelenir).
     if (ertelenenOzetRef.current) {
       ertelenenOzetRef.current = false;
       setTimeout(() => updatePinnedBottomRef.current?.(), 0);
@@ -4206,6 +4262,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       if (mode === 'quote' && (paraAlanlari.has(c.field) || c.field === '_malzKar' || c.field === '_iscKar')) {
         base.editable = kilitliEditable(base.editable);
       }
+      // F6c (karar K2): "Tumu X" gorunumunde para hucreleri SALT OKUNUR — cevrilmis
+      // sayi duzenlenmez, yapistirma hedef almaz (`gorunumKilidi`, fitting.ts, testli).
+      // Kar %, miktar ve marka/firma secimi acik: onlar tarafin KENDI biriminde yazar.
+      if (mode === 'quote' && paraAlanlari.has(c.field)) {
+        base.editable = gorunumKilidi(base.editable, () => tumuEtkin() !== null);
+      }
 
       // Merge cells icin colSpan
       const field = c.field;
@@ -4361,6 +4423,14 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           // F6a: yalniz birim basina gorunumde; yalniz-₺ karisik sayfa asagidaki TL bicimini alir.
           // Satirin KENDI dovizi de yeter (inceleme H1/L1): sayfa olcumu bir tik sonra
           // kosar — o arada $ fiyat ₺ (ya da ekran USD'de cevrilmis) gorunmesin.
+          // ── F6c (karar K2): "TUMU X" — her para hucresi X'e CEVRILMIS (yalniz
+          // gorunum; kural `tumuHucresi`: donuk kur, yoksa canli; tarafin kendi
+          // birimi X ise aynen). Genel toplam parcalardan, fitting birim basina.
+          const tumuG = tumuEtkin();
+          if (tumuG && !params.node?.rowPinned && (params.data as any)?._isDataRow) {
+            const x = tumuHucresi(params.data as any, params.colDef?.field, data.columnRoles as any, tumuG);
+            return x === null || x === 0 ? '' : `${PARA_SEMBOLU[tumuG.hedef]}${paraBicim(x, 1)}`;
+          }
           if ((birimBasinaGorunum() || (karisik && dovizliSatirVarMi([params.data as any])))
             && !params.node?.rowPinned && (params.data as any)?._isDataRow) {
             const dK = params.data as any;
@@ -4448,7 +4518,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           // C10 (P4b Parti 3): bayat kur isareti — kur TARAF birimiyle BIRLIKTE
           // verilir: karisik kipte dovizde kalan hucre kurla hesaplanmadi
           // (`_matPB`/`_labPB` USD/EUR → isaret yok; tl kipinde alan yok → TL).
-          const girdiden = (d: any): IsaretGirdisi => (malzemeFiyatKolonu
+          const girdidenHam = (d: any): IsaretGirdisi => (malzemeFiyatKolonu
             ? {
               dal: 'malzeme', durum: d?._matStatus, sebep: d?._matSebep,
               adaySayisi: d?._matAdaySayisi, otoVaryant: d?._matAutoVariant, oneri: d?._matSuggestion,
@@ -4461,6 +4531,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
               sayiUyari: d?._sayiUyari?.[field], sayiAlani: 'fiyat', // A2: ikiz
               kurBilgi: d?._labKurBilgi, tarafBirimi: d?._labPB, saltOkunur: seciciSaltOkunur,
             });
+          // F6c (koordinator onayi 06.10): "Tumu X"te serit SAYI KURDAN GECTIYSE —
+          // X'e cevrilen taraf (birimi X degil) kurla gosterilir → TL gibi okunur;
+          // X'te kalan $/€ cevrilmez → seritsiz. Gorunum salt okunur: not EYLEMSIZ.
+          // C10 girdisi (yukarida, P4) AYNEN kurulur; gorunum katmani ustune biner.
+          const girdiden = (d: any): IsaretGirdisi => {
+            const g = girdidenHam(d);
+            const tumuC = tumuEtkin();
+            if (!tumuC) return g;
+            const cevrilmez = tarafPB(d, g.dal) === tumuC.hedef && tumuC.hedef !== 'TRY';
+            return { ...g, tarafBirimi: cevrilmez ? tumuC.hedef : undefined, saltOkunur: true };
+          };
           base.cellStyle = ((params: any) => {
             if (params.node?.rowPinned || !params.data) return { textAlign: 'right' };
             if (params.data._fitting) return FITTING_TURETILMIS_STIL; // turetilmis: gri/italik

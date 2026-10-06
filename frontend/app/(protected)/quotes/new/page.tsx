@@ -32,7 +32,6 @@ import {
 import api from '@/ortak/lib/api';
 import { toast } from '@/ortak/hooks/use-toast';
 import { confirm } from '@/ortak/hooks/use-confirm';
-import { cn } from '@/ortak/lib/utils';
 import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import { kalemTanimliyorMu } from '@/ozellik/tablo/excel-grid/satir-terfi';
 import type { ExcelGridHandle } from '@/ozellik/tablo/excel-grid/ExcelGrid';
@@ -51,7 +50,9 @@ import { indeksUyarilari } from '@/lib/indeks-sagligi';
 import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/ozellik/teklif/dwg-teklif-sema';
 import { kalemUret, kurEksikTarafSayisi } from '@/ozellik/teklif/teklif-kalem';
 import { restoreRematch } from '@/ozellik/teklif/restore-rematch';
-import { karisikKipMi, digerSayfalardaDovizVar, KARISIK_PARA_KIPI, balonTutari, type TlKurlari } from '@/ozellik/fiyat/taraf-para-birimi';
+import { karisikKipMi, digerSayfalardaDovizVar, dovizliTarafVarMi, KARISIK_PARA_KIPI, balonTutari, type TlKurlari } from '@/ozellik/fiyat/taraf-para-birimi';
+import { tumuGorunumu, gorunumSecimi } from '@/ozellik/fiyat/tumu-gorunum';
+import { ParaGorunumAnahtari } from '@/ozellik/fiyat/ParaGorunumAnahtari';
 import { TASLAK_ANAHTARI, TASLAK_SURUMU, taslakUyarisiGerekirMi, TASLAK_YAZILAMADI_UYARISI, type TaslakYazimDurumu } from '@/ozellik/teklif/taslak';
 // Y4: doldurma ozeti tost metni tek yerde (isçilik "firmada yok").
 import { doldurmaOzetMetni } from '@/ozellik/teklif/doldurma-ozeti';
@@ -73,7 +74,6 @@ import {
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, toplamlariTamamla } from '@/ozellik/fiyat/pricing';
 import type { Brand } from '@/ortak/types';
 import type {
-  Currency,
   LaborFirm,
   AvailableBrand,
   UploadResponse,
@@ -466,6 +466,26 @@ export default function NewQuotePage() {
       : false),
     [karisikKip, multiSheet, activeSheetIndex, liveRowDataBySheet],
   );
+  // F6c (karar K2): dovizli karisik teklifte anahtar [Karisik | TL | USD | EUR],
+  // varsayilan Karisik; "Tumu X" yalniz gorunum (kural `tumu-gorunum.ts`). Yalniz-₺
+  // teklifte anahtar bugunku [TL | USD | EUR] (F6a: TL gibi gorunur, cevrim aynen).
+  // Teklif dovizli mi: TUM sayfalarin satirlari olculur. Satir nesneleri izgarayla
+  // PAYLASILIR (hucre yazimi yerinde, eklenen satir `onStructureChange` ile diziye
+  // girer) — ama sayfa hucre yazimlarini bilerek almaz, olcum kendiliginden
+  // tetiklenmez (olculdu, e2e Y6). Izgara bu sayfanin dovizi DEGISINCE (ve ilk
+  // olcumde) bildirir; bildirim yalniz yeniden olcum TETIGIDIR. Kayitli $ ile
+  // acilis ve sayfa gecisi bildirim beklemez (inceleme H1, e2e Y9/Y10).
+  const [karisikGorunumSecili, setKarisikGorunumSecili] = useState(true);
+  const [dovizTetigi, setDovizTetigi] = useState(false);
+  const dovizliTeklif = useMemo(
+    () => karisikKip && dovizliTarafVarMi(multiSheet?.sheets.map((s) => ({ rowData: liveRowDataBySheet[s.index] ?? s.rowData })) ?? []),
+    // dovizTetigi: degeri okunmaz — izgara bildirince paylasilan satirlar yeniden olculsun
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [karisikKip, multiSheet, liveRowDataBySheet, dovizTetigi],
+  );
+  // Inceleme L5: teklif dovizsiz kalinca tercih Karisik'e doner — doviz yeniden gelince
+  // kullanici istemeden salt okunur "Tumu X"e dusmesin (K2 varsayilani).
+  useEffect(() => { if (!dovizliTeklif) setKarisikGorunumSecili(true); }, [dovizliTeklif]);
   const [sheetMatchCounts, setSheetMatchCounts] = useState<Record<number, { total: number; matched: number }>>({});
   // PRD v3.0 Bolum B: "Otomatik varyant atama" toggle KALDIRILDI (global gate yok);
   // yayilim yalniz SURUKLE/CIFT-TIK ile. Motor korunur.
@@ -951,7 +971,15 @@ export default function NewQuotePage() {
   // Currency (TRY/USD/EUR) hook — state + exchange rate + conversion
   const { currency, gosterimCurrency, setCurrency, ratesLoaded, conversionRate, displayPrice, exchangeRates } = useCurrency();
   // F4: kayit anindaki TL kurlari (ic temsil USD tabanli: TRY = TL/USD, EUR = EUR/USD).
-  const tlKurlari: TlKurlari = ratesLoaded ? { USD: exchangeRates.TRY, EUR: exchangeRates.TRY / exchangeRates.EUR } : {};
+  const tlKurlari: TlKurlari = useMemo(
+    () => (ratesLoaded ? { USD: exchangeRates.TRY, EUR: exchangeRates.TRY / exchangeRates.EUR } : {}),
+    [ratesLoaded, exchangeRates],
+  );
+  // F6c: izgaraya giden "Tumu X" girdisi — detay sayfasiyla TEK karar (`tumuGorunumu`)
+  const tumuGorunum = useMemo(
+    () => tumuGorunumu(karisikKip, dovizliTeklif, karisikGorunumSecili, currency, ratesLoaded, tlKurlari),
+    [karisikKip, dovizliTeklif, karisikGorunumSecili, currency, ratesLoaded, tlKurlari],
+  );
   /** F6b: eslesme balonundaki tutar — kural `balonTutari` (karisikta dovizli kaynak
    *  KENDI biriminde; hucre $ derken balon ₺ net demesin). */
   const fiyatBalonu = (netPrice: number, kaynakFiyat?: { currency?: unknown; net?: unknown } | null): string =>
@@ -1749,8 +1777,6 @@ export default function NewQuotePage() {
 
   /* ---------- Render: Step 2 -- Edit Quote ---------- */
 
-  const currencies: Currency[] = ['TRY', 'USD', 'EUR'];
-
   return (
     <div>
       {/* 23.09.2026 — Kutuphanem izni kapali alt kullanici: marka/iscilik
@@ -1813,25 +1839,18 @@ export default function NewQuotePage() {
                 {ceviriDili === 'tr' ? 'Ingilizceye Cevir' : 'Turkceye Don'}
               </Button>
             )}
-          {/* Currency Toggle */}
-          <div className="flex rounded-lg border bg-white p-0.5">
-            {currencies.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setCurrency(c)}
-                className={cn(
-                  'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                  currency === c
-                    ? 'bg-blue-600 text-white shadow-sm' /* v1 spec .mpx-para .sec: secili para birimi MAVI dolgulu */
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-                disabled={!ratesLoaded && c !== 'TRY'}
-              >
-                {c === 'TRY' ? 'TL' : c}
-              </button>
-            ))}
-          </div>
+          {/* Currency Toggle — F6c: dovizli karisik teklifte Karisik secenegi (varsayilan) */}
+          <ParaGorunumAnahtari
+            dovizli={dovizliTeklif}
+            karisikSecili={karisikGorunumSecili}
+            birim={currency}
+            kurVar={ratesLoaded}
+            onSec={(s) => {
+              const y = gorunumSecimi(s, dovizliTeklif, karisikGorunumSecili);
+              setKarisikGorunumSecili(y.karisikSecili);
+              if (y.birim) setCurrency(y.birim);
+            }}
+          />
           </div>
 
           {/* Teklifi Kaydet — 06.08'de alt sagdan buraya, 13.08'de bir satir
@@ -2246,6 +2265,8 @@ export default function NewQuotePage() {
           conversionRate={conversionRate}
           paraBirimiKipi={karisikKip ? 'karisik' : 'tl'}
           digerSayfalardaDoviz={digerSayfalardaDoviz}
+          tumuGorunum={tumuGorunum}
+          onBuSayfaDovizDegisti={setDovizTetigi}
           laborFirms={laborFirms}
           sheetDiscipline={(() => {
             const idx = activeSheetIndex;

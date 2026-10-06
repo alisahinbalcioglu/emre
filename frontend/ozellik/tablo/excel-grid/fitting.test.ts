@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import {
   kapsamDegistir, fittingKapsaminaAlinabilirMi, silinenSatiriKapsamlardanDus,
   oranMetniniNormalize, fittingRozetMetni, fittingBirimiMi, fittingSatiriMi,
-  kilitliEditable, yapistirmaHedefiMi, fittingHucreleri,
+  kilitliEditable, gorunumKilidi, yapistirmaHedefiMi, fittingHucreleri,
   fittingOncekiAl, fittingOncekiFiyatVarMi,
 } from './fitting';
 import { planYapistir } from './yapistir';
@@ -229,5 +229,37 @@ describe('K9 — eski degerler saklanir (C1: sessiz para silme yok)', () => {
     const o = fittingOncekiAl({ _rowIdx: 6, _isDataRow: true, _matBirim: '', _matToplam: '' }, ROLLER);
     expect(fittingOncekiFiyatVarMi(o, ROLLER)).toBe(false);
     expect(fittingOncekiFiyatVarMi(null, ROLLER)).toBe(false);
+  });
+});
+
+// ── F6c (karar K2): "Tumu X" gorunum kilidi ──────────────────────────────────
+describe('gorunumKilidi — Tumu X gorunumunde para hucresi salt okunur', () => {
+  const boru = { data: { _isDataRow: true } };
+  it('★★ kilitliyken duzenlenmez ve YAPISTIRMA HEDEFI DEGIL (planlayici fittingTemel okur)', () => {
+    const e = gorunumKilidi(kilitliEditable(true), () => true);
+    expect(e(boru)).toBe(false);
+    expect(yapistirmaHedefiMi(e)).toBe(false);
+  });
+  it('★★ acikken alttaki kural AYNEN (duz true → duzenlenir ve yapistirma hedefi)', () => {
+    const e = gorunumKilidi(kilitliEditable(true), () => false);
+    expect(e(boru)).toBe(true);
+    expect(yapistirmaHedefiMi(e)).toBe(true);
+  });
+  it('★ gorunum CANLI okunur (kilit sonradan acilip kapanir — kolon yeniden kurulmaz)', () => {
+    let kilitli = false;
+    const e = gorunumKilidi(true, () => kilitli);
+    expect(yapistirmaHedefiMi(e)).toBe(true);
+    kilitli = true;
+    expect(e(boru)).toBe(false);
+    expect(yapistirmaHedefiMi(e)).toBe(false);
+  });
+  it('acikken fitting kilidi korunur (fitting satiri yine acilmaz)', () => {
+    const e = gorunumKilidi(kilitliEditable(true), () => false);
+    expect(e({ data: { _isDataRow: true, _fitting: { kapsam: [] } } })).toBe(false);
+  });
+  it('alttaki duzenlenemez kolon acikken de duzenlenmez ve hedef degil', () => {
+    const e = gorunumKilidi(false, () => false);
+    expect(e(boru)).toBe(false);
+    expect(yapistirmaHedefiMi(e)).toBe(false);
   });
 });
