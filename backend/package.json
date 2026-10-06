@@ -202,6 +202,7 @@
     "test:dizi-tavani": "ts-node test/dizi-tavani-test.ts",
     "test:dogrulama-borusu": "ts-node test/dogrulama-borusu-test.ts",
     "test:govde-genisligi": "ts-node test/govde-genisligi-test.ts",
+    "test:buyuk-govde": "ts-node test/buyuk-govde-test.ts",
     "test:ci-ek-notu": "ts-node test/ci-ek-notu-test.ts",
     "test:p4b-motor": "ts-node test/p4b-motor-test.ts",
     "test:ex-karisik": "ts-node test/cikti-karisik-test.ts",

@@ -876,7 +876,9 @@ async function eBlogu(): Promise<void> {
   {
     const ana = kodu(fs.readFileSync(path.join(SRC, 'main.ts'), 'utf8'));
     const i = ana.indexOf('govdeSinirlariniKur(app)');
-    const j = ana.indexOf("json({ limit: '50mb' })");
+    // 06.10 (MEDIUM-B/C): global tavan 50 MB → 1 MB; çağrının kendisi aranır,
+    // sayı değil (tavan değişince kapı yanlış nedenle kırmızı olmasın).
+    const j = ana.search(/app\.use\(json\(\{ limit: '\d+mb'[^}]*\}\)\)/);
     const k = ana.indexOf('urlencoded({ extended: true');
     check('E3 BAĞLANTI: `main.ts`\'te yol başı tavan, global json VE urlencoded ayrıştırıcılarından ÖNCE',
       i > 0 && j > i && k > i, JSON.stringify({ i, j, k }));

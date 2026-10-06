@@ -4,6 +4,8 @@ import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { guvenlikBasliklariniKur } from './altyapi/http/guvenlik-basliklari';
 import { govdeHatalariniKur, govdeSinirlariniKur } from './altyapi/http/govde-siniri';
+import { buyukGovdeUclariniKur } from './altyapi/http/buyuk-govde';
+import { yetkiBasligiTavaniniKur } from './altyapi/http/yetki-basligi';
 import { corsSecenekleri } from './altyapi/http/cors';
 import { GuvenliValidationPipe } from './altyapi/http/dogrulama-borusu';
 import { sinifDonusturucuYamasiniKur } from './altyapi/http/sinif-donusturucu-yamasi';
@@ -27,21 +29,37 @@ async function bootstrap() {
   // gitmesin (B3 · plan 1.15). Route'lardan ONCE: hata yanitlari da tasir.
   guvenlikBasliklariniKur(app);
 
-  // Govde limiti 500mb -> 50mb. Buyuk DWG/Excel DOSYALARI buradan gecmez;
-  // onlar multer ile ayri akistan gelir ve kendi fileSize limitine tabidir.
-  // Buradan gecen tek sey JSON/urlencoded govdesi.
+  // Govde limiti. Buyuk DWG/Excel DOSYALARI buradan gecmez; onlar multer ile
+  // ayri akistan gelir ve kendi fileSize limitine tabidir. Buradan gecen tek
+  // sey JSON/urlencoded govdesi.
   //
-  // Neden 50 ve neden 10 DEGIL: olculdu — kaydedilen teklif govdesi kaynak
-  // xlsx'in 4-5 katina cikiyor, ~50 bin kalemlik bir marka fiyat listesi ice
-  // aktarmasi ~22 MB govde uretiyor. 10mb sinirinda bunlar 413 alir ve
-  // kullanici tum grid emegini kaybeder. 50mb, olculen en kotu durumun iki
-  // katindan fazlasi; 500mb ise tek istekle bellegi tuketmeye izin veriyordu.
+  // 06.10 (guvenlik MEDIUM-B/C): GLOBAL 1 MB. Ayristirma kapilardan (JWT)
+  // ONCE kosar: 50 MB'lik global tavanla kimliksiz bir istek HER yolda 50 MB
+  // JSON.parse ettiriyordu (olculdu: komsu 5,2-5,6 sn bekledi), kayitli biri
+  // tavansiz bir DTO ucunda dongüyu 31 sn tutuyordu. Buyuk govde YALNIZ
+  // olculmus toplu uclarda ve YALNIZ imzasi gecerli oturum token'iyla
+  // (`buyuk-govde.ts`: teklif 25 MB, kutuphane 10 MB, iscilik 8 MB,
+  // eslestirme 4 MB, yonetici ice aktarma 32 MB). Canli olcum (06.10): en
+  // buyuk teklif ilk kaydi ≈1,07 MB — 1 MB global tavan teklif ucunu kirardi,
+  // o yuzden yol basi.
   //
-  // Faz 6.9: cevirinin duzeltme uclari 32 KB — yol basina sinir global
-  // ayristiricilardan ONCE kurulmali, sonra kurulursa SESSIZCE etkisizdir.
+  // ⚠ SIRA: yol basi kucuk tavanlar (Faz 6.9: ceviri duzeltme 32 KB, kimliksiz
+  // yollar) → buyuk govde uclari → global ayristiricilar. Yol basi sinir
+  // global ayristiricilardan ONCE kurulmali, sonra kurulursa SESSIZCE etkisizdir.
+  // 06.10 (guvenlik HIGH-1): 2 KB'i asan Authorization basligi dusurulur —
+  // derin savunma; asil duzeltme dogrusal ortak ayristirici (`bearer-token.ts`,
+  // passport'un hazir ifadesi karesel geri izliyordu: 16 KB bosluksuz baslik
+  // donguyu ~0,7 sn tutuyordu). Passport'tan ve buyuk govde on denetiminden ONCE.
+  yetkiBasligiTavaniniKur(app);
   govdeSinirlariniKur(app);
-  app.use(json({ limit: '50mb' }));
-  app.use(urlencoded({ extended: true, limit: '50mb' }));
+  buyukGovdeUclariniKur(app);
+  // 06.10 (guvenlik incelemesi): sikistirilmis istek govdesi ACILMAZ, 415 —
+  // tavan ACILMIS bayta uygulanir: ~1 KB gzip, kimliksiz, her yolda 1 MB
+  // JSON.parse ettiriyordu (~1000x kaldirac). On yuz istek govdesini
+  // sikistirmaz. Kucuk yol basi tavanlar (<= 32 KB, iyzico dahil) muaf:
+  // kaldirac tavanla sinirli, iyzico'nun gonderimi olculmedi.
+  app.use(json({ limit: '1mb', inflate: false }));
+  app.use(urlencoded({ extended: true, limit: '1mb', inflate: false }));
   // 29.09: ayrıştırıcının istemci hataları (413/415/…) aynı yanıt + tek WARN
   // satırı; Nest'in ExceptionsHandler'ı her birini ERROR + yığınla basıyordu.
   // Express hata ara katmanı yalnız KENDİNDEN ÖNCEKİLERİ görür: SONRA kurulur.

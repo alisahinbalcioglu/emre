@@ -15,19 +15,21 @@ import {
  *  `govde-siniri.ts` BAYTI sınırlar; bu dosya ÖĞE SAYISINI. Bu uçların işi
  *  dizinin boyuyla büyür: eşleştirme motoru ad başına çalışır, ızgara kayıtları
  *  satır başına sorgu atar, ValidationPipe iç içe DTO'yu öğe öğe kurup doğrular.
- *  Genel JSON sınırı (50 MB, `main.ts`) yüz binlerce öğeye izin verir; tek istek
- *  bütün kiracıların paylaştığı olay döngüsünü saniyelerce tutabilirdi.
+ *  Gövde tavanı (`main.ts` 1 MB; toplu uçlarda `buyuk-govde.ts` 4-32 MB) yüz
+ *  binlerce öğeye izin verir; tek istek bütün kiracıların paylaştığı olay
+ *  döngüsünü saniyelerce tutabilirdi.
  *
  *  KURAL: tavanı aşan istek 413 + Türkçe mesaj alır, işin HİÇBİRİ yapılmaz.
  *  KIRPMA YOK: bulk-match'te ilk N adı işlemek kalanları sessizce "eşleşmedi"
  *  gösterirdi. Denetim GUARD'dadır: guard'lar pipe'lardan ÖNCE koşar, yani
  *  KURALDAKİ alanın 1M öğeli dizisi öğe öğe dönüştürülmeden/doğrulanmadan
  *  reddedilir (`@ArrayMaxSize` bunu yapamaz — önce bütün diziyi kurar). Adı
- *  kuralda olmayan alanın / üst düzey dizinin pipe maliyeti DURUR — o genel
- *  gövde tavanının (50 MB) işi. Yöntem düzeyinde olduğu için sınıf düzeyindeki
- *  kimlik/abonelik kapılarından SONRA koşar. ⚠ Aynı yönteme başka `@UseGuards`
- *  eklenirse `@DiziTavani`nın ALTINA yazılsın: yöntem guard'ları alttan yukarı
- *  eklenir, üstteki sonra koşar (rol kapısı tavandan önce koşsun).
+ *  kuralda olmayan alanın / üst düzey dizinin pipe maliyeti DURUR — o gövde
+ *  tavanının (`main.ts` · `buyuk-govde.ts`) işi. Yöntem düzeyinde olduğu için
+ *  sınıf düzeyindeki kimlik/abonelik kapılarından SONRA koşar. ⚠ Aynı yönteme
+ *  başka `@UseGuards` eklenirse `@DiziTavani`nın ALTINA yazılsın: yöntem
+ *  guard'ları alttan yukarı eklenir, üstteki sonra koşar (rol kapısı tavandan
+ *  önce koşsun).
  *  DEĞİŞMEZ: kapıdan geçen istekte alan ya YOKTUR ya da tavanı aşmayan bir
  *  DİZİDİR. Varsayılan sayaçlı kuralda alan var ama dizi değilse 400: satır içi
  *  tipli uçlarda ValidationPipe doğrulamaz ve servis metni karakter karakter
