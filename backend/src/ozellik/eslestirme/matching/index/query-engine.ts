@@ -1400,6 +1400,22 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     if (ekstra.length > 0) rows = [...rows, ...ekstra];
   }
 
+  // ── SONDAKI SIFATLI URUN SONA (P2 6a-sira, 06.10 — canli v7, test:sifat-sirasi) ──
+  // 6a + INDEX 21 sonrasi "… Vana … Aktüatörlü" urunleri vana ailesindedir; fiyat
+  // davranisi ayni (v6: 2.053 sorguda dogan/kaybolan/degisen 0), ama urun adi
+  // satirdan FAZLA token tasiyinca (adinda cap vb.) tam ad yolu kosmaz, alt kume
+  // havuz sirasini korur → canlida 51 vana sorusunda ~23 aktuatorlu vana duz
+  // vanalarla KARISIK. Adinin SONUNDAKI sifati satirin ANMADIGI urun listenin
+  // SONUNA gider — elenmez, gorelı sira korunur. Yalniz soru listesi (2+ aday):
+  // tek aday yolu (otomatik yazim) bu noktaya hic gelmez.
+  if (rows.length > 1) {
+    // (Sifati PARANTEZ icinde anan satir: parantez daraltmasi listeyi zaten yalniz
+    // o sifatli urunlere indirir — test:sifat-sirasi T3b; ayrica sayilmaz.)
+    const sonaGider = (r: IndexedRow) => urunSondakiSifatlari(r.urun.ad)
+      .some((s) => sifatUrunTuru(s) && !line.tokens.some((t) => tokenEsit(t, s)));
+    rows = [...rows.filter((r) => !sonaGider(r)), ...rows.filter(sonaGider)];
+  }
+
   // ── Ç/S KAPILARI: dogrulanamayan eslesme fiyat YAZAMAZ (I6) ───────
   const capsizNotu = capsizDusum && line.capInfo
     ? `Satır çaplı (${line.capInfo.display}) ama ürünün çapı doğrulanamadı`
@@ -1496,6 +1512,43 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
     return { kind: 'single', row: rows[0], donusum };
   }
   return { kind: 'ask', askColumn: ayrisanKolon(rows), rows, bilinmeyen, donusum, uyariNot: yuzeyCeliskiNotu ?? unitConflict ?? aileZayifNotu ?? capsizNotu ?? capCevrilemediNotu ?? capBelirsizNotu ?? dnKoprusuNotu ?? gevsetmeNotu ?? fiyatBirimiNotu ?? undefined, kapilar };
+}
+
+/**
+ * Sifat BASKA BIR URUN TURUNU mu tasiyor ("aktuatorlu" → aktuator, "reduksiyonlu" →
+ * fitting, "hortumlu" → hortum)? Yalniz bunlar "paket" urundur ve sona gider.
+ * Baglanti/bicim sifatlari ("dişli", "muflu", "kollu") sozlukte aile degildir,
+ * yerlerinde kalir — olculdu: genel kural Pimtas kulliyatinda 36 soruda ilk adayi
+ * yalniz "… İçten Dişli" varyantlarini geri iterek degistiriyordu (hedef disi).
+ * Sozlugun saf fonksiyonu → surec boyu bellek.
+ */
+const SIFAT_URUN_TURU = new Map<string, boolean>();
+function sifatUrunTuru(sifat: string): boolean {
+  let v = SIFAT_URUN_TURU.get(sifat);
+  if (v === undefined) { v = resolveLineFamily(sifat) !== null; SIFAT_URUN_TURU.set(sifat, v); }
+  return v;
+}
+
+/**
+ * Urun adinin SONUNDAKI sifatlari — 6a'nin (product-index `sondakiSifat`) sag taraf
+ * kuraliyla AYNI tanim: sondan gidilir, 3+ harf dizisi icermeyen kelime ("ve", "Te",
+ * "DN100", "F/F/F", "24V") yok sayilir, 3+ harf dizilerinin hepsi -li/-lu olan kelime
+ * toplanir, 3+ harfli sifat-disi dizi ("Komple", "Tip", "(On/Off)"daki "Off") zinciri
+ * keser. "Kelebek Vana DN100 Aktüatörlü" / "… (Aktüatörlü)" → ['aktuatorlu'];
+ * "… Aktüatörlü ve Redüktörlü" → ['reduktorlu', 'aktuatorlu'] (6a bu urunun ailesini
+ * vana yapar — olculdu: kisa "ve"de duran ilk tanim canli v8'de 30 soruyu karisik
+ * birakiyordu); "Dişli Küresel Vana" → [] (sifat onde); "… Kollu Tip" → [].
+ */
+function urunSondakiSifatlari(ad: string | null | undefined): string[] {
+  const kelimeler = normalizeText(ad ?? '').split(/\s+/);
+  const out: string[] = [];
+  for (let i = kelimeler.length - 1; i >= 0; i--) {
+    const diziler = kelimeler[i].match(/\p{L}{3,}/gu) ?? [];
+    if (diziler.length === 0) continue;
+    if (!diziler.every((d) => /l[iu]$/.test(d))) break;
+    out.push(...diziler);
+  }
+  return out;
 }
 
 /**

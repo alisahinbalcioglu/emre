@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 947
-Toplam satir: 258953
+Kod dosyasi: 948
+Toplam satir: 259174
 Uc nokta: 239
-test:* scripti: 177
+test:* scripti: 178
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -141,7 +141,7 @@ test:* scripti: 177
 | `backend/src/ozellik/eslestirme/matching/gunluk-degeri.ts` | 28 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 349 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 862 |
-| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1884 |
+| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1937 |
 | `backend/src/ozellik/eslestirme/matching/index/types.ts` | 314 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 116 |
@@ -466,13 +466,14 @@ test:* scripti: 177
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 1113 |
+| `backend/test/regression-all.ts` | 1114 |
 | `backend/test/reindex-gunlugu-test.ts` | 91 |
 | `backend/test/s45-malzeme-aile-test.ts` | 462 |
 | `backend/test/s45-olcum.ts` | 188 |
 | `backend/test/satinalma-yolu-test.ts` | 901 |
 | `backend/test/satir-olcu-yazimi-test.ts` | 102 |
 | `backend/test/sifat-eki-test.ts` | 139 |
+| `backend/test/sifat-sirasi-test.ts` | 167 |
 | `backend/test/sir-dondur-kapsam-test.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
 | `backend/test/spec-regression-test.ts` | 448 |
@@ -1386,6 +1387,7 @@ test:* scripti: 177
 | `backend/test/satinalma-yolu-test.ts` | `node:fs` `node:path` `@nestjs/config` `../src/altyapi/auth/hukuki-surum` `class-transformer` `class-validator` `../src/ozellik/odeme/abonelik/abonelik.controller` `../src/ozellik/odeme/abonelik/dto/abonelik-basla.dto` `@nestjs/common` `../src/ozellik/odeme/abonelik/deneme-hakki.servisi` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/satir-olcu-yazimi-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/conversion` `../src/ozellik/eslestirme/matching/index/types` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/sifat-eki-test.ts` | `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/normalizer` `../src/ozellik/eslestirme/matching/ad-resolver` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
+| `backend/test/sifat-sirasi-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/sir-dondur-kapsam-test.ts` | `node:fs` `node:os` `node:path` `node:child_process` |
 | `backend/test/sozluk-golgeleme-olcum.ts` | `../src/ozellik/eslestirme/matching/ad-cins-sozlugu` `../src/ozellik/eslestirme/matching/ad-resolver` `../src/ozellik/eslestirme/matching/normalizer` `../src/ozellik/eslestirme/matching/index/product-index` |
 | `backend/test/spec-regression-test.ts` | `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
@@ -2094,6 +2096,7 @@ test:* scripti: 177
 | `backend/package.json` | `test:unsuz-yumusamasi` | `ts-node test/unsuz-yumusamasi-test.ts` |
 | `backend/package.json` | `test:aile-kelimesi` | `ts-node test/aile-kelimesi-test.ts` |
 | `backend/package.json` | `test:sifat-eki` | `ts-node test/sifat-eki-test.ts` |
+| `backend/package.json` | `test:sifat-sirasi` | `ts-node test/sifat-sirasi-test.ts` |
 | `backend/package.json` | `test:grid` | `ts-node test/excel-grid-test.ts` |
 | `backend/package.json` | `test:labor-sheet` | `ts-node test/labor-sheet-test.ts` |
 | `backend/package.json` | `test:kl` | `ts-node test/kl-liste-ekleme-test.ts` |
