@@ -215,6 +215,8 @@ describe('secimBekliyor — sayac olcutu', () => {
 // `lib/marj-tek-kaynak.test.ts`, `lib/popup-secici-sozlesmesi.test.ts`.
 
 const EXCELGRID = path.join(__dirname, 'ExcelGrid.tsx');
+/** Blok ve TAM SATIR yorumlari soyulur — yorumdaki ibare kodu olcmez. */
+const yorumsuz = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 
 /** Kriterler icerik uzerinde TEK yerde tanimli — testle olcut ayni sey. */
 const KRITERLER: Array<{ ad: string; gecer: (s: string) => boolean }> = [
@@ -233,6 +235,20 @@ const KRITERLER: Array<{ ad: string; gecer: (s: string) => boolean }> = [
   // TEK KAYNAK: isaret renkleri modulde kaldi, ExcelGrid'e KOPYALANMADI.
   // C10 (P4b Parti 3): bayat kur seridinin rengi de modulde (#fffbeb ExcelGrid'in baska kutularinda var — serit rengi ayirt eder).
   { ad: 'isaret renkleri ExcelGrid icinde kopyalanmamis', gecer: (s) => !/#fee2e2|#e0f2fe|#fef9c3|#d97706/.test(s) },
+  // C10 (P4b Parti 3 madde 2): bayat kur isareti girdiye TARAF BIRIMIYLE BIRLIKTE girer —
+  // yalniz kurBilgi verilseydi karisik kipte dovizde kalan hucreye yanlis "TL" notu duserdi.
+  // Olcut YORUMSUZ kodda ve KENDI dal nesnesinde (inceleme MEDIUM-2: iki dalin alanlarini
+  // takas etmek ya da satiri yoruma almak eski regex'i gecirdi).
+  { ad: 'malzeme fiyat hucresi kur bilgisini taraf birimiyle BIRLIKTE verir', gecer: (s) => /dal: 'malzeme',[^}]*kurBilgi:\s*d\?\._matKurBilgi,\s*tarafBirimi:\s*d\?\._matPB,\s*saltOkunur:\s*seciciSaltOkunur\b/.test(yorumsuz(s)) },
+  { ad: 'iscilik fiyat hucresi kur bilgisini taraf birimiyle BIRLIKTE verir (ikiz)', gecer: (s) => /dal: 'iscilik',[^}]*kurBilgi:\s*d\?\._labKurBilgi,\s*tarafBirimi:\s*d\?\._labPB,\s*saltOkunur:\s*seciciSaltOkunur\b/.test(yorumsuz(s)) },
+  // Inceleme MEDIUM-1: `_labKurBilgi` kolonsuz — fiyat metni ayni kalinca hucre zorla cizilmeli
+  // (malzeme ikizi `yazVeri`nin kolonsuz-alan tazelemesiyle aliyor).
+  { ad: 'iscilik fiyat yazimi fiyat hucresini ZORLA tazeler (kur seridi ayni fiyatta da guncel)', gecer: (s) => {
+    const k = yorumsuz(s);
+    const bas = k.indexOf('const writeLaborPrice = ');
+    const govde = bas < 0 ? '' : k.slice(bas, k.indexOf('\n  };', bas));
+    return /api\?\.refreshCells\(\{ rowNodes: \[node\], columns: \[laborUnitPriceField\], force: true \}\)/.test(govde);
+  } },
   // Tur 3 A4c (14.09): kutuphane fiyat hucresi K1 ayrisim isaretini STIL ve IPUCU olarak okur.
   { ad: 'kutuphane fiyat hucresi K1 ayrisimini stil + ipucu olarak okur', gecer: (s) => (s.match(/mode === 'library' \? kutuphaneFiyatAyrisimi\(params\.data\) : null/g) ?? []).length === 2 && /ayrisim\?\.stil \?\? isaretStili\(/.test(s) && /ayrisim\?\.ipucu \?\? isaretTooltip\(/.test(s) },
 ];
@@ -374,7 +390,7 @@ describe('isaret — C10 bayat kur', () => {
   const NOT = 'Fiyatlandırıldığında kur 3 iş günü eskiydi (1 USD = ₺41,2345, 01.10.2026) — güncel kur için marka menüsünden yeniden seçin ya da fiyatı elle yazın';
   const SERIT = 'linear-gradient(to right, #d97706 0 3px, transparent 3px)';
 
-  it('FIXTURE: girdi alani olmadan cikti degismez (geriye uyum — ExcelGrid bugun alani vermiyor)', () => {
+  it('FIXTURE: girdi alani olmadan cikti degismez (geriye uyum — alani vermeyen cagiran)', () => {
     expect(isaretStili(malz({ durum: '' }))).toBeNull();
     expect(isaretTooltip(malz({ durum: '' }))).toBe('');
   });
@@ -406,6 +422,13 @@ describe('isaret — C10 bayat kur', () => {
   it('otomatik varyant + bayat: MAVI zemin KALIR, serit eklenir', () => {
     expect(isaretStili(malz({ otoVaryant: 'kaynaklı', kurBilgi: BAYAT }))).toEqual({ backgroundColor: '#e0f2fe', color: '#0c4a6e', backgroundImage: SERIT });
     expect(isaretTooltip(malz({ otoVaryant: 'kaynaklı', kurBilgi: BAYAT }))).toBe(`⚡ otomatik: kaynaklı — farklı varyant için marka menüsünü yeniden açın · ${NOT}`);
+  });
+
+  it('salt-okunur ekranda (teklif goruntuleme) not EYLEM onermez — serit yine var (inceleme LOW-1)', () => {
+    expect(isaretTooltip(malz({ kurBilgi: BAYAT, saltOkunur: true })))
+      .toBe('Fiyatlandırıldığında kur 3 iş günü eskiydi (1 USD = ₺41,2345, 01.10.2026)');
+    expect(isaretStili(malz({ kurBilgi: BAYAT, saltOkunur: true }))?.backgroundImage).toBe(SERIT);
+    expect(isaretTooltip(malz({ oneri: true, kurBilgi: BAYAT, saltOkunur: true }))).not.toContain('menüsünden');
   });
 
   it('iscilik ikizi: `_labKurBilgi` bayatsa ayni isaret, metin FIRMA menusune yollar', () => {

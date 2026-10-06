@@ -398,7 +398,14 @@ export default function LibraryBrandDetailPage() {
     try {
       await api.delete(`/library/${itemId}`);
       toast({ title: 'Silindi', description: ad });
-      fetchLists().catch(() => {}); // sekme sayaci tazelensin (kritik degil)
+      // Sekme sayaci tazelensin (kritik degil). Markanin SON satiri gittiyse
+      // sunucu sekmeleri ve marka kaydini da sildi (06.10): sekmesiz sayfada
+      // kalinmaz (yeni satirin kaydedilecegi sekme yok) — deleteActiveList gibi.
+      fetchLists()
+        .then((kalan) => {
+          if (kalan.length === 0) router.push('/library/mechanical-brands');
+        })
+        .catch(() => {});
       return true;
     } catch (e: any) {
       // Sessiz basarisizlik YASAK: silinemediyse satir EKRANDA KALIR ve
@@ -410,7 +417,7 @@ export default function LibraryBrandDetailPage() {
       });
       return false;
     }
-  }, [nameField]);
+  }, [nameField, fetchLists, router]);
 
   /** Markayi kutuphaneden kaldir — onay KAYBI soyler (iskonto, ozel fiyat, ad
    *  duzeltmesi; yeniden aktarim geri getirmez — marka-kaldirma-onayi.ts). */

@@ -14,9 +14,11 @@
  *  · GENEL TOPLAM sekmesi: sayfa × birim satirlari + birim basina TEKLİF GENEL
  *    TOPLAMI.
  *
- * IKIZ: kip ve taraf birimi kurali on yuzde `frontend/ozellik/fiyat/
- * taraf-para-birimi.ts` (`karisikKipMi`, `tarafPB`, `paraHanesi`). Kayitta ayri
- * kip alani YOK: karisik kip her fiyat yaziminda tarafin birimini yazar.
+ * IKIZ: duzen ve taraf birimi kurali on yuzde `frontend/ozellik/fiyat/
+ * taraf-para-birimi.ts` (`dovizliTarafVarMi`, `tarafPB`, `paraHanesi`). Kayitta
+ * ayri kip alani YOK: karisik kip her fiyat yaziminda tarafin birimini yazar.
+ * F6a (karar K1, 06.10): karisik DUZEN yalniz $/€ taraf varken — yalniz-₺
+ * karisik teklif tek birimli yolun BAYT BAYT aynisini uretir.
  */
 import * as ExcelJS from 'exceljs';
 import { ONDALIK, kurusTamsayi } from '../../fiyat/matching/pricing';
@@ -41,11 +43,24 @@ export const birimSutunBasliklari = (dil?: string): string[] => (dil === 'en' ? 
 
 type Satir = Record<string, any>;
 
-/** IKIZ (on yuz `karisikKipMi`): taraf birimi alani tasiyan satir = karisik teklif. */
-export function karisikKipMi(sayfalar: ReadonlyArray<{ rowData?: Satir[] | null }> | null | undefined): boolean {
+const DOVIZ: ReadonlySet<unknown> = new Set(['USD', 'EUR']);
+
+/**
+ * Karisik DUZEN mi? (F6a, karar K1 — Emre'nin onerilen onayi, 05.10): $ ya da €
+ * taraf (ya da fitting birim parcasi) varsa. Yalniz ₺ birimli karisik satirlar
+ * (yeni teklif ₺ tarafa da birim yazar) TL teklifle ayni dosyayi uretir:
+ * "yeni teklif karisik" ile "yalniz-TL teklifin Excel'i bayt bayt ayni" ancak
+ * boyle birlikte tutar. IKIZ: on yuz `dovizliTarafVarMi` (test:ex-karisik KR0e).
+ */
+export function dovizliTarafVarMi(sayfalar: ReadonlyArray<{ rowData?: Satir[] | null } | null | undefined> | null | undefined): boolean {
   for (const s of sayfalar ?? []) {
     for (const r of s?.rowData ?? []) {
-      if (typeof r?._matPB === 'string' || typeof r?._labPB === 'string') return true;
+      if (!r) continue;
+      if (DOVIZ.has(r._matPB) || DOVIZ.has(r._labPB)) return true;
+      // Bozuk kayit (dizi olmayan mat/lab) ciktiyi DUSURMEZ (inceleme L4; `fittingParcalari` gibi)
+      const fb = r._fittingBirimli;
+      const parcalar = fb ? [...(Array.isArray(fb.mat) ? fb.mat : []), ...(Array.isArray(fb.lab) ? fb.lab : [])] : [];
+      if (parcalar.some((x: any) => DOVIZ.has(x?.pb))) return true;
     }
   }
   return false;
@@ -129,6 +144,14 @@ export function kovayaEkle(kovalar: Kovalar, pb: ParaBirimi, dal: 'mat' | 'lab',
   kovalar.set(pb, dal === 'mat' ? { ...kv, matK: kv.matK + k } : { ...kv, labK: kv.labK + k });
 }
 
+/** Sayfanin bir birimlik toplami (kurus) — format yolunun İCMAL'i buna baglanir. */
+export interface BirimKovasi { pb: ParaBirimi; matK: number; labK: number }
+
+/** Kovalar SABIT sirada (₺, $, €); bos sayfada bos liste. */
+export function kovaListesi(kovalar: Kovalar): BirimKovasi[] {
+  return BIRIM_SIRASI.filter((pb) => kovalar.has(pb)).map((pb) => ({ pb, ...kovalar.get(pb)! }));
+}
+
 /** Birim basina SAYFA TOPLAMI satiri (GENEL TOPLAM sekmesi buna baglanir). */
 export interface BirimToplami { pb: ParaBirimi; satir: number; matK: number; labK: number }
 
@@ -171,11 +194,12 @@ const OZET_BASLIKLARI_EN = ['Sheet', 'Currency', 'Material', 'Labour', 'Grand To
 const BIRIM_ETIKETI: Record<ParaBirimi, string> = { TRY: '₺ (TL)', USD: '$ (USD)', EUR: '€ (EUR)' };
 export const CEVRIM_YOK_NOTU = 'Toplamlar para birimi başına ayrıdır; çevrim yapılmaz.';
 const CEVRIM_YOK_NOTU_EN = 'Totals are per currency; no conversion is applied.';
+export const cevrimYokNotu = (dil?: string): string => (dil === 'en' ? CEVRIM_YOK_NOTU_EN : CEVRIM_YOK_NOTU);
 
 export interface BirimliSayfa { ad: string; toplamlar: BirimToplami[] }
 
 /** Excel bir fonksiyona en fazla 255 arguman kabul eder — parcali SUM. */
-const hucreToplami = (hucreler: string[]): string => {
+export const hucreToplami = (hucreler: string[]): string => {
   const gruplar: string[] = [];
   for (let i = 0; i < hucreler.length; i += 255) gruplar.push(`SUM(${hucreler.slice(i, i + 255).join(',')})`);
   return gruplar.join('+');
@@ -250,7 +274,7 @@ export function karisikOzetSayfasiYaz(
     }
   }
   ws.addRow([]);
-  const not = ws.addRow([dil === 'en' ? CEVRIM_YOK_NOTU_EN : CEVRIM_YOK_NOTU]);
+  const not = ws.addRow([cevrimYokNotu(dil)]);
   ws.mergeCells(not.number, 1, not.number, SON);
   not.getCell(1).font = yazi(9, RENK.SOLUK, { italic: true });
   not.getCell(1).alignment = { vertical: 'middle', wrapText: true };

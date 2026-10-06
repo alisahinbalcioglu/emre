@@ -30,6 +30,19 @@ export const GOVDE_SINIRLARI: ReadonlyArray<{ yol: string; sinir: string }> = [
   // Uç herkese açık — 50 MB'lık global tavanla tek istek MB'larca gövde
   // ayrıştırtabiliyordu. Kapı: `test:webhook-tahsilat-dogrulama` I9.
   { yol: '/api/webhook/iyzico', sinir: '16kb' },
+  // 06.10 (güvenlik HIGH-3): KİMLİKSİZ yollar. Gövdeye eklenen 80 bin üst düzey
+  // anahtar (~1 MB) ValidationPipe'ın class-transformer O(n²) tekilleştirmesiyle
+  // olay döngüsünü tutuyordu (ölçüldü: /auth/login, ayrı süreçten komşu istek
+  // 11,7 sn — inceleme, 849 KB / 14,6 sn — kapı, 1005 KB). /api/auth altı =
+  // giriş, kayıt, profil, parola, e-posta doğrulama, hesap kapatma, kurumsal
+  // giriş (SSO), MFA, davet: 25 gövdeli uç; DTO kısıtlarından en geniş geçerli
+  // gövde 4.153 bayt (MFA doğrula, sınırsız metin alanına 2 KB varsayımıyla —
+  // kapı A8 denetleyicilerden ölçer). Karesel yolun kendisi
+  // `sinif-donusturucu-yamasi.ts`te kapanır; bu tavan kimliksiz yolda ikinci kilit.
+  { yol: '/api/auth', sinir: '32kb' },
+  // iyzico dönüşleri: herkese açık form gönderimi, yalnız `token` taşır.
+  { yol: '/api/abonelik/iyzico-donus', sinir: '16kb' },
+  { yol: '/api/abonelik/iyzico-kart-donus', sinir: '16kb' },
 ];
 
 export function govdeSinirlariniKur(app: Pick<NestExpressApplication, 'use'>): void {

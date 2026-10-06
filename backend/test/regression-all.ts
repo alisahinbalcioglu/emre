@@ -235,9 +235,12 @@ const SUITES: Suite[] = [
   { ad: 'Standart çıktı (EX1-EX8)', script: 'test:ex', zincir: 'Z4' },
   // 05.10.2026: coklu para birimi F5 — karisik teklifin fiyatli Excel'i birim basina
   //    (hucre bicimi tarafin birimi, gizli J/K + SUMIF sayfa toplamlari, fitting
-  //    birim basina satir, GENEL TOPLAM birim basina, cevrim yok); format yolu
-  //    karisik teklifi numara yakmadan reddeder. Yalniz-TL duzeni test:ex'te.
+  //    birim basina satir, GENEL TOPLAM birim basina, cevrim yok). Yalniz-TL duzeni test:ex'te.
   { ad: 'Karışık para birimli çıktı (F5)', script: 'test:ex-karisik', zincir: 'Z4' },
+  // 05.10.2026: İCMAL — karisik teklif "Teklif formatında aktar"da iner (F5'in gecici
+  //    reddi kalkti): İCMAL sayfa × birim (SUMIF J/K), yerlesikte birim basina toplam
+  //    blogu, musteri formatinda satir eklenmez + eksiz etiket karma metin.
+  { ad: 'Karışık para birimli teklif formatı (İCMAL)', script: 'test:export-karisik', zincir: 'Z4' },
   // 05.10.2026: kutuphane doviz neti — on yuz hesaplaNetFiyat/Doviz arka uc ikizleriyle
   //    her girdide ayni; kutuphanenin "Net Fiyat"i satirin biriminde (₺ 1 hane, $/€ 2 hane).
   { ad: 'Net fiyat ikizi (kütüphane döviz neti)', script: 'test:net-fiyat-ikiz', zincir: 'Z2' },
@@ -1012,6 +1015,28 @@ const SUITES: Suite[] = [
   //    biçimsiz kimliği DB'ye göndermez. GERÇEK denetleyiciler HTTP üzerinden,
   //    ValidationPipe main.ts ile aynı. DB/AĞ GEREKTİRMEZ.
   { ad: 'Gövde doğrulama: eşleştirme uçları DTO · kütüphane ızgara kaydı satır hataları (G/S)', script: 'test:govde-dogrulama', zincir: 'Z0' },
+  // ── 06.10.2026 — DİZİ TAVANI (ayrı iş 2). Dizinin boyuyla büyüyen 13 uç
+  //    (bulk-match ×2, kütüphane ızgara kaydı + toplu iskonto + satır ekleme ×2,
+  //    işçilik ×4, teklif oluştur/güncelle, sözlük kaydı): tavanı aşan istek
+  //    ValidationPipe'tan ÖNCE 413 + Türkçe mesaj, servis çağrılmaz, kimliksiz
+  //    tek WARN; dizi olmayan değer 400. Toplu iskonto kimlikleri 1.000'lik
+  //    parçalarla TEK işlemde; sözlük türleri bulk-match'te yayılmaz. Gerçek
+  //    denetleyiciler HTTP üzerinden, gövde ayrıştırıcısı main.ts gibi 50 MB.
+  //    DB/AĞ GEREKTİRMEZ.
+  { ad: 'Dizi tavanı: 13 uçta 413 pipe\'tan önce · dizi değişmezi · toplu iskonto parçalı tek işlem (U/M/B/H/P/Y)', script: 'test:dizi-tavani', zincir: 'Z0' },
+  // ── 06.10.2026 — DOĞRULAMA BORUSU (güvenlik HIGH-A). İç içe nesnenin KENDİ
+  //    `constructor` anahtarı class-transformer'ın tip tahminiyle süreç ömürlü
+  //    ata haritasına yazılıyordu (kalıcı bellek + 500; kimliksiz login dahil,
+  //    JSON / urlencoded / sorgu). Güvenli alt sınıf onu dönüşümden önce siler.
+  //    Düz boruda sızıntı testin içinde üretilir (FIXTURE), güvenli boruda yok;
+  //    depodaki TÜM DTO'larla eşdeğerlik. DB/AĞ GEREKTİRMEZ.
+  { ad: 'Doğrulama borusu: iç içe constructor kalıcı bellek tutmaz · 500 yok · eşdeğerlik · her boru güvenli sınıftan (R/E/K)', script: 'test:dogrulama-borusu', zincir: 'Z0' },
+  // ── 06.10.2026 — GÖVDE GENİŞLİĞİ (güvenlik HIGH-3). 80 bin üst düzey anahtar
+  //    class-transformer O(n²) tekilleştirmesiyle döngüyü tutuyordu (kimliksiz
+  //    /auth/login: ayrı süreçten komşu 14,6 sn). Kimliksiz yollarda bayt tavanı
+  //    (mevcut 413 ile bayt bayt aynı) + sürüme kilitli doğrusal hızlı yol;
+  //    depodaki TÜM DTO'larla özgün ↔ yamalı eşdeğerlik. DB/AĞ GEREKTİRMEZ.
+  { ad: 'Gövde genişliği: kimliksiz yollarda bayt tavanı · class-transformer karesel yol yaması · eşdeğerlik (A/B/E/K)', script: 'test:govde-genisligi', zincir: 'Z0' },
   // ── 04.10.2026 — CI EK NOTU (koordinatör). Actions günlüğü girişsiz 403;
   //    kırmızı işin tek ek notu "exit code 1" idi. Bu koşucu GITHUB_ACTIONS
   //    iken düşen paketi `::error` notu olarak yazar. Saf kurallar + bu

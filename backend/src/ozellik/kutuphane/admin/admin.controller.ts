@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards,
-  UseInterceptors, UploadedFile, ValidationPipe, BadRequestException, Res,
+  UseInterceptors, UploadedFile, BadRequestException, Res,
 } from '@nestjs/common';
+import { GuvenliValidationPipe } from '../../../altyapi/http/dogrulama-borusu';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -135,7 +136,7 @@ export class AdminController {
 
   @Patch('settings')
   updateSettings(
-    @Body(new ValidationPipe({ whitelist: false, transform: true }))
+    @Body(new GuvenliValidationPipe({ whitelist: false, transform: true }))
     data: Record<string, string>,
   ) {
     return this.adminService.updateSettings(data);

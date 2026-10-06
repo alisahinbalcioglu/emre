@@ -14,6 +14,7 @@ import * as ExcelJS from 'exceljs';
 import { kurusTamsayi } from '../../fiyat/matching/pricing';
 // A2 (tur 3): kullanicinin yazdigi override metni INSAN sinirindadir — tek sayi kurali
 import { insanSayiOku } from '../../kutuphane/utils/import-fidelity';
+import { BIRIM_SIRASI, ParaBirimi, SEMBOL, paraMetni } from '../../teklif/quotes/cikti-karisik';
 
 /** PRD §2 tablosu — bilinen yer tutucular. Disindaki her {{ETIKET}} T3
  *  geregi "taninmayan" olarak uyarilir (ama hucreye DOKUNULMAZ). */
@@ -24,10 +25,29 @@ export const TANINAN_ETIKETLER: ReadonlySet<string> = new Set([
   'KUR_NOTU', 'ICMAL_SATIRLARI',
 ]);
 
+/**
+ * COKLU PARA BIRIMI (İCMAL, 05.10): dort toplam etiketinin BIRIM EKLI bicimi —
+ * {{GENEL_TOPLAM_USD}}. O birimin toplamini tasir; tek birimli teklifte
+ * teklifin birimi tum toplami, digerleri 0 alir. Yerlesik format karisik
+ * teklifte toplam blogunu bunlarla birim basina yazar (`yerlesikToplamlariBirimle`).
+ * Ayri kume: ornek format (tek birimli) bunlari TASIMAZ.
+ */
+export const TOPLAM_ETIKETLERI = ['MALZEME_TOPLAMI', 'ISCILIK_TOPLAMI', 'KDV', 'GENEL_TOPLAM'] as const;
+export const birimliEtiket = (etiket: string, pb: ParaBirimi): string => `${etiket}_${pb}`;
+// Kume YUKLEME ANINDA kurulur: ice aktarilan bir sabite (BIRIM_SIRASI) dayanmaz —
+// ileride bir ice aktarma dongusu modulu yari yuklu birakirsa cokmesin (inceleme L9).
+// Kumede sira onemsiz; doldurma sirasi cagri aninda BIRIM_SIRASI'ndan.
+export const BIRIMLI_ETIKETLER: ReadonlySet<string> = new Set(
+  TOPLAM_ETIKETLERI.flatMap((e) => (['TRY', 'USD', 'EUR'] as const).map((pb) => birimliEtiket(e, pb))),
+);
+
 export interface YerTutucu {
   etiket: string; // kanonik (buyuk harf, suslu parantezsiz)
   sheet: string;
   addr: string; // "B4" gibi
+  /** Doldurulan para hucresinin birimi (karisik kip ya da birim ekli etiket) —
+   *  cikti hucre bicimini buna gore kurar. Yoksa teklifin goruntuleme birimi. */
+  pb?: ParaBirimi;
 }
 export interface FormatMapping {
   bulunan: YerTutucu[];
@@ -65,7 +85,7 @@ export function scanWorkbook(wb: ExcelJS.Workbook): FormatMapping {
         while ((m = ETIKET_RE.exec(text)) !== null) {
           const etiket = m[1].toUpperCase();
           const kayit: YerTutucu = { etiket, sheet: ws.name, addr: cell.address };
-          if (TANINAN_ETIKETLER.has(etiket)) bulunan.push(kayit);
+          if (TANINAN_ETIKETLER.has(etiket) || BIRIMLI_ETIKETLER.has(etiket)) bulunan.push(kayit);
           else taninmayan.push(kayit);
         }
       });
@@ -140,32 +160,71 @@ export function buildSampleFormat(): ExcelJS.Workbook {
       tpl.getCell(c).alignment = { horizontal: 'right' };
     }
   }
-  const toplamlar: Array<[string, string]> = [
-    ['Malzeme Toplamı', '{{MALZEME_TOPLAMI}}'],
-    ['İşçilik Toplamı', '{{ISCILIK_TOPLAMI}}'],
-    ['KDV (%20)', '{{KDV}}'],
-    ['GENEL TOPLAM', '{{GENEL_TOPLAM}}'],
-  ];
-  let tr2 = 5;
-  for (const [ad, tag] of toplamlar) {
-    const a = icmal.getCell(tr2, 2);
-    const b = icmal.getCell(tr2, 5);
-    a.value = ad;
-    a.font = { bold: tr2 === 8 };
-    b.value = tag;
+  const tr2 = toplamBlokuYaz(icmal, 5);
+  kurNotuYaz(icmal, tr2 + 1);
+
+  return wb;
+}
+
+const TOPLAM_SATIRLARI: Array<[string, (typeof TOPLAM_ETIKETLERI)[number]]> = [
+  ['Malzeme Toplamı', 'MALZEME_TOPLAMI'],
+  ['İşçilik Toplamı', 'ISCILIK_TOPLAMI'],
+  ['KDV (%20)', 'KDV'],
+  ['GENEL TOPLAM', 'GENEL_TOPLAM'],
+];
+
+/** İCMAL toplam blogu: dort satir (B etiket, E yer tutucu). `pb` verilirse
+ *  etiket birim simgesi, yer tutucu birim eki alir. Blogun ALTINDAKI satiri doner. */
+function toplamBlokuYaz(icmal: ExcelJS.Worksheet, ilk: number, pb?: ParaBirimi): number {
+  let r = ilk;
+  for (const [ad, etiket] of TOPLAM_SATIRLARI) {
+    const a = icmal.getCell(r, 2);
+    const b = icmal.getCell(r, 5);
+    a.value = pb ? `${ad} ${SEMBOL[pb]}` : ad;
+    a.font = { bold: etiket === 'GENEL_TOPLAM' };
+    b.value = `{{${pb ? birimliEtiket(etiket, pb) : etiket}}}`;
     b.numFmt = '#,##0.00';
     b.alignment = { horizontal: 'right' };
-    b.font = { bold: ad === 'GENEL TOPLAM' };
-    if (ad === 'GENEL TOPLAM') {
+    b.font = { bold: etiket === 'GENEL_TOPLAM' };
+    if (etiket === 'GENEL_TOPLAM') {
       a.border = { top: { style: 'medium' } };
       b.border = { top: { style: 'medium' } };
     }
-    tr2++;
+    r++;
   }
-  icmal.getCell(tr2 + 1, 2).value = '{{KUR_NOTU}}';
-  icmal.getCell(tr2 + 1, 2).font = { size: 9, italic: true, color: { argb: 'FF6B7280' } };
+  return r;
+}
 
-  return wb;
+function kurNotuYaz(icmal: ExcelJS.Worksheet, r: number): void {
+  icmal.getCell(r, 2).value = '{{KUR_NOTU}}';
+  icmal.getCell(r, 2).font = { size: 9, italic: true, color: { argb: 'FF6B7280' } };
+}
+
+/**
+ * KARISIK teklif + YERLESIK format (İCMAL, 05.10 — Emre'nin onerilen onayi):
+ * toplam blogu birim BASINA yazilir (₺, $, € sirasi; her biri dort satir, bir
+ * bos satirla ayrilir), yer tutucular birim ekli. `buildSampleFormat`in tek
+ * birimli blogunun ve kur notunun YERINE yazar — yalniz bizim duzenimiz oldugu
+ * icin. Musteri formatina UYGULANMAZ: orada satir eklenmez, eksiz etiket karma
+ * metin alir (`format-karisik.ts`).
+ */
+export function yerlesikToplamlariBirimle(wb: ExcelJS.Workbook, birimler: readonly ParaBirimi[]): void {
+  const yer = scanWorkbook(wb).bulunan.find((b) => b.etiket === 'MALZEME_TOPLAMI');
+  if (!yer) return;
+  const icmal = wb.getWorksheet(yer.sheet)!;
+  const ilk = (icmal.getCell(yer.addr) as any).row as number;
+  // Eski blok: dort toplam satiri + bos satir + kur notu (yalniz B ve E yazilmisti)
+  for (let r = ilk; r <= ilk + TOPLAM_SATIRLARI.length + 1; r++) {
+    for (const c of [2, 5]) {
+      icmal.getCell(r, c).value = null;
+      icmal.getCell(r, c).style = {};
+    }
+  }
+  let r = ilk;
+  (birimler.length ? birimler : (['TRY'] as ParaBirimi[])).forEach((pb, i) => {
+    r = toplamBlokuYaz(icmal, r + (i ? 1 : 0), pb);
+  });
+  kurNotuYaz(icmal, r + 1);
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -207,6 +266,19 @@ export interface SekmeOzet {
   labFormul: string | null;
   matDeger: number;
   labDeger: number;
+  /** KARISIK kip (İCMAL, 05.10): sayfanin birim basina parcalari (₺, $, €
+   *  sirasi) — İCMAL sayfa × birim satiri yazar. Tek birimli teklifte YOK. */
+  birimler?: SekmeBirimi[];
+}
+
+/** Sayfanin bir birimlik İCMAL parcasi: liste sayfasinin J/K birim sutunlarina
+ *  SUMIF formulleri + degerler (cevrim yok). */
+export interface SekmeBirimi {
+  pb: ParaBirimi;
+  matFormul: string | null;
+  labFormul: string | null;
+  matDeger: number;
+  labDeger: number;
 }
 
 export interface FillContext {
@@ -222,6 +294,9 @@ export interface FillContext {
   /** KDV orani (0.20). {{KDV}} = (malzeme+iscilik)×oran; {{GENEL_TOPLAM}}
    *  formatta KDV etiketi VARSA KDV dahil, yoksa malzeme+iscilik. */
   kdvOran: number;
+  /** Tek birimli teklifin birimi (goruntuleme birimi): birim ekli etiketlerden
+   *  tum toplami alacak olan. Verilmezse TRY. Karisik kipte kullanilmaz. */
+  paraBirimi?: ParaBirimi;
 }
 
 const trSayi = (v: number) => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -240,7 +315,7 @@ function toplamFormul(sekmeler: SekmeOzet[], alan: 'matFormul' | 'labFormul'): s
   return parcalar.join('+');
 }
 
-const sinirda = (f: string | null, etiket: string): string | null => {
+export const sinirda = (f: string | null, etiket: string): string | null => {
   if (f && f.length > EXCEL_FORMUL_AZAMI) {
     console.warn(`[Export] ⚠ ${etiket} formulu ${f.length} karakter — Excel siniri asiliyor, DEGER yazilacak`);
     return null;
@@ -249,58 +324,21 @@ const sinirda = (f: string | null, etiket: string): string | null => {
 };
 
 /**
- * Format workbook'undaki yer tutuculari ctx ile doldurur.
- * SIRA ONEMLI: once ICMAL_SATIRLARI (satir ekleme adresleri kaydirir),
- * sonra YENIDEN taranarak kalan etiketler doldurulur.
- * Kurallar:
- *  - Hucre YALNIZ etiketten ibaretse tip korunur (sayi/formul yazilabilir).
- *  - Etiket metnin ICINDEYSE ("Müşteri: {{MUSTERI}}") string replace yapilir
- *    (toplamlar tr-TR bicimli metin olur).
- *  - ICMAL_SATIRLARI konvansiyonu: etiket hucresinin kolonu = bolum adi;
- *    +1 malzeme, +2 iscilik, +3 toplam (ornek format bu duzendedir).
+ * Format workbook'undaki yer tutuculari ctx ile doldurur — TEK BIRIMLI teklif
+ * (karisik teklif: `format-karisik.ts` `karisikDoldur`, ayni iki adim).
+ * SIRA ONEMLI: once ICMAL_SATIRLARI (satir ekleme adresleri kaydirir,
+ * `icmalSatirlariniYaz`), sonra YENIDEN taranarak kalan etiketler doldurulur
+ * (`etiketleriYaz` — tam hucre / metin ici kurallari orada).
  */
 export function fillPlaceholders(wb: ExcelJS.Workbook, ctx: FillContext): YerTutucu[] {
   // Doldurulan hucrelerin SON (kaymis) adresleri — FE bu haritayla otomatik
   // alanlari isaretler; kullanici birini duzenlerse "manuel" rozeti (T14).
   const dolan: YerTutucu[] = [];
   // ── 1. ICMAL_SATIRLARI ──────────────────────────────────────────
-  const ilkTarama = scanWorkbook(wb);
-  const icmalYeri = ilkTarama.bulunan.find((b) => b.etiket === 'ICMAL_SATIRLARI');
   // Yazilan ICMAL bolum hucrelerinin bolgesi — toplamlar bunlari toplar (adim 2)
-  let icmalBolge: { sheet: string; ilk: number; son: number; matCol: number; labCol: number } | null = null;
-  if (icmalYeri) {
-    const ws = wb.getWorksheet(icmalYeri.sheet)!;
-    const tplCell = ws.getCell(icmalYeri.addr);
-    const tplRow = (tplCell as any).row as number; // 1-based satir no
-    const baseCol = (tplCell as any).col as number;
-    const n = ctx.sekmeler.length;
-    if (n === 0) {
-      tplCell.value = '';
-    } else {
-      // Sablon satiri N-1 kez cogalt (stil kopyalanir — T5 "bicim formatin
-      // satirindan"); eklenenler sablonun ALTINA girer.
-      if (n > 1) ws.duplicateRow(tplRow, n - 1, true);
-      for (let i = 0; i < n; i++) {
-        const s = ctx.sekmeler[i];
-        const r = tplRow + i;
-        const adC = ws.getCell(r, baseCol);
-        const matC = ws.getCell(r, baseCol + 1);
-        const labC = ws.getCell(r, baseCol + 2);
-        const topC = ws.getCell(r, baseCol + 3);
-        adC.value = s.name;
-        matC.value = s.matFormul ? ({ formula: s.matFormul, result: s.matDeger } as any) : s.matDeger;
-        labC.value = s.labFormul ? ({ formula: s.labFormul, result: s.labDeger } as any) : s.labDeger;
-        topC.value = {
-          formula: `${KOLON_HARF(baseCol + 1)}${r}+${KOLON_HARF(baseCol + 2)}${r}`,
-          result: s.matDeger + s.labDeger,
-        } as any;
-        for (const c of [adC, matC, labC, topC]) {
-          dolan.push({ etiket: 'ICMAL_SATIRLARI', sheet: ws.name, addr: c.address });
-        }
-      }
-      icmalBolge = { sheet: ws.name, ilk: tplRow, son: tplRow + n - 1, matCol: baseCol + 1, labCol: baseCol + 2 };
-    }
-  }
+  const icmalBolge = icmalSatirlariniYaz(wb, ctx.sekmeler.map((s) => ({
+    ad: s.name, mat: { formul: s.matFormul, deger: s.matDeger }, lab: { formul: s.labFormul, deger: s.labDeger },
+  })), dolan);
 
   // ── 2. Kalan etiketler (adresler artik guncel) ──────────────────
   const tarama = scanWorkbook(wb);
@@ -318,13 +356,95 @@ export function fillPlaceholders(wb: ExcelJS.Workbook, ctx: FillContext): YerTut
     : null);
   const matF = sinirda(icmalBolge ? bolgeTopla(icmalBolge.matCol) : toplamFormul(ctx.sekmeler, 'matFormul'), 'MALZEME_TOPLAMI');
   const labF = sinirda(icmalBolge ? bolgeTopla(icmalBolge.labCol) : toplamFormul(ctx.sekmeler, 'labFormul'), 'ISCILIK_TOPLAMI');
-  const kdvVar = tarama.bulunan.some((b) => b.etiket === 'KDV');
+  const kdvVar = kdvVarMi(tarama.bulunan);
   const araFormul = sinirda(matF && labF ? `${matF}+${labF}` : null, 'ARA_TOPLAM');
   const araDeger = matToplamDeger + labToplamDeger;
   const kdvDeger = araDeger * ctx.kdvOran;
 
-  // Etiket → {metin} veya {formul, deger} (tam-hucre ise formul yazilir)
-  const sabitler: Record<string, string> = {
+  const sayisal: Record<string, ParaDolgusu> = {
+    MALZEME_TOPLAMI: { formula: matF, deger: matToplamDeger },
+    ISCILIK_TOPLAMI: { formula: labF, deger: labToplamDeger },
+    KDV: { formula: araFormul ? `(${araFormul})*${ctx.kdvOran}` : null, deger: kdvDeger },
+    GENEL_TOPLAM: kdvVar
+      ? { formula: araFormul ? `(${araFormul})*${1 + ctx.kdvOran}` : null, deger: araDeger + kdvDeger }
+      : { formula: araFormul, deger: araDeger },
+  };
+  // Birim ekli etiketler (05.10): tek birimli teklifte teklifin birimi tum
+  // toplami alir, diger birimler 0 — teklifte o birimde tutar YOKTUR.
+  const tekBirim = ctx.paraBirimi ?? 'TRY';
+  for (const e of TOPLAM_ETIKETLERI) {
+    for (const pb of BIRIM_SIRASI) {
+      sayisal[birimliEtiket(e, pb)] = pb === tekBirim ? { ...(sayisal[e] as SayiDolgusu), pb } : { formula: null, deger: 0, pb };
+    }
+  }
+
+  etiketleriYaz(wb, tarama.bulunan, sabitDegerler(ctx), sayisal, dolan);
+  return dolan;
+}
+
+/** İCMAL'e yazilacak bir bolum satiri. */
+export interface IcmalSatiri {
+  ad: string;
+  mat: { formul: string | null; deger: number };
+  lab: { formul: string | null; deger: number };
+  /** Karisik kip: satirin birimi (hucre bicimi ve birim basina toplam). */
+  pb?: ParaBirimi;
+}
+export interface IcmalBolgesi { sheet: string; ilk: number; son: number; matCol: number; labCol: number }
+
+/**
+ * Adim 1 — ICMAL_SATIRLARI: sablon satiri satir sayisi kadar cogaltilir, her
+ * satira bolum adi + malzeme + iscilik + toplam yazilir. Konvansiyon: etiket
+ * hucresinin kolonu = bolum adi; +1 malzeme, +2 iscilik, +3 toplam. Etiket ya
+ * da satir yoksa null (toplamlar sayfa formullerini birlestirir).
+ */
+export function icmalSatirlariniYaz(wb: ExcelJS.Workbook, satirlar: readonly IcmalSatiri[], dolan: YerTutucu[]): IcmalBolgesi | null {
+  const icmalYeri = scanWorkbook(wb).bulunan.find((b) => b.etiket === 'ICMAL_SATIRLARI');
+  if (!icmalYeri) return null;
+  const ws = wb.getWorksheet(icmalYeri.sheet)!;
+  const tplCell = ws.getCell(icmalYeri.addr);
+  const tplRow = (tplCell as any).row as number; // 1-based satir no
+  const baseCol = (tplCell as any).col as number;
+  const n = satirlar.length;
+  if (n === 0) {
+    tplCell.value = '';
+    return null;
+  }
+  // Sablon satiri N-1 kez cogalt (stil kopyalanir — T5 "bicim formatin
+  // satirindan"); eklenenler sablonun ALTINA girer.
+  if (n > 1) ws.duplicateRow(tplRow, n - 1, true);
+  for (let i = 0; i < n; i++) {
+    const s = satirlar[i];
+    const r = tplRow + i;
+    const adC = ws.getCell(r, baseCol);
+    const matC = ws.getCell(r, baseCol + 1);
+    const labC = ws.getCell(r, baseCol + 2);
+    const topC = ws.getCell(r, baseCol + 3);
+    adC.value = s.ad;
+    matC.value = s.mat.formul ? ({ formula: s.mat.formul, result: s.mat.deger } as any) : s.mat.deger;
+    labC.value = s.lab.formul ? ({ formula: s.lab.formul, result: s.lab.deger } as any) : s.lab.deger;
+    topC.value = {
+      formula: `${KOLON_HARF(baseCol + 1)}${r}+${KOLON_HARF(baseCol + 2)}${r}`,
+      result: s.mat.deger + s.lab.deger,
+    } as any;
+    for (const c of [adC, matC, labC, topC]) {
+      dolan.push({ etiket: 'ICMAL_SATIRLARI', sheet: ws.name, addr: c.address, ...(s.pb ? { pb: s.pb } : {}) });
+    }
+  }
+  return { sheet: ws.name, ilk: tplRow, son: tplRow + n - 1, matCol: baseCol + 1, labCol: baseCol + 2 };
+}
+
+/** Bir para etiketinin dolgusu: sayi/formul (tam hucre) ya da metin icinde
+ *  bicimli rakam; `karma` = birden cok birimde tutar, METIN (karisik kip). */
+export type SayiDolgusu = { formula: string | null; deger: number; pb?: ParaBirimi };
+export type ParaDolgusu = SayiDolgusu | { karma: string };
+
+/** {{GENEL_TOPLAM}} KDV dahil mi: formatta (birim ekli ya da eksiz) KDV etiketi varsa. */
+export const kdvVarMi = (bulunan: readonly YerTutucu[]): boolean =>
+  bulunan.some((b) => b.etiket === 'KDV' || b.etiket.startsWith('KDV_'));
+
+export function sabitDegerler(ctx: FillContext): Record<string, string> {
+  return {
     TEKLIF_NO: ctx.teklifNo,
     REV: `Rev.${String(ctx.rev).padStart(2, '0')}`,
     TARIH: ctx.tarih,
@@ -334,40 +454,50 @@ export function fillPlaceholders(wb: ExcelJS.Workbook, ctx: FillContext): YerTut
     GECERLILIK: ctx.gecerlilik ?? '',
     KUR_NOTU: ctx.kurNotu,
   };
-  const sayisal: Record<string, { formula: string | null; deger: number }> = {
-    MALZEME_TOPLAMI: { formula: matF, deger: matToplamDeger },
-    ISCILIK_TOPLAMI: { formula: labF, deger: labToplamDeger },
-    KDV: { formula: araFormul ? `(${araFormul})*${ctx.kdvOran}` : null, deger: kdvDeger },
-    GENEL_TOPLAM: kdvVar
-      ? { formula: araFormul ? `(${araFormul})*${1 + ctx.kdvOran}` : null, deger: araDeger + kdvDeger }
-      : { formula: araFormul, deger: araDeger },
-  };
+}
 
-  for (const b of tarama.bulunan) {
+/**
+ * Adim 2 — taranan etiketleri yazar (ICMAL_SATIRLARI haric; adim 1'de islendi).
+ *  - Hucre YALNIZ etiketten ibaretse tip korunur (sayi/formul yazilabilir).
+ *  - Etiket metnin ICINDEYSE string replace: tek birimli rakam tr-TR bicimli,
+ *    birimli rakam simgesiyle ("$1.234,00").
+ *  - Karma (karisik kip, birden cok birim): tam hucrede de METIN.
+ */
+export function etiketleriYaz(
+  wb: ExcelJS.Workbook, bulunan: readonly YerTutucu[], sabitler: Record<string, string>,
+  sayisal: Record<string, ParaDolgusu>, dolan: YerTutucu[],
+): void {
+  for (const b of bulunan) {
     if (b.etiket === 'ICMAL_SATIRLARI') continue; // adim 1'de islendi
     const ws = wb.getWorksheet(b.sheet)!;
     const cell = ws.getCell(b.addr);
     const metin = hucreMetni(cell);
     const tamHucre = metin.trim().replace(/\s+/g, '') === `{{${b.etiket}}}`
       || new RegExp(`^\\{\\{\\s*${b.etiket}\\s*\\}\\}$`).test(metin.trim());
+    const etiketRe = new RegExp(`\\{\\{\\s*${b.etiket}\\s*\\}\\}`, 'g');
 
     if (b.etiket in sayisal) {
-      const { formula, deger } = sayisal[b.etiket];
-      if (tamHucre) {
-        cell.value = formula ? ({ formula, result: deger } as any) : deger;
-      } else {
-        cell.value = metin.replace(new RegExp(`\\{\\{\\s*${b.etiket}\\s*\\}\\}`, 'g'), trSayi(deger));
+      const p = sayisal[b.etiket];
+      // Yerine konan metin FONKSIYONLA verilir: "$2.924,25" / "$&" gibi dizeler
+      // `replace`in ozel kaliplari olarak yorumlanmaz (inceleme L5).
+      if ('karma' in p) {
+        cell.value = tamHucre ? p.karma : metin.replace(etiketRe, () => p.karma);
+        dolan.push(b);
+        continue;
       }
-      dolan.push(b);
+      if (tamHucre) {
+        cell.value = p.formula ? ({ formula: p.formula, result: p.deger } as any) : p.deger;
+      } else {
+        const rakam = p.pb ? paraMetni(p.deger, p.pb) : trSayi(p.deger);
+        cell.value = metin.replace(etiketRe, () => rakam);
+      }
+      dolan.push(p.pb ? { ...b, pb: p.pb } : b);
     } else if (b.etiket in sabitler) {
       const deger = sabitler[b.etiket];
-      cell.value = tamHucre
-        ? deger
-        : metin.replace(new RegExp(`\\{\\{\\s*${b.etiket}\\s*\\}\\}`, 'g'), deger);
+      cell.value = tamHucre ? deger : metin.replace(etiketRe, () => deger);
       dolan.push(b);
     }
   }
-  return dolan;
 }
 
 /**
@@ -402,7 +532,7 @@ export function applyOverrides(wb: ExcelJS.Workbook, overrides: ExportOverrides 
 
 /** PARA tasiyan yer tutucular — sayi/formul yazilir, para bicimi alir. */
 export const SAYISAL_ETIKETLER: ReadonlySet<string> = new Set([
-  'ICMAL_SATIRLARI', 'MALZEME_TOPLAMI', 'ISCILIK_TOPLAMI', 'KDV', 'GENEL_TOPLAM',
+  'ICMAL_SATIRLARI', 'MALZEME_TOPLAMI', 'ISCILIK_TOPLAMI', 'KDV', 'GENEL_TOPLAM', ...BIRIMLI_ETIKETLER,
 ]);
 
 /**

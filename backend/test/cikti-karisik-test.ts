@@ -5,7 +5,7 @@
  *
  *  ── KORUNAN SOZLESME ─────────────────────────────────────────────────────
  *  Teklif karisik kipteyse (satirlarda taraf birimi `_matPB`/`_labPB` var —
- *  on yuz `karisikKipMi` ikizi) fiyatli Excel:
+ *  on yuz ikizi; F6a'dan beri `dovizliTarafVarMi` — $/€ taraf) fiyatli Excel:
  *    - Her taraf KENDI biriminde yazilir: hucre bicimi tarafin birimi ($/€ basta,
  *      ₺ sonda); doviz cevrimi YAPILMAZ (goruntuleme birimi yok sayilir).
  *    - Karma satirin (malzeme $, iscilik ₺) Genel Toplam hucresi iki tutari
@@ -17,16 +17,22 @@
  *    - Doviz tarafi 2 hane YUKARI: formul ROUNDUP(C*E,2) (karar 4).
  *    - GENEL TOPLAM sekmesi: sayfa × birim satirlari + birim basina TEKLİF
  *      GENEL TOPLAMI; "çevrim yapılmaz" notu.
- *    - "Teklif formatında aktar" yolu tek birimli İCMAL'e yazar ($ + ₺
- *      toplardi) → karisik teklifte numara YAKMADAN acik mesajla reddedilir.
+ *    - "Teklif formatında aktar" (İCMAL, 05.10): F5'in gecici 400 reddi KALKTI —
+ *      karisik teklif o yolda da iner, İCMAL birim basina (ayrintisi
+ *      `test:export-karisik`; burada yalniz servis baglantisi).
  *  KONTROL: birim alani olmayan (yalniz-TL) teklif 9 sutun, tek SAYFA TOPLAMI
  *  (ayrintisi `test:ex` / `test:export`te, dokunulmadi).
+ *  F6a (karar K1, 06.10): karisik DUZEN yalniz $/€ taraf varken
+ *  (`dovizliTarafVarMi`, on yuz ikizi). Yalniz-₺ karisik teklif TL teklifle
+ *  BAYT BAYT ayni dosyayi uretir (KR17).
  *  DB GEREKMEZ.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import * as ExcelJS from 'exceljs';
 import { standartCiktiUret } from '../src/ozellik/teklif/quotes/standart-cikti';
-import { karisikKipMi, paraMetni } from '../src/ozellik/teklif/quotes/cikti-karisik';
+import { dovizliTarafVarMi, paraMetni } from '../src/ozellik/teklif/quotes/cikti-karisik';
+const FE_TARAF = require('../../frontend/ozellik/fiyat/taraf-para-birimi');
+const JSZip = require('jszip');
 import { paraBicimi } from '../src/ozellik/teklif/quotes/cikti-stil';
 import { QuotesService } from '../src/ozellik/teklif/quotes/quotes.service';
 import { formulDegerlendir, formulDenetimi } from './cikti-test-yardimci';
@@ -118,9 +124,24 @@ const bicim = (ws: ExcelJS.Worksheet, r: number, c: number) => hucre(ws, r, c).n
 const yakin = (a: number, b: number) => Math.abs(a - b) < 0.005;
 
 async function main() {
-  // ── KR0: kip kurali (on yuz karisikKipMi ikizi) ──
-  check('KR0a karisik: _labPB tasiyan satir', karisikKipMi([{ rowData: [{ _labPB: 'TRY' }] }]) === true);
-  check('KR0b yalniz-TL: birim alani yok', karisikKipMi([{ rowData: [{ _matBirim: '5' }] }, { rowData: null } as any]) === false);
+  // ── KR0: duzen kurali (F6a K1, on yuz dovizliTarafVarMi ikizi) ──
+  const KR0_GIRDILER: any[] = [
+    [{ rowData: [{ _labPB: 'USD' }] }],
+    [{ rowData: [{ _matBirim: '5' }] }, { rowData: null }],
+    [{ rowData: [{ _matPB: 'TRY', _labPB: 'TRY' }] }],
+    [{ rowData: [{ _fitting: { kapsam: [1] }, _fittingBirimli: { mat: [{ pb: 'TRY', toplam: 5 }], lab: [{ pb: 'EUR', toplam: 1 }] } }] }],
+    [{ rowData: [{ _fitting: { kapsam: [1] }, _fittingBirimli: { mat: [{ pb: 'TRY', toplam: 5 }], lab: [] } }] }],
+    [{ rowData: [{ _matPB: 'GBP' }, null] }],
+    [{ rowData: [{ _fitting: { kapsam: [1] }, _fittingBirimli: { mat: 5, lab: { pb: 'USD' } } }] }], // bozuk kayit (inceleme L4)
+    null,
+  ];
+  check('KR0a dovizli: $ tarafi olan satir', dovizliTarafVarMi(KR0_GIRDILER[0]) === true);
+  check('KR0b yalniz-TL: birim alani yok', dovizliTarafVarMi(KR0_GIRDILER[1]) === false);
+  check('KR0c F6a: yalniz ₺ birimli karisik satirlar dovizli DEGIL (TL duzeni)', dovizliTarafVarMi(KR0_GIRDILER[2]) === false);
+  check('KR0d fitting € parcasi dovizli, yalniz ₺ parca degil', dovizliTarafVarMi(KR0_GIRDILER[3]) === true && dovizliTarafVarMi(KR0_GIRDILER[4]) === false);
+  check('KR0f bozuk fitting kaydi ciktiyi DUSURMEZ (dizi olmayan mat/lab → dovizli degil)', dovizliTarafVarMi(KR0_GIRDILER[6]) === false);
+  const kr0Fark = KR0_GIRDILER.filter((g) => FE_TARAF.dovizliTarafVarMi(g) !== dovizliTarafVarMi(g));
+  check('KR0e on yuz ikizi her girdide AYNI karar', kr0Fark.length === 0, js(kr0Fark));
 
   const s = await standartCiktiUret({ sheetsArr: [MEKANIK, ELEKTRIK], baslik: 'F5', tarih: TARIH });
   const wb = await ac(s.buffer);
@@ -275,6 +296,36 @@ async function main() {
   const ozTl = tl.getWorksheet('GENEL TOPLAM')!;
   check('KR14c GENEL TOPLAM 4 sutun', deger(ozTl, satirBul(ozTl, 'Sayfa', 1), 2) === 'Malzeme');
 
+  // ── KR17: F6a K1 — yalniz-₺ karisik teklif = TL teklif (BAYT BAYT) ──
+  // Yeni ızgara karisik kipte ₺ tarafa da birim yazar ve yalniz-₺ fitting
+  // kapsaminda hucreler TL degerini tasir (F6a); birim alanlari soyulunca TL teklif.
+  const TL_KARISIK = [{
+    ...ELEKTRIK,
+    // Izgaranin urettigi gibi: kapsam (Kablo 2.500 / 500) × %5 → malzeme 125, iscilik 25 — ikisi de hucrede
+    rowData: ELEKTRIK.rowData.map((r: any) => (r._fitting ? {
+      ...r, _matBirim: '25', _matToplam: '125', _labBirim: '5', _labToplam: '25',
+      _fittingBirimli: { mat: [{ pb: 'TRY', toplam: 125 }], lab: [{ pb: 'TRY', toplam: 25 }] },
+    } : r)),
+  }, { ...TL_SAYFA, name: 'Mekanik', rowData: TL_SAYFA.rowData.map((r: any) => ({ ...r, _matPB: 'TRY', _labPB: 'TRY' })) }];
+  const soy = (sayfalar: any[]) => sayfalar.map((s) => ({
+    ...s, rowData: s.rowData.map(({ _matPB, _labPB, _fittingBirimli, ...r }: any) => r),
+  }));
+  const parcalar = async (buf: Buffer) => {
+    const z = await JSZip.loadAsync(buf);
+    const o: Record<string, string> = {};
+    for (const ad of Object.keys(z.files).sort()) if (!z.files[ad].dir && ad !== 'docProps/core.xml') o[ad] = await z.files[ad].async('string');
+    return o;
+  };
+  for (const [ad, ek] of [['TL', {}], ['USD gorunum', { birim: { kod: 'USD', katsayi: 1 / 40, not: 'Fiyatlar USD' } }], ['en', { dil: 'en' }]] as const) {
+    const a = await standartCiktiUret({ sheetsArr: TL_KARISIK, baslik: 'F6a', tarih: TARIH, ...(ek as any) });
+    const b = await standartCiktiUret({ sheetsArr: soy(TL_KARISIK), baslik: 'F6a', tarih: TARIH, ...(ek as any) });
+    const pa = await parcalar(a.buffer); const pb = await parcalar(b.buffer);
+    const farkli = [...new Set([...Object.keys(pa), ...Object.keys(pb)])].filter((x) => pa[x] !== pb[x]);
+    check(`KR17 ${ad}: yalniz-₺ karisik teklifin fiyatli Excel'i TL teklifle bayt bayt ayni (+ ozet)`,
+      Object.keys(pa).length > 5 && farkli.length === 0 && a.ozet === b.ozet && a.birimliGenelToplam === undefined,
+      `${Object.keys(pa).length} parca · farkli: ${farkli.join(', ')} · ${a.ozet} | ${b.ozet}`);
+  }
+
   // ── KR15: servis yollari ──
   const kayit = { numara: 0 };
   const servis = (sheets: any[], displayCurrency = 'TRY') => {
@@ -297,8 +348,8 @@ async function main() {
   const k1 = servis([MEKANIK]);
   let hata = '';
   try { await k1.svc.exportXlsx(KIM, 'q1'); } catch (e: any) { hata = `${e?.getStatus?.() ?? ''} ${e?.message ?? e}`; }
-  check('KR15a format yolu karisik teklifi 400 ile reddeder', hata.startsWith('400 ') && hata.includes('Fiyatlandırılmış Excel'), hata);
-  check('KR15b reddedilen indirme numara YAKMAZ', kayit.numara === 0 && k1.quote.quoteNo === null && k1.quote.rev === 0, js({ n: kayit.numara, no: k1.quote.quoteNo }));
+  check('KR15a format yolu karisik teklifi INDIRIR (İCMAL birim basina — test:export-karisik)', hata === '' && k1.quote.rev === 1, hata);
+  check('KR15b indirme numara alir (tek atama)', kayit.numara === 1 && k1.quote.quoteNo === `MP-${new Date().getFullYear()}-001`, js({ n: kayit.numara, no: k1.quote.quoteNo }));
   const k2 = servis([TL_SAYFA]);
   let tlHata = '';
   try { await k2.svc.exportXlsx(KIM, 'q1'); } catch (e: any) { tlHata = String(e?.message ?? e); }

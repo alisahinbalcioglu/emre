@@ -37,9 +37,12 @@ import * as ExcelJS from 'exceljs';
 import {
   fillPlaceholders, applyOverrides, KOLON_HARF, sayfaRolleriTahminEt,
   FillContext, SekmeOzet, YerTutucu, ExportOverrides, SheetRoles,
-  EXCEL_FORMUL_AZAMI, SAYISAL_ETIKETLER, paraOnbellekleriniTazele,
+  EXCEL_FORMUL_AZAMI, SAYISAL_ETIKETLER, paraOnbellekleriniTazele, SekmeBirimi, yerlesikToplamlariBirimle,
 } from '../../cikti/quote-formats/format-engine';
-import { standartSayfaYaz } from './standart-cikti';
+import { karisikDoldur } from '../../cikti/quote-formats/format-karisik';
+import { StandartSayfaBilgi, standartSayfaYaz } from './standart-cikti';
+import { BIRIM_SIRASI, BIRIM_SUTUNLARI, BirimKovasi, ParaBirimi, dovizliTarafVarMi } from './cikti-karisik';
+import { paraBicimi } from './cikti-stil';
 import type { AntetBilgi } from '../../cikti/utils/antet';
 
 /** Formul icindeki sayfa adi: tek tirnak kacisli */
@@ -216,6 +219,39 @@ export function sekmeOzetiKur(b: SekmeBilgi, sonAd: string): SekmeOzet {
   };
 }
 
+/**
+ * KARISIK kip (İCMAL, 05.10): sayfanin birim basina İCMAL parcalari. Formul
+ * liste sayfasinin gizli J/K birim sutunlarina SUMIF — aralik katki veren
+ * satirlarin ilki..sonu; ARA TOPLAM ve baslik satirlarinin birim hucresi BOS,
+ * toplama girmez (13.09 "3 kat" dersi, fiyatli yolun SAYFA TOPLAMI ile ayni olcut).
+ * Tutarsiz kalem sayfasi ve kalemsiz sayfa (tek yolun ikizi "0") tek bos
+ * parca alir; birimi TEKLIFIN ilk birimidir (`varsayilan`) — yerlesik toplam
+ * blogu da o birimleri yazar, bos satir toplamsiz bir birimde kalmaz (inceleme L2).
+ */
+export function karisikSekmeBirimleri(
+  b: Pick<StandartSayfaBilgi, 'toplamSatirlari' | 'matCol' | 'labCol' | 'birimKovalari'>, sonAd: string, varsayilan: ParaBirimi,
+): SekmeBirimi[] {
+  const satirlar = b.toplamSatirlari ?? [];
+  const kovalar: BirimKovasi[] = b.birimKovalari?.length ? b.birimKovalari : [{ pb: varsayilan, matK: 0, labK: 0 }];
+  if (satirlar.length === 0) {
+    return kovalar.map((k) => ({ pb: k.pb, matFormul: '0', labFormul: '0', matDeger: k.matK / 100, labDeger: k.labK / 100 }));
+  }
+  const ilk = satirlar.reduce((a, n) => Math.min(a, n), Infinity);
+  const son = satirlar.reduce((a, n) => Math.max(a, n), -Infinity);
+  const ref = sayfaRef(sonAd);
+  const sumif = (olcut: number, kol: number, pb: ParaBirimi) => {
+    const o = KOLON_HARF(olcut); const k = KOLON_HARF(kol);
+    return `SUMIF(${ref}!${o}${ilk}:${o}${son},"${pb}",${ref}!${k}${ilk}:${k}${son})`;
+  };
+  return kovalar.map((k) => ({
+    pb: k.pb,
+    matFormul: sumif(BIRIM_SUTUNLARI.malzeme, b.matCol, k.pb),
+    labFormul: sumif(BIRIM_SUTUNLARI.iscilik, b.labCol, k.pb),
+    matDeger: k.matK / 100,
+    labDeger: k.labK / 100,
+  }));
+}
+
 // NOT (Bulgu Raporu 21.07, B1-B9 → kok neden): grid state'inden workbook
 // ureten `buildListWorkbookFromSheets` SILINDI. Iki yol yan yana kalmaz —
 // cikti YALNIZ iki gercek kaynaktan kurulur: format workbook'u (taban) +
@@ -293,6 +329,9 @@ export interface ExportGirdisi {
   baslik?: string;
   /** Baslik blogundaki "Tarih:" (verilmezse bugun). */
   tarih?: Date;
+  /** Format bizim YERLESIK ornegimiz mi (`buildSampleFormat`) — karisik teklifte
+   *  toplam blogu birim basina yazilir; musteri formatina satir eklenmez. */
+  yerlesik?: boolean;
 }
 
 export interface ExportSonucu {
@@ -315,6 +354,10 @@ export interface ExportSonucu {
   beklenenDeger: number;
   /** 23.09: dosyadaki toplami miktar × birim fiyatla tutmayan, Excel'de yeniden hesaplanan satir */
   yenidenHesaplanan: number;
+  /** Karisik teklif: birim basina teklif geneli (₺, $, € sirasi; cevrim yok). */
+  birimliGenelToplam?: Array<{ pb: ParaBirimi; toplam: number }>;
+  /** Karisik teklif: musteri formulu birimli para hucresine basvuruyor — indirme uyarisi. */
+  karisikUyari?: string;
 }
 
 /**
@@ -347,13 +390,18 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   // yazim yolu YOK. Orijinal dosya artik ZORUNLU DEGIL (grid verisi yeterli).
   const bilgiler: SekmeBilgi[] = [];
   const listeSayfalari: string[] = [];
-  const sekmeler: SekmeOzet[] = [];
+  const tekSekmeler: SekmeOzet[] = [];
+  const sayfaBilgileri: StandartSayfaBilgi[] = [];
+  const kovalar: BirimKovasi[] = [];
   let yenidenHesaplanan = 0;
+  // İCMAL (05.10): karisik teklifte liste sayfalari fiyatli yolun karisik
+  // duzeninde (taraf kendi biriminde, gizli J/K); İCMAL sayfa × birim.
+  const karisik = dovizliTarafVarMi(g.sheetsArr ?? []); // F6a: yalniz $/€ varken
   for (const sh of g.sheetsArr ?? []) {
     if (!sh || sh.isEmpty) continue;
     // EX8: standart tablo DOGRUDAN format workbook'una yazilir.
     // toplamSatiri=false — İCMAL zaten SUM ile topluyor, cift toplam olmasin.
-    const sb = standartSayfaYaz(wb, sh, { birim: g.birim as any, toplamSatiri: false, dil: g.dil, antet: g.antet, baslik: g.baslik, tarih: g.tarih });
+    const sb = standartSayfaYaz(wb, sh, { birim: g.birim as any, toplamSatiri: false, dil: g.dil, antet: g.antet, baslik: g.baslik, tarih: g.tarih, karisik });
     listeSayfalari.push(sb.wsName);
     yenidenHesaplanan += sb.yenidenHesaplanan;
     const b: SekmeBilgi = {
@@ -364,8 +412,23 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
       fiyatsizSatir: sb.fiyatsizSatir,
     };
     bilgiler.push(b);
-    sekmeler.push(sekmeOzetiKur(b, sb.wsName));
+    tekSekmeler.push(sekmeOzetiKur(b, sb.wsName));
+    sayfaBilgileri.push(sb);
+    kovalar.push(...(sb.birimKovalari ?? []));
   }
+  // Fiyatli yolun ikizi (`standartCiktiUret`): tutari olan her birim, sabit sirada
+  const birimliGenelToplam = karisik
+    ? BIRIM_SIRASI
+      .filter((pb) => kovalar.some((k) => k.pb === pb))
+      .map((pb) => ({ pb, toplam: kovalar.filter((k) => k.pb === pb).reduce((a, k) => a + k.matK + k.labK, 0) / 100 }))
+    : undefined;
+  // Karisikta sekme ozeti birim parcalarini tasir; tek birimli SUM formulu ($ + ₺
+  // toplardi) BOSALTILIR — kimse okumasin (inceleme L7). Bos parcanin birimi
+  // teklifin ilk birimi.
+  const ilkBirim: ParaBirimi = birimliGenelToplam?.[0]?.pb ?? 'TRY';
+  const sekmeler: SekmeOzet[] = karisik
+    ? tekSekmeler.map((s, i) => ({ ...s, matFormul: null, labFormul: null, birimler: karisikSekmeBirimleri(sayfaBilgileri[i], s.name, ilkBirim) }))
+    : tekSekmeler;
 
   // KF6 self-check — sayfa DONGUSUNDEN SONRA toplanir. ⚠ Eskiden donguden
   // ONCE bos `bilgiler` uzerinden hesaplaniyordu: sayaclar yapisal olarak 0,
@@ -394,12 +457,23 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   sayfalariSirala(wb, hedefSira);
 
   // ── 4. Doldur + teklif katmani ──
-  const dolan = fillPlaceholders(wb, { ...g.ctxTemel, sekmeler });
-  applyOverrides(wb, g.overrides);
+  if (karisik && g.yerlesik) yerlesikToplamlariBirimle(wb, (birimliGenelToplam ?? []).map((x) => x.pb));
+  const karisikDolum = karisik ? karisikDoldur(wb, { ...g.ctxTemel, sekmeler }) : null;
+  const dolan = karisikDolum
+    ? karisikDolum.dolan
+    : fillPlaceholders(wb, { ...g.ctxTemel, sekmeler, paraBirimi: g.birim?.kod ?? 'TRY' });
+  // Eski kayitli override'lar TEK birimli duzenin adreslerine yazilmisti; karisik
+  // duzende İCMAL satirlari ve toplamlar KAYAR — override yanlis hucreye duserdi
+  // (inceleme L1). Duzenleyici ucu kaldirildi (ARINMA Faz 2): yalniz eski kayitlar.
+  if (karisik && g.overrides && Object.keys(g.overrides).length > 0) {
+    console.warn('[Export] ⚠ karisik para birimli teklif: kayitli eski cikti duzenlemeleri UYGULANMADI (tek birimli duzenin adresleri)');
+  } else {
+    applyOverrides(wb, g.overrides);
+  }
   // Eski kayitli override bir PARA hucresine rakam yazdiysa, o hucreyi toplayan
   // formullerin onbellegi son degerlerden yeniden kurulur (Korumali Gorunum ile
   // duzenleme modu AYNI rakami gostersin — bkz. paraOnbellekleriniTazele).
-  if (g.overrides && Object.keys(g.overrides).length > 0) {
+  if (!karisik && g.overrides && Object.keys(g.overrides).length > 0) {
     const n = paraOnbellekleriniTazele(wb, dolan);
     if (n > 0) console.warn(`[Export] ⚠ kayitli override ${n} para formulunun onbellegini degistirdi — yeniden hesaplandi`);
   }
@@ -410,15 +484,25 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   // Yalniz PARA etiketleri — TEKLIF_NO/REV/TARIH gibi metin alanlari bir
   // override ile sayiya donmus olsa da para bicimi ALMAZ — ve SAYI/FORMUL
   // tasiyan hucreler; metin icine gomulu etiket ("Toplam: 1.234,00") bicim tasimaz.
-  const kod = g.birim?.kod ?? 'TRY';
+  // Karisikta goruntuleme birimi yok sayilir: birimsiz (eksiz, tek ₺) hucre TL kuralini alir
+  const kod = karisik ? 'TRY' : g.birim?.kod ?? 'TRY';
   for (const d of dolan) {
     if (!SAYISAL_ETIKETLER.has(d.etiket)) continue;
     const hucre = wb.getWorksheet(d.sheet)?.getCell(d.addr);
     const v: any = hucre?.value;
     if (hucre && (typeof v === 'number' || (v && typeof v === 'object' && typeof v.formula === 'string'))) {
-      birimBicimiDuzelt(hucre, kod);
+      // Birimli hucre (karisik İCMAL satiri / birim ekli etiket) KENDI biriminin bicimi.
+      // ⚠ STIL KOPYASI (olculdu, 05.10): ExcelJS `duplicateRow` cogaltilan satirlara
+      // sablon hucresinin stil NESNESINI paylastirir, `numFmt` atayicisi o nesneyi
+      // degistirir — $ satirinin bicimi tum İCMAL satirlarina yayiliyordu.
+      if (d.pb) hucre.style = { ...hucre.style, numFmt: paraBicimi(d.pb) };
+      else birimBicimiDuzelt(hucre, kod);
     }
   }
 
-  return { wb, sekmeler, dolan, formatSayfalari, listeSayfalari, eksikDeger, hataArtisi, fiyatsizSatir, yazilanDeger, beklenenDeger, yenidenHesaplanan };
+  return {
+    wb, sekmeler, dolan, formatSayfalari, listeSayfalari, eksikDeger, hataArtisi, fiyatsizSatir, yazilanDeger, beklenenDeger, yenidenHesaplanan,
+    ...(birimliGenelToplam ? { birimliGenelToplam } : {}),
+    ...(karisikDolum?.uyari ? { karisikUyari: karisikDolum.uyari } : {}),
+  };
 }

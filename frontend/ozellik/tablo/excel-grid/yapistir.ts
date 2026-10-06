@@ -33,6 +33,7 @@
  * ACIK istisnasidir (yapistir.test.ts) — yazilmaz, ozet toast'ta sayilir.
  */
 import { insanSayiOku, type SayiAlanTuru } from '../../fiyat/sayi-alani';
+import { elleGirilenPB, paraIsaretiniAyikla, type ParaBirimi } from '../../fiyat/taraf-para-birimi';
 
 /** INSAN YAZIMI para/sayi metni → number. Sayi degilse ya da BELIRSIZSE null.
  *  Alan verilmezse fiyat (₺/TL suslu Excel gorunumu). Sinifin kendisi icin
@@ -73,7 +74,11 @@ export interface PasteSatir {
   isDataRow: boolean;
 }
 
-export interface PasteHucre { satir: number; field: string; deger: string | number }
+export interface PasteHucre {
+  satir: number; field: string; deger: string | number;
+  /** F6b karisik kip: dovizli/₺ isaretli metin FIYAT kolonunda birimi secer (elle yazim kurali, karar 3) */
+  pb?: ParaBirimi;
+}
 
 export interface PastePlan {
   hucreler: PasteHucre[];
@@ -134,6 +139,9 @@ export function planYapistir(
    *  ancak gozle fark ederdi). Editable olmayan kolon yine YAZILMAZ — ozette
    *  `atlananKolon` olarak gorunur. */
   hedefKolonSayisi?: number,
+  /** F6b: karisik (yazim) kip — fiyat kolonunda "$12"/"€12"/"₺12" birimi secer.
+   *  TL kipinde verilmez: orada dovizli metin cagiran tarafindan reddedilir. */
+  secenek?: { karisik?: boolean },
 ): PastePlan {
   const bos: PastePlan = {
     hucreler: [],
@@ -165,6 +173,25 @@ export function planYapistir(
       const ham = kopya[j];
       if (ham.trim() === '') { plan.ozet.atlananBos++; continue; }
       if (!kolon || !kolon.editable) { plan.ozet.atlananKolon++; continue; }
+      if (kolon.sayisal && secenek?.karisik && kolon.alan === 'fiyat') {
+        // F6b: karisik kipte fiyat tarafin KENDI birimindedir — isaret birimi secer.
+        // Yalniz ACIKCA fiyat olan kolon (izgara `alan`i her zaman verir): miktar/kar asla.
+        const pb = elleGirilenPB(ham);
+        if (pb) {
+          const r = insanSayiOku(paraIsaretiniAyikla(ham), 'fiyat');
+          if (r.tur === 'sayi') {
+            plan.hucreler.push({ satir: si, field: kolon.field, deger: r.deger, pb });
+            plan.ozet.yazilacak++;
+            continue;
+          }
+          // Belirsiz ("$1.250": 1250 mi 1,25 mi?) dogru uyariyi alir (inceleme S3)
+          if (r.tur === 'belirsiz') {
+            plan.ozet.atlananBelirsiz++;
+            if (plan.ozet.ornekHamlar.length < 2) plan.ozet.ornekHamlar.push(ham.trim());
+            continue;
+          }
+        }
+      }
       if (kolon.sayisal) {
         const r = insanSayiOku(ham, kolon.alan ?? 'fiyat');
         if (r.tur !== 'sayi') {

@@ -4,7 +4,8 @@ import { MetinSozlugu } from '../../matching/dto/eslestirme-govdesi.dto';
 /**
  * ISCILIK ESLESTIRME UCLARININ GOVDESI (C11, Paket 4a, 01.10.2026) — malzeme
  * ikizi `../../matching/dto/eslestirme-govdesi.dto.ts` (gerekce orada). Her
- * alan dekoratorlu (`whitelist` dekoratorsuz alani siler); boyut tavani yok.
+ * alan dekoratorlu (`whitelist` dekoratorsuz alani siler). Boyut tavani DTO'da
+ * degil, uctaki `@DiziTavani`da (malzeme ikiziyle ayni kurallar, 06.10).
  */
 
 /** POST /labor-matching/bulk-match */

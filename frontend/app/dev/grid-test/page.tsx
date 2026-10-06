@@ -19,7 +19,7 @@ import type { ExcelGridData, MatchCandidate } from '@/ozellik/tablo/excel-grid/t
 // Loglar REACT DISI tutulur (window.__olay): setState her sorguda parent'i
 // re-render edip AG Grid hucrelerini remount ettiriyordu → popup state'i
 // ucuyordu. Canli sayfada handler'lar memoize oldugu icin bu tuzak yok.
-declare global { interface Window { __olay?: string[] } }
+declare global { interface Window { __olay?: string[]; __kurBayat?: boolean } }
 const kaydet = (m: string) => {
   if (typeof window === 'undefined') return;
   (window.__olay = window.__olay ?? []).push(m);
@@ -67,6 +67,13 @@ export default function GridTestPage() {
   // gerilemeyi olcer. Varsayilan: acik (mevcut tum e2e'ler etkilenmez).
   const [iscilikAcik, setIscilikAcik] = useState(true);
   const [paraKipi, setParaKipi] = useState<'tl' | 'karisik'>('tl');
+  const [digerDoviz, setDigerDoviz] = useState(false);
+  const [gorunumUSD, setGorunumUSD] = useState(false);
+  const [toplamsiz, setToplamsiz] = useState(false);
+  // F6c: `?tumu=TRY|USD|EUR` → "Tumu X" gorunumu; canli kur 1 $ = ₺41, 1 € = ₺45 —
+  // DOLAR MARKA'nin DONUK kuru (40) bilerek farkli: "once donuk kur" olculsun.
+  const [tumu, setTumu] = useState<'TRY' | 'USD' | 'EUR' | null>(null);
+  const tumuGorunum = useMemo(() => (tumu ? { hedef: tumu, tlKuru: { USD: 41, EUR: 45 } } : null), [tumu]);
   // ⚠ GRID BAYRAKLAR OKUNDUKTAN SONRA MOUNT EDILIR. Ilk halinde grid ilk
   // render'da `iscilikAcik=true` goruyordu; `?iscilik=gec` boylece gercek
   // dunyanin TERSINI (once acik, sonra kapali, sonra acik) suruyordu ve
@@ -75,6 +82,18 @@ export default function GridTestPage() {
   // (SSR/istemci hydration uyusmazligi); cozum grid'i bir tik geciktirmek.
   const [gridHazir, setGridHazir] = useState(false);
   const [kutuphaneDoviz, setKutuphaneDoviz] = useState(false);
+  // C10 (P4b Parti 3 madde 2): `?kur=bayat` → DOLAR MARKA / DOLAR USTA kurunu
+  // BAYAT (3 is gunu) dondurur — fiyat hucresinde amber serit + kur notu
+  // olculur. REF: sorgu mock'lari bos bagimlilikla memoize (handler kimligi
+  // degisirse hucreler yeniden kurulur — bkz. sayfa basindaki not).
+  // `window.__kurBayat = true` sayfa ACIKKEN kuru bayatlatir, DEGERI ayni
+  // kalir: ayni firma/marka yeniden secilince fiyat metni degismez — serit
+  // yine de gorunmeli (inceleme MEDIUM-1, iscilik hucresi zorla tazelenir).
+  const kurBayatRef = useRef(false);
+  const dolarKuru = () => ({
+    currency: 'USD', kur: 40, tarih: '2026-10-05',
+    ...(kurBayatRef.current || window.__kurBayat ? { bayat: true, yasIsGunu: 3 } : {}),
+  });
   React.useEffect(() => {
     const arama = new URLSearchParams(window.location.search);
     const kip = arama.get('iscilik');
@@ -89,9 +108,18 @@ export default function GridTestPage() {
     // COKLU PARA BIRIMI F2 (05.10): `?para=karisik` → izgara karisik kipte
     // (taraf para birimi). Uretim sayfasi F6'ya dek GECIRMEZ.
     if (arama.get('para') === 'karisik') setParaKipi('karisik');
+    // F6a: `?digerDoviz=1` → baska sayfada doviz var (uretim sayfasi `digerSayfalardaDovizVar`la gecirir).
+    if (arama.get('digerDoviz') === '1') setDigerDoviz(true);
+    // F6a: `?gorunumUSD=1` → ekran USD (kur 40) — sayfanin TL/USD/EUR anahtari gibi
+    if (arama.get('gorunumUSD') === '1') setGorunumUSD(true);
+    // F6a (inceleme H1): `?toplamsiz=1` → sayfada TOPLAM sutunu rolu yok (yalniz birim fiyat)
+    if (arama.get('toplamsiz') === '1') setToplamsiz(true);
+    const tumuSorgu = arama.get('tumu');
+    if (tumuSorgu === 'TRY' || tumuSorgu === 'USD' || tumuSorgu === 'EUR') setTumu(tumuSorgu);
     // KUTUPHANE DOVIZ NETI (05.10): `?kutuphaneDoviz=1` → kutuphane modunda satir 2
     // USD ve liste 10,55 (₺ kurali $10,60 gosterirdi). Varsayilan KAPALI.
     if (arama.get('kutuphaneDoviz') === '1') setKutuphaneDoviz(true);
+    kurBayatRef.current = arama.get('kur') === 'bayat';
     setGridHazir(true); // ayni tikte toplanir → grid ilk render'da DOGRU degeri gorur
     if (kip === 'gec') {
       const t = setTimeout(() => setIscilikAcik(true), 300);
@@ -211,13 +239,14 @@ export default function GridTestPage() {
       ],
       columnRoles: {
         nameField: 'col1', noField: 'col0', quantityField: 'col2', unitField: 'col3',
-        materialUnitPriceField: '_matBirim', materialTotalField: '_matToplam', grandTotalField: '_toplam',
-        laborUnitPriceField: '_labBirim', laborTotalField: '_labToplam',
+        materialUnitPriceField: '_matBirim',
+        laborUnitPriceField: '_labBirim',
+        ...(toplamsiz ? {} : { materialTotalField: '_matToplam', grandTotalField: '_toplam', laborTotalField: '_labToplam' }),
       },
       brands: [],
       headerEndRow: 0,
     };
-  }, [mod, kutuphaneDoviz]);
+  }, [mod, kutuphaneDoviz, toplamsiz]);
 
   const onBrandChange = useCallback(async (rowIdx: number, brandId: string, materialName: string, opts?: { variantTags?: string[]; silent?: boolean }) => {
     cagriSayisi.current++;
@@ -252,7 +281,7 @@ export default function GridTestPage() {
     // izgara TL alanlarini yazar (bugunku davranis).
     if (brandId === 'b-dolar') {
       const usd = (n: number) => ({ currency: 'USD', net: n, list: n, discount: 0 });
-      const kur = { currency: 'USD', kur: 40, tarih: '2026-10-05' };
+      const kur = dolarKuru();
       if (materialName.includes("1''")) {
         return {
           netPrice: 0, confidence: 'multi', reason: '2 seçenek',
@@ -353,7 +382,7 @@ export default function GridTestPage() {
       const net = capI ? LAB_FIYAT[capI] / 40 : 0;
       if (!net) return { netPrice: 0, confidence: 'none', reason: 'Bu firmada yok.' } as any;
       return { netPrice: Math.round(net * 40 * 100) / 100, confidence: 'high', matchedName: `Dolar işçilik · ${capI}`, variantTags: ['v:usd'],
-        kaynakKur: { currency: 'USD', kur: 40, tarih: '2026-10-05' }, kaynakFiyat: { currency: 'USD', net, list: net, discount: 0 } } as any;
+        kaynakKur: dolarKuru(), kaynakFiyat: { currency: 'USD', net, list: net, discount: 0 } } as any;
     }
 
     // D2 IKIZI (30.09): HAKAN USTA bu sorguda YAVAS ve FARKLI fiyat doner.
@@ -421,6 +450,24 @@ export default function GridTestPage() {
           style={{ border: '1px solid #cbd5e1', borderRadius: 4, padding: '1px 6px', fontSize: 12 }}
         >
           moda geç
+        </button>{' '}
+        {/* F6a: sayfa gecisi taklidi — baska sayfanin dovizi izgara kurulduktan SONRA degisir */}
+        <button
+          type="button"
+          data-testid="diger-doviz"
+          onClick={() => setDigerDoviz((v) => !v)}
+          style={{ border: '1px solid #cbd5e1', borderRadius: 4, padding: '1px 6px', fontSize: 12 }}
+        >
+          diğer sayfa döviz: {digerDoviz ? 'var' : 'yok'}
+        </button>{' '}
+        {/* F6c: gorunum anahtari taklidi — Karisik → Tumu ₺ → Tumu USD → Karisik */}
+        <button
+          type="button"
+          data-testid="tumu-dongu"
+          onClick={() => setTumu((t) => (t === null ? 'TRY' : t === 'TRY' ? 'USD' : null))}
+          style={{ border: '1px solid #cbd5e1', borderRadius: 4, padding: '1px 6px', fontSize: 12 }}
+        >
+          görünüm: {tumu ?? 'karışık'}
         </button>
       </div>
       {gridHazir && <ExcelGrid
@@ -430,6 +477,8 @@ export default function GridTestPage() {
         onBrandChange={onBrandChange as any}
         seciciSaltOkunur={saltOkunurSecici}
         paraBirimiKipi={paraKipi}
+        digerSayfalardaDoviz={digerDoviz}
+        tumuGorunum={tumuGorunum}
         autoVariantEnabled={autoVariant}
         onAutoVariantChange={onAutoVariantChange}
         onAutoVariantApplied={onAutoVariantApplied}
@@ -440,8 +489,8 @@ export default function GridTestPage() {
         onFirmaChange={onFirmaChange as any}
         mode={mod}
         libraryPriceField="materialUnitPriceField"
-        currencySymbol="₺"
-        conversionRate={1}
+        currencySymbol={tumu ? { TRY: '₺', USD: '$', EUR: '€' }[tumu] : gorunumUSD ? '$' : '₺'}
+        conversionRate={tumu === 'USD' ? 1 / 41 : tumu === 'EUR' ? 1 / 45 : gorunumUSD ? 1 / 40 : 1}
         // ⚠ GERCEK TEKLIF GRIDIYLE HIZA (29.09): `quotes/new` bu prop'u veriyor
         // ve FITTING kapsam kipi buna baglidir (`fittingDuzenlenebilir =
         // enableStructureEdit`). Harness onu vermedigi icin fitting kipi

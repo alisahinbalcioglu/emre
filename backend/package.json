@@ -198,9 +198,13 @@
     "test:yonetici-paket": "ts-node test/yonetici-paket-test.ts",
     "test:kiraci-siniri": "ts-node test/kiraci-siniri-test.ts",
     "test:govde-dogrulama": "ts-node test/govde-dogrulama-test.ts",
+    "test:dizi-tavani": "ts-node test/dizi-tavani-test.ts",
+    "test:dogrulama-borusu": "ts-node test/dogrulama-borusu-test.ts",
+    "test:govde-genisligi": "ts-node test/govde-genisligi-test.ts",
     "test:ci-ek-notu": "ts-node test/ci-ek-notu-test.ts",
     "test:p4b-motor": "ts-node test/p4b-motor-test.ts",
     "test:ex-karisik": "ts-node test/cikti-karisik-test.ts",
+    "test:export-karisik": "ts-node test/export-karisik-test.ts",
     "test:p4b-kutuphane": "ts-node test/p4b-kutuphane-test.ts",
     "test:net-fiyat-ikiz": "ts-node test/net-fiyat-ikiz-test.ts",
     "test:cap-ikiz": "ts-node test/cap-ikiz-test.ts"

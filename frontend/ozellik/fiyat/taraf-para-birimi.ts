@@ -153,18 +153,101 @@ export function cokluTutarMetni(parcalar: Array<{ pb: ParaBirimi; tutar: number 
 // ══ F4 — KAYIT: kip kayittan turetilir, iliskisel kalem TL karsiligi tasir ═══
 
 /**
- * Teklif karisik kipte mi? Kayitta AYRI alan yok: karisik kip her fiyat
- * yaziminda tarafin birimini (`_matPB`/`_labPB`, ₺ dahil) yazar; tl kipi hic
- * yazmaz. Yani birim alani tasiyan satir = karisik teklif; eski / yalniz-TL
- * kayitlar tl kalir.
+ * Teklif karisik (YAZIM) kipte mi? Karisik kip her fiyat yaziminda tarafin
+ * birimini (`_matPB`/`_labPB`, ₺ dahil) yazar; tl kipi hic yazmaz. Yani birim
+ * alani tasiyan satir = karisik teklif; eski / yalniz-TL kayitlar tl kalir.
+ * F6b (06.10): yeni teklif karisik ACILIR — henuz fiyatlanmamis (birim alani
+ * olmayan) bir yeni teklif kaydedilince kipi sayfa ISARETI (`paraKipi:
+ * 'karisik'`, kayit yuku yazar) tasir; revizyonda karisik acilir.
  */
-export function karisikKipMi(sayfalar: Array<{ rowData?: Record<string, any>[] | null }> | null | undefined): boolean {
+export const KARISIK_PARA_KIPI = 'karisik' as const;
+
+export function karisikKipMi(sayfalar: Array<{ paraKipi?: unknown; rowData?: Record<string, any>[] | null }> | null | undefined): boolean {
   for (const s of sayfalar ?? []) {
+    if (s?.paraKipi === KARISIK_PARA_KIPI) return true;
     for (const r of s?.rowData ?? []) {
       if (typeof r?._matPB === 'string' || typeof r?._labPB === 'string') return true;
     }
   }
   return false;
+}
+
+// ══ F6a — GORUNUM KURALI: birim basina gorunum YALNIZ dovizli taraf varken ═══
+
+const DOVIZ: ReadonlySet<unknown> = new Set(['USD', 'EUR']);
+
+/**
+ * Satirlarda $/€ taraf (ya da fitting birim parcasi) var mi?
+ *
+ * Karar K1 (05.10, Emre'nin onerilen onayi): karisik kip YAZIM yetenegidir
+ * ($ liste fiyati $ kalir); birim basina GORUNUM — alt satirlar "GENEL TOPLAM
+ * ₺/$", fitting "₺x + $y", fiyatli Excel ve İCMAL duzeni — YALNIZ dovizli taraf
+ * varken. Yalniz-₺ karisik teklif TL teklifle bayt bayt ayni gorunur: "yeni
+ * teklif karisik" ile "yalniz-TL teklifin ekrani ve Excel'i ayni" ancak boyle
+ * birlikte tutar. Yazim kipi ayri kural (`karisikKipMi`).
+ * IKIZ: arka uc `cikti-karisik.ts` `dovizliTarafVarMi` (test:ex-karisik KR0).
+ */
+export function dovizliSatirVarMi(satirlar: ReadonlyArray<Record<string, any> | null | undefined>): boolean {
+  for (const r of satirlar) {
+    if (!r) continue;
+    if (DOVIZ.has(r._matPB) || DOVIZ.has(r._labPB)) return true;
+    // Bozuk kayit (dizi olmayan mat/lab) cokertmez (inceleme L4; `fittingParcalari` ikizi)
+    const fb = r._fittingBirimli;
+    const parcalar = fb ? [...(Array.isArray(fb.mat) ? fb.mat : []), ...(Array.isArray(fb.lab) ? fb.lab : [])] : [];
+    if (parcalar.some((x: any) => DOVIZ.has(x?.pb))) return true;
+  }
+  return false;
+}
+
+/** Teklif genelinde (tum sayfalar) dovizli taraf var mi — `dovizliSatirVarMi` sayfa sayfa. */
+export function dovizliTarafVarMi(sayfalar: ReadonlyArray<{ rowData?: Record<string, any>[] | null } | null | undefined> | null | undefined): boolean {
+  return (sayfalar ?? []).some((s) => dovizliSatirVarMi(s?.rowData ?? []));
+}
+
+/**
+ * Aktif sayfa DISINDAKI sayfalarda doviz var mi? Gorunum teklif genelinde tek
+ * duzendir: baska sayfada $ varsa yalniz-₺ aktif sayfa da birim basina gorunur.
+ * Aktif sayfa SAYILMAZ — izgara onu kendi satirlarindan CANLI olcer (ilk $ fiyati
+ * yazildigi anda); sayfa onu bir ust render'la gecirseydi acik duzenleyici
+ * kapanirdi. `canli` (sayfa index'i → duzenlenmis satirlar) kayittakinin yerine gecer.
+ */
+export function digerSayfalardaDovizVar(
+  sayfalar: ReadonlyArray<{ index: number; rowData?: Record<string, any>[] | null }>,
+  aktif: number,
+  canli: Readonly<Record<number, Record<string, any>[] | undefined>> = {},
+): boolean {
+  return sayfalar.some((s) => s.index !== aktif && dovizliSatirVarMi(canli[s.index] ?? s.rowData ?? []));
+}
+
+/**
+ * F6b: eslesme balonundaki tutar. Karisik (yazim) kipte dovizli kaynak fiyat
+ * KENDI biriminde gosterilir — hucre $ yazarken balon ₺ net demesin. Aksi halde
+ * (tl kipi, ₺ kaynak, kaynak fiyat yok) bugunku TL gosterimi.
+ */
+export function balonTutari(
+  netPrice: number,
+  kaynakFiyat: { currency?: unknown; net?: unknown } | null | undefined,
+  karisik: boolean,
+  tlGosterim: (tl: number) => string,
+): string {
+  const pb = kaynakFiyat?.currency;
+  const net = kaynakFiyat?.net;
+  // Izgarayla AYNI gecerlilik (inceleme S1): `Number.isFinite(net)`, cevirme yok —
+  // null/metin net'te izgara ₺ yazar, balon da TL gosterir.
+  if (karisik && (pb === 'USD' || pb === 'EUR') && typeof net === 'number' && Number.isFinite(net)) {
+    return `${PARA_SEMBOLU[pb]}${paraBicim(net, 1)}`;
+  }
+  return tlGosterim(netPrice);
+}
+
+/**
+ * F6b kardes: aday / alternatif menusu fiyat etiketi. Karisik kipte secimin
+ * YAZACAGI birimde (`balonTutari` kurali) — menu "420.0 TL" deyip hucreye
+ * $10,50 yazmasin. Aksi halde eski "N.N TL" etiketi (tl kipi bayt bayt ayni).
+ */
+export function adayFiyatEtiketi(netPrice: number, kaynakFiyat: unknown, karisik: boolean, hane = 1): string {
+  const kf = kaynakFiyat as { currency?: unknown; net?: unknown } | null | undefined;
+  return balonTutari(netPrice, kf, karisik, (tl) => `${tl.toFixed(hane)} TL`);
 }
 
 /** Kayit anindaki TL kurlari (1 birim = kac TL). */

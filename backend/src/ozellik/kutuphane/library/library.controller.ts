@@ -17,6 +17,16 @@ import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
 import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
+import {
+  DiziTavani,
+  KUTUPHANE_EKLEME_SATIR_TAVANI,
+  KUTUPHANE_SATIR_TAVANI,
+  TOPLU_ISKONTO_KIMLIK_TAVANI,
+  type DiziKurali,
+} from '../../../altyapi/http/dizi-tavani';
+
+/** 06.10: kütüphaneye satır ekleyen iki uç — DTO'nun `@ArrayMaxSize`'ı aynı sayı. */
+const EKLEME_SATIR_KURALI: DiziKurali = { alan: 'rows', tavan: KUTUPHANE_EKLEME_SATIR_TAVANI, ogeAdi: 'satır' };
 
 /**
  * 23.09.2026 — `@UyeIzniGerekli('kutuphane')` SINIF DUZEYINDE: bu
@@ -58,6 +68,7 @@ export class LibraryController {
    *  Satirlar indekslenip dogrudan kullanicinin kutuphanesine yazilir. */
   @Post('manual-brand')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
+  @DiziTavani(EKLEME_SATIR_KURALI)
   createManualBrand(@CurrentUser() user: any, @Body() dto: CreateManualBrandDto) {
     return this.libraryService.createManualBrand(kimlikCoz(user), dto);
   }
@@ -80,6 +91,8 @@ export class LibraryController {
 
   @Post('bulk-update-items')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
+  // 06.10: dizi tavani (pipe'tan ONCE); servis kimlikleri parca parca yazar.
+  @DiziTavani({ alan: 'ids', tavan: TOPLU_ISKONTO_KIMLIK_TAVANI, ogeAdi: 'malzeme' })
   bulkUpdateItems(@CurrentUser() user: any, @Body() dto: BulkUpdateItemsDto) {
     return this.libraryService.bulkUpdateItems(kimlikCoz(user), dto);
   }
@@ -118,6 +131,7 @@ export class LibraryController {
    *  ISCILIK DERSI: gecerli satir yoksa liste OLUSMAZ (400). */
   @Post('brand/:brandId/rows')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
+  @DiziTavani(EKLEME_SATIR_KURALI)
   addRowsToBrandList(
     @CurrentUser() user: any,
     @Param('brandId') brandId: string,
@@ -138,6 +152,8 @@ export class LibraryController {
 
   @Post('brand/:brandId/save-sheets')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
+  // 06.10: satir basina sorgu — dizi tavani (govde satir ici tip, pipe dogrulamaz).
+  @DiziTavani({ alan: 'dirtyRows', tavan: KUTUPHANE_SATIR_TAVANI, ogeAdi: 'satır' })
   saveBrandSheets(
     @CurrentUser() user: any,
     @Param('brandId') brandId: string,

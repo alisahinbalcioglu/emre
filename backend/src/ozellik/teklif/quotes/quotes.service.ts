@@ -10,7 +10,7 @@ import * as ExcelJS from 'exceljs';
 // PRD Teklif Formatim (v2.1): profesyonel cikti motoru
 import { buildExportWorkbook, ExportSonucu, ExportBirim } from './export-engine';
 import { standartCiktiUret } from './standart-cikti';
-import { karisikKipMi } from './cikti-karisik';
+import { ParaBirimi, SEMBOL, cevrimYokNotu, dovizliTarafVarMi } from './cikti-karisik';
 import { buildSampleFormat, ExportOverrides, FillContext } from '../../cikti/quote-formats/format-engine';
 import { ExchangeRatesService, kurGecerli } from '../../fiyat/exchange-rates/exchange-rates.service';
 import { CeviriService, KAYIT_INDIRGEME_UYARISI } from '../../giris/ai/ceviri.service';
@@ -631,13 +631,17 @@ export class QuotesService {
 
   /** PANO 21a/c: gorunur self-check ozeti ("N değer aktarıldı ✓ …"). */
   private exportOzeti(
-    t: { yazilan: number; beklenen: number; fiyatsiz: number; toplam: number; yeniden?: number },
+    t: { yazilan: number; beklenen: number; fiyatsiz: number; toplam: number; yeniden?: number; birimli?: Array<{ pb: ParaBirimi; toplam: number }> },
     birim: ExportBirim | null,
   ): string {
     const simge = birim?.kod === 'USD' ? '$' : birim?.kod === 'EUR' ? '€' : '₺';
+    // P2-1b: 2 hane — ekran (PARA_ONDALIK) ve Excel numFmt ile ayni.
+    const tutar = (v: number) => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const parca = [`${Math.max(t.yazilan, t.beklenen)} değer aktarıldı ✓`,
-      // P2-1b: 2 hane — ekran (PARA_ONDALIK) ve Excel numFmt ile ayni.
-      `toplam ${simge}${t.toplam.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`];
+      // Karisik teklif (İCMAL, 05.10): birim basina, fiyatli yolun ozetiyle ayni bicim
+      t.birimli?.length
+        ? `toplam ${t.birimli.map((x) => `${SEMBOL[x.pb]}${tutar(x.toplam)}`).join(' + ')}`
+        : `toplam ${simge}${tutar(t.toplam)}`];
     if (t.fiyatsiz > 0) parca.push(`${t.fiyatsiz} satır fiyatsız (eşleşmemiş)`);
     // IKIZ (fiyatli yol standartCiktiUret ozetinde ayni cumleyi soyler — 23.09 "Excel yeniden hesaplasın")
     if (t.yeniden) parca.push(`${t.yeniden} satırda dosyadaki toplam miktar × birim fiyatla tutmuyordu, Excel yeniden hesapladı`);
@@ -667,29 +671,17 @@ export class QuotesService {
     }
   }
 
-  /**
-   * F5 (coklu para birimi, 05.10): "Teklif formatında aktar" İCMAL'i TEK birimli
-   * yer tutuculara (GENEL TOPLAM …) yazar — karisik teklifte (taraf birimi
-   * tasiyan satir, `karisikKipMi`) doları liraya toplardi. Kesin ret: ceviriden,
-   * numaradan ve revizyondan ONCE (R1-B6 ikizi: reddedilen indirme numara
-   * yakmaz). Fiyatli Excel birim basina ayri toplar (`cikti-karisik.ts`).
-   */
-  private formatYoluKarisikReddi(quote: any): void {
-    if (karisikKipMi(Array.isArray(quote.sheets) ? quote.sheets : [])) {
-      throw new BadRequestException(
-        'Bu teklif para birimi başına toplanan (çoklu para birimi) düzende; teklif formatının İCMAL\'i tek para birimlidir. Şimdilik "Fiyatlandırılmış Excel" ile indirin — her para birimi ayrı toplanır.',
-      );
-    }
-  }
-
   private async ciktiKur(k: Kimlik, quote: any, rev: number, dil: string | undefined, kur: any | null): Promise<ExportSonucu & { formatAdi: string; formatKaynak: 'kullanici' | 'yerlesik'; birim: ExportBirim | null; antetNotu: string | null }> {
     this.orijinalDosyaZorunlu(quote);
     const { wb: formatWb, formatAdi, formatKaynak, sheetRoles } = await this.resolveFormatWb(k, quote);
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
-    const birim = this.exportBirimi(quote, kur); // PANO 18 (KF7: iki yol ayni)
+    // İCMAL (05.10): karisik teklifte taraflar kendi biriminde — goruntuleme
+    // birimi YOK SAYILIR (cevrim yok, fiyatli yolun ikizi); kur notu bunu soyler.
+    const karisik = dovizliTarafVarMi(sheetsArr); // F6a: yalniz-₺ karisik teklif tek birimli yolu alir
+    const birim = karisik ? null : this.exportBirimi(quote, kur); // PANO 18 (KF7: iki yol ayni)
     // USD/EUR teklifte rakamlarin birimi ICMAL notunda da SOYLENIR — eskiden
     // "Fiyatlar USD" notu yalniz fiyatli yolda vardi (ikiz eksigi, 13.09).
-    const kurNotu = [birim?.not, this.kurNotuUret(kur)].filter(Boolean).join(' · ');
+    const kurNotu = [karisik ? cevrimYokNotu(dil) : birim?.not, this.kurNotuUret(kur)].filter(Boolean).join(' · ');
     const firmaAntet = await this.antetGetir(k, dil); // plan 4.4 (ikizi fiyatli yolda)
     const sonuc = await buildExportWorkbook({
       originalFile: Buffer.from(quote.originalFile),
@@ -702,6 +694,7 @@ export class QuotesService {
       dil, // 13.08: baslik + birim dili (ikizi fiyatli cikti yolunda)
       antet: firmaAntet.antet,
       baslik: this.ciktiBasligi(quote), // 23.09: liste sayfasi baslik blogu (ikizi fiyatli yolda)
+      yerlesik: formatKaynak === 'yerlesik', // karisikta toplam blogu birim basina
     });
     return { ...sonuc, formatAdi, formatKaynak, birim, antetNotu: firmaAntet.not };
   }
@@ -714,7 +707,6 @@ export class QuotesService {
   /** .xlsx uret + REV artir + arsivle (T10). */
   async exportXlsx(k: TeklifKimligi, id: string, dil?: string): Promise<{ buffer: Buffer; filename: string; rev: number; quoteNo: string; uyari?: string; ozet?: string }> {
     const quote = await this.quoteGetir(k, id);
-    this.formatYoluKarisikReddi(quote); // F5: ceviri ve numaradan ONCE
     // 13.08: parametre yoksa teklifin KAYITLI dili konusur (bayat istemci
     // korumasi — bkz. exportDili).
     const secim = this.exportDili(quote, dil);
@@ -763,7 +755,7 @@ export class QuotesService {
     if ((sonuc.hataArtisi ?? 0) > 0) parcalar.push(`${sonuc.hataArtisi} hücrede formül hatası oluştu`);
     const kontrol = parcalar.length > 0 ? `${parcalar.join('; ')} — çıktıyı kontrol edin.` : undefined;
     if (kontrol) console.warn(`[Export] ⚠ SELF-CHECK (teklif format): ${kontrol}`);
-    const uyari = [kontrol, ceviri.uyari].filter(Boolean).join('; ') || undefined;
+    const uyari = [kontrol, sonuc.karisikUyari, ceviri.uyari].filter(Boolean).join('; ') || undefined;
     // PANO 21a: gorunur ozet (KF7 — iki yol ayni self-check'i tasir)
     const ozet = this.notEkle(this.ceviriOzetiEkle(this.exportOzeti({
       yazilan: sonuc.yazilanDeger ?? 0,
@@ -771,6 +763,7 @@ export class QuotesService {
       fiyatsiz: sonuc.fiyatsizSatir ?? 0,
       toplam: sonuc.sekmeler.reduce((a, b) => a + b.matDeger + b.labDeger, 0),
       yeniden: sonuc.yenidenHesaplanan ?? 0,
+      birimli: sonuc.birimliGenelToplam,
     }, sonuc.birim), ceviri.cevrilen), sonuc.antetNotu);
     return { buffer, filename, rev: yeniRev, quoteNo, uyari, ozet };
   }

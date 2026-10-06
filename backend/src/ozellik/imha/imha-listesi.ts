@@ -87,6 +87,13 @@ export interface SilmeKurali {
    *   gecmez) — ama dogru ad yazilmazsa MIRAS satirlar SESSIZCE kalirdi.
    */
   readonly mirasKullaniciKolonu?: string;
+  /**
+   * Yalnizca firma ekseni DISINDA: bu ETIKET kolonu (or. `firmaId`) BOS olan
+   * satirlar silinir. Etiketli satir firma ekseninde ayri kuralla gider; kimligi
+   * bu firmanin kumesine dusse bile BASKA firmanin etiketli satirina dokunulmaz.
+   * Bos etiket kosulu kimlik kumesiyle BIRLIKTE uygulanir, tek basina degil.
+   */
+  readonly yalnizBosEtiket?: string;
   /** Neden silindigi — gozle okunan gerekce. */
   readonly neden: string;
 }
@@ -153,14 +160,30 @@ export const SILINECEKLER: readonly SilmeKurali[] = [
   },
 
   // ── Kutuphane ─────────────────────────────────────────────────────────────
+  // Ozel fiyat izi IKI kuralla gider; servis ayni modelin sayilarini TOPLAR.
+  {
+    model: 'KutuphaneOzelFiyatYedegi',
+    erisimci: 'kutuphaneOzelFiyatYedegi',
+    kolon: 'firmaId',
+    eksen: 'firma',
+    neden:
+      'Ozel fiyat izinin firma etiketi (14.09 gecisi satirin `firmaId`sini ' +
+      'kopyaladi). Kutuphane satiri imhadan ONCE silinmisse (marka kaldirma, ' +
+      'sekme ya da tek satir silme) iz OKSUZ kalir ve satir kumesinden ' +
+      'GORUNMEZ — yalniz bu etiketle gider. Bos etiket eslemez (TUZAK 3).',
+  },
   {
     model: 'KutuphaneOzelFiyatYedegi',
     erisimci: 'kutuphaneOzelFiyatYedegi',
     kolon: 'userLibraryId',
     eksen: 'kutuphaneSatiri',
+    yalnizBosEtiket: 'firmaId',
     neden:
       'Ozel fiyat izi. `userLibraryId` @id ama FK YOK ("kutuphane satiri ' +
-      'silinse de iz kalir") — kutuphane silinince OKSUZ kalir, ELLE gider.',
+      'silinse de iz kalir"). Etiketi BOS miras iz (satiri `firmaId`siz ' +
+      'yazilmisti) yalniz satiri uzerinden bulunur; satiri da yoksa kime ' +
+      'ait oldugu bilinmez, tahminle silinmez. Etiketli iz yukaridaki ' +
+      'kuralla gider: BASKA firmanin etiketli izine bu kural dokunmaz.',
   },
   {
     model: 'UserLibrary',
