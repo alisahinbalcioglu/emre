@@ -92,7 +92,7 @@ const MOCKUP_NAV = [
   { etiket: 'Ana Sayfa', ikon: HomeIcon, etkin: true },
   { etiket: 'Teklifler', ikon: FileText, etkin: false },
   { etiket: 'Malzeme Havuzu', ikon: Database, etkin: false },
-  { etiket: 'Kütüphanem', ikon: BookOpen, etkin: false },
+  { etiket: 'Firma kütüphanesi', ikon: BookOpen, etkin: false },
 ];
 
 /** Şeritteki her değer ölçülmüş ya da koddan doğrulanmıştır — pazarlama yuvarlaması yok. */
@@ -358,7 +358,7 @@ export default function Home() {
                         📖
                       </div>
                       <div>
-                        <p className="text-[11px] font-bold text-slate-900">Kütüphanem</p>
+                        <p className="text-[11px] font-bold text-slate-900">Firma kütüphanesi</p>
                         <p className="text-[9px] text-slate-500">Markalar, iskontolar, işçilik</p>
                       </div>
                     </div>

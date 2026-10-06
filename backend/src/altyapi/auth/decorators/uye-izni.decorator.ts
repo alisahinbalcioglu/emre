@@ -16,7 +16,7 @@ import type { UyeIzni } from '../../../ozellik/firma/uye-izinleri';
  *
  * Excel ve DWG icin bu dekorator GEREKMEZ: kapi `@GerekliYetenek(EXCEL_YUKLE
  * | DWG_YUKLE)` isaretinden izni kendisi turetir (`uye-izinleri.ts`
- * `YETENEK_IZNI`). Burasi yeteneği olmayan izinler icindir (Kutuphanem).
+ * `YETENEK_IZNI`). Burasi yeteneği olmayan yetki uclari icindir (Firma kutuphanesi, eslestirme → `fiyat`).
  */
 export const UYE_IZNI_KEY = 'uyeIzni';
 

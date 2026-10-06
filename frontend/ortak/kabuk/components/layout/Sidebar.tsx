@@ -33,7 +33,7 @@ const NAV_ITEMS = [
   { href: '/quotes', label: 'Teklifler', icon: FileText },
   'divider' as const,
   { href: '/materials', label: 'Malzeme Havuzu', icon: Database },
-  { href: '/library', label: 'Kütüphanem', icon: BookOpen },
+  { href: '/library', label: 'Firma kütüphanesi', icon: BookOpen },
   // FAZ 7 F1b: ekip sayfasi SAHIBE her zaman gorunur — kosullu gizlemek,
   // tek kisilik firmadaki sahibin ekip ozelligini hic kesfetmemesine yol
   // acardi. 23.09.2026 ikinci tasarim: etiket "Ekip"; BILINEN UYEDE gizli

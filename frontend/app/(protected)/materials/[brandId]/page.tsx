@@ -176,8 +176,8 @@ export default function BrandDetailPage() {
   const params = useParams<{ brandId: string }>();
   const brandId = params.brandId;
   const isAdmin = getRole() === 'admin';
-  // 23.09.2026: "Kütüphaneme Aktar" KUTUPHANEYE yazar — izni kapali alt
-  // kullanicida dugme cizilmez (uc zaten 403 `UYE_IZNI_YOK`).
+  // 23.09.2026: "Firma kütüphanesine aktar" KUTUPHANEYE yazar — `fiyat`
+  // yetkisi kapali alt kullanicida dugme cizilmez (uc zaten 403 `UYE_IZNI_YOK`).
   const { izinVar } = useCapabilities();
   // 23.09.2026 — VİTRİN: paketsiz yeni hesap havuzu GEZER (fiyatsız);
   // aktarım istek atmadan paket penceresini açar.
@@ -479,7 +479,7 @@ export default function BrandDetailPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {izinVar('kutuphane') && (
+                  {izinVar('fiyat') && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -489,7 +489,7 @@ export default function BrandDetailPage() {
                   >
                     {importingListId === pl.id
                       ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      : <><BookmarkPlus className="mr-1 h-3.5 w-3.5" />Kütüphaneme Aktar</>}
+                      : <><BookmarkPlus className="mr-1 h-3.5 w-3.5" />Firma kütüphanesine aktar</>}
                   </Button>
                   )}
                   {isAdmin && (

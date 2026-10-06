@@ -26,13 +26,13 @@ import {
 const iscilikSatirKurali = (alan: string): DiziKurali => ({ alan, tavan: ISCILIK_SATIR_TAVANI, ogeAdi: 'satır' });
 
 /**
- * 23.09.2026 — iscilik firmalari ve fiyat listeleri Kutuphanem'in IKIZIDIR
- * (Kutuphanem sayfasinin "Mekanik Iscilik" karti buraya acilir): izin SINIF
+ * 23.09.2026 — iscilik firmalari ve fiyat listeleri Firma kutuphanesinin IKIZIDIR
+ * (Firma kutuphanesi sayfasinin "Mekanik Iscilik" karti buraya acilir): izin SINIF
  * duzeyinde, kapiyi `ErisimGuard` uygular.
  */
 @Controller('labor-firms')
 @UseGuards(JwtAuthGuard, TierGuard, ErisimGuard)
-@UyeIzniGerekli('kutuphane')
+@UyeIzniGerekli('fiyat')
 export class LaborFirmsController {
   constructor(
     private service: LaborFirmsService,

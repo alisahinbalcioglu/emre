@@ -169,13 +169,13 @@ export default function EkipSayfasi() {
       const u = hedef.uye;
       return calistir(
         () => api.patch(`/firma/uyeler/${u.id}/izinler`, { izinler }),
-        `${uyeSatirMetni(u).baslik} için izinler kaydedildi.`,
+        `${uyeSatirMetni(u).baslik} için yetkiler kaydedildi.`,
       );
     }
     const d = hedef.davet;
     return calistir(
       () => api.post('/firma/davetler', { eposta: d.eposta, izinler }),
-      `İzinler kaydedildi; davet ${d.eposta} adresine yeni izinlerle yeniden gönderildi.`,
+      `Yetkiler kaydedildi; davet ${d.eposta} adresine yeni yetkilerle yeniden gönderildi.`,
       true,
     );
   }
@@ -211,12 +211,12 @@ export default function EkipSayfasi() {
       yeniRol === 'sahip'
         ? {
             title: 'Yönetici yap',
-            description: `${ad} yönetici olacak: tüm bölümlere erişir; ekibi, aboneliği ve izinleri yönetebilir.`,
+            description: `${ad} yönetici olacak: tüm bölümlere erişir; ekibi, aboneliği ve yetkileri yönetebilir.`,
             confirmText: 'Yönetici yap',
           }
         : {
             title: 'Üye yap',
-            description: `${ad} üye olacak; erişimi kayıtlı izinlerine göre daralır.`,
+            description: `${ad} üye olacak; erişimi kayıtlı yetkilerine göre daralır.`,
             confirmText: 'Üye yap',
           },
     );
@@ -401,7 +401,7 @@ export default function EkipSayfasi() {
 
       {!sahipMi && (
         <p className="text-sm text-gray-500">
-          Ekibi ve izinleri firma yöneticin yönetir. Ekipten ayrılmak için{' '}
+          Ekibi ve yetkileri firma yöneticin yönetir. Ekipten ayrılmak için{' '}
           <a href="/profile#hesabi-kapat" className="font-medium text-[#2563eb] hover:underline">
             Hesabım → Hesabımı kapat
           </a>{' '}

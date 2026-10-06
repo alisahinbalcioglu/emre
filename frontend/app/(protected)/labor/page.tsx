@@ -180,10 +180,10 @@ export default function LaborLibraryPage() {
           <Wrench className="mb-4 h-12 w-12 text-muted-foreground/50" />
           <p className="text-sm font-medium">İşçilik kataloğu yalnız yöneticiye açık</p>
           <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            İşçilik birim fiyatlarınızı Kütüphanem&apos;deki işçilik firmalarınızdan yönetirsiniz.
+            İşçilik birim fiyatlarınızı firma kütüphanesindeki işçilik firmalarınızdan yönetirsiniz.
           </p>
           <Button asChild variant="outline" className="mt-4">
-            <Link href="/library">Kütüphaneme git</Link>
+            <Link href="/library">Firma kütüphanesine git</Link>
           </Button>
         </div>
       </div>

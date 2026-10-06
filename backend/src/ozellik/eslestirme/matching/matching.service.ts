@@ -210,7 +210,7 @@ export class MatchingService {
       console.log(`[Matching] Kutuphane bos: firma=${gunlukDegeri(k.firmaId)}, brand=${gunlukDegeri(brandId)}`);
       const empty: Record<string, MatchResult> = Object.create(null); // prototipsiz: bkz. `out`
       const reason =
-        'Kütüphanenizde bu markaya ait malzeme yok. Malzeme Havuzu\'ndan "Kütüphaneme Aktar" ile ekleyin.';
+        'Kütüphanenizde bu markaya ait malzeme yok. Malzeme Havuzu\'ndan "Firma kütüphanesine aktar" ile ekleyin.';
       for (const n of materialNames) {
         if (!n.trim()) continue;
         empty[n] = { netPrice: 0, listPrice: 0, discount: 0, confidence: 'none', reason };

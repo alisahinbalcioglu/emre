@@ -73,6 +73,7 @@
     "test:aile-kelimesi": "ts-node test/aile-kelimesi-test.ts",
     "test:sifat-eki": "ts-node test/sifat-eki-test.ts",
     "test:sifat-sirasi": "ts-node test/sifat-sirasi-test.ts",
+    "test:sartname-ilk-satir": "ts-node test/sartname-ilk-satir-test.ts",
     "test:grid": "ts-node test/excel-grid-test.ts",
     "test:labor-sheet": "ts-node test/labor-sheet-test.ts",
     "test:kl": "ts-node test/kl-liste-ekleme-test.ts",

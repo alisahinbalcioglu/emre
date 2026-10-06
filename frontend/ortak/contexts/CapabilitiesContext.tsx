@@ -7,7 +7,7 @@ import {
   kapaliDurumCoz,
   type KapaliDurum,
 } from '@/ortak/kabuk/components/layout/kapali-durum';
-import { izinSirala, type UyeIzni } from '@/ozellik/firma/ekip/izin-metinleri';
+import { izinSirala, izinVarMi, type UyeIzni } from '@/ozellik/firma/ekip/izin-metinleri';
 
 export interface DisciplineCapability {
   material: boolean;
@@ -57,7 +57,9 @@ interface CapabilitiesContextValue {
   kapali: KapaliDurum | null;
   /**
    * 23.09.2026 — ALT KULLANICI IZINLERI (Ekip & Izinler). AYNI `/auth/me`
-   * yanitindan (sunucu ETKIN listeyi doner: sahip → dordu). Ayri istek YOK.
+   * yanitindan (sunucu ETKIN listeyi doner: sahip → hepsi). Ayri istek YOK.
+   * 06.10.2026: iki yetki (`fiyat`, `dwg`); `izinSirala` bilinmeyen (eski)
+   * degeri atar.
    * `null` = sunucu SOYLEMEDI (yukleniyor / eski sunucu / istek dustu).
    */
   izinler: UyeIzni[] | null;
@@ -66,6 +68,8 @@ interface CapabilitiesContextValue {
    * sunucuda, `ErisimGuard`). ⚠ `null` → `true`: sunucu bilgi vermediginde
    * ekrani bosaltmayiz; uc zaten reddeder. Tersi (null → false) eski bir
    * sunucuyla ya da tek bir dusen istekte SAHIBIN menusunu bosaltirdi.
+   * ⚠ 06.10: `firmaRol === 'sahip'` → liste ne derse desin `true`
+   * (`izinVarMi`); rol bilinmiyorsa (`null`) liste karar verir.
    */
   izinVar: (izin: UyeIzni) => boolean;
   /**
@@ -179,7 +183,8 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
   const hasAnyDwg = () => capabilities.mechanical.dwg || capabilities.electrical.dwg;
   const hasDiscipline = (d: 'mechanical' | 'electrical') => capabilities[d].material;
   const hasLaborFor = (d: 'mechanical' | 'electrical') => capabilities[d].labor;
-  const izinVar = (izin: UyeIzni) => (izinler === null ? true : izinler.includes(izin));
+  // 06.10: SAHIP her zaman `true` (liste okunmaz) — karar saf `izinVarMi`de.
+  const izinVar = (izin: UyeIzni) => izinVarMi(izinler, firmaRol, izin);
 
   return (
     <CapabilitiesContext.Provider

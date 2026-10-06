@@ -11,16 +11,18 @@
  * ⚠ YALNIZ SAYFANIN TAMAMI IZNE BAGLIYSA listeye girer. `/quotes/new` Excel,
  * DWG ve elle girisi bir arada tasir; orada yalniz ilgili yukleme alani
  * kilitlenir, sayfa durdurulmaz. `/materials` (Malzeme Havuzu) izne BAGLI
- * DEGIL — yalniz "Kütüphaneme Aktar" dugmesi.
+ * DEGIL — yalniz "Firma kütüphanesine aktar" dugmesi.
  *
- * ⚠ Arka yuzdeki ikizi: `@UyeIzniGerekli('kutuphane')` sinif duzeyinde
- * `library` + `labor-firms` denetleyicileri; DWG uclari `DWG_YUKLE`den.
+ * ⚠ 06.10.2026 (iki yetki): Firma kutuphanesi, iscilik firmalari ve teklif
+ * formatlari `fiyat` yetkisine baglandi (sunucuda da ayni kapi); DWG calisma
+ * alani `dwg`.
  */
 import type { UyeIzni } from './izin-metinleri';
 
 const YOL_IZINLERI: readonly { yol: RegExp; izin: UyeIzni }[] = [
-  { yol: /^\/library(\/|$)/, izin: 'kutuphane' },
-  { yol: /^\/labor-firms(\/|$)/, izin: 'kutuphane' },
+  { yol: /^\/library(\/|$)/, izin: 'fiyat' },
+  { yol: /^\/labor-firms(\/|$)/, izin: 'fiyat' },
+  { yol: /^\/quote-formats(\/|$)/, izin: 'fiyat' },
   { yol: /^\/dwg-workspace(\/|$)/, izin: 'dwg' },
 ];
 

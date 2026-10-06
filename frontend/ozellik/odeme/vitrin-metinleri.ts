@@ -142,7 +142,7 @@ export function vitrinDenemeSatiri(
  * buraya yazılmayı unutulsa da kart boş kalmaz).
  */
 export interface VitrinBolumu {
-  /** "Kütüphanem paket seçince açılır" cümlesinin öznesi. */
+  /** "Firma kütüphanesi paket seçince açılır" cümlesinin öznesi. */
   ad: string;
   aciklama: string;
 }
@@ -151,7 +151,7 @@ const BOLUMLER: ReadonlyArray<{ yol: RegExp; bolum: VitrinBolumu }> = [
   {
     yol: /^\/library(\/|$)/,
     bolum: {
-      ad: 'Kütüphanem',
+      ad: 'Firma kütüphanesi',
       aciklama:
         'Malzeme Havuzu’ndan aktardığınız markalar, iskontolarınız ve kendi fiyat listeleriniz burada durur.',
     },

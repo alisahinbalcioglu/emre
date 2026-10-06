@@ -502,8 +502,8 @@ export default function NewQuotePage() {
   // 23.09.2026 — ALT KULLANICI IZINLERI. Sunucu kapiyi uygular (403
   // `UYE_IZNI_YOK`); burada yalniz istek ATILMAZ ve kirmizi "yuklenemedi"
   // bildirimi yerine NEDEN soylenir. `izinVar` bilgi yokken `true` doner.
-  const kutuphaneIzni = izinVar('kutuphane');
-  const excelIzni = izinVar('excel');
+  const kutuphaneIzni = izinVar('fiyat');
+  const excelIzni = izinVar('fiyat');
   const excelGridRef = useRef<ExcelGridHandle>(null);
   // ── ACIK DUZENLEYICI KAPISI (05.10, koordinator karari) ─────────────────
   // Satir OKUYAN ya da DEGISTIREN her kullanici eyleminin BASINDA acik hucre
@@ -1783,8 +1783,8 @@ export default function NewQuotePage() {
           listesi cekilmedi; bos acilir menunun NEDENI burada yazar. */}
       {!kutuphaneIzni && (
         <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-          Kütüphanem iznin kapalı: bu teklifte marka ve işçilik fiyatı eşleştiremezsin.
-          Metrajı hazırlayıp kaydedebilirsin; fiyatlandırmayı yöneticin yapar.
+          Fiyat yetkin kapalı: bu teklifte marka ve işçilik fiyatı eşleştiremezsin.
+          Metrajı hazırlayıp kaydedebilirsin; fiyatlandırmayı fiyat yetkisi olan biri yapar.
         </div>
       )}
       {/* Header */}
