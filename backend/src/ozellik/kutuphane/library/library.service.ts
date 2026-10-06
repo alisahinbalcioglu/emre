@@ -18,6 +18,7 @@ import {
 import { TerminologyService } from '../../eslestirme/matching/terminology.service';
 import { paraBirimleriniDogrula, satirAdi } from '../../fiyat/exchange-rates/exchange-rates.service';
 import { GECERSIZ_SATIR_KIMLIGI, satirHatalari, satirKimligiGecerli } from '../satir-hatalari';
+import { TOPLU_ISKONTO_PARCA } from '../../../altyapi/http/dizi-tavani';
 
 const GECERSIZ_SATIR_VERISI = 'Geçersiz satır verisi (fiyat ve iskonto sayı, ad ve birim metin olmalı).';
 const AD_COK_UZUN = `Malzeme adı en fazla ${MALZEME_ADI_AZAMI} karakter olabilir.`;
@@ -344,14 +345,27 @@ export class LibraryService {
   }
 
   async bulkUpdateItems(k: Kimlik, dto: BulkUpdateItemsDto) {
-    const result = await this.prisma.userLibrary.updateMany({
-      where: {
-        id: { in: dto.ids },
-        firmaId: k.firmaId,
-      },
-      data: { discountRate: dto.discountRate },
-    });
-    return { updated: result.count, discountRate: dto.discountRate };
+    // 06.10: firma kutuphanesi 23.056 satira cikiyor (olculdu) — tek `in`
+    // suzgeci PG bag parametresi sinirina yaklasir. Kimlikler parca parca,
+    // TEK islemde yazilir: eski tek ifade gibi hepsi ya da hicbiri. Dizi
+    // bicimli islem, etkilesimli islemin 5 sn zaman asimina takilmaz.
+    // Tekrar eden kimlik iki parçaya düşüp İKİ kez sayılmasın (eski tek `in` bir
+    // kez sayardı); sıralı parçalar eş zamanlı iki toplu iskontoda satır
+    // kilitlerini aynı sırayla alır.
+    const ids = [...new Set(dto.ids)].sort();
+    const parcalar: string[][] = [];
+    for (let i = 0; i < ids.length; i += TOPLU_ISKONTO_PARCA) {
+      parcalar.push(ids.slice(i, i + TOPLU_ISKONTO_PARCA));
+    }
+    const sonuclar = await this.prisma.$transaction(
+      parcalar.map((ids) =>
+        this.prisma.userLibrary.updateMany({
+          where: { id: { in: ids }, firmaId: k.firmaId },
+          data: { discountRate: dto.discountRate },
+        }),
+      ),
+    );
+    return { updated: sonuclar.reduce((t, r) => t + r.count, 0), discountRate: dto.discountRate };
   }
 
   async remove(k: Kimlik, id: string) {

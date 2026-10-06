@@ -8,7 +8,8 @@ import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
-import { EslestirmeHafizasiDto, TopluEslestirmeDto } from './dto/eslestirme-govdesi.dto';
+import { EslestirmeHafizasiDto, SozlukKaydiDto, TopluEslestirmeDto } from './dto/eslestirme-govdesi.dto';
+import { ALIAS_TUR_TAVANI, DiziTavani, eslestirmeKurallari } from '../../../altyapi/http/dizi-tavani';
 
 @Controller('matching')
 @UseGuards(JwtAuthGuard, ErisimGuard)
@@ -26,6 +27,8 @@ export class MatchingController {
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
   // 23.09: fiyat KUTUPHANEDEN gelir — Kutuphanem izni olmayan uye fiyat cekemez.
   @UyeIzniGerekli('kutuphane')
+  // 06.10: motor ad basina calisir — dizi tavani ValidationPipe'tan ONCE (413).
+  @DiziTavani(...eslestirmeKurallari('materialNames', 'malzeme adı'))
   async bulkMatch(
     // C11 (P4a, 01.10.2026): SINIF DTO — satir ici tip ValidationPipe'i atliyordu.
     @Body() body: TopluEslestirmeDto,
@@ -73,8 +76,11 @@ export class MatchingController {
   @Post('aliases')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
   @UyeIzniGerekli('kutuphane')
+  // 06.10 (güvenlik HIGH-2): `kinds` depoya yazılır, her bulk-match işler —
+  // sayı tavanı pipe'tan ÖNCE, tür/öğe biçimi sınıf DTO'da.
+  @DiziTavani({ alan: 'kinds', tavan: ALIAS_TUR_TAVANI, ogeAdi: 'tür' })
   async saveAlias(
-    @Body() body: { alias: string; canonical?: string; kinds?: string[]; impliedType?: string | null; sizeClass?: string | null },
+    @Body() body: SozlukKaydiDto,
     @Req() req: any,
   ) {
     const userId: string = req.user?.id ?? req.user?.sub;

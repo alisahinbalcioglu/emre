@@ -685,7 +685,10 @@ export class LaborFirmsService {
     let updated = 0;
     const errors: Array<{ id: unknown; error: string }> = [];
     const hatalar = this.satirHatalari('save-sheets');
-    for (const row of dirtyRows ?? []) {
+    // Satır içi tipli gövde: dizi olmayan değer (ör. metin) karakter karakter
+    // dolaşılırdı (06.10 inceleme HIGH-1). Uçtaki dizi tavanı 400 verir; burası
+    // ikinci kilit.
+    for (const row of Array.isArray(dirtyRows) ? dirtyRows : []) {
       if (!satirKimligiGecerli(row?.laborPriceId)) {
         errors.push({ id: row?.laborPriceId, error: GECERSIZ_SATIR_KIMLIGI });
         continue;

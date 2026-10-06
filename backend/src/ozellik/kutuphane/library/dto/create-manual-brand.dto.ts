@@ -3,6 +3,7 @@ import {
   Min, Max, MaxLength, ArrayMinSize, ArrayMaxSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { KUTUPHANE_EKLEME_SATIR_TAVANI } from '../../../../altyapi/http/dizi-tavani';
 
 /** Malzeme adinin azami uzunlugu — urun olusturma (bu DTO), tekil kutuphane
  *  kalemi (`CreateLibraryItemDto`) ve kutuphane izgarasindaki ad duzeltmesi
@@ -51,7 +52,8 @@ export class CreateManualBrandDto {
 
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(5000)
+  // Tavan tek kaynaktan; uçtaki `@DiziTavani` aynı sayıyla pipe'tan ÖNCE keser.
+  @ArrayMaxSize(KUTUPHANE_EKLEME_SATIR_TAVANI)
   @ValidateNested({ each: true })
   @Type(() => ManualBrandRowDto)
   rows: ManualBrandRowDto[];
