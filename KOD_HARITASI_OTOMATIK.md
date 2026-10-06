@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 948
-Toplam satir: 260867
+Toplam satir: 260870
 Uc nokta: 239
 test:* scripti: 175
 
@@ -724,7 +724,7 @@ test:* scripti: 175
 | `frontend/ozellik/fiyat/sayi-kurali.test.ts` | 289 |
 | `frontend/ozellik/fiyat/sayi-oku.test.ts` | 72 |
 | `frontend/ozellik/fiyat/sayi-tek-suzgec.test.ts` | 175 |
-| `frontend/ozellik/fiyat/sayi-yollari.test.ts` | 366 |
+| `frontend/ozellik/fiyat/sayi-yollari.test.ts` | 369 |
 | `frontend/ozellik/fiyat/taraf-para-birimi.test.ts` | 200 |
 | `frontend/ozellik/fiyat/taraf-para-birimi.ts` | 260 |
 | `frontend/ozellik/fiyat/use-currency.ts` | 88 |
