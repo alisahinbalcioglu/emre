@@ -1020,6 +1020,19 @@ const SUITES: Suite[] = [
   //    denetleyiciler HTTP üzerinden, gövde ayrıştırıcısı main.ts gibi 50 MB.
   //    DB/AĞ GEREKTİRMEZ.
   { ad: 'Dizi tavanı: 13 uçta 413 pipe\'tan önce · dizi değişmezi · toplu iskonto parçalı tek işlem (U/M/B/H/P/Y)', script: 'test:dizi-tavani', zincir: 'Z0' },
+  // ── 06.10.2026 — DOĞRULAMA BORUSU (güvenlik HIGH-A). İç içe nesnenin KENDİ
+  //    `constructor` anahtarı class-transformer'ın tip tahminiyle süreç ömürlü
+  //    ata haritasına yazılıyordu (kalıcı bellek + 500; kimliksiz login dahil,
+  //    JSON / urlencoded / sorgu). Güvenli alt sınıf onu dönüşümden önce siler.
+  //    Düz boruda sızıntı testin içinde üretilir (FIXTURE), güvenli boruda yok;
+  //    depodaki TÜM DTO'larla eşdeğerlik. DB/AĞ GEREKTİRMEZ.
+  { ad: 'Doğrulama borusu: iç içe constructor kalıcı bellek tutmaz · 500 yok · eşdeğerlik · her boru güvenli sınıftan (R/E/K)', script: 'test:dogrulama-borusu', zincir: 'Z0' },
+  // ── 06.10.2026 — GÖVDE GENİŞLİĞİ (güvenlik HIGH-3). 80 bin üst düzey anahtar
+  //    class-transformer O(n²) tekilleştirmesiyle döngüyü tutuyordu (kimliksiz
+  //    /auth/login: ayrı süreçten komşu 14,6 sn). Kimliksiz yollarda bayt tavanı
+  //    (mevcut 413 ile bayt bayt aynı) + sürüme kilitli doğrusal hızlı yol;
+  //    depodaki TÜM DTO'larla özgün ↔ yamalı eşdeğerlik. DB/AĞ GEREKTİRMEZ.
+  { ad: 'Gövde genişliği: kimliksiz yollarda bayt tavanı · class-transformer karesel yol yaması · eşdeğerlik (A/B/E/K)', script: 'test:govde-genisligi', zincir: 'Z0' },
   // ── 04.10.2026 — CI EK NOTU (koordinatör). Actions günlüğü girişsiz 403;
   //    kırmızı işin tek ek notu "exit code 1" idi. Bu koşucu GITHUB_ACTIONS
   //    iken düşen paketi `::error` notu olarak yazar. Saf kurallar + bu

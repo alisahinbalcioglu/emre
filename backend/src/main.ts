@@ -1,13 +1,18 @@
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { guvenlikBasliklariniKur } from './altyapi/http/guvenlik-basliklari';
 import { govdeHatalariniKur, govdeSinirlariniKur } from './altyapi/http/govde-siniri';
 import { corsSecenekleri } from './altyapi/http/cors';
+import { GuvenliValidationPipe } from './altyapi/http/dogrulama-borusu';
+import { sinifDonusturucuYamasiniKur } from './altyapi/http/sinif-donusturucu-yamasi';
 
 async function bootstrap() {
+  // 06.10 (güvenlik HIGH-3): class-transformer'ın karesel anahtar
+  // tekilleştirmesi — uygulama ve ValidationPipe kurulmadan ÖNCE, TEK yerden.
+  // Sürüm uymazsa kurulmaz ve açılışta ERROR yazar (kapı: test:govde-genisligi).
+  sinifDonusturucuYamasiniKur();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Caddy ters vekilinin arkasindayiz: backend disariya acik degil (compose'da
@@ -42,8 +47,11 @@ async function bootstrap() {
   // Express hata ara katmanı yalnız KENDİNDEN ÖNCEKİLERİ görür: SONRA kurulur.
   govdeHatalariniKur(app);
 
+  // 06.10 (güvenlik HIGH-A): iç içe nesnenin KENDİ `constructor` anahtarı
+  // class-transformer'ın tip tahminiyle belleği kalıcı tutuyordu (+ 500);
+  // güvenli alt sınıf onu dönüşümden önce siler (`dogrulama-borusu.ts`).
   app.useGlobalPipes(
-    new ValidationPipe({
+    new GuvenliValidationPipe({
       whitelist: true,
       transform: true,
     }),
