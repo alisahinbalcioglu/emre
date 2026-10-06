@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 959
-Toplam satir: 264281
-Uc nokta: 248
-test:* scripti: 178
+Kod dosyasi: 965
+Toplam satir: 265515
+Uc nokta: 254
+test:* scripti: 179
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -27,6 +27,7 @@ test:* scripti: 178
 | `backend/src/altyapi/auth/auth.controller.ts` | 191 |
 | `backend/src/altyapi/auth/auth.module.ts` | 64 |
 | `backend/src/altyapi/auth/auth.service.ts` | 502 |
+| `backend/src/altyapi/auth/bearer-token.ts` | 35 |
 | `backend/src/altyapi/auth/capabilities.helper.ts` | 158 |
 | `backend/src/altyapi/auth/decorators/current-user.decorator.ts` | 9 |
 | `backend/src/altyapi/auth/decorators/firma-rolu.decorator.ts` | 18 |
@@ -79,22 +80,24 @@ test:* scripti: 178
 | `backend/src/altyapi/auth/parola-kurali.ts` | 57 |
 | `backend/src/altyapi/auth/parola.servisi.ts` | 311 |
 | `backend/src/altyapi/auth/seviye.ts` | 154 |
-| `backend/src/altyapi/auth/strategies/jwt.strategy.ts` | 263 |
+| `backend/src/altyapi/auth/strategies/jwt.strategy.ts` | 268 |
 | `backend/src/altyapi/auth/token-imza.ts` | 66 |
 | `backend/src/altyapi/auth/token-ozet.ts` | 61 |
 | `backend/src/altyapi/auth/uygulama-url.ts` | 43 |
 | `backend/src/altyapi/db/prisma.module.ts` | 10 |
 | `backend/src/altyapi/db/prisma.service.ts` | 14 |
+| `backend/src/altyapi/http/buyuk-govde.ts` | 152 |
 | `backend/src/altyapi/http/cors.ts` | 69 |
-| `backend/src/altyapi/http/dizi-tavani.ts` | 143 |
+| `backend/src/altyapi/http/dizi-tavani.ts` | 145 |
 | `backend/src/altyapi/http/dogrulama-borusu.ts` | 65 |
-| `backend/src/altyapi/http/govde-siniri.ts` | 108 |
+| `backend/src/altyapi/http/govde-siniri.ts` | 109 |
 | `backend/src/altyapi/http/guvenlik-basliklari.ts` | 51 |
 | `backend/src/altyapi/http/istemci-koptu.ts` | 37 |
 | `backend/src/altyapi/http/sinif-donusturucu-yamasi.ts` | 115 |
+| `backend/src/altyapi/http/yetki-basligi.ts` | 40 |
 | `backend/src/app.module.ts` | 72 |
 | `backend/src/health.controller.ts` | 33 |
-| `backend/src/main.ts` | 99 |
+| `backend/src/main.ts` | 117 |
 | `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | 228 |
 | `backend/src/modules/dwg-engine/dwg-engine.module.ts` | 14 |
 | `backend/src/modules/dwg-engine/dwg-engine.service.ts` | 534 |
@@ -334,10 +337,11 @@ test:* scripti: 178
 | `backend/test/b1-kutuphane-cascade-test.ts` | 186 |
 | `backend/test/birim-sira-cekim-test.ts` | 145 |
 | `backend/test/build-sha-kablolama-test.ts` | 140 |
+| `backend/test/buyuk-govde-test.ts` | 775 |
 | `backend/test/cap-belirsizligi-test.ts` | 152 |
 | `backend/test/cap-cevrilemedi-test.ts` | 254 |
 | `backend/test/cap-ikiz-test.ts` | 91 |
-| `backend/test/ceviri-duzeltme-test.ts` | 1028 |
+| `backend/test/ceviri-duzeltme-test.ts` | 1030 |
 | `backend/test/ceviri-gecis-test.ts` | 293 |
 | `backend/test/ceviri-gorunum-cikti-test.ts` | 776 |
 | `backend/test/ceviri-karar-test.ts` | 188 |
@@ -354,7 +358,7 @@ test:* scripti: 178
 | `backend/test/deneme-geri-sayim-test.ts` | 450 |
 | `backend/test/deneme-hakki-test.ts` | 1117 |
 | `backend/test/deploy-olcum-test.ts` | 155 |
-| `backend/test/dizi-tavani-test.ts` | 581 |
+| `backend/test/dizi-tavani-test.ts` | 586 |
 | `backend/test/dn-koprusu-test.ts` | 343 |
 | `backend/test/dogrulama-borusu-test.ts` | 455 |
 | `backend/test/doviz-net-yuvarlama-test.ts` | 240 |
@@ -362,7 +366,7 @@ test:* scripti: 178
 | `backend/test/dwg-geometri-akis-test.ts` | 528 |
 | `backend/test/dwg-istemci-koptu-test.ts` | 449 |
 | `backend/test/dwg-kiraci-dedup-test.ts` | 463 |
-| `backend/test/dwg-yukleme-test.ts` | 866 |
+| `backend/test/dwg-yukleme-test.ts` | 874 |
 | `backend/test/ekip-izinleri-test.ts` | 568 |
 | `backend/test/erisim-kapisi-test.ts` | 695 |
 | `backend/test/erken-kurtarma-test.ts` | 402 |
@@ -397,7 +401,7 @@ test:* scripti: 178
 | `backend/test/govde-genisligi-test.ts` | 619 |
 | `backend/test/gs6b-teshis.ts` | 85 |
 | `backend/test/guvenlik-basliklari-test.ts` | 137 |
-| `backend/test/guvenlik-paket1-test.ts` | 509 |
+| `backend/test/guvenlik-paket1-test.ts` | 512 |
 | `backend/test/guvenlik-turu-2-test.ts` | 447 |
 | `backend/test/guvenlik-uclari-test.ts` | 462 |
 | `backend/test/hafiza-kimlik-kapisi-test.ts` | 176 |
@@ -473,7 +477,7 @@ test:* scripti: 178
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 1135 |
+| `backend/test/regression-all.ts` | 1144 |
 | `backend/test/reindex-gunlugu-test.ts` | 91 |
 | `backend/test/s45-malzeme-aile-test.ts` | 462 |
 | `backend/test/s45-olcum.ts` | 188 |
@@ -500,7 +504,9 @@ test:* scripti: 178
 | `backend/test/webhook-tahsilat-dogrulama-test.ts` | 2162 |
 | `backend/test/yardimci/bellek-prisma.ts` | 651 |
 | `backend/test/yardimci/bitmezse-kirmizi.ts` | 64 |
+| `backend/test/yardimci/bulanik-baslik.ts` | 55 |
 | `backend/test/yardimci/ci-ek-notu.ts` | 88 |
+| `backend/test/yardimci/govde-tipi.ts` | 124 |
 | `backend/test/yardimci/saat-kaydir.cjs` | 57 |
 | `backend/test/yardimci/sahte-oidc-saglayici.ts` | 244 |
 | `backend/test/yardimci/sahte-sahiplik.ts` | 39 |
@@ -1033,21 +1039,23 @@ test:* scripti: 178
 | `backend/src/altyapi/auth/oturum.servisi.ts` | `@nestjs/common` `@nestjs/jwt` `../db/prisma.service` `./token-imza` `./seviye` `./mfa/meydan-okuma` |
 | `backend/src/altyapi/auth/parola.servisi.ts` | `@nestjs/config` `bcrypt` `../db/prisma.service` `../../ozellik/odeme/eposta/eposta.servisi` `./auth.service` `./eposta` `./token-ozet` `./uygulama-url` `./kurumsal/kurumsal-zorunluluk` `./parola-kurali` `./kapali-hesap` |
 | `backend/src/altyapi/auth/seviye.ts` | `./abonelik-erisim` |
-| `backend/src/altyapi/auth/strategies/jwt.strategy.ts` | `@nestjs/common` `@nestjs/passport` `passport-jwt` `../../db/prisma.service` `../jwt-secret` |
+| `backend/src/altyapi/auth/strategies/jwt.strategy.ts` | `@nestjs/common` `@nestjs/passport` `passport-jwt` `../bearer-token` `../../db/prisma.service` `../jwt-secret` |
 | `backend/src/altyapi/auth/token-imza.ts` | `@nestjs/jwt` `./jwt-secret` |
 | `backend/src/altyapi/auth/token-ozet.ts` | `node:crypto` |
 | `backend/src/altyapi/auth/uygulama-url.ts` | `@nestjs/config` |
 | `backend/src/altyapi/db/prisma.module.ts` | `@nestjs/common` `./prisma.service` |
 | `backend/src/altyapi/db/prisma.service.ts` | `@nestjs/common` `@prisma/client` |
+| `backend/src/altyapi/http/buyuk-govde.ts` | `@nestjs/platform-express` `express` `jsonwebtoken` `../auth/bearer-token` `../auth/jwt-secret` |
 | `backend/src/altyapi/http/cors.ts` | `express` |
 | `backend/src/altyapi/http/dogrulama-borusu.ts` | `@nestjs/common` |
 | `backend/src/altyapi/http/govde-siniri.ts` | `@nestjs/common` `@nestjs/platform-express` `express` |
 | `backend/src/altyapi/http/guvenlik-basliklari.ts` | `express` `@nestjs/platform-express` |
 | `backend/src/altyapi/http/istemci-koptu.ts` | `express` |
 | `backend/src/altyapi/http/sinif-donusturucu-yamasi.ts` | `@nestjs/common` `class-transformer/package.json` `class-transformer/cjs/TransformOperationExecutor` `class-transformer/cjs/storage` |
+| `backend/src/altyapi/http/yetki-basligi.ts` | `@nestjs/platform-express` `express` |
 | `backend/src/app.module.ts` | `@nestjs/common` `@nestjs/config` `@nestjs/throttler` `./health.controller` `./altyapi/db/prisma.module` `./altyapi/auth/auth.module` `./ozellik/kutuphane/brands/brands.module` `./ozellik/kutuphane/materials/materials.module` `./ozellik/kutuphane/library/library.module` `./ozellik/teklif/quotes/quotes.module` `./ozellik/kutuphane/admin/admin.module` `./ozellik/giris/ai/ai.module` `./ozellik/kutuphane/labor/labor.module` `./ozellik/kutuphane/labor-firms/labor-firms.module` `./ozellik/giris/excel-engine/excel-engine.module` `./ozellik/giris/excel-grid/excel-grid.module` `./ozellik/eslestirme/matching/matching.module` `./ozellik/eslestirme/labor-matching/labor-matching.module` `./modules/dwg-engine/dwg-engine.module` `./ozellik/fiyat/exchange-rates/exchange-rates.module` `./ozellik/cikti/quote-formats/quote-formats.module` `./ozellik/odeme/odeme.module` `./ozellik/firma/firma.module` `./ozellik/panel/panel.module` `./ozellik/imha/imha.module` |
 | `backend/src/health.controller.ts` | `@nestjs/common` `./surum` |
-| `backend/src/main.ts` | `@nestjs/core` `@nestjs/platform-express` `express` `./app.module` `./altyapi/http/guvenlik-basliklari` `./altyapi/http/govde-siniri` `./altyapi/http/cors` `./altyapi/http/dogrulama-borusu` `./altyapi/http/sinif-donusturucu-yamasi` |
+| `backend/src/main.ts` | `@nestjs/core` `@nestjs/platform-express` `express` `./app.module` `./altyapi/http/guvenlik-basliklari` `./altyapi/http/govde-siniri` `./altyapi/http/buyuk-govde` `./altyapi/http/yetki-basligi` `./altyapi/http/cors` `./altyapi/http/dogrulama-borusu` `./altyapi/http/sinif-donusturucu-yamasi` |
 | `backend/src/modules/dwg-engine/dwg-engine.controller.ts` | `@nestjs/platform-express` `express` `../../altyapi/auth/guards/jwt-auth.guard` `../../altyapi/http/istemci-koptu` `./dwg-engine.service` `./scale-param` `../../altyapi/auth/decorators/current-user.decorator` `../../altyapi/auth/kimlik` `./dwg-sahiplik.servisi` `./dwg-gecici-depo` `./dwg-yukleme-kapisi` `../../ozellik/odeme/abonelik/erisim.guard` `../../ozellik/odeme/abonelik/erisim.servisi` |
 | `backend/src/modules/dwg-engine/dwg-engine.module.ts` | `@nestjs/common` `./dwg-engine.controller` `./dwg-engine.service` `./dwg-sahiplik.servisi` `../../ozellik/odeme/odeme.module` |
 | `backend/src/modules/dwg-engine/dwg-engine.service.ts` | `node:stream` `node:stream/promises` `node:stream/web` `@nestjs/common` `node:crypto` `node:fs` `express` `./dwg-yukleme-kapisi` |
@@ -1260,6 +1268,7 @@ test:* scripti: 178
 | `backend/test/b1-kutuphane-cascade-test.ts` | `@prisma/client` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/birim-sira-cekim-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `../src/ozellik/eslestirme/matching/index/types` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/build-sha-kablolama-test.ts` | `fs` `path` `../src/health.controller` |
+| `backend/test/buyuk-govde-test.ts` | `node:child_process` `node:fs` `node:path` `node:net` `@nestjs/common/constants` `@nestjs/core` `@nestjs/passport` `@nestjs/platform-express` `class-validator` `express` `jsonwebtoken` `passport-jwt` `node:zlib` `../src/altyapi/http/buyuk-govde` `../src/altyapi/http/govde-siniri` `../src/altyapi/http/dogrulama-borusu` `../src/altyapi/http/dizi-tavani` `../src/altyapi/http/sinif-donusturucu-yamasi` `../src/altyapi/http/yetki-basligi` `../src/altyapi/auth/bearer-token` `../src/altyapi/auth/strategies/jwt.strategy` `../src/altyapi/auth/guards/jwt-auth.guard` `../src/altyapi/auth/guards/roles.guard` `../src/altyapi/auth/decorators/roles.decorator` `./yardimci/bitmezse-kirmizi` `./yardimci/uc-envanteri` `./yardimci/govde-tipi` `./yardimci/bulanik-baslik` `reflect-metadata` `http` |
 | `backend/test/cap-belirsizligi-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/index/types` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/cap-cevrilemedi-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/conversion` `../src/ozellik/fiyat/matching/index/outcome-mapper` `../src/ozellik/eslestirme/matching/index/types` |
 | `backend/test/cap-ikiz-test.ts` | `fs` `path` `../src/ozellik/eslestirme/utils/build-material-context` `../src/ozellik/giris/excel-grid/excel-grid.service` `./yardimci/bitmezse-kirmizi` `../../frontend/ozellik/tablo/excel-grid/build-material-context` |
@@ -1287,7 +1296,7 @@ test:* scripti: 178
 | `backend/test/dwg-geometri-akis-test.ts` | `node:crypto` `node:http` `node:net` `node:perf_hooks` `node:v8` `node:vm` `@nestjs/common` `@nestjs/common/constants` `@nestjs/core` `@nestjs/platform-express` `../src/modules/dwg-engine/dwg-engine.controller` `../src/modules/dwg-engine/dwg-engine.service` `../src/modules/dwg-engine/dwg-sahiplik.servisi` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/dwg-istemci-koptu-test.ts` | `node:events` `node:http` `node:net` `node:v8` `node:vm` `@nestjs/common` `@nestjs/common/constants` `@nestjs/core` `@nestjs/platform-express` `express` `../src/altyapi/http/istemci-koptu` `../src/modules/dwg-engine/dwg-engine.controller` `../src/modules/dwg-engine/dwg-engine.service` `../src/modules/dwg-engine/dwg-sahiplik.servisi` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/dwg-kiraci-dedup-test.ts` | `node:crypto` `node:http` `node:net` `@nestjs/common` `@nestjs/common/constants` `@nestjs/core` `@nestjs/platform-express` `../src/altyapi/db/prisma.service` `../src/modules/dwg-engine/dwg-engine.controller` `../src/modules/dwg-engine/dwg-engine.service` `../src/modules/dwg-engine/dwg-sahiplik.servisi` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
-| `backend/test/dwg-yukleme-test.ts` | `node:crypto` `node:fs` `node:http` `node:net` `node:os` `node:path` `node:stream` `node:v8` `node:vm` `node:events` `@nestjs/common/constants` `@nestjs/core` `@nestjs/platform-express` `../src/altyapi/auth/guards/jwt-auth.guard` `../src/ozellik/odeme/abonelik/erisim.guard` `../src/modules/dwg-engine/dwg-engine.controller` `../src/modules/dwg-engine/dwg-engine.service` `../src/modules/dwg-engine/dwg-sahiplik.servisi` `../src/modules/dwg-engine/dwg-gecici-depo` `./yardimci/bitmezse-kirmizi` `reflect-metadata` `busboy` |
+| `backend/test/dwg-yukleme-test.ts` | `node:crypto` `node:fs` `node:http` `node:net` `node:os` `node:path` `node:stream` `node:v8` `node:vm` `node:events` `@nestjs/common/constants` `@nestjs/core` `@nestjs/platform-express` `../src/altyapi/auth/guards/jwt-auth.guard` `../src/ozellik/odeme/abonelik/erisim.guard` `../src/modules/dwg-engine/dwg-engine.controller` `../src/modules/dwg-engine/dwg-engine.service` `../src/modules/dwg-engine/dwg-sahiplik.servisi` `../src/modules/dwg-engine/dwg-gecici-depo` `../src/altyapi/http/buyuk-govde` `./yardimci/bitmezse-kirmizi` `reflect-metadata` `busboy` |
 | `backend/test/ekip-izinleri-test.ts` | `fs` `path` `@nestjs/common` `@nestjs/core` `../src/altyapi/auth/kimlik` `../src/ozellik/odeme/abonelik/erisim.guard` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/altyapi/auth/decorators/uye-izni.decorator` `../src/altyapi/auth/guards/jwt-auth.guard` `../src/ozellik/kutuphane/library/library.controller` `../src/ozellik/kutuphane/labor-firms/labor-firms.controller` `../src/ozellik/kutuphane/materials/materials.controller` `../src/ozellik/eslestirme/matching/matching.controller` `../src/ozellik/eslestirme/labor-matching/labor-matching.controller` `../src/ozellik/giris/excel-grid/excel-grid.controller` `../src/ozellik/giris/excel-engine/excel-engine.controller` `../src/modules/dwg-engine/dwg-engine.controller` `../src/ozellik/teklif/quotes/quotes.controller` `../src/ozellik/cikti/quote-formats/quote-formats.controller` `../src/ozellik/giris/ai/ai.controller` `../src/ozellik/teklif/quotes/quotes.service` `../src/ozellik/odeme/abonelik/ceviri-kota.servisi` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/erisim-kapisi-test.ts` | `@prisma/client` `../src/ozellik/odeme/abonelik/erisim.guard` `../src/ozellik/teklif/quotes/quotes.controller` `../src/ozellik/cikti/quote-formats/quote-formats.controller` `../src/modules/dwg-engine/dwg-engine.controller` `../src/ozellik/odeme/abonelik/abonelik.controller` `../src/ozellik/kutuphane/labor/labor.controller` `../src/ozellik/giris/ai/ai.controller` `../src/ozellik/giris/ai/ceviri-duzeltme.controller` `reflect-metadata` `node:fs` `node:path` `../../frontend/ozellik/odeme/erisim-durumu` |
 | `backend/test/erken-kurtarma-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/index/types` |
@@ -1424,6 +1433,7 @@ test:* scripti: 178
 | `backend/test/webhook-tahsilat-dogrulama-test.ts` | `node:crypto` `@nestjs/common` `@nestjs/config` `@nestjs/core` `@nestjs/platform-express` `express` `../src/altyapi/db/prisma.service` `../src/altyapi/http/govde-siniri` `../src/ozellik/odeme/abonelik/abonelik.servisi` `../src/ozellik/odeme/abonelik/erisim.servisi` `../src/ozellik/odeme/abonelik/satinalma.servisi` `../src/ozellik/odeme/webhook/webhook.controller` `../src/ozellik/odeme/webhook/webhook.isleyici` `../src/ozellik/odeme/fatura/fatura.servisi` `../src/ozellik/odeme/dunning/dunning.servisi` `../src/ozellik/odeme/iyzico/imza` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/yardimci/bellek-prisma.ts` | `@prisma/client` |
 | `backend/test/yardimci/bitmezse-kirmizi.ts` | `path` |
+| `backend/test/yardimci/govde-tipi.ts` | `typescript` `fs` `path` `./uc-envanteri` |
 | `backend/test/yardimci/sahte-oidc-saglayici.ts` | `node:crypto` `jsonwebtoken` `../../src/altyapi/auth/kurumsal/oidc-istemci` |
 | `backend/test/yardimci/uc-envanteri.ts` | `typescript` `fs` `path` |
 | `backend/test/yonetici-eposta-kodu-test.ts` | `node:fs` `node:path` `../src/altyapi/auth/mfa/meydan-okuma` `../src/altyapi/auth/mfa/mfa-karari` `../src/altyapi/auth/mfa/mfa-epostalari` `../src/ozellik/odeme/eposta/eposta.servisi` `@nestjs/config` |
@@ -2023,6 +2033,12 @@ test:* scripti: 178
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | `GET /quotes/:id/exports/:rev` |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | `GET /quotes/:id` |
 | `backend/src/ozellik/teklif/quotes/quotes.controller.ts` | `DELETE /quotes/:id` |
+| `backend/test/buyuk-govde-test.ts` | `POST /quotes/:x` |
+| `backend/test/buyuk-govde-test.ts` | `POST /quotes` |
+| `backend/test/buyuk-govde-test.ts` | `PUT /quotes/:id` |
+| `backend/test/buyuk-govde-test.ts` | `PATCH /quotes` |
+| `backend/test/buyuk-govde-test.ts` | `POST /quotes/materials/save-bulk` |
+| `backend/test/buyuk-govde-test.ts` | `GET /quotes/komsu` |
 | `backend/test/ceviri-duzeltme-test.ts` | `PUT /ai/translate/duzeltmeler` |
 | `backend/test/ceviri-duzeltme-test.ts` | `POST /ai/translate/correct` |
 | `backend/test/ceviri-duzeltme-test.ts` | `POST /ai/translate` |
@@ -2239,6 +2255,7 @@ test:* scripti: 178
 | `backend/package.json` | `test:dizi-tavani` | `ts-node test/dizi-tavani-test.ts` |
 | `backend/package.json` | `test:dogrulama-borusu` | `ts-node test/dogrulama-borusu-test.ts` |
 | `backend/package.json` | `test:govde-genisligi` | `ts-node test/govde-genisligi-test.ts` |
+| `backend/package.json` | `test:buyuk-govde` | `ts-node test/buyuk-govde-test.ts` |
 | `backend/package.json` | `test:ci-ek-notu` | `ts-node test/ci-ek-notu-test.ts` |
 | `backend/package.json` | `test:p4b-motor` | `ts-node test/p4b-motor-test.ts` |
 | `backend/package.json` | `test:ex-karisik` | `ts-node test/cikti-karisik-test.ts` |

@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
-import { ExtractJwt, Strategy } from 'passport-jwt';
+import { Strategy } from 'passport-jwt';
+import { bearerToken } from '../bearer-token';
 import { PrismaService } from '../../db/prisma.service';
 import { jwtSecret } from '../jwt-secret';
 import {
@@ -17,7 +18,11 @@ import {
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private prisma: PrismaService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // 06.10 (guvenlik HIGH-1): passport-jwt'nin `fromAuthHeaderAsBearerToken`
+      // cikaricisi baslik ifadesi CAPASIZ (karesel geri izleme: 16 KB bosluksuz
+      // baslik donguyu ~0,7 sn tutuyordu). Ayni yakalamayi dogrusal yapan
+      // ORTAK tanim — buyuk govde on denetimi de bunu kullanir (`bearer-token.ts`).
+      jwtFromRequest: (req: { headers?: Record<string, unknown> }) => bearerToken(req?.headers?.authorization),
       ignoreExpiration: false,
       // KL P1-a: dogrulama anahtari da TEK kaynaktan — imzalayan ve dogrulayan
       // ayni degeri okur; yedek deger yok.

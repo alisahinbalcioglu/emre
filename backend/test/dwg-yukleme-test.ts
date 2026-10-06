@@ -20,7 +20,8 @@
  *
  * ── OLCULEN ────────────────────────────────────────────────────────────
  *   C  Caddy tavanlari Nest'le TUTARLI: DWG yolu ≥ Nest tavani + zarf payi (ve makul
- *      ustu), diger /api ≥ 50 MB JSON siniri. Birim tuzagi: Caddy "MB" SI'dir,
+ *      ustu), diger /api ≥ Nest'in en genis JSON tavani (global 1 MB ile `buyuk-govde.ts`
+ *      yol basi tavanlarinin en buyugu). Birim tuzagi: Caddy "MB" SI'dir,
  *      "260MB" Nest'in 250 MiB'inden KUCUK (olcut kendini sinar).
  *   M  YAPI: /upload'da `DwgYuklemeKapisi` (sinif kapilarindan SONRA, multer'dan ONCE)
  *   G  kapi birimi: tavan sinirinda kabul, +1 bayt 413 (yer alinmaz) · firma basina
@@ -85,6 +86,7 @@ import {
   DWG_YUKLEME_ZARF_PAYI_BAYT, DwgYuklemeKapisi, FIRMA_BASINA_ES_ZAMANLI_YUKLEME, firmaYuklemeleri,
   DWG_YUKLEME_SURUYOR_TEKRAR_SN, DWG_MOTOR_YOGUN_TEKRAR_SN,
 } from '../src/modules/dwg-engine/dwg-yukleme-kapisi';
+import { BUYUK_GOVDE_UCLARI } from '../src/altyapi/http/buyuk-govde';
 import { bitmezseKirmizi } from './yardimci/bitmezse-kirmizi';
 
 // busboy'un tipi kurulu degil (@types/busboy yok): yalniz kullanilan yuzey.
@@ -361,12 +363,18 @@ function cBlogu(): void {
   check('C4 DWG yolu Caddy tavani Nest tavaninin en cok 32 MiB ustunde (kenar da siki)',
     dwgSinir <= DWG_YUKLEME_AZAMI_BAYT + 32 * MB, `caddy=${dwgSinir}`);
 
-  const jsonMb = Number(/app\.use\(json\(\{\s*limit:\s*'(\d+)mb'\s*\}\)\)/.exec(
+  const globalMb = Number(/app\.use\(json\(\{\s*limit:\s*'(\d+)mb'[^}]*\}\)\)/.exec(
     readFileSync(join(__dirname, '..', 'src', 'main.ts'), 'utf8'))?.[1]);
+  // 06.10 (MEDIUM-B/C): global 1 MB, toplu uclar yol basi genis tavan
+  // (`buyuk-govde.ts`). Caddy EN GENIS Nest tavanini da gecirmeli — yoksa
+  // gecerli buyuk kayit Nest'e varmadan Caddy'de 413 alir.
+  const yolBasiMb = BUYUK_GOVDE_UCLARI.map((u) => Number(/^(\d+)mb$/.exec(u.sinir)?.[1]));
+  const jsonMb = Math.max(globalMb, ...yolBasiMb);
   const digerSinir = caddyBoyutu(/request_body\s+@digerApi\s*\{\s*max_size\s+(\S+)\s*\}/.exec(blok)?.[1] ?? '');
-  check('C5 diger /api tavani ≥ Nest JSON siniri (body-parser "mb" = MiB) ve ≤ 128 MiB',
-    Number.isFinite(jsonMb) && jsonMb > 0 && digerSinir >= jsonMb * MB && digerSinir <= 128 * MB,
-    `json=${jsonMb} MiB caddy=${digerSinir}`);
+  check('C5 diger /api tavani ≥ EN GENIS Nest JSON siniri (global + yol basi; body-parser "mb" = MiB) ve ≤ 128 MiB',
+    Number.isFinite(globalMb) && globalMb > 0 && yolBasiMb.every((x) => Number.isFinite(x) && x > 0)
+      && digerSinir >= jsonMb * MB && digerSinir <= 128 * MB,
+    `global=${globalMb} MiB yol basi en genis=${Math.max(...yolBasiMb)} MiB caddy=${digerSinir}`);
 }
 
 // ── M: yapi ─────────────────────────────────────────────────────────────────

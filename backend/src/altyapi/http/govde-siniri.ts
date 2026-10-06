@@ -8,17 +8,18 @@ import type { NextFunction, Request, Response } from 'express';
  *  YOL BAŞINA GÖVDE TAVANI  (Faz 6.9, 16.09.2026 — §3.4 · R1-B4)
  * ═══════════════════════════════════════════════════════════════════════════
  *
- *  Global ayrıştırıcı 50 MB (teklif kaydı gerçekten o kadar büyüyor, main.ts
- *  notu). Çeviri düzeltme uçlarının gövdesi ise tek metin çiftidir (DTO tavanı
- *  2.000 karakter): orada 50 MB kabul etmek, bellekte tek istekle MB'larca
- *  gövde ayrıştırmaya izin vermektir.
+ *  Global ayrıştırıcı o gün 50 MB'tı; 06.10'dan beri 1 MB, ölçülmüş toplu
+ *  uçlarda kimlik SONRASI geniş tavan (`buyuk-govde.ts`). Buradaki uçların
+ *  gövdesi küçüktür (çeviri düzeltme tek metin çifti, DTO tavanı 2.000
+ *  karakter; kimliksiz yollar): global tavanı kabul etmek, tek istekle
+ *  gereğinden büyük gövde ayrıştırtmaya izin vermektir.
  *
  *  ⚠ SIRA ŞART: `main.ts`'te iki global ayrıştırıcıdan ÖNCE çağrılır. Express
- *  gövdeyi İLK eşleşen ayrıştırıcıyla okur; global `json(50mb)` önce koşarsa
+ *  gövdeyi İLK eşleşen ayrıştırıcıyla okur; global `json` önce koşarsa
  *  gövde zaten okunmuş olur ve buradaki sınır SESSİZCE etkisiz kalır (Ö3 H6).
  *  ⚠ İKİ AYRIŞTIRICI BİRDEN (R1-B4): yalnız `json` sınırlanırsa aynı gövde
- *  `application/x-www-form-urlencoded` ile gönderilip 50 MB'lık global
- *  urlencoded ayrıştırıcıdan geçer.
+ *  `application/x-www-form-urlencoded` ile gönderilip global urlencoded
+ *  ayrıştırıcıdan geçer.
  *  ⚠ YOL `/api` ÖNEKİYLE: önek `setGlobalPrefix` ile sonra kurulur, `app.use`
  *  ham Express yoludur.
  *  413 gövdesi İngilizce JSON'dur; ön yüz 413'ü durum koduyla Türkçe metne çevirir.
@@ -27,8 +28,8 @@ export const GOVDE_SINIRLARI: ReadonlyArray<{ yol: string; sinir: string }> = [
   { yol: '/api/ai/translate/duzeltmeler', sinir: '32kb' },
   { yol: '/api/ai/translate/correct', sinir: '32kb' },
   // 28.09 (webhook güvenliği): iyzico bildirimi altı kısa alandır (< 1 KB).
-  // Uç herkese açık — 50 MB'lık global tavanla tek istek MB'larca gövde
-  // ayrıştırtabiliyordu. Kapı: `test:webhook-tahsilat-dogrulama` I9.
+  // Uç herkese açık — o günkü 50 MB'lık global tavanla tek istek MB'larca
+  // gövde ayrıştırtabiliyordu. Kapı: `test:webhook-tahsilat-dogrulama` I9.
   { yol: '/api/webhook/iyzico', sinir: '16kb' },
   // 06.10 (güvenlik HIGH-3): KİMLİKSİZ yollar. Gövdeye eklenen 80 bin üst düzey
   // anahtar (~1 MB) ValidationPipe'ın class-transformer O(n²) tekilleştirmesiyle

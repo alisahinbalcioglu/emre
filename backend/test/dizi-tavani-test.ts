@@ -3,7 +3,8 @@
  *   `npm run test:dizi-tavani` · DB GEREKTIRMEZ.
  *
  * ── BU DOSYA NEDEN VAR ──────────────────────────────────────────────────
- *   Genel JSON sınırı 50 MB; bu uçların işi DİZİNİN BOYUYLA büyür (ad başına
+ *   Gövde tavanı (06.10'a dek 50 MB; bugün global 1 MB, toplu uçlarda 4-32 MB)
+ *   öğe sayısını sınırlamaz; bu uçların işi DİZİNİN BOYUYLA büyür (ad başına
  *   motor, satır başına sorgu, öğe başına DTO kurulumu). Tavan yoktu: tek
  *   istek bütün kiracıların olay döngüsünü saniyelerce tutabilirdi. Tavan
  *   GUARD'dadır — ValidationPipe'tan ÖNCE koşar; aşan istek 413 + Türkçe
@@ -306,10 +307,14 @@ async function dunyaKur() {
   class DunyaModulu {}
 
   const app = await NestFactory.create<NestExpressApplication>(DunyaModulu, { logger: yakalayici });
-  // main.ts ile AYNI gövde ayrıştırıcısı (50 MB). ⚠ OLMAZSA Nest'in varsayılanı
-  // (100 KB) büyük gövdeyi KAPIYA ULAŞMADAN 413'le reddeder — ilk kırmızı koşuda
-  // tam olarak bu oldu ("request entity too large"), sayı dizisi testi yanlış
-  // nedenle geçti.
+  // Geniş gövde ayrıştırıcısı (50 MB). ⚠ OLMAZSA Nest'in varsayılanı (100 KB)
+  // büyük gövdeyi KAPIYA ULAŞMADAN 413'le reddeder — ilk kırmızı koşuda tam
+  // olarak bu oldu ("request entity too large"), sayı dizisi testi yanlış
+  // nedenle geçti. Üretimde kuralı olan toplu uçlar global 1 MB'a değil, yol
+  // başı geniş tavana tabidir (`buyuk-govde.ts`, 06.10 MEDIUM-B/C; kapı
+  // `test:buyuk-govde`); ön yüzde çağıranı olmayan üç uç (toplu iskonto,
+  // işçilik toplu güncelleme ve sayfadan kayıt) global 1 MB'ta kalır. Bu
+  // düzenek kimlik ön denetimini kurmaz (sahte kapı).
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ extended: true, limit: '50mb' }));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true })); // main.ts ile AYNI
@@ -352,7 +357,7 @@ async function hBlogu(): Promise<void> {
     const buyukGovde = await d.istek('POST', '/quotes', {
       title: 'x'.repeat(2_000_000), items: [{ materialName: 'Vana', quantity: 1 }],
     });
-    check('H0 FIXTURE: 2 MB gövde ayrıştırıcıdan geçip servise ulaşır (main.ts gibi 50 MB)',
+    check('H0 FIXTURE: 2 MB gövde ayrıştırıcıdan geçip servise ulaşır (toplu uçların yol başı geniş tavanı gibi)',
       buyukGovde.durum !== 413 && teklifCagrilari.length === 1, js({ d: buyukGovde.durum, c: teklifCagrilari }));
 
     // Malzeme bulk-match
