@@ -60,3 +60,20 @@ describe('karYayilimi — kar% surukle-doldur', () => {
     }
   });
 });
+
+// ── F6b KARDES (06.10): karisik kipte dovizli taraf 2 hane (karar 4) ─────────
+// Izgaranin kar surukle-doldurmasi tarafin hanesini VERIR; verilmezse ₺ kurali
+// (1 hane) — tl kipi ve ₺ taraf bayt bayt ayni.
+describe('karYayilimi — taraf hanesi (coklu para birimi)', () => {
+  it('2 hane: $12,31 × 1,10 = 13,541 → 13,55 (₺ kurali 13,6 yazardi)', () => {
+    expect(karYayilimi(12.31, 10, 268, 2)?.birim).toBe('13.55');
+  });
+
+  it('2 hane toplam: 13,55 × 268 = 3631,40', () => {
+    expect(karYayilimi(12.31, 10, 268, 2)?.toplam).toBe('3631.40');
+  });
+
+  it('hane verilmezse ₺ kurali aynen (1 hane)', () => {
+    expect(karYayilimi(12.31, 10, 268)).toEqual({ birim: '13.6', toplam: '3644.8' });
+  });
+});

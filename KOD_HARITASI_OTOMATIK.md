@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 948
-Toplam satir: 260870
+Toplam satir: 261044
 Uc nokta: 239
 test:* scripti: 175
 
@@ -725,8 +725,8 @@ test:* scripti: 175
 | `frontend/ozellik/fiyat/sayi-oku.test.ts` | 72 |
 | `frontend/ozellik/fiyat/sayi-tek-suzgec.test.ts` | 175 |
 | `frontend/ozellik/fiyat/sayi-yollari.test.ts` | 369 |
-| `frontend/ozellik/fiyat/taraf-para-birimi.test.ts` | 200 |
-| `frontend/ozellik/fiyat/taraf-para-birimi.ts` | 260 |
+| `frontend/ozellik/fiyat/taraf-para-birimi.test.ts` | 219 |
+| `frontend/ozellik/fiyat/taraf-para-birimi.ts` | 270 |
 | `frontend/ozellik/fiyat/use-currency.ts` | 88 |
 | `frontend/ozellik/giris/kaynak-kolon.ts` | 34 |
 | `frontend/ozellik/hukuki/HukukiSayfa.tsx` | 110 |
@@ -834,7 +834,7 @@ test:* scripti: 175
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5471 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5477 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -846,14 +846,14 @@ test:* scripti: 175
 | `frontend/ozellik/tablo/excel-grid/fill-alanlari.test.ts` | 30 |
 | `frontend/ozellik/tablo/excel-grid/fill-alanlari.ts` | 25 |
 | `frontend/ozellik/tablo/excel-grid/fill-down.test.ts` | 1203 |
-| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 546 |
+| `frontend/ozellik/tablo/excel-grid/fill-down.ts` | 548 |
 | `frontend/ozellik/tablo/excel-grid/fitting.test.ts` | 234 |
 | `frontend/ozellik/tablo/excel-grid/fitting.ts` | 184 |
 | `frontend/ozellik/tablo/excel-grid/gosterim-baglantisi.test.ts` | 274 |
 | `frontend/ozellik/tablo/excel-grid/grup-iskonto-girisi.test.ts` | 186 |
 | `frontend/ozellik/tablo/excel-grid/isaret.test.ts` | 520 |
 | `frontend/ozellik/tablo/excel-grid/isaret.ts` | 338 |
-| `frontend/ozellik/tablo/excel-grid/kar-yayilimi.test.ts` | 63 |
+| `frontend/ozellik/tablo/excel-grid/kar-yayilimi.test.ts` | 80 |
 | `frontend/ozellik/tablo/excel-grid/kopyala.test.ts` | 206 |
 | `frontend/ozellik/tablo/excel-grid/kopyala.ts` | 133 |
 | `frontend/ozellik/tablo/excel-grid/oneri-cekince.test.ts` | 156 |
@@ -886,7 +886,7 @@ test:* scripti: 175
 | `frontend/ozellik/teklif/fitting-ipucu.ts` | 49 |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.test.ts` | 254 |
 | `frontend/ozellik/teklif/fiyatsiz-kalem-uyarisi.ts` | 195 |
-| `frontend/ozellik/teklif/kaynak-fiyat-baglanti.test.ts` | 99 |
+| `frontend/ozellik/teklif/kaynak-fiyat-baglanti.test.ts` | 111 |
 | `frontend/ozellik/teklif/restore-rematch.test.ts` | 776 |
 | `frontend/ozellik/teklif/restore-rematch.ts` | 288 |
 | `frontend/ozellik/teklif/salt-okunur-secici.test.ts` | 113 |
@@ -917,7 +917,7 @@ test:* scripti: 175
 | `frontend/test/e2e/bant-sayaci.spec.ts` | 145 |
 | `frontend/test/e2e/bos-kaynak-surukle.spec.ts` | 130 |
 | `frontend/test/e2e/coklu-para-birimi-gorunum.spec.ts` | 165 |
-| `frontend/test/e2e/coklu-para-birimi-izgara.spec.ts` | 145 |
+| `frontend/test/e2e/coklu-para-birimi-izgara.spec.ts` | 253 |
 | `frontend/test/e2e/coklu-para-birimi-kayit.spec.ts` | 108 |
 | `frontend/test/e2e/coklu-para-birimi-toplam.spec.ts` | 95 |
 | `frontend/test/e2e/elle-fiyat-otomatik-rozet.spec.ts` | 133 |

@@ -240,6 +240,16 @@ export function balonTutari(
   return tlGosterim(netPrice);
 }
 
+/**
+ * F6b kardes: aday / alternatif menusu fiyat etiketi. Karisik kipte secimin
+ * YAZACAGI birimde (`balonTutari` kurali) — menu "420.0 TL" deyip hucreye
+ * $10,50 yazmasin. Aksi halde eski "N.N TL" etiketi (tl kipi bayt bayt ayni).
+ */
+export function adayFiyatEtiketi(netPrice: number, kaynakFiyat: unknown, karisik: boolean, hane = 1): string {
+  const kf = kaynakFiyat as { currency?: unknown; net?: unknown } | null | undefined;
+  return balonTutari(netPrice, kf, karisik, (tl) => `${tl.toFixed(hane)} TL`);
+}
+
 /** Kayit anindaki TL kurlari (1 birim = kac TL). */
 export type TlKurlari = Partial<Record<'USD' | 'EUR', number>>;
 

@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, PARA_SEMBOLU, paraIsaretiniAyikla, netFiyatBiriminde,
-  dovizliTarafVarMi, dovizliSatirVarMi, digerSayfalardaDovizVar, karisikKipMi, balonTutari,
+  dovizliTarafVarMi, dovizliSatirVarMi, digerSayfalardaDovizVar, karisikKipMi, balonTutari, adayFiyatEtiketi,
 } from './taraf-para-birimi';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam } from './pricing';
 
@@ -195,5 +195,24 @@ describe('balonTutari — F6b', () => {
     // izgarayla ayni: null ya da metin net (izgara ₺ yazar) → TL
     expect(balonTutari(420, { currency: 'USD', net: null }, true, tl)).toBe('₺420');
     expect(balonTutari(420, { currency: 'USD', net: '10.5' }, true, tl)).toBe('₺420');
+  });
+});
+
+// ── F6b KARDES (06.10): aday / alternatif menusu fiyat etiketi ───────────────
+// Menu karisik kipte secimin YAZACAGI birimde konusur (eslesme balonu kurali):
+// "420.0 TL" deyip $10,50 yazmasin. tl kipinde etiket bayt bayt eski hali.
+describe('adayFiyatEtiketi', () => {
+  const usd = { currency: 'USD', net: 10.5 };
+  it('karisik + dovizli kaynak: kaynak biriminde', () => {
+    expect(adayFiyatEtiketi(420, usd, true)).toBe('$10,50');
+  });
+  it('tl kipi: eski etiket (1 hane, TL)', () => {
+    expect(adayFiyatEtiketi(420, usd, false)).toBe('420.0 TL');
+  });
+  it('karisik ama ₺ kaynak: eski etiket', () => {
+    expect(adayFiyatEtiketi(400, { currency: 'TRY', net: 400 }, true)).toBe('400.0 TL');
+  });
+  it('hane parametresi TL etiketine gecer (iscilik menusu 2 hane)', () => {
+    expect(adayFiyatEtiketi(12.5, null, true, 2)).toBe("12.50 TL");
   });
 });

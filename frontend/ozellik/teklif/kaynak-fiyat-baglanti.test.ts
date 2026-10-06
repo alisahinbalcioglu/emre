@@ -96,3 +96,15 @@ describe('F6b BAGLANTI — kip, taslak, kayit, kur eksik, yapistirma', () => {
     expect(izgara).toMatch(/onCellEditingStopped=\{duzenlemeBitti\}/);
   });
 });
+
+// ── F6b KARDES (06.10): aday / alternatif menusu etiketi TEK kuraldan ─────────
+// Bes menu yeri (malzeme aday + grup + alternatif, iscilik aday + alternatif)
+// fiyati `adayFiyatEtiketi`yle basar — biri unutulursa karisik kipte o menu
+// "420.0 TL" deyip hucreye $10,50 yazar. Davranis e2e'si (AE1) yalniz malzeme
+// aday menusunu surer; digerleri bu kapiyla bagli.
+describe('F6b KARDES BAGLANTI — menu fiyat etiketi', () => {
+  it('menu TL metnini kendisi yazmaz; bes yer adayFiyatEtiketi cagirir', () => {
+    expect(izgara).not.toMatch(/netPrice\.toFixed\(\d\)\}? TL/);
+    expect(izgara.match(/adayFiyatEtiketi\([ca]\.netPrice, \([ca] as any\)\.kaynakFiyat, !!karisik(, 2)?\)/g)?.length).toBe(5);
+  });
+});

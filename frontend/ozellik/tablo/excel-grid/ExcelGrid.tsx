@@ -23,7 +23,7 @@ import { aralikKur, planKopyala, type Aralik, type KopyaKolon, type KopyaSatir, 
 import { isaretStili, isaretTooltip, secimBekliyor, kutuphaneFiyatAyrisimi, type IsaretGirdisi } from './isaret';
 import { joinMaterialText } from '@/ozellik/tablo/parse-material-text';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam, etkinMiktar, paraBicim, sayfaToplamlari, karSatiri, maliyetiGeriTuret, PARA_ONDALIK, kalemToplami, kalemBirimFiyatMetni, satirGenelToplamiGosterim } from '@/ozellik/fiyat/pricing';
-import { paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, paraIsaretiniAyikla, PARA_SEMBOLU, birimliToplamlar, fittingBirimli, cokluTutarMetni, netFiyatBiriminde, dovizliSatirVarMi, type ParaBirimi } from '@/ozellik/fiyat/taraf-para-birimi';
+import { paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, paraIsaretiniAyikla, PARA_SEMBOLU, birimliToplamlar, fittingBirimli, cokluTutarMetni, netFiyatBiriminde, dovizliSatirVarMi, adayFiyatEtiketi, type ParaBirimi } from '@/ozellik/fiyat/taraf-para-birimi';
 // FITTING SATIRI (02.09): kapsam secimi (Ctrl+tik) yardimcilari — para kurali pricing'te
 import {
   FITTING_BIRIMI, fittingBirimiMi, fittingKapsaminaAlinabilirMi, kapsamDegistir, silinenSatiriKapsamlardanDus,
@@ -1036,7 +1036,7 @@ function BrandDropdown(props: ICellRendererParams & {
                         <div style={{ fontWeight: 500, color: '#334155', whiteSpace: 'normal', wordBreak: 'break-word' }}>
                           {!etiketler[i].ayirtEdici && c.preferred && '✓ '}{etiketler[i].ad}
                         </div>
-                        <div style={{ color: '#6b7280', fontSize: 11 }}>{c.netPrice.toFixed(1)} TL</div>
+                        <div style={{ color: '#6b7280', fontSize: 11 }}>{adayFiyatEtiketi(c.netPrice, (c as any).kaynakFiyat, !!karisik)}</div>
                         {/* PU7: fark aciklanamiyorsa veri sorunu olarak isaretle */}
                         {etiketler[i].veriSorunu && (
                           <div style={{ color: '#b45309', fontSize: 10, marginTop: 2 }}>
@@ -1098,7 +1098,7 @@ function BrandDropdown(props: ICellRendererParams & {
                           listesi DEGISMEDI — yalniz metin. */}
                       <div style={{ fontWeight: 600 }}>{g.preferred && '• '}{single && c.popular && '★ '}{g.label}</div>
                       <div style={{ color: '#6b7280', fontSize: 11 }}>
-                        {single ? `${c.netPrice.toFixed(1)} TL` : `${g.items.length} alt tip →`}
+                        {single ? adayFiyatEtiketi(c.netPrice, (c as any).kaynakFiyat, !!karisik) : `${g.items.length} alt tip →`}
                         {g.preferred && <span style={{ color: '#059669', marginLeft: 6, fontWeight: 600 }}>aynı soruda kayıtlı</span>}
                       </div>
                       {/* E3: nitelik farki uyarisi ("68°C istendi — bu ürün 141°C") */}
@@ -1212,7 +1212,7 @@ function BrandDropdown(props: ICellRendererParams & {
               onMouseEnter={(e) => { e.currentTarget.style.background = '#dbeafe'; e.currentTarget.style.borderColor = '#3b82f6'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = cekinceSatiri(a) ? '#f59e0b' : '#e5e7eb'; }}
             >
-              <div style={{ fontWeight: 700 }}>{a.onerilen && '★ '}{a.brandName} — {a.netPrice.toFixed(1)} TL{a.onerilen && <span style={{ color: '#059669', marginLeft: 6, fontSize: 10, fontWeight: 600 }}>keşif önerisi</span>}</div>
+              <div style={{ fontWeight: 700 }}>{a.onerilen && '★ '}{a.brandName} — {adayFiyatEtiketi(a.netPrice, (a as any).kaynakFiyat, !!karisik)}{a.onerilen && <span style={{ color: '#059669', marginLeft: 6, fontSize: 10, fontWeight: 600 }}>keşif önerisi</span>}</div>
               <div style={{ color: '#6b7280', fontSize: 11 }}>{a.materialName.slice(0, 60)}</div>
               {cekinceSatiri(a) && (
                 <div style={{ color: '#b45309', fontSize: 11, marginTop: 2, whiteSpace: 'normal' }}>{cekinceSatiri(a)}</div>
@@ -1539,7 +1539,7 @@ function FirmaDropdown(props: ICellRendererParams & {
               }}
             >
               <div style={{ fontWeight: 600 }}>{c.popular && '★ '}{c.label}</div>
-              <div style={{ color: '#6b7280', fontSize: 11 }}>{c.netPrice.toFixed(2)} TL</div>
+              <div style={{ color: '#6b7280', fontSize: 11 }}>{adayFiyatEtiketi(c.netPrice, (c as any).kaynakFiyat, !!karisik, 2)}</div>
             </button>
           ))}
           {/* K3 (27.08): ADAYLAR ile ALTERNATIFLER birlikte donebiliyor (motor
@@ -1596,7 +1596,7 @@ function FirmaDropdown(props: ICellRendererParams & {
                 fontSize: 12, borderRadius: 4, marginBottom: 4,
               }}
             >
-              <div style={{ fontWeight: 700 }}>{a.brandName} — {a.netPrice.toFixed(1)} TL</div>
+              <div style={{ fontWeight: 700 }}>{a.brandName} — {adayFiyatEtiketi(a.netPrice, (a as any).kaynakFiyat, !!karisik)}</div>
               <div style={{ color: '#6b7280', fontSize: 11 }}>{a.materialName}</div>
               {cekinceSatiri(a) && (
                 <div style={{ color: '#b45309', fontSize: 11, marginTop: 2, whiteSpace: 'normal' }}>{cekinceSatiri(a)}</div>
@@ -3366,7 +3366,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         // Fiyat recalc — P2-1a: MUHURLU formul (pricing.ts), ham carpim YASAK.
         const netPrice = parseFloat(String(node.data._matNetPrice ?? 0)) || 0;
         const qty = etkinMiktar(node.data, quantityField, unitField); // UY2
-        const y = karYayilimi(netPrice, karVal, qty);
+        const y = karYayilimi(netPrice, karVal, qty, karisik ? paraHanesi(tarafPB(node.data, 'malzeme')) : 1); // F6b kardes
         if (y) {
           if (materialUnitPriceField) node.setDataValue(materialUnitPriceField, y.birim);
           if (materialTotalField) node.setDataValue(materialTotalField, y.toplam);
@@ -3386,7 +3386,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         // P2-1a: malzeme dali ile AYNI muhurlu formul — iki dal ayrisamaz.
         const netPrice = parseFloat(String(node.data._labNetPrice ?? 0)) || 0;
         const qty = etkinMiktar(node.data, quantityField, unitField); // UY2
-        const y = karYayilimi(netPrice, iscKarVal, qty);
+        const y = karYayilimi(netPrice, iscKarVal, qty, karisik ? paraHanesi(tarafPB(node.data, 'iscilik')) : 1); // F6b kardes
         if (y) {
           if (laborUnitPriceField) node.setDataValue(laborUnitPriceField, y.birim);
           if (laborTotalField) node.setDataValue(laborTotalField, y.toplam);
@@ -4828,11 +4828,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
 
       if (net > 0) {
-        const finalPrice = hesaplaSatisBirimFiyat(net, kar);
+        // F6b kardes: karisik kipte tarafin hanesi ($/€ 2, karar 4) — tl kipinde ₺ (1)
+        const hane = karisik ? paraHanesi(tarafPB(row, 'malzeme')) : 1;
+        const finalPrice = hesaplaSatisBirimFiyat(net, kar, hane);
         const qty = etkinMiktar(row, quantityField, unitField); // UY2
-        const total = hesaplaSatirToplam(finalPrice, qty);
-        e.node.setDataValue(materialUnitPriceField, finalPrice.toFixed(1));
-        e.node.setDataValue(materialTotalField, total.toFixed(1));
+        const total = hesaplaSatirToplam(finalPrice, qty, hane);
+        e.node.setDataValue(materialUnitPriceField, finalPrice.toFixed(hane));
+        e.node.setDataValue(materialTotalField, total.toFixed(hane));
         console.log(`[ExcelGrid] Malz. kar recalc: row=${row._rowIdx}, net=${net}, kar=${kar}%, final=${finalPrice}, qty=${qty}, total=${total}`);
       }
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
@@ -4861,11 +4863,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       }
 
       if (net > 0) {
-        const finalPrice = hesaplaSatisBirimFiyat(net, kar);
+        const hane = karisik ? paraHanesi(tarafPB(row, 'iscilik')) : 1; // F6b kardes: malzeme ikizi
+        const finalPrice = hesaplaSatisBirimFiyat(net, kar, hane);
         const qty = etkinMiktar(row, quantityField, unitField); // UY2
-        const total = hesaplaSatirToplam(finalPrice, qty);
-        e.node.setDataValue(laborUnitPriceField, finalPrice.toFixed(1));
-        e.node.setDataValue(laborTotalField, total.toFixed(1));
+        const total = hesaplaSatirToplam(finalPrice, qty, hane);
+        e.node.setDataValue(laborUnitPriceField, finalPrice.toFixed(hane));
+        e.node.setDataValue(laborTotalField, total.toFixed(hane));
         console.log(`[ExcelGrid] Isc. kar recalc: row=${row._rowIdx}, net=${net}, kar=${kar}%, final=${finalPrice}, qty=${qty}, total=${total}`);
       }
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);
@@ -4894,8 +4897,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           ? row._matNetPrice
           : maliyetiGeriTuret(sayiAlani(row[materialUnitPriceField]), matKar);
         if (matNet > 0) {
-          const finalPrice = hesaplaSatisBirimFiyat(matNet, matKar);
-          e.node.setDataValue(materialTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
+          // F6b kardes: karisik kipte tarafin hanesi (kar dali ile ayni kural)
+          const hane = karisik ? paraHanesi(tarafPB(row, 'malzeme')) : 1;
+          const finalPrice = hesaplaSatisBirimFiyat(matNet, matKar, hane);
+          e.node.setDataValue(materialTotalField, hesaplaSatirToplam(finalPrice, qty, hane).toFixed(hane));
         }
       }
 
@@ -4905,8 +4910,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
           ? row._labNetPrice
           : maliyetiGeriTuret(sayiAlani(row[laborUnitPriceField]), labKar);
         if (labNet > 0) {
-          const finalPrice = hesaplaSatisBirimFiyat(labNet, labKar);
-          e.node.setDataValue(laborTotalField, hesaplaSatirToplam(finalPrice, qty).toFixed(1));
+          const hane = karisik ? paraHanesi(tarafPB(row, 'iscilik')) : 1; // F6b kardes: ikiz
+          const finalPrice = hesaplaSatisBirimFiyat(labNet, labKar, hane);
+          e.node.setDataValue(laborTotalField, hesaplaSatirToplam(finalPrice, qty, hane).toFixed(hane));
         }
       }
       setTimeout(() => { recalcGrand(); updatePinnedBottom(); }, 0);

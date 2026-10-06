@@ -217,12 +217,14 @@ export function karYayilimi(
   netPrice: number,
   karYuzde: number,
   miktar: number,
+  /** F6b kardes: tarafin hanesi (`paraHanesi`; karisik kipte $/€ 2). Varsayilan ₺. */
+  hane = 1,
 ): { birim: string; toplam: string } | null {
   if (!(netPrice > 0)) return null;   // net yoksa hucreye dokunulmaz (mevcut davranis)
-  const satis = hesaplaSatisBirimFiyat(netPrice, karYuzde);
+  const satis = hesaplaSatisBirimFiyat(netPrice, karYuzde, hane);
   return {
-    birim: satis.toFixed(1),
-    toplam: hesaplaSatirToplam(satis, miktar).toFixed(1),
+    birim: satis.toFixed(hane),
+    toplam: hesaplaSatirToplam(satis, miktar, hane).toFixed(hane),
   };
 }
 
