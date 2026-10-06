@@ -3475,6 +3475,8 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
    * birimi degisen kova `_currency`sini `setData` ile alir. Sayi degisirse (ilk
    * kurulum, karisik kipte yeni birim kovasi) eskisi gibi prop'tan kurulur.
    */
+  // Acik editor varken ertelenen alt satirlar — `duzenlemeBitti` editor kapaninca kurar.
+  const ertelenenOzetRef = useRef(false);
   const ozetSatirlariniYaz = useCallback((yeni: ExcelRowData[]) => {
     const api = gridRef.current?.api;
     const sayi = api?.getPinnedBottomRowCount() ?? 0;
@@ -3482,6 +3484,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       for (let i = 0; i < sayi; i++) api.getPinnedBottomRow(i)?.setData(yeni[i]);
       return;
     }
+    // Alt satir SAYISI degisince (karisik: ilk $/€ gelince 2 → 4) AG Grid govdeyi bastan
+    // cizer ve ACIK EDITORU keser — olculdu: "$12 ↓ 400"te 400 kayboluyordu (F3'ten beri;
+    // F6b ile yeni teklif karisik acildigi icin her gun). Editor kapaninca
+    // (`duzenlemeBitti`) toplamlar yeniden kurulur.
+    if (api && api.getEditingCells().length > 0) { ertelenenOzetRef.current = true; return; }
     setPinnedBottomRow(yeni);
   }, []);
 
@@ -3865,6 +3872,12 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   const duzenlemeBitti = useCallback((e?: { newValue?: unknown; valueChanged?: boolean; node?: any; colDef?: { field?: string } }) => {
     const gecersiz = !!bekleyenSayiUyarisiRef.current;
     sayiUyarisiniGoster(e);
+    // Editor acikken ertelenen alt satirlar simdi (bir tik sonra: degisiklik olayi
+    // once islensin; yeni editor acildiysa yine ertelenir).
+    if (ertelenenOzetRef.current) {
+      ertelenenOzetRef.current = false;
+      setTimeout(() => updatePinnedBottomRef.current?.(), 0);
+    }
     if (!e?.colDef?.field || e.valueChanged !== false) return;
     const k = elleBirimAnahtari(e.node, e.colDef.field);
     const pb = elleBirimRef.current.get(k);

@@ -3,8 +3,8 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 948
-Toplam satir: 261044
+Kod dosyasi: 949
+Toplam satir: 261157
 Uc nokta: 239
 test:* scripti: 175
 
@@ -834,7 +834,7 @@ test:* scripti: 175
 | `frontend/ozellik/odeme/yonetici/yonetici-paket.ts` | 217 |
 | `frontend/ozellik/tablo/disiplin.ts` | 13 |
 | `frontend/ozellik/tablo/excel-grid/CustomDropdown.tsx` | 252 |
-| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5477 |
+| `frontend/ozellik/tablo/excel-grid/ExcelGrid.tsx` | 5490 |
 | `frontend/ozellik/tablo/excel-grid/SheetTabs.tsx` | 109 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.test.ts` | 178 |
 | `frontend/ozellik/tablo/excel-grid/aday-ayirt-edicilik.ts` | 175 |
@@ -916,6 +916,7 @@ test:* scripti: 175
 | `frontend/test/e2e-golden/verify.mjs` | 836 |
 | `frontend/test/e2e/bant-sayaci.spec.ts` | 145 |
 | `frontend/test/e2e/bos-kaynak-surukle.spec.ts` | 130 |
+| `frontend/test/e2e/coklu-para-birimi-editor.spec.ts` | 80 |
 | `frontend/test/e2e/coklu-para-birimi-gorunum.spec.ts` | 165 |
 | `frontend/test/e2e/coklu-para-birimi-izgara.spec.ts` | 253 |
 | `frontend/test/e2e/coklu-para-birimi-kayit.spec.ts` | 108 |
@@ -937,7 +938,7 @@ test:* scripti: 175
 | `frontend/test/e2e/surukle-bayat-sebep.spec.ts` | 91 |
 | `frontend/test/e2e/taslak-fiyat-yazimi.spec.ts` | 347 |
 | `frontend/test/e2e/teklif-acik-duzenleyici.spec.ts` | 131 |
-| `frontend/test/e2e/teklif-karisik-kip.spec.ts` | 165 |
+| `frontend/test/e2e/teklif-karisik-kip.spec.ts` | 185 |
 | `frontend/test/e2e/varyant-kimligi.spec.ts` | 113 |
 | `frontend/vitest.config.ts` | 15 |
 | `scripts/abonelik-olcum.sh` | 301 |
@@ -1761,6 +1762,7 @@ test:* scripti: 175
 | `frontend/test/e2e-golden/verify.mjs` | `node:fs` `node:path` `node:url` `node:module` `./sayi-ayristirma.mjs` `./artefakt-dizini.cjs` |
 | `frontend/test/e2e/bant-sayaci.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/bos-kaynak-surukle.spec.ts` | `@playwright/test` |
+| `frontend/test/e2e/coklu-para-birimi-editor.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/coklu-para-birimi-gorunum.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/coklu-para-birimi-izgara.spec.ts` | `@playwright/test` |
 | `frontend/test/e2e/coklu-para-birimi-kayit.spec.ts` | `@playwright/test` `../../ozellik/teklif/taslak` |
