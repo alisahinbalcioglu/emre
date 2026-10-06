@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 965
-Toplam satir: 266310
+Toplam satir: 266353
 Uc nokta: 248
 test:* scripti: 183
 
@@ -127,7 +127,7 @@ test:* scripti: 183
 | `backend/src/modules/dwg-engine/python/upload_worker.py` | 150 |
 | `backend/src/modules/dwg-engine/scale-param.test.ts` | 59 |
 | `backend/src/modules/dwg-engine/scale-param.ts` | 30 |
-| `backend/src/ozellik/cikti/quote-formats/format-engine.ts` | 736 |
+| `backend/src/ozellik/cikti/quote-formats/format-engine.ts` | 759 |
 | `backend/src/ozellik/cikti/quote-formats/format-karisik.ts` | 185 |
 | `backend/src/ozellik/cikti/quote-formats/quote-formats.controller.ts` | 113 |
 | `backend/src/ozellik/cikti/quote-formats/quote-formats.module.ts` | 13 |
@@ -370,7 +370,7 @@ test:* scripti: 183
 | `backend/test/erken-kurtarma-test.ts` | 402 |
 | `backend/test/etiket-katmani-test.ts` | 162 |
 | `backend/test/excel-grid-test.ts` | 257 |
-| `backend/test/export-format-test.ts` | 442 |
+| `backend/test/export-format-test.ts` | 462 |
 | `backend/test/export-karisik-test.ts` | 455 |
 | `backend/test/export-live-sim-test.ts` | 425 |
 | `backend/test/fallback-ad-kilidi-test.ts` | 186 |
