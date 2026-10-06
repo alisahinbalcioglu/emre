@@ -30,11 +30,11 @@ function check(name: string, cond: boolean, detail?: string) {
 const js = (x: unknown) => JSON.stringify(x);
 
 let n = 0;
-const satir = (ad: string, cap: string | null, price: number) => {
+const satir = (ad: string, cap: string | null, price: number, kategori: string | null = null) => {
   n++;
-  const idx = buildProductIndex({ ad, cap, cins: null, price } as ProductColumns);
+  const idx = buildProductIndex({ ad, cap, cins: null, price, kategori } as ProductColumns);
   return { id: `r${n}`, listPrice: price, customPrice: null, discountRate: 0, currency: 'TRY',
-    urun: { ...idx, ad, cins: null, baglanti: null, capRaw: cap, kategori: null, boyMm: null, price } } as any;
+    urun: { ...idx, ad, cins: null, baglanti: null, capRaw: cap, kategori, boyMm: null, price } } as any;
 };
 /** Sorgu sonucunun aday adlari, SIRASIYLA. */
 function sira(line: string, havuz: any[]): { kind: string; adlar: string[] } {
@@ -126,6 +126,23 @@ async function main() {
     const s4g = sira('Kelebek Vana DN100', h4g);
     check('FIXTURE KANITI: T4g soru, 2 aday', s4g.kind === 'ask' && s4g.adlar.length === 2, js(s4g));
     check('T4g karsi: sifati ONDE olan urun yerinde (zincir ilk sifat-disi kelimede kesilir)', js(s4g.adlar) === js(h4g.map((r: any) => r.urun.ad)), js(s4g.adlar));
+
+    // ══ T7 · ailesi KATEGORIDEN gelen urun (canli v11: 30 aday) — kategorinin sondaki urun turu sifati sayilir ══
+    // Ad tek basina cozulmez ("Kelebek Kulaklı"); 6a aileyi "ad + kategori" metninde ("… Vana Aktüatörlü") vana yapar.
+    const h7 = [satir('Kelebek Kulaklı', 'DN100', 3000, 'Vana Aktüatörlü'), satir('Kelebek Vana DN100', 'DN100', 900)];
+    check('FIXTURE KANITI: T7 kategori urunu vana ailesinde ve aileZayif', h7[0].urun.adSlug === 'vana' && h7[0].urun.aileZayif === true, js({ aile: h7[0].urun.adSlug, zayif: h7[0].urun.aileZayif }));
+    const s7 = sira('Kelebek Vana DN100', h7);
+    check('★ T7 kategorisi "… Aktüatörlü" olan (aileZayif) urun SONDA', s7.kind === 'ask' && js(s7.adlar) === js(['Kelebek Vana DN100', 'Kelebek Kulaklı']), js(s7));
+    // karsi: kategorinin sonunda sifat yok → yerinde
+    const h7b = [satir('Kelebek Kulaklı', 'DN100', 3000, 'Vanalar'), satir('Kelebek Vana DN100', 'DN100', 900)];
+    const s7b = sira('Kelebek Vana DN100', h7b);
+    check('FIXTURE KANITI: T7b kategori urunu vana ailesinde ve aileZayif', h7b[0].urun.adSlug === 'vana' && h7b[0].urun.aileZayif === true, js({ aile: h7b[0].urun.adSlug, zayif: h7b[0].urun.aileZayif }));
+    check('T7b karsi: kategorisi sifatsiz ("Vanalar") urun yerinde', js(s7b.adlar) === js(h7b.map((r: any) => r.urun.ad)), js(s7b));
+    // karsi: ailesi ADDAN gelen urunde kategori yok sayilir
+    const h7c = [satir('Kelebek Vana DN100 Lug Tip', 'DN100', 950, 'Vana Aktüatörlü'), satir('Kelebek Vana DN100', 'DN100', 900)];
+    const s7c = sira('Kelebek Vana DN100', h7c);
+    check('FIXTURE KANITI: T7c urun ailesi addan (aileZayif degil), 2 aday', h7c[0].urun.aileZayif === false && s7c.adlar.length === 2, js({ zayif: h7c[0].urun.aileZayif, s7c }));
+    check('T7c karsi: ailesi ADDAN gelen urunde kategorinin sifati sayilmaz — yerinde', js(s7c.adlar) === js(h7c.map((r: any) => r.urun.ad)), js(s7c.adlar));
 
     // ══ T5 · karsi: TEK aday yolu dokunulmaz (fiyat davranisi) ══
     const s5 = sira('Kelebek Vana', [satir('Kelebek Vana', 'DN100', 900), satir('Kelebek Vana Aktüatörlü', 'DN100', 4100)].slice(0, 1));

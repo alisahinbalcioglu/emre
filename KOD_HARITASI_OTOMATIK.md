@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 948
-Toplam satir: 259174
+Toplam satir: 259194
 Uc nokta: 239
 test:* scripti: 178
 
@@ -141,7 +141,7 @@ test:* scripti: 178
 | `backend/src/ozellik/eslestirme/matching/gunluk-degeri.ts` | 28 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 349 |
 | `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 862 |
-| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1937 |
+| `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1940 |
 | `backend/src/ozellik/eslestirme/matching/index/types.ts` | 314 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
 | `backend/src/ozellik/eslestirme/matching/matching.controller.ts` | 116 |
@@ -473,7 +473,7 @@ test:* scripti: 178
 | `backend/test/satinalma-yolu-test.ts` | 901 |
 | `backend/test/satir-olcu-yazimi-test.ts` | 102 |
 | `backend/test/sifat-eki-test.ts` | 139 |
-| `backend/test/sifat-sirasi-test.ts` | 167 |
+| `backend/test/sifat-sirasi-test.ts` | 184 |
 | `backend/test/sir-dondur-kapsam-test.ts` | 188 |
 | `backend/test/sozluk-golgeleme-olcum.ts` | 125 |
 | `backend/test/spec-regression-test.ts` | 448 |

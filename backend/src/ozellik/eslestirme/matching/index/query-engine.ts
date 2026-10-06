@@ -1411,7 +1411,10 @@ export function runQuery(line: LineQuery, pool: IndexedRow[], opts?: QueryOpts):
   if (rows.length > 1) {
     // (Sifati PARANTEZ icinde anan satir: parantez daraltmasi listeyi zaten yalniz
     // o sifatli urunlere indirir — test:sifat-sirasi T3b; ayrica sayilmaz.)
-    const sonaGider = (r: IndexedRow) => urunSondakiSifatlari(r.urun.ad)
+    // Ailesi KATEGORIDEN gelen urunde (aileZayif) 6a aileyi "ad + kategori" metninde cozdu —
+    // sondaki sifata da o metinde bakilir (canli v11: 30 aday, ad "… Kulaklı" + kategori
+    // "… Aktüatörlü"). Ailesi addan gelen urunde kategori yok sayilir (test:sifat-sirasi T7c).
+    const sonaGider = (r: IndexedRow) => urunSondakiSifatlari(r.urun.aileZayif && r.urun.kategori ? `${r.urun.ad} ${r.urun.kategori}` : r.urun.ad)
       .some((s) => sifatUrunTuru(s) && !line.tokens.some((t) => tokenEsit(t, s)));
     rows = [...rows.filter((r) => !sonaGider(r)), ...rows.filter(sonaGider)];
   }
