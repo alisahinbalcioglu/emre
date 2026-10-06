@@ -68,6 +68,37 @@ export interface TeklifKalemi {
 }
 
 /**
+ * F6b (karar, 06.10 — Emre'nin onerilen onayi): KUR YOKKEN dovizli taraf.
+ * Karisik kipte $ fiyat teklifte $ olarak DOGRUDUR; yalniz iliskisel kalemin
+ * TL karsiligi (teklif listesi / pano toplami) kur ister. Satirin donuk kuru
+ * (eslesmeden gelen) yoksa ve kayit aninda kur da yoksa `tlKarsiligi` 0 dondurur
+ * — kalem 0 TL olur ama FIYATSIZ DEGILDIR. Bu sayi kayit akisinda o satiri
+ * fiyatsiz uyarisindan cikarir ve ayri, durust bir uyari soyletir.
+ * Doner: TL karsiligi kur yuzunden 0 olan, kendi biriminde tutari olan
+ * dovizli taraf sayisi (fitting birim parcalari dahil).
+ */
+export function kurEksikTarafSayisi(r: Record<string, any>, roles: KalemRolleri, tlKuru: TlKurlari): number {
+  const kurVar = (pb: ParaBirimi, satirKuru: unknown) => tlKarsiligi(1, pb, satirKuru, tlKuru) > 0;
+  let n = 0;
+  if (r?._fitting && r._fittingBirimli) {
+    const fb = r._fittingBirimli as { mat?: unknown; lab?: unknown };
+    for (const x of [...(Array.isArray(fb.mat) ? fb.mat : []), ...(Array.isArray(fb.lab) ? fb.lab : [])] as Array<{ pb?: unknown; toplam?: unknown }>) {
+      if ((x?.pb === 'USD' || x?.pb === 'EUR') && sayiAlani(x.toplam) !== 0 && !kurVar(x.pb, null)) n++;
+    }
+    return n;
+  }
+  for (const dal of ['malzeme', 'iscilik'] as const) {
+    const pb = tarafPB(r, dal);
+    if (pb === 'TRY') continue;
+    const birim = dal === 'malzeme' ? roles.materialUnitPriceField : roles.laborUnitPriceField;
+    const toplam = dal === 'malzeme' ? roles.materialTotalField : roles.laborTotalField;
+    const tutar = Math.abs(sayiAlani(birim ? r[birim] : 0)) + Math.abs(sayiAlani(toplam ? r[toplam] : 0));
+    if (tutar !== 0 && !kurVar(pb, r[dal === 'iscilik' ? '_labKurBilgi' : '_matKurBilgi'])) n++;
+  }
+  return n;
+}
+
+/**
  * Bir grid satırından teklif kalemi üretir. Adı boş satır ve ÖZET satırı
  * (`_ozet`) için `null` döner.
  *

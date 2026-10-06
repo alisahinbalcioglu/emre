@@ -588,6 +588,13 @@ function kBlogu(): void {
   const uygulama = ana.indexOf('NestFactory.create');
   check('K1 ⭐ main.ts yamayı uygulama kurulmadan ÖNCE kurar', kurulum > 0 && uygulama > kurulum, js({ kurulum, uygulama }));
   check('K2 yama TEK yerden kurulur', (ana.match(/sinifDonusturucuYamasiniKur\(/g) ?? []).length === 1);
+  // 06.10 (HIGH-A ile birleşme, koordinatör): iki güvenlik kurulumunun SIRASI —
+  // gövde tavanları ayrıştırıcılardan önce, güvenli doğrulama borusu en sonda.
+  const sira = ['sinifDonusturucuYamasiniKur()', 'NestFactory.create', 'govdeSinirlariniKur(app)', 'app.use(json(',
+    'app.use(urlencoded(', 'govdeHatalariniKur(app)', 'useGlobalPipes('].map((s) => ({ s, i: ana.indexOf(s) }));
+  check('K4 ⭐ main.ts KURULUM SIRASI: yama → uygulama → yol başı tavanlar → global ayrıştırıcılar → hata katmanı → GÜVENLİ doğrulama borusu',
+    sira.every((x, k) => x.i > 0 && (k === 0 || x.i > sira[k - 1].i)) && /useGlobalPipes\(\s*new GuvenliValidationPipe\(/.test(ana),
+    js(sira));
   const sinir = (yol: string) => GOVDE_SINIRLARI.find((s) => s.yol === yol)?.sinir;
   check('K3 kimliksiz yollar bayt tavanlı: /api/auth 32 KB, iyzico dönüşleri 16 KB',
     sinir('/api/auth') === '32kb' && sinir('/api/abonelik/iyzico-donus') === '16kb' && sinir('/api/abonelik/iyzico-kart-donus') === '16kb',

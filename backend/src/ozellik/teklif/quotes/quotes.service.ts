@@ -10,7 +10,7 @@ import * as ExcelJS from 'exceljs';
 // PRD Teklif Formatim (v2.1): profesyonel cikti motoru
 import { buildExportWorkbook, ExportSonucu, ExportBirim } from './export-engine';
 import { standartCiktiUret } from './standart-cikti';
-import { ParaBirimi, SEMBOL, cevrimYokNotu, karisikKipMi } from './cikti-karisik';
+import { ParaBirimi, SEMBOL, cevrimYokNotu, dovizliTarafVarMi } from './cikti-karisik';
 import { buildSampleFormat, ExportOverrides, FillContext } from '../../cikti/quote-formats/format-engine';
 import { ExchangeRatesService, kurGecerli } from '../../fiyat/exchange-rates/exchange-rates.service';
 import { CeviriService, KAYIT_INDIRGEME_UYARISI } from '../../giris/ai/ceviri.service';
@@ -677,7 +677,7 @@ export class QuotesService {
     const sheetsArr = Array.isArray(quote.sheets) ? (quote.sheets as any[]) : [];
     // İCMAL (05.10): karisik teklifte taraflar kendi biriminde — goruntuleme
     // birimi YOK SAYILIR (cevrim yok, fiyatli yolun ikizi); kur notu bunu soyler.
-    const karisik = karisikKipMi(sheetsArr);
+    const karisik = dovizliTarafVarMi(sheetsArr); // F6a: yalniz-₺ karisik teklif tek birimli yolu alir
     const birim = karisik ? null : this.exportBirimi(quote, kur); // PANO 18 (KF7: iki yol ayni)
     // USD/EUR teklifte rakamlarin birimi ICMAL notunda da SOYLENIR — eskiden
     // "Fiyatlar USD" notu yalniz fiyatli yolda vardi (ikiz eksigi, 13.09).

@@ -219,3 +219,44 @@ describe('planYapistir — A2 belirsiz sayi ve alan turu', () => {
     expect(yapistirmaSayiUyarilari(planYapistir('200', [ALANLI[2]], '_matBirim', VERI(1)).ozet)).toEqual([]);
   });
 });
+
+// ══ F6b (06.10): karisik kipte dovizli metin FIYAT kolonuna yapisir — birimi secer ══
+// Kopyalama karisik hucreden "$12,00" uretir; TL kipinin "dovizli yapistirilamaz"
+// kurali (teklif TL tabanli) karisikta gecersiz: fiyat tarafin KENDI birimindedir.
+// Kural elle yazimin aynisi (karar 3): "$12"/"€12"/"₺12" birimi secer.
+describe('planYapistir — F6b karisik kip', () => {
+  // Izgaranin gercek kolon tanimi gibi: sayisal kolonlarin ALAN turu acik (ExcelGrid `sayisalAlanlar`)
+  const KOLONLAR = [
+    { field: '_ad', editable: true, sayisal: false },
+    { field: '_miktar', editable: true, sayisal: true, alan: 'miktar' },
+    { field: '_malzKar', editable: true, sayisal: true, alan: 'kar' },
+    { field: '_matBirim', editable: true, sayisal: true, alan: 'fiyat' },
+  ] as PasteKolon[];
+  it('★★ "$1.500,00" fiyat kolonuna 1500 + USD birimiyle; "€" ve "₺" de secer', () => {
+    const p = planYapistir('$1.500,00\n€7,50\n₺12', KOLONLAR, '_matBirim', VERI(3), undefined, undefined, { karisik: true });
+    expect(p.hucreler).toEqual([
+      { satir: 0, field: '_matBirim', deger: 1500, pb: 'USD' },
+      { satir: 1, field: '_matBirim', deger: 7.5, pb: 'EUR' },
+      { satir: 2, field: '_matBirim', deger: 12, pb: 'TRY' },
+    ]);
+  });
+  it('★ duz sayi birim TASIMAZ (tarafin mevcut birimi korunur, karar 3)', () => {
+    const p = planYapistir('15', KOLONLAR, '_matBirim', VERI(1), undefined, undefined, { karisik: true });
+    expect(p.hucreler).toEqual([{ satir: 0, field: '_matBirim', deger: 15 }]);
+  });
+  it('★ dovizli metin MIKTAR / KAR % kolonuna yine sayi degil', () => {
+    const p = planYapistir('$5', KOLONLAR, '_miktar', VERI(1), undefined, undefined, { karisik: true });
+    expect(p.hucreler).toEqual([]);
+    expect(p.ozet.atlananSayiDegil).toBe(1);
+  });
+  it('★ belirsiz isaretli sayi ("$1.250") belirsiz sayilir, yazilmaz (inceleme S3)', () => {
+    const p = planYapistir('$1.250', KOLONLAR, '_matBirim', VERI(1), undefined, undefined, { karisik: true });
+    expect(p.hucreler).toEqual([]);
+    expect(p.ozet.atlananBelirsiz).toBe(1);
+    expect(p.ozet.atlananSayiDegil).toBe(0);
+  });
+  it('KONTROL: karisik degilken birim alani hic olusmaz', () => {
+    const p = planYapistir('₺12', KOLONLAR, '_matBirim', VERI(1));
+    expect(p.hucreler).toEqual([{ satir: 0, field: '_matBirim', deger: 12 }]);
+  });
+});

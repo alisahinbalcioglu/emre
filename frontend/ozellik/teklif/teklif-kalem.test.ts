@@ -343,3 +343,37 @@ describe('F4 — karisikKipMi: kip kayittan TURETILIR (sema alani yok)', () => {
     expect(karisikKipMi(null)).toBe(false);
   });
 });
+
+// ══ F6b (06.10): yeni teklif karisik acilir — kip KAYITTA sayfa isaretiyle de tasinir ══
+import { kurEksikTarafSayisi } from './teklif-kalem';
+
+describe('F6b — karisikKipMi sayfa isaretini de tanir (fiyatsiz kaydedilmis yeni teklif)', () => {
+  it('★★ birim alani hic yok ama sayfa `paraKipi: karisik` → karisik', () => {
+    expect(karisikKipMi([{ paraKipi: 'karisik', rowData: [{ _isDataRow: true, mb: '' }] }] as any)).toBe(true);
+  });
+  it('★ isaret yalniz "karisik" degerinde; baska deger / yok → satirlara bakilir', () => {
+    expect(karisikKipMi([{ paraKipi: 'tl', rowData: [{ _isDataRow: true }] }] as any)).toBe(false);
+    expect(karisikKipMi([{ rowData: [{ _isDataRow: true }] }])).toBe(false);
+  });
+});
+
+describe('F6b — kurEksikTarafSayisi: kur yokken TL karsiligi 0 olan dovizli taraf', () => {
+  const ROL = { nameField: 'ad', quantityField: 'q', materialUnitPriceField: 'mb', materialTotalField: 'mt', laborUnitPriceField: 'lb', laborTotalField: 'lt' };
+  it('★★ elle $ fiyat, donuk kur yok, kayit aninda kur yok → 1 (kalem 0 TL olur, FIYATSIZ DEGIL)', () => {
+    const r = { _isDataRow: true, ad: 'Vana', q: '2', mb: '12', mt: '24.00', _matPB: 'USD', _matKurBilgi: null };
+    expect(kurEksikTarafSayisi(r, ROL, {})).toBe(1);
+    expect(kalemUretF4(r, ROL, { tlKuru: {} })!.materialTotalPrice).toBe(0); // olgu: TL karsiligi 0
+  });
+  it('★ kayit aninda kur VAR ya da satirin donuk kuru varsa eksik yok', () => {
+    const r = { _isDataRow: true, ad: 'Vana', q: '2', mb: '12', mt: '24.00', _matPB: 'USD', _matKurBilgi: null };
+    expect(kurEksikTarafSayisi(r, ROL, { USD: 40 })).toBe(0);
+    expect(kurEksikTarafSayisi({ ...r, _matKurBilgi: { currency: 'USD', kur: 41 } }, ROL, {})).toBe(0);
+  });
+  it('★ ₺ taraf, fiyatsiz $ taraf, iki dovizli taraf, fitting doviz parcasi', () => {
+    expect(kurEksikTarafSayisi({ ad: 'a', q: '1', mb: '5', mt: '5', _matPB: 'TRY' }, ROL, {})).toBe(0);
+    expect(kurEksikTarafSayisi({ ad: 'a', q: '1', mb: '', mt: '', _matPB: 'USD' }, ROL, {})).toBe(0);
+    expect(kurEksikTarafSayisi({ ad: 'a', q: '1', mb: '5', mt: '5', _matPB: 'USD', lb: '2', lt: '2', _labPB: 'EUR' }, ROL, { USD: 40 })).toBe(1);
+    expect(kurEksikTarafSayisi({ ad: 'f', q: '5', mb: '', mt: '', _fitting: { kapsam: [1] },
+      _fittingBirimli: { mat: [{ pb: 'TRY', toplam: 5 }, { pb: 'USD', toplam: 1 }], lab: [] } }, ROL, {})).toBe(1);
+  });
+});

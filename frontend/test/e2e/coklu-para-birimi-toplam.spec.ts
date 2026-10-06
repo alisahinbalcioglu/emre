@@ -73,8 +73,10 @@ test.describe('F3 — karisik kip: toplamlar para birimi basina', () => {
     await expect(page.getByText(/Fitting kapsamı/i).first()).toBeVisible({ timeout: 10_000 });
     await hucre(page, 2, 'col1').click({ modifiers: ['Control'] });
     await hucre(page, 3, 'col1').click({ modifiers: ['Control'] });
-    await page.keyboard.press('Escape');
+    // Kapsam canli hesaplanir: ikinci Ctrl+tik islenmeden Escape basilirsa kapsam tek satirda
+    // kalir (olculdu 06.10: "$165,17" — kararsizdi) — once tutar yerine otursun, sonra kip kapansin
     await expect(hucre(page, 10, '_matToplam')).toHaveText('₺5.360,00 + $165,17', { timeout: 10_000 });
+    await page.keyboard.press('Escape');
     expect(await hucre(page, await altSatir(page, 'GENEL TOPLAM ₺'), '_matToplam').textContent()).toBe('₺112.560,00');
     expect(await hucre(page, await altSatir(page, 'GENEL TOPLAM $'), '_matToplam').textContent()).toBe('$3.468,47');
   });

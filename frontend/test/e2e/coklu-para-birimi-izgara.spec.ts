@@ -142,3 +142,111 @@ test.describe('F2 — elle fiyat (karar 3)', () => {
     await expect(hucre(page, 4, '_matBirim')).toHaveText('₺12,00');
   });
 });
+
+// ── F6b KARDES (06.10): yeniden hesap yollari tarafin hanesinde ──────────────
+// F6b'den beri yeni teklif karisik acilir: miktar / kar % degisimi ve kar
+// surukle-doldurmasi dovizli tarafi ₺ kuraliyla (YUKARI 1 hane) yeniden
+// yaziyordu — $12,31 birimli satirda miktar degisince toplam 12,4 uzerinden.
+// $12,31 secildi: 12,31 → ₺ kurali 12,4 (tam sayili ornek farki GOSTERMEZ).
+test.describe('F6b kardes — yeniden hesap taraf hanesinde', () => {
+  test('HN1 ★★ miktar degisince $ toplam 2 hane: $12,31 × 10 = $123,10', async ({ page }) => {
+    await page.goto('/dev/grid-test?para=karisik');
+    await elleYaz(page, 4, '_matBirim', '$12,31');
+    await expect(hucre(page, 4, '_matToplam')).toHaveText('$1.255,62');
+    await elleYaz(page, 4, 'col2', '10');
+    await expect(hucre(page, 4, '_matToplam')).toHaveText('$123,10'); // ₺ kurali $124,00
+    await expect(hucre(page, 4, '_matBirim')).toHaveText('$12,31');
+  });
+
+  test('HN2 ★★ kar % degisince $ birim 2 hane yukari: 12,31 × 1,10 → $13,55', async ({ page }) => {
+    await page.goto('/dev/grid-test?para=karisik');
+    await elleYaz(page, 4, '_matBirim', '$12,31');
+    await expect(hucre(page, 4, '_matToplam')).toHaveText('$1.255,62');
+    await elleYaz(page, 4, '_malzKar', '10');
+    await expect(hucre(page, 4, '_matBirim')).toHaveText('$13,55'); // ₺ kurali $13,60
+    await expect(hucre(page, 4, '_matToplam')).toHaveText('$1.382,10'); // 13,55 × 102
+  });
+
+  test('HN3 ★ ISCILIK ikizi: kar % ve miktar € tarafinda 2 hane', async ({ page }) => {
+    await page.goto('/dev/grid-test?para=karisik');
+    await elleYaz(page, 4, '_labBirim', '€7,51');
+    await expect(hucre(page, 4, '_labToplam')).toHaveText('€766,02'); // 7,51 × 102
+    await elleYaz(page, 4, '_iscKar', '10');
+    await expect(hucre(page, 4, '_labBirim')).toHaveText('€8,27'); // 8,261 yukari; ₺ kurali €8,30
+    await expect(hucre(page, 4, '_labToplam')).toHaveText('€843,54'); // 8,27 × 102
+    await elleYaz(page, 4, 'col2', '10');
+    await expect(hucre(page, 4, '_labToplam')).toHaveText('€82,70'); // ₺ kurali €83,00
+  });
+
+  test('HN4 ★★ kar surukle-doldurmasi hedefin hanesinde: $12,31 hedef → $13,55', async ({ page }) => {
+    await page.goto('/dev/grid-test?para=karisik');
+    await elleYaz(page, 3, '_matBirim', '$12,31');
+    await expect(hucre(page, 3, '_matToplam')).toHaveText('$3.299,08'); // 12,31 × 268
+    await elleYaz(page, 2, '_malzKar', '10');
+    await surukle(page, 2, 3, '_malzKar');
+    await expect(hucre(page, 3, '_malzKar')).toHaveText(/10/);
+    await expect(hucre(page, 3, '_matBirim')).toHaveText('$13,55'); // ₺ kurali $13,60
+    await expect(hucre(page, 3, '_matToplam')).toHaveText('$3.631,40'); // 13,55 × 268
+  });
+
+  test('HN4b ★ ISCILIK kar surukle-doldurmasi ikizi: €7,51 hedef → €8,27', async ({ page }) => {
+    await page.goto('/dev/grid-test?para=karisik');
+    await elleYaz(page, 3, '_labBirim', '€7,51');
+    await expect(hucre(page, 3, '_labToplam')).toHaveText('€2.012,68'); // 7,51 × 268
+    await elleYaz(page, 2, '_iscKar', '10');
+    await surukle(page, 2, 3, '_iscKar');
+    await expect(hucre(page, 3, '_iscKar')).toHaveText(/10/);
+    await expect(hucre(page, 3, '_labBirim')).toHaveText('€8,27'); // ₺ kurali €8,30
+    await expect(hucre(page, 3, '_labToplam')).toHaveText('€2.216,36'); // 8,27 × 268
+  });
+
+  // Toplam sutunu olmayan sayfada kar % olay dali KOSMAZ (toplam rolu sart):
+  // surukle-doldurmanin yazdigi birim KALICIDIR. Toplamli sayfada olay dali
+  // ayni hucreyi sonradan yeniden yazar (mutasyon HM5/HM6 orada yasadi).
+  test('HN6 ★★ toplam sutunsuz sayfa: kar surukle-doldurmasi $ birimi 2 hane: $9,25 → $10,18', async ({ page }) => {
+    await page.goto('/dev/grid-test?para=karisik&toplamsiz=1');
+    await sec(page, 6, '_marka', 'DOLAR MARKA');
+    await page.getByText('vidalı $', { exact: true }).click();
+    await expect(hucre(page, 6, '_matBirim')).toHaveText('$9,25');
+    await elleYaz(page, 4, '_malzKar', '10');
+    await surukle(page, 4, 6, '_malzKar');
+    await expect(hucre(page, 6, '_malzKar')).toHaveText(/10/);
+    await expect(hucre(page, 6, '_matBirim')).toHaveText('$10,18'); // 10,175 yukari; ₺ kurali $10,20
+  });
+
+  test('HN6b ★ ISCILIK ikizi (toplam sutunsuz): $0,75 → $0,83', async ({ page }) => {
+    await page.goto('/dev/grid-test?para=karisik&toplamsiz=1');
+    await sec(page, 4, '_firma', 'DOLAR USTA');
+    await expect(hucre(page, 4, '_labBirim')).toHaveText('$0,75');
+    await elleYaz(page, 3, '_iscKar', '10');
+    await surukle(page, 3, 4, '_iscKar');
+    await expect(hucre(page, 4, '_iscKar')).toHaveText(/10/);
+    await expect(hucre(page, 4, '_labBirim')).toHaveText('$0,83'); // 0,825 yukari; ₺ kurali $0,90
+  });
+
+  test('HN5 ★ KONTROL tl kipi: ayni yazimlar ₺ kuraliyla (1 hane yukari)', async ({ page }) => {
+    await page.goto('/dev/grid-test');
+    await elleYaz(page, 4, '_matBirim', '12,31');
+    await elleYaz(page, 4, '_malzKar', '10');
+    await expect(hucre(page, 4, '_matBirim')).toHaveText('₺13,60');
+    await elleYaz(page, 4, 'col2', '10');
+    await expect(hucre(page, 4, '_matToplam')).toHaveText('₺136,00');
+  });
+});
+
+// Aday menusu secimin YAZACAGI birimde konusur (eslesme balonu ikizi, F6b).
+test.describe('F6b kardes — aday menusu etiketi', () => {
+  test('AE1 ★★ karisik: DOLAR MARKA 1" adaylari $9,25 / $11,13 (TL degil)', async ({ page }) => {
+    await page.goto('/dev/grid-test?para=karisik');
+    await sec(page, 6, '_marka', 'DOLAR MARKA');
+    await expect(page.getByText('$9,25', { exact: true })).toBeVisible();
+    await expect(page.getByText('$11,13', { exact: true })).toBeVisible();
+    await expect(page.getByText('370.0 TL', { exact: true })).toHaveCount(0);
+  });
+
+  test('AE2 ★ KONTROL tl kipi: ayni adaylar TL etiketiyle', async ({ page }) => {
+    await page.goto('/dev/grid-test');
+    await sec(page, 6, '_marka', 'DOLAR MARKA');
+    await expect(page.getByText('370.0 TL', { exact: true })).toBeVisible();
+  });
+});

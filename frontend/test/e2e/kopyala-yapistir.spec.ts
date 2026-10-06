@@ -342,6 +342,82 @@ test('KP15 ★ Dovizli metin teklife YAPISTIRILAMAZ (sessiz ~34 kat hata kapisi)
   await expect(hedef).toHaveText(/^\s*$/);            // hucre DOKUNULMADI
 });
 
+test('KP15k ★★ KARISIK kipte dovizli metin fiyata YAPISIR ve birimi secer (F6b; elle "$12" ikizi)', async ({ page }) => {
+  // KP15'in gerekcesi ("teklif TL tabanli") karisik kipte gecersiz: fiyat tarafin
+  // KENDI birimindedir. Karisik hucreden kopyalama zaten "$1.500,00" uretir —
+  // reddedilseydi karisik teklifte kopyala-yapistir calismazdi.
+  await page.goto('/dev/grid-test?para=karisik');
+  const hedef = page.locator('[row-index="2"] [col-id="_matBirim"]');
+  await expect(page.locator('[row-index="2"] [col-id="col1"]')).toHaveText(/6'' Siyah Boru/, { timeout: 15_000 });
+  await hedef.click();
+  await expect(hedef).toHaveClass(/ag-cell-focus/);
+  await page.evaluate(() => navigator.clipboard.writeText('$1.500,00'));
+  await page.keyboard.press('Control+v');
+  await expect(hedef).toHaveText('$1.500,00');
+  await expect(page.locator('[row-index="2"] [col-id="_matToplam"]')).toHaveText('$429.000,00'); // × 286, 2 hane
+  await expect(page.getByText(/Dövizli tutar yapıştırılamaz/)).toHaveCount(0);
+});
+
+// ── F6b inceleme: karisik yapistirma / yazim kenarlari ──
+async function karisikAc(page: Page, ek = '') {
+  await page.goto(`/dev/grid-test?para=karisik${ek}`);
+  await expect(page.locator('[row-index="2"] [col-id="col1"]')).toHaveText(/6'' Siyah Boru/, { timeout: 15_000 });
+}
+async function yapistir(page: Page, satir: number, kolon: string, metin: string) {
+  const hedef = page.locator(`[row-index="${satir}"] [col-id="${kolon}"]`);
+  await hedef.click();
+  await expect(hedef).toHaveClass(/ag-cell-focus/);
+  await page.evaluate((m) => navigator.clipboard.writeText(m), metin);
+  await page.keyboard.press('Control+v');
+}
+async function yaz(page: Page, satir: number, kolon: string, metin: string) {
+  await page.locator(`[row-index="${satir}"] [col-id="${kolon}"]`).dblclick();
+  const girdi = page.locator('.ag-cell-inline-editing input');
+  await expect(girdi).toBeVisible();
+  await girdi.fill(metin);
+  await page.keyboard.press('Enter');
+}
+
+test('KP15l ★ KARISIK: iscilik fiyatina "€7,50" yapisir — birim €, toplam 2 hane', async ({ page }) => {
+  await karisikAc(page);
+  await yapistir(page, 2, '_labBirim', '€7,50');
+  await expect(page.locator('[row-index="2"] [col-id="_labBirim"]')).toHaveText('€7,50');
+  await expect(page.locator('[row-index="2"] [col-id="_labToplam"]')).toHaveText('€2.145,00'); // 286 × 7,50
+});
+
+test('KP15o ★★ KARISIK: COK HUCRELI blok — her hucre KENDI isaretinin birimini alir (olay eszamansiz)', async ({ page }) => {
+  // AG Grid degisiklik olayini eszamansiz atar: tek yuvali kanal son hucreyle ezilirdi
+  await karisikAc(page);
+  await yapistir(page, 2, '_matBirim', '$10\n€20');
+  await expect(page.locator('[row-index="2"] [col-id="_matBirim"]')).toHaveText('$10,00');
+  await expect(page.locator('[row-index="3"] [col-id="_matBirim"]')).toHaveText('€20,00');
+  await expect(page.locator('[row-index="3"] [col-id="_matToplam"]')).toHaveText('€5.360,00'); // 268 × 20
+});
+
+test('KP15m ★★ KARISIK: AYNI sayinin uzerine "$12" yapistirmak / yazmak birimi DEGISTIRIR (olay yoktu)', async ({ page }) => {
+  await karisikAc(page);
+  await yaz(page, 2, '_matBirim', '12');
+  await expect(page.locator('[row-index="2"] [col-id="_matBirim"]')).toHaveText('₺12,00');
+  await yapistir(page, 2, '_matBirim', '$12');
+  await expect(page.locator('[row-index="2"] [col-id="_matBirim"]')).toHaveText('$12,00');
+  await expect(page.locator('[row-index="2"] [col-id="_matToplam"]')).toHaveText('$3.432,00'); // 286 × 12
+  // Yazim ikizi: ₺12 hucresine "$12" yazilir
+  await yaz(page, 3, '_matBirim', '12');
+  await expect(page.locator('[row-index="3"] [col-id="_matBirim"]')).toHaveText('₺12,00');
+  await yaz(page, 3, '_matBirim', '$12');
+  await expect(page.locator('[row-index="3"] [col-id="_matBirim"]')).toHaveText('$12,00');
+});
+
+test('KP15n ★★ KARISIK ama ekran USD gorunumune CEVRILMIS (yalniz-₺): "$" yapistirma ve yazma REDDEDILIR (TL kurali)', async ({ page }) => {
+  // Hucre "$12,50" gosterir ama degeri ₺500'dur — oradan kopyalanan "$" gercek USD olmamali
+  await karisikAc(page, '&gorunumUSD=1');
+  await yapistir(page, 2, '_matBirim', '$12,50');
+  await expect(page.getByText(/Dövizli tutar yapıştırılamaz/).first()).toBeVisible();
+  await expect(page.locator('[row-index="2"] [col-id="_matBirim"]')).toHaveText(/^\s*$/);
+  await yaz(page, 3, '_matBirim', '$13');
+  await expect(page.locator('[row-index="3"] [col-id="_matBirim"]')).toHaveText(/^\s*$/);
+});
+
 test('KP16 ★ Marka kolonu panoya AD yazar, UUID DEGIL', async ({ page }) => {
   // Kolon degeri `brandId` (36 karakterlik UUID) tutar; ekranda adi yalniz
   // `cellRenderer` cizer ve `useFormatter` renderer'i CALISTIRAMAZ. Bicimlendirici

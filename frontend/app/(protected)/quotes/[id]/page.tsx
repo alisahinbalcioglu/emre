@@ -26,7 +26,9 @@ import { ExcelGrid } from '@/ozellik/tablo/excel-grid/ExcelGrid';
 import { SheetTabs } from '@/ozellik/tablo/excel-grid/SheetTabs';
 import type { ExcelGridData } from '@/ozellik/tablo/excel-grid/types';
 import { useCurrency, paraSimgesi } from '@/ozellik/fiyat/use-currency';
-import { karisikKipMi } from '@/ozellik/fiyat/taraf-para-birimi';
+import { karisikKipMi, digerSayfalardaDovizVar, dovizliTarafVarMi, type TlKurlari } from '@/ozellik/fiyat/taraf-para-birimi';
+import { tumuGorunumu, gorunumSecimi } from '@/ozellik/fiyat/tumu-gorunum';
+import { ParaGorunumAnahtari } from '@/ozellik/fiyat/ParaGorunumAnahtari';
 import { useCapabilities } from '@/ortak/contexts/CapabilitiesContext';
 import { adDisiplinTahmini } from '@/ozellik/tablo/disiplin';
 import type { Currency, LaborFirm } from '@/ortak/types/quotes';
@@ -267,6 +269,27 @@ export default function QuoteDetailPage() {
     [gorunenSayfalar],
   );
   const activeSheet = sheets[activeSheetIndex] ?? sheets[0];
+  // F6a IKIZI (quotes/new): baska sayfada $/€ varsa bu sayfa da birim basina — yalniz
+  // karisik teklifte ve hafizali (inceleme L6: her render'da tum sayfalari tariyordu)
+  const digerSayfaDovizDetay = useMemo(
+    () => (karisikKipMi(sheets)
+      ? digerSayfalardaDovizVar(sheets.map((s: any, i: number) => ({ index: i, rowData: s.rowData })), activeSheetIndex)
+      : false),
+    [sheets, activeSheetIndex],
+  );
+  // F6c IKIZI (quotes/new, karar K2): dovizli karisik teklif Karisik ACILIR (kayitli
+  // goruntuleme birimi USD olsa da); tek birim secimi "Tumu X" (yalniz gorunum).
+  const [karisikGorunumSecili, setKarisikGorunumSecili] = useState(true);
+  const karisikKipDetay = useMemo(() => karisikKipMi(sheets), [sheets]);
+  const dovizliTeklif = useMemo(() => karisikKipDetay && dovizliTarafVarMi(sheets), [karisikKipDetay, sheets]);
+  const tlKurlari: TlKurlari = useMemo(
+    () => (ratesLoaded ? { USD: exchangeRates.TRY, EUR: exchangeRates.TRY / exchangeRates.EUR } : {}),
+    [ratesLoaded, exchangeRates],
+  );
+  const tumuGorunum = useMemo(
+    () => tumuGorunumu(karisikKipDetay, dovizliTeklif, karisikGorunumSecili, currency, ratesLoaded, tlKurlari),
+    [karisikKipDetay, dovizliTeklif, karisikGorunumSecili, currency, ratesLoaded, tlKurlari],
+  );
 
   const gridData: ExcelGridData | null = useMemo(() => {
     if (!activeSheet) return null;
@@ -541,26 +564,19 @@ export default function QuoteDetailPage() {
               {ceviriDili === 'tr' ? 'İngilizceye Çevir' : 'Türkçeye Dön'}
             </Button>
           )}
-          {/* KH9: TL/USD/EUR — Duzenle'dekiyle ayni bilesen deseni */}
-          <div className="flex rounded-lg border bg-white p-0.5">
-            {(['TRY', 'USD', 'EUR'] as Currency[]).map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => birimSec(c)}
-                className={cn(
-                  'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                  currency === c
-                    ? 'bg-blue-600 text-white shadow-sm' /* v1 spec .mpx-para .sec: secili para birimi MAVI dolgulu */
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-                disabled={!ratesLoaded && c !== 'TRY'}
-              >
-                {c === 'TRY' ? 'TL' : c}
-              </button>
-            ))}
-          </div>
-          {currency !== 'TRY' && ratesLoaded && (
+          {/* KH9: TL/USD/EUR — Duzenle'dekiyle AYNI bilesen (F6c: dovizli teklifte + Karisik) */}
+          <ParaGorunumAnahtari
+            dovizli={dovizliTeklif}
+            karisikSecili={karisikGorunumSecili}
+            birim={currency}
+            kurVar={ratesLoaded}
+            onSec={(s) => {
+              const y = gorunumSecimi(s, dovizliTeklif, karisikGorunumSecili);
+              setKarisikGorunumSecili(y.karisikSecili);
+              if (y.birim) birimSec(y.birim); // KH8: tek birim secimi teklifle kaydedilir
+            }}
+          />
+          {currency !== 'TRY' && ratesLoaded && !(dovizliTeklif && karisikGorunumSecili) && (
             <span className="text-xs text-muted-foreground">
               1 {currency} = ₺{(currency === 'USD' ? exchangeRates.TRY : exchangeRates.TRY / exchangeRates.EUR).toFixed(2)} · TCMB {new Date().toLocaleDateString('tr-TR')}
             </span>
@@ -718,7 +734,9 @@ export default function QuoteDetailPage() {
               conversionRate={conversionRate}
               // COKLU PARA BIRIMI F4: kip KAYITTAN turetilir — karisik teklif
               // dovizli tarafi kendi biriminde, toplamlari birim basina gosterir.
-              paraBirimiKipi={karisikKipMi(sheets) ? 'karisik' : 'tl'}
+              paraBirimiKipi={karisikKipDetay ? 'karisik' : 'tl'}
+              digerSayfalardaDoviz={digerSayfaDovizDetay}
+              tumuGorunum={tumuGorunum}
               onBrandChange={SALT_OKUNUR_MARKA}
               // D9 + Y1 (30.09): BU SAYFA GORUNTULEME SAYFASIDIR. Marka ve
               // Isc. Firma hucreleri gercek acilir listeydi ve secim satir

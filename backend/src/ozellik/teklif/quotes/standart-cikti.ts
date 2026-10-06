@@ -41,7 +41,7 @@ import {
 } from './cikti-stil';
 import {
   BIRIM_SIRASI, BIRIM_SUTUNLARI, BIRIM_SUTUN_GENISLIGI, BirimKovasi, BirimToplami, BirimliSayfa, FittingParcasi, Kovalar, ParaBirimi,
-  SEMBOL, birimSutunBasliklari, birimToplamSatirlariYaz, fittingParcalari, karisikKipMi, karisikOzetSayfasiYaz,
+  SEMBOL, birimSutunBasliklari, birimToplamSatirlariYaz, fittingParcalari, dovizliTarafVarMi, karisikOzetSayfasiYaz,
   karisikToplamHucresi, kovaListesi, kovayaEkle, paraHanesi, tarafPB,
 } from './cikti-karisik';
 
@@ -212,7 +212,7 @@ export interface SayfaYazOpsiyon {
   /** Baslik blogundaki tarih (verilmezse bugun). */
   tarih?: Date;
   /**
-   * F5 KARISIK KIP (`karisikKipMi`): taraflar kendi biriminde, `birim` YOK
+   * F5 KARISIK KIP (`dovizliTarafVarMi`, F6a): taraflar kendi biriminde, `birim` YOK
    * SAYILIR (cevrim yapilmaz); gizli J/K birim sutunlari + birim basina SAYFA
    * TOPLAMI. Format yolu da verir (İCMAL, 05.10): orada SAYFA TOPLAMI yok,
    * İCMAL sayfa × birim satirlariyla J/K'ya SUMIF baglanir (`birimKovalari`).
@@ -731,7 +731,7 @@ export async function standartCiktiUret(g: StandartCiktiGirdi): Promise<Standart
 
   // F5: karisik teklifte taraflar kendi biriminde — goruntuleme birimi sayfa
   // yaziminda YOK SAYILIR (cevrim yok), ozet sekmesi "Fiyatlar USD" notunu yazmaz
-  const karisik = karisikKipMi(g.sheetsArr);
+  const karisik = dovizliTarafVarMi(g.sheetsArr); // F6a: yalniz $/€ varken
   const birim = g.birim ?? null;
   const kod = birim?.kod ?? 'TRY';
   const tarih = g.tarih ?? new Date();

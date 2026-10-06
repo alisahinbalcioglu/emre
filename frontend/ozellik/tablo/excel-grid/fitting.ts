@@ -108,6 +108,20 @@ export function yapistirmaHedefiMi(editable: unknown): boolean {
   return typeof editable === 'function' && (editable as any).fittingTemel === true;
 }
 
+/**
+ * COKLU PARA BIRIMI F6c (karar K2): "Tumu X" gorunumunde para hucresi kilidi.
+ * Kilitliyken hucre DUZENLENMEZ ve yapistirma hedefi DEGILDIR — `fittingTemel`
+ * gorunume gore okunur (planlayici onu her yapistirmada okur; `setDataValue`
+ * `editable`a bakmadigi icin yapistirma ancak boyle kapanir). Acikken alttaki
+ * kural (duz `true` / fitting kilidi) AYNEN.
+ */
+export function gorunumKilidi(onceki: unknown, kilitli: () => boolean): KilitliEditable {
+  const kilit = ((p: any) => !kilitli()
+    && (typeof onceki === 'function' ? !!(onceki as any)(p) : onceki === true)) as KilitliEditable;
+  Object.defineProperty(kilit, 'fittingTemel', { get: () => !kilitli() && yapistirmaHedefiMi(onceki), enumerable: true });
+  return kilit;
+}
+
 // ── GECIS CIKTISI (inceleme M7): para YAZAN kisim saf ve testli ─────────────
 export interface FittingHucre { rowIdx: number; alan: string; deger: string }
 
