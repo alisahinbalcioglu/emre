@@ -13,12 +13,13 @@
  * dusurulse ya da hic olmasa bile elle verilmis bir `tier` kapiyi acik
  * tutuyordu — seviye satin almayla degil elle dagitiliyordu.
  *
- * K1-K3 — KISI EKSENI → FIRMA EKSENI. Kutuphane 28.08'de firmaya gecti ama
+ * K1-K2 — KISI EKSENI → FIRMA EKSENI. Kutuphane 28.08'de firmaya gecti ama
  * uc sorgu kisiye bakmaya devam ediyordu: isçilik sahipligi
  * (`labor-matching.service`), alternatif havuzu (`matching.service`) ve PDF
  * analizinin kutuphane sorgusu (`ai.service`). Sonuc SESSIZDI: ayni firmanin
  * IKINCI uyesi 403 aliyor ya da bos sonuc goruyordu. Bu yuzden F1b (davet)
- * F1a'dan ONCE canliya cikamaz.
+ * F1a'dan ONCE canliya cikamaz. (K3 — PDF analizi — 06.10'da kalkti: uc 410,
+ * servis yolu silindi; kapisi `test:ai-analiz-kapali`.)
  *
  * ── NEDEN SAHTE PRISMA `where`i GERCEKTEN UYGULAMIYOR ───────────────────
  * Burada olculen sey "sorgu dogru satirlari buluyor mu" degil, "sorgu DOGRU
@@ -42,7 +43,6 @@ import {
 } from '../src/altyapi/auth/seviye';
 import { LaborController } from '../src/ozellik/kutuphane/labor/labor.controller';
 import { AiController } from '../src/ozellik/giris/ai/ai.controller';
-import { AiService } from '../src/ozellik/giris/ai/ai.service';
 import { AuthService } from '../src/altyapi/auth/auth.service';
 import { OturumServisi } from '../src/altyapi/auth/oturum.servisi';
 import { AdminService } from '../src/ozellik/kutuphane/admin/admin.service';
@@ -532,10 +532,10 @@ function yGorunenAd() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  K1-K3 · KISI EKSENI → FIRMA EKSENI
+//  K1-K2 · KISI EKSENI → FIRMA EKSENI (K3 06.10: uc kapali, test:ai-analiz-kapali)
 // ═══════════════════════════════════════════════════════════════════════════
 async function kFirmaEkseni() {
-  console.log('\n── K1-K3 · Kisi ekseni → firma ekseni ────────────────────');
+  console.log('\n── K1-K2 · Kisi ekseni → firma ekseni ────────────────────');
 
   // ── K1: isçilik sahipligi ──────────────────────────────────────────────
   const k1Iz = { bulk: 0, hafiza: [] as any[] };
@@ -616,32 +616,10 @@ async function kFirmaEkseni() {
     k2Iz.where?.firma?.id?.not === 'firma-A' && k2Iz.where?.firmaId === undefined,
     JSON.stringify(k2Iz.where));
 
-  // ── K3: PDF analizinin kutuphane sorgusu ───────────────────────────────
-  const k3Iz = { where: null as any, kutuphaneCagri: 0 };
-  const k3Prisma: any = {
-    material: { findMany: async () => [] },
-    userLibrary: {
-      findMany: async (args: any) => { k3Iz.kutuphaneCagri++; k3Iz.where = args?.where; return []; },
-    },
-    brand: { findMany: async () => [] },
-  };
-  const k3 = new AiService(k3Prisma);
-  await (k3 as any).matchWithDatabase({ userId: 'u1', firmaId: 'F1' }, [
-    { materialName: 'BORU', quantity: 1, unit: 'mt' },
-  ]);
-  check('K3a-FIXTURE kutuphane sorgusu GERCEKTEN atildi',
-    k3Iz.kutuphaneCagri === 1, `cagri=${k3Iz.kutuphaneCagri}`);
-  check('K3a ⭐ kutuphane where = { firmaId: "F1" }, `userId` YOK',
-    k3Iz.where?.firmaId === 'F1' && k3Iz.where?.userId === undefined,
-    JSON.stringify(k3Iz.where));
-
-  const k3b: any = await Promise.resolve()
-    .then(() => new AiController({} as any, {} as any, {} as any, {} as any)
-      .analyze({ id: 'u3', firmaId: null }, { buffer: Buffer.from(''), mimetype: 'application/pdf' } as any))
-    .then(() => null, (e: unknown) => e);
-  check('K3b ⭐ BAGLANTI: /ai/analyze firmasiz hesabi 403 ile durduruyor (kimlikCoz)',
-    k3b !== null && /Forbidden/i.test(k3b?.constructor?.name ?? ''),
-    `${k3b?.constructor?.name}: ${k3b?.message}`);
+  // ── K3: PDF analizi (06.10.2026'dan beri KAPALI) ───────────────────────
+  // K3a (kutuphane sorgusu firmaya gore) ve K3b (firmasiz hesap 403) PDF
+  // analizinin servis yolunu olcuyordu; `POST /ai/analyze` 410 donuyor ve o
+  // yol (`matchWithDatabase` vb.) silindi. Kapanisin kapisi: `test:ai-analiz-kapali`.
 
   // ── Tek kaynak kapisi: firmasiz cagrida abonelik sorgusu atilmamali ────
   const s1Iz = { cagri: 0 };
@@ -672,7 +650,7 @@ async function main() {
   await kFirmaEkseni();
 
   console.log(`\n${'='.repeat(64)}`);
-  console.log(`FAZ 7 YETKI (2.12 + K1-K3): ${passed} PASS, ${failed} FAIL`);
+  console.log(`FAZ 7 YETKI (2.12 + K1-K2): ${passed} PASS, ${failed} FAIL`);
   console.log('='.repeat(64));
   if (failures.length > 0) {
     console.log('\nFAILURES:');

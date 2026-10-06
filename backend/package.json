@@ -165,6 +165,7 @@
     "test:iyzico-canli-gecis": "ts-node test/iyzico-canli-gecis-test.ts",
     "test:abonelik-erisim": "ts-node test/abonelik-erisim-test.ts",
     "test:faz7-yetki": "ts-node test/faz7-yetki-test.ts",
+    "test:ai-analiz-kapali": "ts-node test/ai-analiz-kapali-test.ts",
     "test:faz7-totp": "ts-node test/faz7-totp-test.ts",
     "test:faz7-oidc": "ts-node test/faz7-oidc-test.ts",
     "test:faz7-ekip": "ts-node test/faz7-ekip-test.ts",

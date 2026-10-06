@@ -1,8 +1,5 @@
-import { Body, Controller, Get, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { Body, Controller, Get, GoneException, Logger, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { memoryStorage } from 'multer';
-import { AiService } from './ai.service';
 import { CeviriService } from './ceviri.service';
 import { CeviriDuzeltmeDto, CeviriIstegiDto, CeviriOnizlemeSorgusuDto } from './dto/ceviri.dto';
 import { JwtAuthGuard } from '../../../altyapi/auth/guards/jwt-auth.guard';
@@ -16,10 +13,15 @@ import { ErisimServisi, Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { CeviriKotaServisi } from '../../odeme/abonelik/ceviri-kota.servisi';
 import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
 
+/** `POST /ai/analyze` kapalıdır (06.10.2026) — kullanıcıya giden metin. */
+export const AI_ANALIZ_KAPALI_MESAJI =
+  'PDF analizi kullanımdan kaldırıldı. Teklif için malzeme listesini Excel olarak yükleyin.';
+
 /**
  * ── ERİŞİM SAĞLIĞI (10.09.2026) ────────────────────────────────────────
- * `/ai/analyze` her çağrıda Anthropic/OpenRouter'a gerçek para harcıyor ve
- * ödemesi durmuş bir firmaya kapalı DEĞİLDİ. `ErisimGuard` eklendi.
+ * `/ai/analyze` her çağrıda Anthropic/OpenRouter'a gerçek para harcıyordu ve
+ * ödemesi durmuş bir firmaya kapalı DEĞİLDİ; `ErisimGuard` eklenmişti. 06.10'dan
+ * beri uç kapalı (410, aşağıda).
  *
  * ── ÇEVİRİ KAPISI + KOTA (Faz 6.8 + 6.2, 14.09.2026) ───────────────────
  * 10.09'da `translate` bilerek yeteneksiz bırakılmıştı; 13.09 ölçümü ucun
@@ -43,31 +45,39 @@ import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decora
 @Controller('ai')
 @UseGuards(JwtAuthGuard, TierGuard, ErisimGuard)
 export class AiController {
+  private readonly logger = new Logger(AiController.name);
+
   constructor(
-    private aiService: AiService,
     private ceviriService: CeviriService,
     private kota: CeviriKotaServisi,
     private erisim: ErisimServisi,
   ) {}
 
+  /**
+   * ── KAPALI UÇ (06.10.2026) ────────────────────────────────────────────
+   * PDF analizi ön yüzden 27.08'de (K6) kaldırılmıştı; uç ölü kaldı. Ölçüldü:
+   * ön yüzde ve paket metinlerinde çağıranı yok; AiUsageLog'a hiç yazmıyordu
+   * (ücretli AI çağrısının maliyeti kayda geçmiyor, kullanım sayılamıyordu);
+   * fiyatı para birimsiz okuyordu (EUR özel fiyat TL sayılıyordu). KARAR
+   * (koordinatör, Emre'nin ön onayıyla — Emre dönünce bilgilendirilecek ürün
+   * kararı): 410, servis kodu silindi. Biri hâlâ çağırıyorsa görünsün diye
+   * kimliksiz tek WARN. Yetki meta verisi KORUNDU: kimliksiz/yetkisiz istek
+   * eskisi gibi 401/403 alır, WARN'ı yalnız yetkili üye tetikler, başka
+   * kapıların fikstürü bozulmaz. Dosya gövdesi ayrıştırılmaz.
+   * Geri gelirse yeni tasarım ister. Kapı: `test:ai-analiz-kapali`.
+   * ⚠ Bu metodun DEKORATÖRLERİ başka kapıların ölçüt fikstürüdür — uç
+   * tamamen silinirse onlar da güncellenmeli: `test:faz7-yetki` Y1-Y5 + Y8
+   * dosya listesi · `test:guvenlik` O2-O4 · `test:erisim` W1 ·
+   * `test:geri-donus` E3b · `test:ekip-izinleri` K3/B2 · `test:uc-kapisi`
+   * (`/ai` öneki yetenek ister).
+   */
   @Post('analyze')
-  @RequireTier('pro') // PDF analiz → minimum Pro paketi
-  @GerekliYetenek(Yetenek.AI_ANALIZ) // + aboneliği yürüyor mu?
-  // ⚠ 23.09.2026 (guvenlik incelemesi): yanit firmanin KUTUPHANESINDEN iskonto
-  //   ve ozel fiyat tasir (`ai.service.ts` `matchWithDatabase`). Izin olmasa
-  //   Kutuphanem'i kapali uye, havuzdan aldigi adlari bir PDF'e yazip firmanin
-  //   fiyatlarini okuyabilirdi.
+  @RequireTier('pro')
+  @GerekliYetenek(Yetenek.AI_ANALIZ)
   @UyeIzniGerekli('kutuphane')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      limits: { fileSize: 10 * 1024 * 1024 },
-    }),
-  )
-  analyze(@CurrentUser() user: any, @UploadedFile() file: Express.Multer.File) {
-    // ⚠ `kimlikCoz` (K3, 17.09): PDF analizi firmanin kutuphanesiyle
-    // eslestirir; firmasiz hesap 403 alir (sessiz bos sonuc yerine).
-    return this.aiService.analyze(kimlikCoz(user), file.buffer, file.mimetype);
+  analyze(): never {
+    this.logger.warn('Kapali uc cagrildi: POST /ai/analyze (410)');
+    throw new GoneException(AI_ANALIZ_KAPALI_MESAJI);
   }
 
   /**

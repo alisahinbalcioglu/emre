@@ -949,7 +949,7 @@ async function wBlogu(): Promise<void> {
 
   {
     const alinan: unknown[][] = [];
-    const ctrl = new AiController({} as any, { teklifiCevir: async (...a: unknown[]) => { alinan.push(a); return {}; } } as any, {} as any, {} as any);
+    const ctrl = new AiController({ teklifiCevir: async (...a: unknown[]) => { alinan.push(a); return {}; } } as any, {} as any, {} as any);
     const govde = Object.assign(new CeviriIstegiDto(), { quoteId: Q, satirSayisi: 1 });
     // 23.09: oturum FIRMA SAHIBI → kapsam 'firma' (K1 ile birebir; `kimlikCoz`a donus kirmizi).
     await ctrl.translate({ id: 'u1', firmaId: 'f1', firmaRol: 'sahip' }, govde);
@@ -966,14 +966,13 @@ async function wBlogu(): Promise<void> {
     const ozet = { kalanSatir: 3000 };
     const ctrl = new AiController(
       {} as any,
-      {} as any,
       { durum: async () => ozet } as any,
       { yetenekAcikMi: async (...a: unknown[]) => { sorulan.push(a); return false; } } as any,
     );
     const r: any = await ctrl.translateKota({ id: 'u1', firmaId: 'f1' });
     check('W46 profil kotası çevirinin KAPALI olduğunu taşır (kısıtlı firma)', r?.ceviriAcik === false && r?.kalanSatir === 3000, JSON.stringify(r));
     check('W47 erişim CEVIRI yeteneğiyle ve firmanın kendisiyle sorulur', JSON.stringify(sorulan) === JSON.stringify([['f1', Yetenek.CEVIRI]]), JSON.stringify(sorulan));
-    const aboneliksiz = new AiController({} as any, {} as any, { durum: async () => null } as any, { yetenekAcikMi: async () => { throw new Error('sorulmamalı'); } } as any);
+    const aboneliksiz = new AiController({} as any, { durum: async () => null } as any, { yetenekAcikMi: async () => { throw new Error('sorulmamalı'); } } as any);
     check('W48 aboneliği olmayan firmada profil kotası null', (await aboneliksiz.translateKota({ id: 'u1', firmaId: 'f1' })) === null);
   }
 

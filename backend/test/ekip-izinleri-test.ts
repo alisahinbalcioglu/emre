@@ -297,7 +297,9 @@ async function bolumK(): Promise<void> {
     ...['bulkMatch', 'remember', 'listAliases', 'saveAlias', 'deleteAlias'].map((m) => ({ cls: MatchingController, m })),
     ...['bulkMatch', 'remember', 'reindex'].map((m) => ({ cls: LaborMatchingController, m })),
     // 23.09 guvenlik incelemesi (HIGH): PDF analizi firmanin kutuphanesinden
-    // iskonto + ozel fiyat dondurur (`ai.service.ts` `matchWithDatabase`).
+    // iskonto + ozel fiyat donduruyordu. 06.10'dan beri uc 410 doner (servis
+    // yolu silindi, `test:ai-analiz-kapali`); kapilar yerinde kalir: kapali
+    // ucun uyari satirini yalniz yetkili uye tetikleyebilir.
     { cls: AiController, m: 'analyze' },
   ];
   // ⚠ Sayilar OLCULDU (23.09): kutuphane 15 · iscilik firmalari 17 · eslestirme 8 · AI 1.
@@ -368,7 +370,7 @@ function bolumB(): void {
       eksik.length === 0 && guardAdlari(cls).includes('ErisimGuard'), js({ eksik, guardlar: guardAdlari(cls) }));
   }
 
-  check("B2 AiController.analyze: 'kutuphane' + sinifta ErisimGuard (PDF analizi kutuphane fiyati dondurur)",
+  check("B2 AiController.analyze: 'kutuphane' + sinifta ErisimGuard (kapali uc 410; kapilar yerinde, uyariyi yalniz yetkili uye tetikler)",
     Reflect.getMetadata(UYE_IZNI_KEY, (AiController as any).prototype.analyze) === 'kutuphane' &&
       guardAdlari(AiController).includes('ErisimGuard'));
   // Kisisel fiyat listesi (/brands/price-lists/:id/materials) izne SERVISTE

@@ -813,6 +813,13 @@ const SUITES: Suite[] = [
   //    platform yöneticisi kendi küresel kataloğunu göremiyordu (R1-O4).
   //    Mutant tablosu F1a raporunda. KIRMIZIYA DÖNERSE REGRESYON.
   { ad: 'Faz 7 yetki: seviye yalnız abonelikten + kişi eksenli tamirler (Y/K)', script: 'test:faz7-yetki', zincir: 'Z0' },
+  // ── 06.10.2026 — AI ANALİZ UCU KAPALI. `POST /ai/analyze` (PDF analizi)
+  //    ön yüzden 27.08'de kalkmıştı, uç ölü kaldı: çağıranı yok, ücretli AI
+  //    çağrısını AiUsageLog'a yazmıyordu, fiyatı para birimsiz okuyordu. Uç
+  //    410 + Türkçe mesaj, servis kodu silindi, kimliksiz tek WARN; yetki
+  //    meta verisi korundu (yetkisiz çağıran ucu öğrenmez), dosya gövdesi
+  //    ayrıştırılmaz. GERÇEK denetleyici HTTP üzerinden. DB/AĞ GEREKTİRMEZ.
+  { ad: 'AI analiz ucu kapalı: 410 · servis yok · yetki meta verisi korundu · ön yüzde çağıran yok (H/Y/S)', script: 'test:ai-analiz-kapali', zincir: 'Z0' },
   // ── 22.09.2026 — 2.13: ABONELİK SAĞLIĞI TEK KAYNAKTAN. DB/AĞ GEREKTİRMEZ.
   //    Ölçülen kusur: `TierGuard`ın okuduğu seviye (`seviye.ts`) ve `/auth/me`
   //    yetenekleri (`capabilities.helper.ts`) aboneliğin `durum`/`erisimSonu`

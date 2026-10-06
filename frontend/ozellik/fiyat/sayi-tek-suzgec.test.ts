@@ -146,7 +146,6 @@ describe('SAYI TEK SÜZGEÇ — kaynak taraması', () => {
       ["const v = parseFloat(String((node.data as Record<string, unknown>)[alan] ?? '').replace(',', '.'));", ['parseFloat']], // fill-down.ts:102
       ["const v = parseFloat(String(row[alan] ?? '').replace(',', '.'));", ['parseFloat']],                         // restore-rematch.ts:199
       [": parseFloat(String(unitPriceRaw ?? '').replace(',', '.'));", ['parseFloat']],                               // labor-firms.service.ts:674
-      ['const price = parseFloat(priceStr);', ['parseFloat']],                                                        // ai.service.ts:858
       ['const n = parseFloat(s);', ['parseFloat']],                                                                   // standart-cikti.ts:77
       ["const qtyNum = roleFields.quantityField ? parseFloat(String(row[roleFields.quantityField] ?? '').replace(',', '.')) : NaN;", ['parseFloat']], // excel-grid.service.ts:535
       ['const discount = discountRate ? Number(discountRate) : undefined;', TUM],                                   // library/page.tsx:292

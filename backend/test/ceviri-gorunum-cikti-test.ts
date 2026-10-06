@@ -448,7 +448,7 @@ async function gBlogu(): Promise<void> {
     const tr = AiController.prototype.translateGoruntule;
     const guardlar: unknown[] = Reflect.getMetadata(GUARDS_METADATA, tr) ?? [];
     const alinan: unknown[][] = [];
-    const ctrl = new AiController({} as any, { teklifGorunumu: async (...a: unknown[]) => { alinan.push(a); return {}; } } as any, {} as any, {} as any);
+    const ctrl = new AiController({ teklifGorunumu: async (...a: unknown[]) => { alinan.push(a); return {}; } } as any, {} as any, {} as any);
     // 23.09: oturum FIRMA SAHIBI → kapsam 'firma' (K1 ile birebir). Uc `kimlikCoz`a
     // donerse servise giden kimlikte `teklifKapsami` OLMAZ ve bu assert kirmiziya doner.
     await ctrl.translateGoruntule({ id: 'u1', firmaId: 'f1', firmaRol: 'sahip' }, Object.assign(Object.create(null), { quoteId: Q, fazla: 'x' }));
