@@ -4,7 +4,7 @@
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
 Kod dosyasi: 975
-Toplam satir: 268858
+Toplam satir: 268861
 Uc nokta: 254
 test:* scripti: 186
 
@@ -777,7 +777,7 @@ test:* scripti: 186
 | `frontend/ozellik/kimlik/hesabim/ProfilSekmesi.tsx` | 103 |
 | `frontend/ozellik/kimlik/hesabim/VerilerSekmesi.tsx` | 155 |
 | `frontend/ozellik/kimlik/hesabim/hesabim-ui.tsx` | 171 |
-| `frontend/ozellik/kimlik/hesabim/hesabim.test.ts` | 574 |
+| `frontend/ozellik/kimlik/hesabim/hesabim.test.ts` | 577 |
 | `frontend/ozellik/kimlik/hesabim/hesabim.ts` | 177 |
 | `frontend/ozellik/kimlik/hesabim/hesap-tipleri.ts` | 64 |
 | `frontend/ozellik/kimlik/kapali-hesap-akisi.test.ts` | 622 |
