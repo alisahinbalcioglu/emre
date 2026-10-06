@@ -242,6 +242,7 @@ const SUITES: Suite[] = [
   //    reddi kalkti): İCMAL sayfa × birim (SUMIF J/K), yerlesikte birim basina toplam
   //    blogu, musteri formatinda satir eklenmez + eksiz etiket karma metin.
   { ad: 'Karışık para birimli teklif formatı (İCMAL)', script: 'test:export-karisik', zincir: 'Z4' },
+  { ad: 'Müşteri formatı İCMAL satır eklemesi (formül kayması)', script: 'test:format-satir-ekleme', zincir: 'Z4' },
   // 05.10.2026: kutuphane doviz neti — on yuz hesaplaNetFiyat/Doviz arka uc ikizleriyle
   //    her girdide ayni; kutuphanenin "Net Fiyat"i satirin biriminde (₺ 1 hane, $/€ 2 hane).
   { ad: 'Net fiyat ikizi (kütüphane döviz neti)', script: 'test:net-fiyat-ikiz', zincir: 'Z2' },

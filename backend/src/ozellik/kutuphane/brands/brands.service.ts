@@ -55,8 +55,8 @@ export class BrandsService {
   // bilinse dahi baskasina (admin dahil) ACILMAZ — NotFound doner ki ucun
   // varligi bile sizmasin (requesterUserId JWT'den gelir, bkz. controller).
   /**
-   * ⚠ 23.09.2026 (guvenlik incelemesi): `kutuphaneIzni` ZORUNLU parametre —
-   * kisisel liste firmanin Kutuphanem verisidir; izni kapatilan uye (or.
+   * ⚠ 23.09.2026 (guvenlik incelemesi): `fiyatIzni` ZORUNLU parametre —
+   * kisisel liste firmanin Firma kutuphanesi verisidir; izni kapatilan uye (or.
    * ayrilacak calisan) onceden bildigi liste kimligiyle fiyatlari okumaya
    * devam edemesin. Opsiyonel olsaydi unutulan bir cagiran izni sessizce
    * atlardi; derleyici her cagirana karar verdirir.
@@ -71,7 +71,7 @@ export class BrandsService {
   async getPriceListMaterials(
     priceListId: string,
     requesterFirmaId: string | undefined,
-    kutuphaneIzni: boolean,
+    fiyatIzni: boolean,
     havuzFiyatiGorunur: boolean,
   ) {
     const pl = await this.prisma.priceList.findUnique({
@@ -85,10 +85,10 @@ export class BrandsService {
     if (pl.ownerUserId && (pl as any).ownerFirmaId !== requesterFirmaId) {
       throw new NotFoundException('Liste bulunamadi');
     }
-    // Ayni firma ama Kutuphanem izni kapali: 403 `UYE_IZNI_YOK` (liste
+    // Ayni firma ama `fiyat` yetkisi kapali: 403 `UYE_IZNI_YOK` (liste
     // kimligini zaten biliyor; varlik sizintisi yok, neden acikca soylenir).
-    if (pl.ownerUserId && !kutuphaneIzni) {
-      throw new ForbiddenException(uyeIzniYokGovdesi('kutuphane'));
+    if (pl.ownerUserId && !fiyatIzni) {
+      throw new ForbiddenException(uyeIzniYokGovdesi('fiyat'));
     }
 
     // ── HAVUZ FIYATI (23.09.2026 — vitrin) ───────────────────────────────

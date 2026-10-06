@@ -69,6 +69,8 @@ const KARAKTERSIZ = [
   'Aramanizla', 'eslesen', 'Ayiklanan', 'Dosyasi', 'ayiklandi', 'Ayiklaniyor', 'Ayikla', 'Orn', 'orn', 'Henuz',
   'Adi', 'Yukaridan', 'firmanizi',
   'kaldirildi', 'basariyla', 'Hizli', 'Baslat', 'Gecersiz', 'yukleyin', 'dosyasi',
+  // 06.10 (iki yetki): "Kütüphanem" → "Firma kütüphanesi" yeniden adlandırması.
+  'kutuphanesi', 'kutuphanesine', 'kutuphanesindeki',
 ];
 const KARA_LISTE = new RegExp(`(?<![\\p{L}\\p{N}])(?:${KARAKTERSIZ.join('|')})(?![\\p{L}\\p{N}])`, 'u');
 
@@ -173,6 +175,9 @@ describe('Ölçütün kendisi — tarayıcı metni koddan ayırıyor, kara liste
       'Hizli Baslat', 'Gecersiz dosya', 'Excel (.xlsx/.xls) dosyasi yukleyin.', 'DWG veya DXF dosyasi yukleyin.',
       // G3-ek3 (21.09): labor-firms/page.tsx (önce "dokunma" dendi, ölçüm düzeltilip düzeltildi)
       'Firma Adi', 'orn. Ahmet Tesisat', 'Henuz firma yok. Yukaridan ilk firmanizi ekleyin.',
+      // 06.10: yeni ad
+      // (her örnekte YALNIZ yeni kelime karaktersiz — başka kara liste kelimesi yok)
+      'Firma kutuphanesi', 'Firma kutuphanesine aktar', 'firma kutuphanesindeki işçilik firmalarınızdan',
     ]) {
       expect(KARA_LISTE.test(eski), eski).toBe(true);
     }
@@ -193,6 +198,8 @@ describe('Ölçütün kendisi — tarayıcı metni koddan ayırıyor, kara liste
       'Hızlı Başlat', 'Geçersiz dosya', 'Excel (.xlsx/.xls) dosyası yükleyin.', 'DWG veya DXF dosyası yükleyin.',
       // G3-ek3 (21.09): labor-firms/page.tsx doğru biçimleri
       'Firma Adı', 'örn. Ahmet Tesisat', 'Henüz firma yok. Yukarıdan ilk firmanızı ekleyin.',
+      // 06.10: yeni ad doğru biçimleri
+      'Firma kütüphanesi', 'Firma kütüphanesine aktar', 'firma kütüphanesindeki işçilik firmalarınızdan',
       // "disiplin" kelimesi kendisi DOGRU Turkce (ozel karakter gerekmez) — kara listeye
       // EKLENMEDI (bkz. KARAKTERSIZ yorumu); burada gecerliligini kanitlar.
       'Paketler disipline göre farklılaşır',
@@ -340,41 +347,41 @@ describe('Düzeltilen metinler yerinde (içerik kilidi)', () => {
 
   it('kabuk: kırıntı, üst menü ve kenar çubuğu aynı ekrandaki başlıklarla aynı yazımda', () => {
     const kirinti = metinler('ortak/kabuk/components/layout/Breadcrumb.tsx');
-    for (const t of ['Hesabım', 'İşçilik', 'İşçilik Firmaları', 'Kütüphanem', 'Yönetim', 'Kullanıcılar', 'AI Ayarları', 'Malzeme Yönetimi']) {
+    for (const t of ['Hesabım', 'İşçilik', 'İşçilik Firmaları', 'Firma kütüphanesi', 'Yönetim', 'Kullanıcılar', 'AI Ayarları', 'Malzeme Yönetimi']) {
       expect(kirinti, t).toContain(t);
     }
     expect(metinler('app/(protected)/layout.tsx')).toEqual(expect.arrayContaining(['Giriş yapıldı', 'Çıkış Yap']));
-    expect(metinler('ortak/kabuk/components/layout/Sidebar.tsx')).toEqual(expect.arrayContaining(['Kütüphanem', 'Kullanıcı']));
+    expect(metinler('ortak/kabuk/components/layout/Sidebar.tsx')).toEqual(expect.arrayContaining(['Firma kütüphanesi', 'Kullanıcı']));
     // ikizler: aynı ekrandaki sayfa başlıkları. 23.09: "Çıkış Yap" Hesabım'ın
     // Güvenlik sekmesine taşındı — üst menüyle AYNI yazım korunuyor (hukuki
     // metin de düğmeyi bu adla anıyor: `"Çıkış Yap" (… Hesabım sayfası)`).
     expect(metinler('app/(protected)/profile/page.tsx')).toEqual(expect.arrayContaining(['Hesabım']));
     expect(metinler('ozellik/kimlik/hesabim/GuvenlikSekmesi.tsx')).toEqual(expect.arrayContaining(['Çıkış Yap']));
-    expect(metinler('app/(protected)/library/page.tsx')).toEqual(expect.arrayContaining(['Kütüphanem', 'Malzeme markaları ve işçilik kalemleri']));
+    expect(metinler('app/(protected)/library/page.tsx')).toEqual(expect.arrayContaining(['Firma kütüphanesi', 'Malzeme markaları ve işçilik kalemleri']));
   });
 
   // G3-ek (21.09): kütüphane / malzeme havuzu ekranları — düzeltilen metinler yerinde
-  it('kütüphanem: mekanik işçilik kartı ve teklif format şablonları etiketi', () => {
+  it('firma kütüphanesi: mekanik işçilik kartı ve teklif format şablonları etiketi', () => {
     expect(metinler('app/(protected)/library/page.tsx')).toEqual(
       expect.arrayContaining(['Mekanik İşçilik', 'Kapak + icmal şablonları']),
     );
   });
 
-  it('malzeme havuzu (mekanik): kaldır / kütüphaneme aktar / boş liste metni', () => {
+  it('malzeme havuzu (mekanik): kaldır / firma kütüphanesine aktar / boş liste metni', () => {
     expect(metinler('app/(protected)/materials/mechanical/page.tsx')).toEqual(
-      expect.arrayContaining(['Kaldır', 'Kütüphaneme Aktar', 'Henüz mekanik marka eklenmemiş.']),
+      expect.arrayContaining(['Kaldır', 'Firma kütüphanesine aktar', 'Henüz mekanik marka eklenmemiş.']),
     );
   });
 
-  it('kütüphanem → mekanik markalar: PDF yükle akışı ve boş arama metni', () => {
+  it('firma kütüphanesi → mekanik markalar: PDF yükle akışı ve boş arama metni', () => {
     expect(metinler('app/(protected)/library/mechanical-brands/page.tsx')).toEqual(
       expect.arrayContaining(['PDF Yükle', 'Ayıklanan Malzemeler', 'Aramanızla eşleşen marka bulunamadı.']),
     );
   });
 
-  it('anasayfa hızlı erişim kartı: kütüphanem açıklaması', () => {
+  it('anasayfa hızlı erişim kartı: firma kütüphanesi açıklaması', () => {
     expect(metinler('ortak/kabuk/components/dashboard/QuickAccess.tsx')).toEqual(
-      expect.arrayContaining(['Kütüphanem', 'Markalar, iskontolar, işçilik']),
+      expect.arrayContaining(['Firma kütüphanesi', 'Markalar, iskontolar, işçilik']),
     );
   });
 
@@ -407,20 +414,20 @@ describe('Düzeltilen metinler yerinde (içerik kilidi)', () => {
       expect.arrayContaining([
         'Henüz elektrik markası eklenmemiş.',
         'Kaldır',
-        'Kütüphaneme Aktar',
+        'Firma kütüphanesine aktar',
         'Elektrik tesisat malzeme markaları ve fiyat listeleri',
       ]),
     );
     // İKİZ: iki havuz ekranı ortak düğmeleri AYNI yazımda basmalı — biri
     // düzeltilip öteki geride kalırsa bu assert kırmızı olur.
     const mek = metinler('app/(protected)/materials/mechanical/page.tsx');
-    for (const ortak of ['Kaldır', 'Kütüphaneme Aktar', 'Marka Adı', 'İptal']) {
+    for (const ortak of ['Kaldır', 'Firma kütüphanesine aktar', 'Marka Adı', 'İptal']) {
       expect(mek, `mekanik: ${ortak}`).toContain(ortak);
       expect(elk, `elektrik: ${ortak}`).toContain(ortak);
     }
   });
 
-  it('kütüphanem → elektrik markalar: PDF yükle akışı ve boş arama metni', () => {
+  it('firma kütüphanesi → elektrik markalar: PDF yükle akışı ve boş arama metni', () => {
     const elk = metinler('app/(protected)/library/electrical-brands/page.tsx');
     expect(elk).toEqual(
       expect.arrayContaining([
@@ -596,5 +603,150 @@ describe('Paket adı: müşteriye görünen hiçbir yerde "Core" yok (iç kod de
   it('düzeltilen yerler: anasayfa "Basic pakette", /fiyatlar paylaşım görseli alt metni "Basic"', () => {
     expect(metinler('ortak/kabuk/components/landing/NasilCalisir.tsx').some((t) => t.includes('Basic pakette malzeme akışının tamamı'))).toBe(true);
     expect(metinler('ortak/seo/arama-paylasim.ts').some((t) => t.startsWith('MetaPriceX paket kartları: Basic malzeme akışı'))).toBe(true);
+  });
+});
+
+/**
+ * 06.10.2026 (ekip/yetki planı B — iki yetki): "Kütüphanem" → "Firma
+ * kütüphanesi", "Kütüphaneme Aktar" → "Firma kütüphanesine aktar". Kütüphane
+ * artık kişinin değil FİRMANIN; eski ad ekipte "benim kişisel listem"
+ * okunuyordu. Ad TEK yerde değil (menü, kırıntı, başlık, pano, havuz
+ * düğmeleri, tanıtım sayfası, vitrin): biri geride kalırsa ekranda iki ad
+ * yan yana durur. Yorumlar SAYILMAZ (ekran metni değil).
+ * ⚠ Her ek yakalanır ("Kütüphanemde", "Kütüphanemi", "Kütüphanem’e"): kök
+ * "Kütüphanem" + istenen sayıda harf. Kurucu ile: `u` bayraklı düzenli ifade
+ * DEĞİŞMEZİ ES5 hedefinde TS1501 verir.
+ */
+const ESKI_KUTUPHANE_ADI = new RegExp('(?<![\\p{L}\\p{N}])[Kk]ütüphanem\\p{L}*', 'u');
+
+describe('Firma kütüphanesi adı: ekran metinlerinde eski "Kütüphanem" yok', () => {
+  const dosyalar = kaynakDosyalari();
+  // Aynı gerekçe: tüm ön yüzün ayrıştırması tek yerde, açık süre bütçesiyle
+  // (`-t` ile bu blok tek başına koşarsa 5 sn sınırına düşmesin).
+  beforeAll(() => {
+    for (const y of dosyalar) dosya(y);
+  }, 60_000);
+
+  it('ölçütün kendisi: eski ad HER ekiyle yakalanır; yeni ad, "kütüphanenize" ve çıplak "Kütüphane" yakalanmaz', () => {
+    for (const eski of [
+      'Kütüphanem', 'Kütüphaneme Aktar', 'Kütüphaneme git', 'Kütüphanem’e erişimin yok', 'Kütüphanem&apos;deki',
+      'kütüphanem', 'Kütüphanemde', 'Kütüphanemi aç', 'Kütüphanemdeki markalar', 'kütüphanemiz', 'Kütüphanemizden',
+    ]) {
+      expect(ESKI_KUTUPHANE_ADI.test(eski), eski).toBe(true);
+    }
+    for (const yeni of [
+      'Firma kütüphanesi', 'Firma kütüphanesine aktar', 'malzeme kütüphanenize eklendi', 'Kütüphanenizdeki',
+      'Kütüphane', 'kütüphaneye aktarın',
+    ]) {
+      expect(ESKI_KUTUPHANE_ADI.test(yeni), yeni).toBe(false);
+    }
+  });
+
+  it('ön yüzün TAMAMINDA ekran metni eski adı taşımıyor', () => {
+    expect(dosyalar.length).toBeGreaterThan(120); // boş küme yeşil vermesin
+    const bulunan = dosyalar.flatMap((y) =>
+      ekranMetinleri(dosya(y))
+        .filter((m) => ESKI_KUTUPHANE_ADI.test(m.metin))
+        .map((m) => `${y}:${m.satir} ${m.metin.replace(/\s+/g, ' ').trim().slice(0, 80)}`),
+    );
+    expect(bulunan).toEqual([]);
+  });
+
+  it('yeni ad yerinde: menü, kırıntı, sayfa başlığı, pano kartı, tanıtım sayfası', () => {
+    for (const yol of [
+      'ortak/kabuk/components/layout/Sidebar.tsx',
+      'ortak/kabuk/components/layout/Breadcrumb.tsx',
+      'app/(protected)/library/page.tsx',
+      'ortak/kabuk/components/dashboard/QuickAccess.tsx',
+      'app/page.tsx',
+      'ozellik/odeme/vitrin-metinleri.ts',
+    ]) {
+      expect(metinler(yol), yol).toContain('Firma kütüphanesi');
+    }
+    expect(metinler('ortak/kabuk/components/landing/NasilCalisir.tsx')).toEqual(
+      expect.arrayContaining(['Firma kütüphanesine aktar']),
+    );
+  });
+});
+
+/**
+ * 06.10.2026 (kod incelemesi): Ekip ve Hesabım'da bu özellik EKRANDA "yetki"
+ * der ("Üye yetkileri", "Yetkileri düzenle", "yetkiler kaydedildi"). Kod
+ * adları (`izinler`, `izinVar`, `UyeIzinPaneli`) BİLEREK değişmedi — ölçüt
+ * yalnız ekran metnine bakar (öznitelik kimlikleri `izin-baslik`, uç yolu
+ * `/izinler` kod sayılır).
+ */
+const IZIN_KELIMESI = new RegExp('(?<![\\p{L}\\p{N}])[İi]zin\\p{L}*', 'u');
+/**
+ * ⚠ `ekranMetinleri` görünmez özniteliği (`sag=`, `alt=`, `ust=` …) ALTIYLA
+ * atlar; oysa öğe değerli öznitelikteki JSX metni EKRANDADIR (`UyeListesi`:
+ * `sag={<IkincilDugme>Yetkileri düzenle</IkincilDugme>}`). Ortak araç
+ * değiştirilmedi (başka kapılar onu kullanıyor); bu kapı JSX metnini NEREDE
+ * olursa olsun ayrıca toplar.
+ */
+function yetkiEkranMetinleri(sf: ts.SourceFile): { metin: string; satir: number }[] {
+  const out = [...ekranMetinleri(sf)];
+  // Ortak aracın zaten bulduğu JSX metni İKİNCİ kez sayılmaz (satır + metin).
+  const gorulen = new Set(out.map((m) => `${m.satir}\u0000${m.metin}`));
+  const gez = (n: ts.Node): void => {
+    if (ts.isJsxText(n)) {
+      const t = n.text.replace(/\s+/g, ' ').trim();
+      const satir = sf.getLineAndCharacterOfPosition(n.getStart()).line + 1;
+      if (t && !gorulen.has(`${satir}\u0000${t}`)) {
+        gorulen.add(`${satir}\u0000${t}`);
+        out.push({ metin: t, satir });
+      }
+    }
+    n.forEachChild(gez);
+  };
+  gez(sf);
+  return out;
+}
+const YETKI_EKRANLARI = [
+  'app/(protected)/firma/ekip/page.tsx',
+  'ozellik/firma/ekip/UyeListesi.tsx',
+  'ozellik/firma/ekip/DavetPenceresi.tsx',
+  'ozellik/firma/ekip/UyeIzinPaneli.tsx',
+  'ozellik/firma/ekip/IzinSecici.tsx',
+  'ozellik/firma/ekip/CikarmaBolumu.tsx',
+  'ozellik/firma/ekip/ekip-parcalari.tsx',
+  'ozellik/firma/ekip/UyeIzniKapisi.tsx',
+  'ozellik/firma/ekip/KilitliOzellikKarti.tsx',
+  'ozellik/firma/ekip/izin-metinleri.ts',
+  'ozellik/kimlik/hesabim/EkipErisimiSekmesi.tsx',
+  'ozellik/kimlik/hesabim/IzinDurumListesi.tsx',
+];
+
+describe('Ekip & Hesabım: ekranda "izin" değil "yetki"', () => {
+  it('ölçütün kendisi: ekran metnindeki "izin" yakalanır; kimlik, uç yolu ve kod adı yakalanmaz', () => {
+    const sf = ayristir(
+      'o.tsx',
+      `const f = (u: any, izinler: string[]) => api.patch(\`/firma/uyeler/\${u.id}/izinler\`, { izinler });
+       const t = \`\${ad} için izinler kaydedildi.\`;
+       export const P = () => <h2 id="izin-baslik" aria-describedby={'panel-izin-ipucu'}>Üye izinleri</h2>;
+       export const S = () => <Satir sag={<Dugme onClick={f}>İzinleri düzenle</Dugme>} />;`,
+    );
+    const bulunan = yetkiEkranMetinleri(sf).filter((m) => IZIN_KELIMESI.test(m.metin)).map((m) => `:${m.satir} ${m.metin.trim()}`);
+    // Satır 4: öğe değerli öznitelikteki düğme metni (ortak araç bunu atlıyordu).
+    expect(bulunan).toEqual([':2 için izinler kaydedildi.', ':3 Üye izinleri', ':4 İzinleri düzenle']);
+    expect(IZIN_KELIMESI.test('Yetkileri düzenle')).toBe(false);
+  });
+
+  it.each(YETKI_EKRANLARI)('%s', (yol) => {
+    const bulunan = yetkiEkranMetinleri(dosya(yol))
+      .filter((m) => IZIN_KELIMESI.test(m.metin))
+      .map((m) => `:${m.satir} ${m.metin.replace(/\s+/g, ' ').trim()}`);
+    expect(bulunan).toEqual([]);
+  });
+
+  it('yeni ad yerinde (içerik kilidi)', () => {
+    expect(metinler('ozellik/firma/ekip/UyeIzinPaneli.tsx')).toEqual(
+      expect.arrayContaining(['Üye yetkileri', 'Yönetici tüm bölümlere erişir; yetkileri kapatılamaz.']),
+    );
+    expect(yetkiEkranMetinleri(dosya('ozellik/firma/ekip/UyeListesi.tsx')).map((m) => m.metin)).toContain('Yetkileri düzenle');
+    const sayfa = metinler('app/(protected)/firma/ekip/page.tsx').join(' | ');
+    for (const t of ['için yetkiler kaydedildi.', 'Yetkiler kaydedildi; davet', 'yeni yetkilerle yeniden gönderildi.', 'Ekibi ve yetkileri firma yöneticin yönetir.']) {
+      expect(sayfa, t).toContain(t);
+    }
   });
 });

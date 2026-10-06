@@ -1,7 +1,8 @@
 'use client';
 
 /**
- * HESABIM › EKİP ERİŞİMİM — dört izin satırının ÇİZİMİ (23.09.2026, tasarım ekran 6).
+ * HESABIM › EKİP ERİŞİMİM — yetki satırlarının ÇİZİMİ (23.09.2026, tasarım ekran 6;
+ * 06.10'dan beri iki yetki).
  *
  * Yalnız çizer, karar vermez: satırlar `izinSatirlari`ndan (metin ve sıra Ekip &
  * İzinler sözlüğünden), simgeler `IZIN_SIMGELERI`nden, rozet renkleri Ekip'teki

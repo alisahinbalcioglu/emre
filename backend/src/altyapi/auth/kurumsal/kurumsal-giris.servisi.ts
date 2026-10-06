@@ -829,11 +829,11 @@ export class KurumsalGirisServisi {
           firmaId: saglayici.firmaId,
           firmaRol: 'uye',
           // ⚠ 23.09.2026 — IZINLER (Ekip & Izinler), `davetKabul` IKIZI.
-          //   Bekleyen davet varsa sahibin davette sectigi izinler TASINIR.
-          //   Bu satir yokken sema varsayilani (DORT izin) yaziliyordu: kurumsal
+          //   Bekleyen davet varsa sahibin davette sectigi yetkiler TASINIR.
+          //   Bu satir yokken sema varsayilani (o gun DORT izin) yaziliyordu: kurumsal
           //   giris ZORUNLU firmalarda davet YALNIZ bu yoldan kabul edilebildigi
           //   icin sahibin secimi HER SEFERINDE kayboluyordu (guvenlik
-          //   incelemesi buldu). Davetsiz otomatik katilim (JIT) → dordu,
+          //   incelemesi buldu). Davetsiz otomatik katilim (JIT) → ikisi (06.10: fiyat + dwg),
           //   ACIKCA: ozellikten onceki davranis; sahip sonra daraltir.
           //   Bozuk davet listesi → `[]` (fail-closed).
           izinler: davet ? (izinleriSuz(davet.izinler) ?? []) : [...TUM_IZINLER],

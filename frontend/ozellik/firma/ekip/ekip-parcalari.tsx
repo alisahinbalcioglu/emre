@@ -110,7 +110,7 @@ export function IzinEtiketi({ tanim, acik }: { tanim: IzinTanimi; acik: boolean 
   );
 }
 
-/** "Fiyat bilgisi" rozeti (Son teklifler · Kütüphanem). */
+/** "Fiyat bilgisi" rozeti (Fiyatlandırma ve teklifler yetkisi). */
 export function FiyatBilgisiRozeti() {
   return (
     <span className="inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded-full bg-[#fff7ed] px-[7px] text-[11px] font-semibold text-[#9a3412]">

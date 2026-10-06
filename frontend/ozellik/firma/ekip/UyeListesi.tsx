@@ -19,15 +19,16 @@ import {
  *
  * Satır türleri: yönetici (sahip) · üye · bekleyen davet. Eski izin sütunlu
  * tablo (`EkipTablosu.tsx`) bu dosyaya dönüştü: izinler artık satırın altında
- * dört ETİKET (açık = yeşil tik, kapalı = gri kilit), düzenleme sağdan açılan
+ * yetki başına bir ETİKET (açık = yeşil tik, kapalı = gri kilit; 06.10'dan
+ * beri iki yetki), düzenleme sağdan açılan
  * panelde (`UyeIzinPaneli.tsx`).
  *
  * ⚠ KARARLAR SUNUCUDAN: etiketler sunucunun ETKİN listesinden çizilir
- *   (sahip → dördü; burada "sahipse hepsi açık" diye YENİDEN hesaplanmaz);
+ *   (sahip → hepsi; burada "sahipse hepsi açık" diye YENİDEN hesaplanmaz);
  *   `durduruldu` da sunucunun hesapladığı değer (FAZ 7 F1b §3.12).
  * ⚠ `izinler === null` → bu satırın izinleri SANA gösterilmiyor (üye yalnız
  *   kendi satırını ve yöneticiyi görür) → etiket ÇİZİLMEZ. Boş dizi "hiç
- *   izni yok" demektir: dört gri kilit. İkisi aynı çizilmez.
+ *   izni yok" demektir: her yetkide gri kilit. İkisi aynı çizilmez.
  * ⚠ Düğmeler `sahipMi` ile — değer sayfadan gelir, burada yeniden hesaplanmaz.
  */
 export function UyeListesi({
@@ -105,7 +106,7 @@ export function UyeListesi({
                 </>
               ) : sahipMi ? (
                 <IkincilDugme onClick={() => onDuzenle({ tur: 'uye', uye: u })} disabled={islemde}>
-                  İzinleri düzenle
+                  Yetkileri düzenle
                 </IkincilDugme>
               ) : null
             }
@@ -138,7 +139,7 @@ export function UyeListesi({
                   Yeniden gönder
                 </button>
                 <IkincilDugme onClick={() => onDuzenle({ tur: 'davet', davet: d })} disabled={islemde}>
-                  İzinleri düzenle
+                  Yetkileri düzenle
                 </IkincilDugme>
               </>
             ) : null

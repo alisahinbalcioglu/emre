@@ -16,7 +16,7 @@ const ITEMS = [
   {
     href: '/library',
     icon: BookOpen,
-    title: 'Kütüphanem',
+    title: 'Firma kütüphanesi',
     desc: 'Markalar, iskontolar, işçilik',
     iconBg: 'bg-emerald-50',
     iconColor: 'text-emerald-600',
@@ -24,10 +24,11 @@ const ITEMS = [
 ];
 
 export default function QuickAccess() {
-  // 23.09.2026 (Ekip & Izinler): Kutuphanem izni kapali alt kullanicida kart
-  // menuyle AYNI kurala uyar — gizlenir (yol yine de kabukta "izniniz yok" der).
+  // 23.09.2026 (Ekip & Izinler): Firma kutuphanesi (06.10'dan beri `fiyat`
+  // yetkisi) kapali alt kullanicida kart gizlenir (yol yine de kabukta
+  // "izniniz yok" der).
   const { izinVar } = useCapabilities();
-  const ogeler = izinVar('kutuphane') ? ITEMS : ITEMS.filter((i) => i.href !== '/library');
+  const ogeler = izinVar('fiyat') ? ITEMS : ITEMS.filter((i) => i.href !== '/library');
   return (
     <div className="grid grid-cols-2 gap-4">
       {ogeler.map((item) => {

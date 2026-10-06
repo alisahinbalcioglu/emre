@@ -43,7 +43,7 @@ export class BrandsController {
   // Kimlik servise iner: KISISEL listeyi yalniz SAHIP FIRMA okur (ADIM 1).
   @Get('price-lists/:listId/materials')
   async getPriceListMaterials(@CurrentUser() user: any, @Param('listId') listId: string) {
-    // 23.09.2026: KISISEL liste firmanin Kutuphanem verisidir — izin karari
+    // 23.09.2026: KISISEL liste firmanin Firma kutuphanesi verisidir (`fiyat` yetkisi) — izin karari
     // servise iner (havuz listesi izne BAGLI DEGIL; uc bu yuzden sinif
     // duzeyinde `@UyeIzniGerekli` tasiyamaz).
     // 23.09.2026 (vitrin): bu uc `@GerekliYetenek` TASIMAZ — paketsiz hesap
@@ -52,7 +52,7 @@ export class BrandsController {
     return this.brandsService.getPriceListMaterials(
       listId,
       kimlikCoz(user).firmaId,
-      izinVarMi(user, 'kutuphane'),
+      izinVarMi(user, 'fiyat'),
       await this.erisim.havuzFiyatiGorunurMu(kimlikCoz(user).firmaId, user?.role),
     );
   }

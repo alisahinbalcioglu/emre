@@ -319,7 +319,7 @@ export class QuotesService {
     originalFile?: Buffer,
   ) {
     // Sahiplik SART — baska FIRMANIN teklifi guncellenemez (izolasyon).
-    // 23.09: `teklifKosulu` — "Son teklifler" izni kapali uye YALNIZ kendi
+    // 23.09: `teklifKosulu` — `fiyat` yetkisi kapali uye YALNIZ kendi
     // teklifini revize edebilir (kapsam firma suzgecini daraltir, genisletmez).
     const mevcut = await this.prisma.quote.findFirst({ where: teklifKosulu(k, { id }) });
     if (!mevcut) throw new NotFoundException('Quote not found');
@@ -365,7 +365,7 @@ export class QuotesService {
    */
   async findAll(k: TeklifKimligi, sorgu: TekliflerSorgusuDto = {}) {
     // 23.09: kapsam TEK yerden (`teklifKosulu`) — liste, pano karti ve sayac
-    // ayni kumeyi gorur. "Son teklifler" izni kapali uye yalniz kendininkini.
+    // ayni kumeyi gorur. `fiyat` yetkisi kapali uye yalniz kendininkini.
     const where: any = teklifKosulu(k);
     if (sorgu.durum) where.durum = sorgu.durum;
     const arama = sorgu.arama?.trim();

@@ -25,8 +25,8 @@ export class MatchingController {
    *  (metre→boru, adet→ekipman); opsiyonel, eski istemciler etkilenmez. */
   @Post('bulk-match')
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
-  // 23.09: fiyat KUTUPHANEDEN gelir — Kutuphanem izni olmayan uye fiyat cekemez.
-  @UyeIzniGerekli('kutuphane')
+  // 23.09: fiyat KUTUPHANEDEN gelir — `fiyat` yetkisi olmayan uye fiyat cekemez.
+  @UyeIzniGerekli('fiyat')
   // 06.10: motor ad basina calisir — dizi tavani ValidationPipe'tan ONCE (413).
   @DiziTavani(...eslestirmeKurallari('materialNames', 'malzeme adı'))
   async bulkMatch(
@@ -42,7 +42,7 @@ export class MatchingController {
    *  Ayni imza ikinci gelisinde secici atlanir, 'oneri' otomatik dolar. */
   @Post('remember')
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
-  @UyeIzniGerekli('kutuphane')
+  @UyeIzniGerekli('fiyat')
   async remember(
     @Body() body: EslestirmeHafizasiDto,
     @Req() req: any,
@@ -65,7 +65,7 @@ export class MatchingController {
   /** Sozluk listesi: seed + kullanicinin kendi alias'lari */
   @Get('aliases')
   @GerekliYetenek(Yetenek.KUTUPHANE_GORUNTULE)
-  @UyeIzniGerekli('kutuphane')
+  @UyeIzniGerekli('fiyat')
   async listAliases(@Req() req: any) {
     const userId: string = req.user?.id ?? req.user?.sub;
     return this.terminology.listAliases(userId);
@@ -75,7 +75,7 @@ export class MatchingController {
    *  Ayni alias tekrar gelirse GUNCELLENIR (S5: tekil cozumleme). */
   @Post('aliases')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
-  @UyeIzniGerekli('kutuphane')
+  @UyeIzniGerekli('fiyat')
   // 06.10 (güvenlik HIGH-2): `kinds` depoya yazılır, her bulk-match işler —
   // sayı tavanı pipe'tan ÖNCE, tür/öğe biçimi sınıf DTO'da.
   @DiziTavani({ alan: 'kinds', tavan: ALIAS_TUR_TAVANI, ogeAdi: 'tür' })
@@ -93,7 +93,7 @@ export class MatchingController {
    *  rol buradan gecer (C4, 30.09.2026). */
   @Delete('aliases/:id')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
-  @UyeIzniGerekli('kutuphane')
+  @UyeIzniGerekli('fiyat')
   async deleteAlias(@Param('id') id: string, @Req() req: any) {
     const userId: string = req.user?.id ?? req.user?.sub;
     return this.terminology.deactivateAlias(userId, id, req.user?.role === 'admin');

@@ -5,7 +5,7 @@ import { Package, Wrench, FileText } from 'lucide-react';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  KUTUPHANEM — dagitim sayfasi (yalniz yonlendirme)
+ *  FIRMA KUTUPHANESI (eski adi "Kütüphanem") — dagitim sayfasi (yalniz yonlendirme)
  * ═══════════════════════════════════════════════════════════════════════════
  *
  *  ⚠ 22.09.2026 — OLU CEKIM KALDIRILDI (olculdu). Bu dosya 635 satirdi ve
@@ -33,7 +33,7 @@ export default function LibraryPage() {
       <div className="mb-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Kütüphanem</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Firma kütüphanesi</h1>
             <p className="mt-1 text-sm text-muted-foreground">Malzeme markaları ve işçilik kalemleri</p>
           </div>
         </div>

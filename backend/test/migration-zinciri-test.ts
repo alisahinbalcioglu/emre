@@ -457,6 +457,8 @@ async function main() {
 
   await db.close();
 
+  await uyeYetkileriGocu(klasorler);
+
   console.log(
     `\n${'='.repeat(64)}\nMIGRATION ZINCIRI: ${passed} PASS, ${failed} FAIL\n${'='.repeat(64)}`,
   );
@@ -1229,6 +1231,129 @@ async function ozelFiyatBirimi(db: PGlite, klasorler: string[]): Promise<void> {
       JSON.stringify(await kolonlar()) === JSON.stringify(k0) && (await indeks()).length === 1 &&
       (await db.query(`SELECT 1 FROM "UserLibrary" WHERE id LIKE 'ob-%'`)).rows.length === 0,
     JSON.stringify(islemde && { k: islemde.kolon.length, i: islemde.indeks.length }));
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  UY — ÜYE YETKİLERİ: DÖRT İZİN → İKİ YETKİ (göç 20261006100000)
+//    Enum göçü zincirin SONUNDA çalışır; veri eşlemesi ancak göçten ÖNCE
+//    eski değerlerle satır varken ölçülebilir. Bu yüzden AYRI bir PGlite'ta
+//    zincir bu göçe kadar koşulur, eski enum değerleriyle fikstür yazılır,
+//    göç koşulur ve sonuç ölçülür. Ardından göç dosyasının başındaki TERS SQL
+//    (geri dönüş planı) yorumdan çıkarılıp koşulur: eski enum ve eşleme döner.
+// ═════════════════════════════════════════════════════════════════════════
+async function uyeYetkileriGocu(klasorler: string[]): Promise<void> {
+  console.log('\n── UY · ÜYE YETKİLERİ GÖÇÜ (dört izin → iki yetki) ──');
+  const hedef = klasorler.find((k) => k.endsWith('_uye_yetkileri_fiyat_dwg'));
+  check('UY-OLCUT yetki göçü zincirde', !!hedef, JSON.stringify(klasorler.slice(-2)));
+  if (!hedef) return;
+  const tamSql = fs.readFileSync(path.join(MIGRATIONS, hedef, 'migration.sql'), 'utf8');
+  const db = new PGlite();
+  for (const k of klasorler) {
+    if (k >= hedef) break;
+    const dosya = path.join(MIGRATIONS, k, 'migration.sql');
+    if (fs.existsSync(dosya)) await db.exec(fs.readFileSync(dosya, 'utf8'));
+  }
+  const eskiDegerler = (await db.query<{ e: string }>(
+    `SELECT e.enumlabel AS e FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'UyeIzni' ORDER BY e.enumsortorder`,
+  )).rows.map((r) => r.e).join(',');
+  check('UY-OLCUT göç öncesi enum dört eski değer', eskiDegerler === 'excel,dwg,firmaTeklifleri,kutuphane', eskiDegerler);
+
+  const dizi = (v: string[] | null) => (v === null ? 'NULL' : `ARRAY[${v.map((x) => `'${x}'`).join(',')}]::"UyeIzni"[]`);
+  const KULLANICILAR: [string, string, string[] | null][] = [
+    ['uy-sahip', 'sahip', ['excel', 'dwg', 'firmaTeklifleri', 'kutuphane']],
+    ['uy-excel-dwg', 'uye', ['excel', 'dwg']], // canlıdaki üye (kubranurtezer)
+    ['uy-dwg', 'uye', ['dwg']],
+    ['uy-excel', 'uye', ['excel']],
+    ['uy-kutup-teklif', 'uye', ['kutuphane', 'firmaTeklifleri']], // excel'siz: yetki KAYBEDER
+    ['uy-sira', 'uye', ['dwg', 'kutuphane', 'excel']],
+    ['uy-bos', 'uye', []],
+    ['uy-null', 'uye', null],
+  ];
+  const DAVETLER: [string, string[]][] = [
+    ['uy-d1', ['excel', 'dwg']], // canlıdaki bekleyen davet (lintumuhendislik)
+    ['uy-d2', ['excel', 'firmaTeklifleri']],
+    ['uy-d3', ['dwg']],
+    ['uy-d4', ['kutuphane']],
+  ];
+  await db.exec(`
+    INSERT INTO "Firma" ("id","ad") VALUES ('uy-F','UY');
+    INSERT INTO "User" ("id","email","password","firmaId","firmaRol","izinler") VALUES
+      ${KULLANICILAR.map(([id, rol, iz]) => `('${id}','${id}@x.com','h','uy-F','${rol}',${dizi(iz)})`).join(',\n      ')};
+    INSERT INTO "FirmaDavet" ("id","firmaId","eposta","tokenHash","sonGecerlilik","davetEdenId","davetEdenEposta","izinler") VALUES
+      ${DAVETLER.map(([id, iz]) => `('${id}','uy-F','${id}@x.com','h-${id}',now() + interval '7 days','uy-sahip','s@x.com',${dizi(iz)})`).join(',\n      ')};
+  `);
+
+  let gocHatasi: string | null = null;
+  try {
+    await db.exec(tamSql);
+  } catch (e) {
+    gocHatasi = e instanceof Error ? e.message : String(e);
+  }
+  check('UY0 ⭐ göç ESKİ değerli satırlar varken hatasız koşar (Prisma\'nın düz ::text dönüşümü burada patlardı)', gocHatasi === null, String(gocHatasi));
+
+  const durum = async (tablo: string) => Object.fromEntries((await db.query<{ id: string; iz: string | null }>(
+    `SELECT "id", array_to_string("izinler", ',') AS iz FROM "${tablo}" WHERE "id" LIKE 'uy-%' ORDER BY "id"`,
+  )).rows.map((r) => [r.id, r.iz === null ? 'NULL' : r.iz]));
+  const u = await durum('User');
+  check('UY1 ⭐ excel+dwg üyesi → fiyat,dwg (canlıdaki üye; Emre kararı 7)', u['uy-excel-dwg'] === 'fiyat,dwg', JSON.stringify(u));
+  check('UY2 yalnız dwg → dwg · yalnız excel → fiyat', u['uy-dwg'] === 'dwg' && u['uy-excel'] === 'fiyat', JSON.stringify(u));
+  check('UY3 ⭐ excel\'siz kütüphane/firma teklifleri → BOŞ (fiyat yalnız excel\'den gelir)', u['uy-kutup-teklif'] === '', JSON.stringify(u));
+  check('UY4 sıra kanonik (fiyat, dwg) ve tekrarsız', u['uy-sira'] === 'fiyat,dwg', JSON.stringify(u));
+  check('UY5 boş dizi boş, NULL NULL kalır (okuma fail-closed)', u['uy-bos'] === '' && u['uy-null'] === 'NULL', JSON.stringify(u));
+  check('UY6 sahip satırı da eşlenir (liste okunmaz ama geçersiz değer kalmaz)', u['uy-sahip'] === 'fiyat,dwg', JSON.stringify(u));
+  const d = await durum('FirmaDavet');
+  check('UY7 ⭐ bekleyen davetler eşlenir: excel+dwg → fiyat,dwg · excel+firmaTeklifleri → fiyat · dwg → dwg · kutuphane → boş',
+    d['uy-d1'] === 'fiyat,dwg' && d['uy-d2'] === 'fiyat' && d['uy-d3'] === 'dwg' && d['uy-d4'] === '', JSON.stringify(d));
+
+  const yeniDegerler = (await db.query<{ e: string }>(
+    `SELECT e.enumlabel AS e FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'UyeIzni' ORDER BY e.enumsortorder`,
+  )).rows.map((r) => r.e).join(',');
+  check('UY8 enum yalnız {fiyat, dwg} (sıra şemayla aynı)', yeniDegerler === 'fiyat,dwg', yeniDegerler);
+  const artik = await db.query(`SELECT typname FROM pg_type WHERE typname IN ('UyeIzni_old','UyeIzni_new')`);
+  check('UY8b geçici tipler kalmadı (_old/_new)', artik.rows.length === 0, JSON.stringify(artik.rows));
+  const kolonlar = (await db.query<{ table_name: string; udt_name: string; column_default: string | null }>(
+    `SELECT table_name, udt_name, column_default FROM information_schema.columns WHERE column_name = 'izinler' AND table_name IN ('User','FirmaDavet') ORDER BY table_name`,
+  )).rows;
+  check('UY9 iki kolon da UyeIzni[] ve varsayılan {fiyat, dwg}',
+    kolonlar.length === 2 && kolonlar.every((c) => c.udt_name === '_UyeIzni' && /ARRAY\['fiyat'::"UyeIzni", 'dwg'::"UyeIzni"\]/.test(c.column_default ?? '')),
+    JSON.stringify(kolonlar));
+  const varsayilan = await db.query<{ iz: string }>(
+    `INSERT INTO "User" ("id","email","password") VALUES ('uy-yeni','uy-yeni@x.com','h') RETURNING array_to_string("izinler", ',') AS iz`,
+  );
+  check('UY9b izinsiz açılan satır varsayılanı fiyat,dwg alır', varsayilan.rows[0]?.iz === 'fiyat,dwg', JSON.stringify(varsayilan.rows));
+
+  // ── Geri dönüş planı: yorumdaki TERS SQL gerçekten çalışıyor mu ─────────
+  // Yalnız "Ters SQL" başlığı ile ilk `COMMIT;` arası (üstteki açıklama
+  // satırları da aynı girintiyle başlıyor).
+  const satirlar = tamSql.split(/\r?\n/);
+  const bas = satirlar.findIndex((s) => s.includes('Ters SQL'));
+  const tersSatirlar: string[] = [];
+  for (const s of satirlar.slice(bas + 1)) {
+    if (!s.startsWith('--    ')) break;
+    tersSatirlar.push(s.slice('--    '.length));
+    if (s.trim() === '--    COMMIT;'.trim()) break;
+  }
+  const ters = tersSatirlar.join('\n');
+  check('UY-OLCUT ters SQL yorumdan çıkarıldı (BEGIN … COMMIT)', /^BEGIN;/.test(ters) && /COMMIT;\s*$/.test(ters), ters.slice(0, 80));
+  await db.exec(`CREATE TABLE IF NOT EXISTS "_prisma_migrations" ("migration_name" text);
+    INSERT INTO "_prisma_migrations" VALUES ('${hedef}');`);
+  let tersHatasi: string | null = null;
+  try {
+    await db.exec(ters);
+  } catch (e) {
+    tersHatasi = e instanceof Error ? e.message : String(e);
+  }
+  check('UY10 ⭐ geri dönüş SQL\'i hatasız koşar', tersHatasi === null, String(tersHatasi));
+  const geri = await durum('User');
+  const geriDegerler = (await db.query<{ e: string }>(
+    `SELECT e.enumlabel AS e FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'UyeIzni' ORDER BY e.enumsortorder`,
+  )).rows.map((r) => r.e).join(',');
+  check('UY11 geri dönüşte eski enum ve eşleme: fiyat → excel+firmaTeklifleri+kutuphane, dwg → dwg',
+    geriDegerler === 'excel,dwg,firmaTeklifleri,kutuphane' && geri['uy-excel-dwg'] === 'excel,dwg,firmaTeklifleri,kutuphane' && geri['uy-dwg'] === 'dwg',
+    JSON.stringify({ geriDegerler, geri }));
+  const gocSatiri = await db.query(`SELECT 1 FROM "_prisma_migrations" WHERE "migration_name" = '${hedef}'`);
+  check('UY12 geri dönüş göç kaydını siler (eski imaj yeniden uygulamaya kalkmaz)', gocSatiri.rows.length === 0);
+  await db.close();
 }
 
 bitmezseKirmizi(main().catch((e) => {

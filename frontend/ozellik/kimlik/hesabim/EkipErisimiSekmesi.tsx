@@ -5,7 +5,8 @@
  *
  * Alt kullanıcı firmayı, aboneliği ve faturayı görmez (`hesabim.ts`); onun
  * yerine kime başvuracağını görür: firma yöneticisinin e-postası ve "E-posta
- * gönder" bağlantısı. Altında dört bölüm izni: hangisi açık, hangisi kapalı.
+ * gönder" bağlantısı. Altında yetkileri (06.10'dan beri iki: fiyat, DWG):
+ * hangisi açık, hangisi kapalı.
  *
  * ⚠ YÖNETİCİ E-POSTASI `/firma/uyeler`DEN okunur: `/auth/me`deki
  * `firma.yetkiliEposta` üyeye GİZLİDİR (`firma-maskele.ts`

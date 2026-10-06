@@ -229,7 +229,7 @@ export class CeviriKotaServisi implements OnApplicationBootstrap {
    * teklif okuması yapmasın diye sayfalar da döner). Başka firmanın teklifi →
    * 404 (varlık ifşa edilmez).
    *
-   * 23.09.2026: kapsam `teklifKosulu` — "Son teklifler" izni kapalı üye
+   * 23.09.2026: kapsam `teklifKosulu` — `fiyat` yetkisi kapalı üye
    * başkasının teklifini ÇEVİREMEZ, önizleyemez, düzeltme sözlüğüne kaynak
    * yapamaz (çeviri teklifin TÜM metnini döndürür; kapsam dışı okuma olurdu).
    */
