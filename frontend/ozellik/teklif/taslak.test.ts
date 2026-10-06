@@ -126,3 +126,28 @@ describe('TASLAK YAZILAMAZSA — BAGLANTI (quotes/new)', () => {
     expect(yakala).toMatch(/TASLAK_YAZILAMADI_UYARISI/);
   });
 });
+
+// ══ F6b (06.10): "Revize Et" zinciri karisik SAYFA ISARETINI tasir ══
+// Fiyatsiz kaydedilmis yeni karisik teklifte kip YALNIZ sayfa isaretindedir
+// (`paraKipi: 'karisik'`); detay sayfasi taslagi ceviri gorunumunden gecen
+// sayfalarla kurar. Isaret dusseydi revizyon TL acilir, $ fiyat ₺ olurdu.
+import { ingilizceGorunum, turkceGorunum } from './ceviri';
+import { karisikKipMi } from '../fiyat/taraf-para-birimi';
+
+describe('F6b — kayittan taslak karisik sayfa isaretini korur', () => {
+  const sayfa = { name: 'Mekanik', index: 0, isEmpty: false, paraKipi: 'karisik', columnRoles: { nameField: 'ad' },
+    rowData: [{ _rowIdx: 0, _isDataRow: true, ad: 'Vana' }] };
+  it('★★ kayittanTaslak isareti tasir; taslagin sayfalari karisik sayilir', () => {
+    const t = kayittanTaslak({ id: 'q1', sheets: [sayfa] }, []);
+    expect((t.multiSheet.sheets[0] as any).paraKipi).toBe('karisik');
+    expect(karisikKipMi(t.multiSheet.sheets as any)).toBe(true);
+  });
+  it('★ detay sayfasinin ceviri gorunumlerinden (TR / EN) gecen sayfa da tasir', () => {
+    const tr = turkceGorunum([sayfa] as any);
+    const en = ingilizceGorunum([sayfa] as any, {} as any).sayfalar;
+    for (const g of [tr, en]) {
+      const t = kayittanTaslak({ id: 'q1', sheets: g as any[] }, []);
+      expect((t.multiSheet.sheets[0] as any).paraKipi).toBe('karisik');
+    }
+  });
+});

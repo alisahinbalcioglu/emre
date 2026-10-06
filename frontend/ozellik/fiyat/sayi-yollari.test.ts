@@ -230,7 +230,9 @@ describe('A2 bağlantı: üretim dalları ortak kuralı ÇAĞIRIYOR (kaynak öl�
 
   it('SY-BAG parser çekirdeği: sayiHucreParser → hucreGirdisiCoz(p.newValue, p.oldValue, alan)', () => {
     expect(grid).toMatch(/function sayiHucreParser\(alan: SayiAlanTuru, bekleyen[\s\S]{0,200}?hucreGirdisiCoz\(p\.newValue, p\.oldValue, alan\)/);
-    expect(grid).toMatch(/onCellEditingStopped=\{sayiUyarisiniGoster\}/);
+    // F6b: duzenleme bitisi once sayi uyarisini gosterir, sonra elle birim kanalini isler
+    expect(grid).toMatch(/onCellEditingStopped=\{duzenlemeBitti\}/);
+    expect(grid).toMatch(/const duzenlemeBitti = useCallback\([\s\S]{0,200}?sayiUyarisiniGoster\(e\);/);
   });
 
   it('SY-BAG miktar + 4 fiyat rolü valueParser alır (elle yazma insan sınırı)', () => {
@@ -269,7 +271,8 @@ describe('A2 bağlantı: üretim dalları ortak kuralı ÇAĞIRIYOR (kaynak öl�
   it('SY-BAG teklif yapıştırma: kolon alanı + makine metni yazımı', () => {
     expect(grid).toMatch(/\[\[quantityField, 'miktar'\], \[materialUnitPriceField, 'fiyat'\], \[laborUnitPriceField, 'fiyat'\],\s*\['_malzKar', 'kar'\], \['_iscKar', 'kar'\]\]/);
     expect(grid).toMatch(/sayisal: sayisalAlanlar\.has\(c\.getColId\(\)\),\s*alan: sayisalAlanlar\.get\(c\.getColId\(\)\)/);
-    expect(grid).toMatch(/n\.setDataValue\(h\.field, typeof h\.deger === 'number' \? makineMetni\(h\.deger\) : String\(h\.deger\), 'edit'\)/);
+    // F6b: makine metni, birim degisiminde ayni SAYININ farkli metnine doner (yalniz h.pb varken)
+    expect(grid).toMatch(/const yeniMetin = typeof h\.deger === 'number' \? makineMetni\(h\.deger\) : String\(h\.deger\);[\s\S]{0,200}?const yazilacak = h\.pb \? birimDegisimiMetni\(n, h\.field, yeniMetin, h\.pb\) : yeniMetin;[\s\S]{0,200}?n\.setDataValue\(h\.field, yazilacak, 'edit'\)/);
     expect(grid).toMatch(/ek\.push\(\.\.\.sayiUyarilari\)/);
   });
 

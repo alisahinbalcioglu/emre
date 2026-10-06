@@ -49,9 +49,9 @@ import { mergeMultiSheet } from '@/ozellik/tablo/merge-multisheet';
 import { kaynakKolonEtiketi } from '@/ozellik/giris/kaynak-kolon';
 import { indeksUyarilari } from '@/lib/indeks-sagligi';
 import { DWG_SISTEM_ALANLARI, dwgTeklifSemasi } from '@/ozellik/teklif/dwg-teklif-sema';
-import { kalemUret } from '@/ozellik/teklif/teklif-kalem';
+import { kalemUret, kurEksikTarafSayisi } from '@/ozellik/teklif/teklif-kalem';
 import { restoreRematch } from '@/ozellik/teklif/restore-rematch';
-import { karisikKipMi, digerSayfalardaDovizVar, type TlKurlari } from '@/ozellik/fiyat/taraf-para-birimi';
+import { karisikKipMi, digerSayfalardaDovizVar, KARISIK_PARA_KIPI, balonTutari, type TlKurlari } from '@/ozellik/fiyat/taraf-para-birimi';
 import { TASLAK_ANAHTARI, TASLAK_SURUMU, taslakUyarisiGerekirMi, TASLAK_YAZILAMADI_UYARISI, type TaslakYazimDurumu } from '@/ozellik/teklif/taslak';
 // Y4: doldurma ozeti tost metni tek yerde (isçilik "firmada yok").
 import { doldurmaOzetMetni } from '@/ozellik/teklif/doldurma-ozeti';
@@ -442,12 +442,22 @@ export default function NewQuotePage() {
   const [multiSheet, setMultiSheet] = useState<MultiSheetData | null>(null);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const [liveRowDataBySheet, setLiveRowDataBySheet] = useState<Record<number, ExcelRowData[]>>({});
-  // COKLU PARA BIRIMI F4: kip KAYITTAN turetilir (taraf birimi tasiyan satir =
-  // karisik; eski/yalniz-TL teklif tl). Yeni teklifin varsayilani F6'da.
+  // COKLU PARA BIRIMI F4: kip KAYITTAN turetilir (taraf birimi tasiyan satir ya da
+  // F6b sayfa isareti = karisik; eski/yalniz-TL teklif tl).
+  // F6b (06.10, tasarim varsayilani "yeni teklif karisik acilir"): YENI teklif
+  // karisik YAZIM kipinde acilir. Taslaktan donuste (revizyon dahil — "Revize Et"
+  // taslak yolundan gecer) kip taslagin alanindan, yoksa kayitli sayfalardan
+  // gelir: eski TL teklif TL kalir. Gorunum yine F6a kuralinda: yalniz-₺ teklif TL gibi.
+  const [paraKipiAcik, setParaKipiAcik] = useState<'karisik' | 'tl'>(KARISIK_PARA_KIPI);
   const karisikKip = useMemo(
-    () => karisikKipMi(multiSheet?.sheets.map((s) => ({ rowData: liveRowDataBySheet[s.index] ?? s.rowData })) ?? []),
-    [multiSheet, liveRowDataBySheet],
+    () => paraKipiAcik === KARISIK_PARA_KIPI
+      || karisikKipMi(multiSheet?.sheets.map((s) => ({ paraKipi: (s as any).paraKipi, rowData: liveRowDataBySheet[s.index] ?? s.rowData })) ?? []),
+    [paraKipiAcik, multiSheet, liveRowDataBySheet],
   );
+  // Bildirim balonlari (eslestirme sarmalayicilari) kipi REF'ten okur — callback
+  // bagimliliklari degismesin.
+  const karisikKipRef = useRef(karisikKip);
+  karisikKipRef.current = karisikKip;
   // F6a (karar K1): gorunum teklif genelinde tek duzen — BASKA sayfada $/€ varsa
   // yalniz-₺ aktif sayfa da birim basina gorunur. Aktif sayfayi izgara canli olcer.
   const digerSayfalardaDoviz = useMemo(
@@ -755,6 +765,11 @@ export default function NewQuotePage() {
           });
         }
         if (draft.quoteId) setRevizyonId(draft.quoteId);
+        // F6b: taslagin kipi (yeni taslak alanla yazar); alan yoksa — revizyon
+        // taslagi ya da F6b oncesi yeni taslak — kayitli sayfalardan turetilir.
+        setParaKipiAcik(draft.paraKipi === KARISIK_PARA_KIPI || draft.paraKipi === 'tl'
+          ? draft.paraKipi
+          : (karisikKipMi(draft.multiSheet.sheets) ? KARISIK_PARA_KIPI : 'tl'));
         // Ingilizce kaydedilmis teklif Ingilizce ACILIR (detay sayfasinin ikizi).
         // Aksi halde dugme "Ingilizceye Cevir" der; basilinca sunucu Turkce
         // asli cevirip kotadan duser ama ekrandaki Ingilizce hucrelerin hicbiri
@@ -776,8 +791,9 @@ export default function NewQuotePage() {
             multi.sheets,
             live,
             async (url, body) => (await api.post(url, body)).data,
-            // F4: karisik taslak dovizli tarafi KAYNAK biriminde yeniden fiyatlar.
-            { karisik: karisikKipMi(multi.sheets.map((s: any) => ({ rowData: live[s.index] ?? s.rowData }))) },
+            // F4: karisik taslak dovizli tarafi KAYNAK biriminde yeniden fiyatlar (F6b: taslagin kipi da).
+            { karisik: draft.paraKipi === KARISIK_PARA_KIPI
+              || karisikKipMi(multi.sheets.map((s: any) => ({ paraKipi: s.paraKipi, rowData: live[s.index] ?? s.rowData }))) },
           );
           if (reMatched > 0) {
             // D8 (30.09): IC DIZILER DE YENI REFERANS OLMALI.
@@ -899,6 +915,8 @@ export default function NewQuotePage() {
         // Revizyon kimligi taslakta KALICI — sayfa yenilense de "guncelle"
         // davranisi korunur (yoksa yenileme sonrasi KOPYA olusurdu).
         quoteId: revizyonId ?? undefined,
+        // F6b: yazim kipi taslakta KALICI — fiyatlanmamis yeni teklif yenilemede TL'ye dusmesin
+        paraKipi: karisikKip ? KARISIK_PARA_KIPI : 'tl',
       }));
       taslakYazimDurumuRef.current = 'yazildi';
     } catch (e) {
@@ -922,7 +940,7 @@ export default function NewQuotePage() {
     // ⚠ `revizyonId` bagimliliga DAHIL: eksik olsaydi bu efekt kimlik
     // set edilmeden once kapanan closure'i tasir, taslaga `undefined` yazar
     // ve revizyon SESSIZCE kopyaya donerdi.
-  }, [multiSheet, liveRowDataBySheet, activeSheetIndex, sheetDisciplines, title, allBrands, colHiddenBySheet, colFloorsBySheet, colWidthsBySheet, revizyonId]);
+  }, [multiSheet, liveRowDataBySheet, activeSheetIndex, sheetDisciplines, title, allBrands, colHiddenBySheet, colFloorsBySheet, colWidthsBySheet, revizyonId, karisikKip]);
 
   // Marka fiyat cache: brandId → { materialName → PriceLookupResult }
   const brandPriceCacheRef = useRef<Record<string, Record<string, any>>>({});
@@ -934,6 +952,10 @@ export default function NewQuotePage() {
   const { currency, gosterimCurrency, setCurrency, ratesLoaded, conversionRate, displayPrice, exchangeRates } = useCurrency();
   // F4: kayit anindaki TL kurlari (ic temsil USD tabanli: TRY = TL/USD, EUR = EUR/USD).
   const tlKurlari: TlKurlari = ratesLoaded ? { USD: exchangeRates.TRY, EUR: exchangeRates.TRY / exchangeRates.EUR } : {};
+  /** F6b: eslesme balonundaki tutar — kural `balonTutari` (karisikta dovizli kaynak
+   *  KENDI biriminde; hucre $ derken balon ₺ net demesin). */
+  const fiyatBalonu = (netPrice: number, kaynakFiyat?: { currency?: unknown; net?: unknown } | null): string =>
+    balonTutari(netPrice, kaynakFiyat, karisikKipRef.current, displayPrice);
 
   /* ---------- Step 1: Upload ---------- */
 
@@ -1503,6 +1525,8 @@ export default function NewQuotePage() {
     // Legacy `rows` dalinda `_ozet` kavrami yok; orada iki liste ayni.
     let uyariKalemleri: any[] = [];
     let sheetsPayload: any[] | undefined;
+    // F6b: kur alinamadigi icin iliskisel TL karsiligi 0 yazilacak dovizli kalem sayisi
+    let kurEksikKalem = 0;
     try {
       // columnRoles'u kullanarak DTO alanlarini dogru maple
       const unitCol = Object.entries(columnRoles).find(([, v]) => v === 'unit')?.[0];
@@ -1561,6 +1585,7 @@ export default function NewQuotePage() {
         });
 
         const multiItems: any[] = [];
+        kurEksikKalem = 0;
         // Fiyatsiz UYARISININ adaylari — kaydedilen kalemlerden AYRI liste.
         // Fark tek: Icmal (`_ozet`) satirlari uyariya girmez (bkz.
         // `uyariyaGirerMi`). Kayit davranisi DEGISMEZ: ozet satiri bugune kadar
@@ -1589,7 +1614,11 @@ export default function NewQuotePage() {
             const kalem = kalemUret(r, roles as any, karisikKip ? { tlKuru: tlKurlari } : undefined);
             if (!kalem) return;
             multiItems.push(kalem);
-            if (uyariyaGirerMi(r)) uyariAdaylari.push(kalem);
+            // F6b (karar): kur yuzunden TL karsiligi 0 olan dovizli kalem FIYATSIZ DEGIL —
+            // teklifte $ olarak dogru; ayri, durust uyari asagida (kurEksikKalem).
+            const kurEksik = karisikKip ? kurEksikTarafSayisi(r, roles as any, tlKurlari) : 0;
+            if (kurEksik > 0) kurEksikKalem++;
+            else if (uyariyaGirerMi(r)) uyariAdaylari.push(kalem);
           });
         });
         if (multiItems.length > 0) { payloadItems = multiItems; uyariKalemleri = uyariAdaylari; }
@@ -1605,6 +1634,9 @@ export default function NewQuotePage() {
           rowData: (liveRowDataBySheet[s.index] ?? s.rowData).filter((r) => !r._isSpareRow),
           // PRD v3.0 Part A kaliciligi: kat + gizli sutun tercihi teklifle
           // birlikte saklanir (detay sayfasi gizlileri uygular).
+          // F6b: yazim kipi KAYITTA — fiyatlanmamis yeni teklif revizyonda karisik acilsin.
+          // TL teklifin yuku DEGISMEZ (alan yalniz karisikta).
+          ...(karisikKip ? { paraKipi: KARISIK_PARA_KIPI } : {}),
           columnConfig: {
             hidden: colHiddenBySheet[s.index] ?? [],
             // GS8: kullanicinin surukleyerek ayarladigi kolon genislikleri
@@ -1671,11 +1703,19 @@ export default function NewQuotePage() {
       sessionStorage.removeItem(DRAFT_KEY);
       sessionStorage.removeItem(FROM_DWG_KEY);
 
+      // F6b (karar, Emre'nin onerilen onayi): KUR YOKKEN dovizli kalem — teklifin
+      // kendisi (tablo, Excel) $ olarak dogru; yalniz liste/pano TL toplami eksik
+      // kalir. Bloklamayan, durust uyari; kur gelince yeniden kaydetmek duzeltir.
+      // ⚠ AYNI balonda: bildirim kutusu tek balon tutar (TOAST_LIMIT 1) — ayri
+      // balon kayit balonunun altinda kayboluyordu (e2e Y4'te olculdu).
+      const kurNotu = kurEksikKalem > 0
+        ? ` Güncel döviz kuru yok: ${kurEksikKalem} dövizli kalemin TL karşılığı teklif listesinde ve panoda eksik görünecek; teklifin kendisi (tablo ve Excel) etkilenmez — kur geldiğinde yeniden kaydedin.`
+        : '';
       toast({
         title: revizyonId ? 'Teklif güncellendi' : 'Teklif kaydedildi',
-        description: revizyonId
+        description: (revizyonId
           ? `"${finalTitle}" revize edildi — yeni kopya oluşturulmadı.`
-          : `"${finalTitle}" başarıyla oluşturuldu.`,
+          : `"${finalTitle}" başarıyla oluşturuldu.`) + kurNotu,
       });
       router.push('/quotes');
     } catch (e: any) {
@@ -2262,8 +2302,8 @@ export default function NewQuotePage() {
                 const netPrice = parseFloat(String(match.netPrice)) || 0;
                 if (!silent) toast({
                   title: match.autoVariant
-                    ? `⚡ Otomatik işçilik: ${displayPrice(netPrice)} — ${laborName.slice(0, 40)}`
-                    : `🔧 ${displayPrice(netPrice)} (iscilik)`,
+                    ? `⚡ Otomatik işçilik: ${fiyatBalonu(netPrice, (match as any).kaynakFiyat)} — ${laborName.slice(0, 40)}`
+                    : `🔧 ${fiyatBalonu(netPrice, (match as any).kaynakFiyat)} (iscilik)`,
                   description: `Eşleşti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}`,
                 });
                 return { netPrice, matchedName: match.matchedName, reason: match.reason, confidence: match.confidence, autoVariant: match.autoVariant, hafizaOtoyaz: match.hafizaOtoyaz, variantTags: match.variantTags, kaynakKur: (match as any).kaynakKur, kaynakFiyat: (match as any).kaynakFiyat };
@@ -2368,8 +2408,8 @@ export default function NewQuotePage() {
                 // (kesin) veya autoVariant (kullanici seciminin yayilimi) olabilir.
                 if (!silent) toast({
                   title: match.autoVariant
-                    ? `⚡ Otomatik varyant: ${displayPrice(netPrice)} — ${materialName.slice(0, 40)}`
-                    : `🟢 ${displayPrice(netPrice)} — ${materialName.slice(0, 50)}`,
+                    ? `⚡ Otomatik varyant: ${fiyatBalonu(netPrice, (match as any).kaynakFiyat)} — ${materialName.slice(0, 40)}`
+                    : `🟢 ${fiyatBalonu(netPrice, (match as any).kaynakFiyat)} — ${materialName.slice(0, 50)}`,
                   description: `Eşleşti: ${match.matchedName?.slice(0, 80) ?? 'Bilinmeyen'}${rozet}`,
                 });
                 // hafizaOtoyaz (I6 rozeti): fiyat GECMIS SECIMDEN atandi — grid

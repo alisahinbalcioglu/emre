@@ -1877,6 +1877,17 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     () => karisik && (digerSayfaDovizRef.current || !!buSayfadaDovizRef.current),
     [karisik],
   );
+  // F6b (inceleme W1): ISARETLI fiyat ("$12") birimi YALNIZ ekran kendi birimlerini
+  // KUR 1'de gosterirken secer (birim basina gorunum ya da ₺ ekran). Cevrilmis TL
+  // gorunumunde (yalniz-₺ teklif, ekran USD) hucre "$12,50" der ama deger ₺500'dur:
+  // oradan kopyalanip yapistirilan / yazilan "$" gercek USD fiyat olurdu — TL
+  // kipinin "panodaki metnin hangi kurdan geldigi bilinmez" kurali gecerli kalir.
+  const kurOraniRef = useRef(conversionRate);
+  kurOraniRef.current = conversionRate;
+  const isaretliFiyatKabul = useCallback(
+    () => karisik && (birimBasinaGorunum() || kurOraniRef.current === 1),
+    [karisik, birimBasinaGorunum],
+  );
 
   // V4: grup (baslik) → secilen varyant. Cell renderer'lar paylasir.
   const groupVariantsRef = useRef<GroupVariantMap>({});
@@ -2579,7 +2590,10 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
       // DENEMIYORUZ: panodaki metnin hangi kurdan/tarihten geldigi bilinmez,
       // bolme yapmak kullanicinin kendi Excel'inden gelen duz sayiyi da bozardi.
       // Dogru davranis: acikca reddet ve ne yapilacagini soyle.
-      const dovizIsareti = /[$€]/.exec(text);
+      // F6b: KARISIK (yazim) kipte bu gerekce gecersiz — fiyat tarafin KENDI
+      // birimindedir; "$12" elle yazimdaki gibi birimi secer (planYapistir `karisik`).
+      const karisikYapistirma = isaretliFiyatKabul(); // W1: cevrilmis gorunumde TL kurali
+      const dovizIsareti = karisikYapistirma ? null : /[$€]/.exec(text);
       if (dovizIsareti) {
         e.preventDefault();
         toast({
@@ -2659,7 +2673,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         const k = sec.kolonSon - sec.kolonBas + 1;
         if (k > 1) hedefKolonSayisi = k;
       }
-      const plan = planYapistir(text, kolonlar, basKolonField, satirlar, hedefSatirSayisi, hedefKolonSayisi);
+      const plan = planYapistir(text, kolonlar, basKolonField, satirlar, hedefSatirSayisi, hedefKolonSayisi, { karisik: karisikYapistirma });
       e.preventDefault();
       const sayiUyarilari = yapistirmaSayiUyarilari(plan.ozet);
       if (plan.hucreler.length === 0) {
@@ -2679,7 +2693,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         // Sayilar MAKINE METNI olarak gider — elle giris ayristiricisinin
         // (`hucreGirdisiCoz`) urettigi bicimle birebir ("10,075": 3 ondalik
         // virgulle, insan kurali tekrar okursa da ayni sayi).
-        n.setDataValue(h.field, typeof h.deger === 'number' ? makineMetni(h.deger) : String(h.deger), 'edit');
+        // F6b: isaretli metin birimi secer — elle yazimin kanali (`elleBirimRef`, karar 3);
+        // degisiklik olayi (eszamansiz) KENDI hucresinin girdisini tuketir. Isaretsiz sayi tarafin mevcut birimini korur.
+        const yeniMetin = typeof h.deger === 'number' ? makineMetni(h.deger) : String(h.deger);
+        // W2: ayni metin olay URETMEZ — birim degisecekse ayni SAYI farkli metinle yazilir
+        const yazilacak = h.pb ? birimDegisimiMetni(n, h.field, yeniMetin, h.pb) : yeniMetin;
+        if (yazilacak !== String(n.data?.[h.field] ?? '')) elleBirimiKoy(n, h.field, h.pb);
+        n.setDataValue(h.field, yazilacak, 'edit');
       }
       const ek: string[] = [];
       if (plan.ozet.sigmayanSatir > 0) ek.push(`${plan.ozet.sigmayanSatir} satır tabloya sığmadı`);
@@ -2875,7 +2895,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     } else if (yazilan > 0) {
       toast({ title: `${cells.length} satır yapıştırıldı`, description: 'Kaydetmeyi unutmayın' });
     }
-  }, [mode, applyDiscountBulk, data.columnDefs, data.columnRoles, autoAppendRow, onRowDataChange]);
+  }, [mode, applyDiscountBulk, data.columnDefs, data.columnRoles, autoAppendRow, onRowDataChange, karisik, isaretliFiyatKabul]); // F6b: karisik yapistirma kurali
 
   // Grup bandi renderer'ina library etkilesimleri context ile gider
   // (quote modunda bos — band eski salt-gorsel davranisinda kalir)
@@ -3808,7 +3828,16 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   const bekleyenSayiUyarisiRef = useRef<string | null>(null);
   // F2 (karar 3): karisik kipte elle yazilan fiyat metnindeki birim ("$12").
   // Ayristirici ham metni gorur, deger degisim dali birimi buradan alir.
-  const elleBirimRef = useRef<{ node: unknown; alan: string; pb: ParaBirimi } | null>(null);
+  // F6b (inceleme W2): HUCRE BASINA bekleyen elle birim. AG Grid `cellValueChanged`
+  // ESZAMANSIZ atar (olculdu): tek yuva cok hucreli yapistirmada son hucreyle ezilir,
+  // olaylar islenince onceki hucreler ₺ alirdi; hemen temizlenen yuva ise olay gelmeden
+  // bosalirdi. Girdiyi ilgili degisiklik olayi tuketir, olay sonunda her durumda silinir.
+  const elleBirimRef = useRef<Map<string, ParaBirimi>>(new Map());
+  const elleBirimAnahtari = (node: any, alan: string | undefined) => `${node?.id ?? ''}|${alan ?? ''}`;
+  const elleBirimiKoy = (node: any, alan: string, pb: ParaBirimi | null | undefined) => {
+    const k = elleBirimAnahtari(node, alan);
+    if (pb) elleBirimRef.current.set(k, pb); else elleBirimRef.current.delete(k);
+  };
   const sayiUyarisiniGoster = useCallback((e?: { newValue?: unknown }) => {
     const u = bekleyenSayiUyarisiRef.current;
     bekleyenSayiUyarisiRef.current = null;
@@ -3817,6 +3846,37 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     // gozle dogrulanmadi).
     if (u && e?.newValue !== undefined) toast({ title: 'Değer yazılmadı', description: u, variant: 'destructive' });
   }, []);
+  /**
+   * F6b (inceleme W2): ayni SAYI farkli BIRIMLE yazilinca (₺12 hucreye "$12")
+   * AG Grid degisiklik olayi uretmez (deger ayni) — birim sessizce degismezdi.
+   * Birim degisimi elle yazimin TEK yolundan gecer: once bosaltilir (M1: fiyat
+   * yoksa birim yok), sonra isaretle yeniden yazilir (birim + 2 hane + toplam).
+   * Doner: uygulandi mi.
+   */
+  const birimDegisimiMetni = (node: any, alan: string, metin: string, pb: ParaBirimi): string => {
+    const R = data.columnRoles ?? ({} as any);
+    const dal = alan === R.laborUnitPriceField ? 'iscilik' : 'malzeme';
+    if (String(node?.data?.[alan] ?? '') !== metin || tarafPB(node?.data, dal) === pb) return metin;
+    // Ayni sayi, farkli metin ("12" → "12.0"): olay dogar, birim elle yazimin TEK yolundan uygulanir
+    return metin.includes('.') ? `${metin}0` : `${metin}.0`;
+  };
+  /** Duzenleme bitti: sayi uyarisi + (W2) ayni sayiya farkli birim yazildiysa birimi uygular.
+   *  Deger DEGISTIYSE girdiye dokunulmaz — eszamansiz degisiklik olayi tuketir. */
+  const duzenlemeBitti = useCallback((e?: { newValue?: unknown; valueChanged?: boolean; node?: any; colDef?: { field?: string } }) => {
+    const gecersiz = !!bekleyenSayiUyarisiRef.current;
+    sayiUyarisiniGoster(e);
+    if (!e?.colDef?.field || e.valueChanged !== false) return;
+    const k = elleBirimAnahtari(e.node, e.colDef.field);
+    const pb = elleBirimRef.current.get(k);
+    elleBirimRef.current.delete(k);
+    if (!pb || gecersiz || e.newValue === undefined) return; // gecersiz girdi / iptal birimi DEGISTIRMEZ
+    const mevcut = String(e.node?.data?.[e.colDef.field] ?? '');
+    const yazilacak = birimDegisimiMetni(e.node, e.colDef.field, mevcut, pb);
+    if (yazilacak === mevcut) return;
+    elleBirimiKoy(e.node, e.colDef.field, pb);
+    e.node.setDataValue(e.colDef.field, yazilacak, 'edit');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sayiUyarisiniGoster, data.columnRoles]);
   /** Yeni duzenleme onceki duzenlemeden kalan bayat uyariyi tasimaz. */
   const sayiUyarisiniSifirla = useCallback(() => { bekleyenSayiUyarisiRef.current = null; }, []);
 
@@ -3910,8 +3970,9 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         const temelParser = base.valueParser as (p: any) => unknown;
         base.valueParser = (p: any) => {
           const ham = String(p.newValue ?? '');
-          const pb = elleGirilenPB(ham);
-          elleBirimRef.current = pb ? { node: p.node, alan: c.field, pb } : null;
+          // W1: cevrilmis gorunumde isaret birim SECMEZ — TL ayristiricisi dovizi reddeder
+          const pb = isaretliFiyatKabul() ? elleGirilenPB(ham) : null;
+          elleBirimiKoy(p.node, c.field, pb);
           return temelParser(pb ? { ...p, newValue: paraIsaretiniAyikla(ham) } : p);
         };
       }
@@ -4600,13 +4661,13 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
   /** F2 (karar 3): elle girilen birim fiyatin taraf birimi — ayristiricinin
    *  ham metinden okudugu birim ("$12") ya da tarafin MEVCUT birimi. */
   const elleBirimiAl = (e: CellValueChangedEvent<ExcelRowData>, dal: 'malzeme' | 'iscilik'): ParaBirimi => {
-    const s = elleBirimRef.current;
-    elleBirimRef.current = null;
-    if (s && s.node === e.node && s.alan === e.colDef.field) return s.pb;
-    return tarafPB(e.data, dal);
+    const k = elleBirimAnahtari(e.node, e.colDef.field);
+    const pb = elleBirimRef.current.get(k);
+    elleBirimRef.current.delete(k);
+    return pb ?? tarafPB(e.data, dal);
   };
 
-  const handleCellValueChanged = useCallback((e: CellValueChangedEvent<ExcelRowData>) => {
+  const handleCellValueChangedIc = useCallback((e: CellValueChangedEvent<ExcelRowData>) => {
     const row = e.data;
     if (!row) return;
 
@@ -5012,6 +5073,11 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
     paraYazildi();
   }, [data.columnRoles, data.columnDefs, onRowDataChange, autoAppendRow, recountPending, floorFields,
       mode, updatePinnedBottom, fittingDuzenlenebilir, paraYazildi, laborEnabled, karisik]);
+  // F6b (W2): dal atlanip tuketilmeyen elle birim girdisi sonraki duzenlemeye SIZMASIN
+  const handleCellValueChanged = useCallback((e: CellValueChangedEvent<ExcelRowData>) => {
+    try { handleCellValueChangedIc(e); } finally { elleBirimRef.current.delete(elleBirimAnahtari(e.node, e.colDef?.field)); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleCellValueChangedIc]);
 
   // getRowId — stabil row kimligi (re-render'da row'un durumunu korur)
   const getRowId = useCallback((params: GetRowIdParams<ExcelRowData>) => {
@@ -5145,7 +5211,7 @@ export const ExcelGrid = forwardRef<ExcelGridHandle, Props>(function ExcelGrid({
         onCellValueChanged={handleCellValueChanged}
         // A2 (tur 3): reddedilen sayi girdisinin uyarisi duzenleme bitince BIR kez
         onCellEditingStarted={sayiUyarisiniSifirla}
-        onCellEditingStopped={sayiUyarisiniGoster}
+        onCellEditingStopped={duzenlemeBitti}
         // ── FITTING: kapsam modu acikken TIK/CIFT-TIK editor ACMAZ. Ikinci
         // Ctrl+tik AG Grid'de dblclick sayilir (shouldStartEditing modifier'a
         // BAKMAZ, olculdu: main.cjs.js:46731) ve editor acilirdi. Editoru acip

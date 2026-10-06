@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   paraHanesi, tarafPB, karmaToplamMetni, elleGirilenPB, PARA_SEMBOLU, paraIsaretiniAyikla, netFiyatBiriminde,
-  dovizliTarafVarMi, dovizliSatirVarMi, digerSayfalardaDovizVar, karisikKipMi,
+  dovizliTarafVarMi, dovizliSatirVarMi, digerSayfalardaDovizVar, karisikKipMi, balonTutari,
 } from './taraf-para-birimi';
 import { hesaplaSatisBirimFiyat, hesaplaSatirToplam } from './pricing';
 
@@ -177,5 +177,23 @@ describe('digerSayfalardaDovizVar — aktif sayfa DISINDAKI sayfalar (sayfa izga
   it('canli satirlar kayittakinin YERINE gecer (duzenlenmis sayfa)', () => {
     expect(digerSayfalardaDovizVar(sayfalar, 0, { 1: [{ _matPB: 'TRY' }] })).toBe(false);
     expect(digerSayfalardaDovizVar(sayfalar, 1, { 2: [{ _labPB: 'EUR' }] })).toBe(true);
+  });
+});
+
+// ══ F6b — eslesme balonu tutari (hucreyle ayni birim) ══
+describe('balonTutari — F6b', () => {
+  const tl = (n: number) => `₺${n}`;
+  it('★★ karisikta dovizli kaynak KENDI biriminde (2 hane)', () => {
+    expect(balonTutari(420, { currency: 'USD', net: 10.5 }, true, tl)).toBe('$10,50');
+    expect(balonTutari(500, { currency: 'EUR', net: 12 }, true, tl)).toBe('€12,00');
+  });
+  it('★ tl kipi, ₺ kaynak, kaynak yok ya da sayi olmayan net → bugunku TL gosterimi', () => {
+    expect(balonTutari(420, { currency: 'USD', net: 10.5 }, false, tl)).toBe('₺420');
+    expect(balonTutari(420, { currency: 'TRY', net: 420 }, true, tl)).toBe('₺420');
+    expect(balonTutari(420, null, true, tl)).toBe('₺420');
+    expect(balonTutari(420, { currency: 'USD', net: 'x' }, true, tl)).toBe('₺420');
+    // izgarayla ayni: null ya da metin net (izgara ₺ yazar) → TL
+    expect(balonTutari(420, { currency: 'USD', net: null }, true, tl)).toBe('₺420');
+    expect(balonTutari(420, { currency: 'USD', net: '10.5' }, true, tl)).toBe('₺420');
   });
 });

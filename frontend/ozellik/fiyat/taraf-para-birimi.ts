@@ -153,13 +153,18 @@ export function cokluTutarMetni(parcalar: Array<{ pb: ParaBirimi; tutar: number 
 // ══ F4 — KAYIT: kip kayittan turetilir, iliskisel kalem TL karsiligi tasir ═══
 
 /**
- * Teklif karisik kipte mi? Kayitta AYRI alan yok: karisik kip her fiyat
- * yaziminda tarafin birimini (`_matPB`/`_labPB`, ₺ dahil) yazar; tl kipi hic
- * yazmaz. Yani birim alani tasiyan satir = karisik teklif; eski / yalniz-TL
- * kayitlar tl kalir.
+ * Teklif karisik (YAZIM) kipte mi? Karisik kip her fiyat yaziminda tarafin
+ * birimini (`_matPB`/`_labPB`, ₺ dahil) yazar; tl kipi hic yazmaz. Yani birim
+ * alani tasiyan satir = karisik teklif; eski / yalniz-TL kayitlar tl kalir.
+ * F6b (06.10): yeni teklif karisik ACILIR — henuz fiyatlanmamis (birim alani
+ * olmayan) bir yeni teklif kaydedilince kipi sayfa ISARETI (`paraKipi:
+ * 'karisik'`, kayit yuku yazar) tasir; revizyonda karisik acilir.
  */
-export function karisikKipMi(sayfalar: Array<{ rowData?: Record<string, any>[] | null }> | null | undefined): boolean {
+export const KARISIK_PARA_KIPI = 'karisik' as const;
+
+export function karisikKipMi(sayfalar: Array<{ paraKipi?: unknown; rowData?: Record<string, any>[] | null }> | null | undefined): boolean {
   for (const s of sayfalar ?? []) {
+    if (s?.paraKipi === KARISIK_PARA_KIPI) return true;
     for (const r of s?.rowData ?? []) {
       if (typeof r?._matPB === 'string' || typeof r?._labPB === 'string') return true;
     }
@@ -212,6 +217,27 @@ export function digerSayfalardaDovizVar(
   canli: Readonly<Record<number, Record<string, any>[] | undefined>> = {},
 ): boolean {
   return sayfalar.some((s) => s.index !== aktif && dovizliSatirVarMi(canli[s.index] ?? s.rowData ?? []));
+}
+
+/**
+ * F6b: eslesme balonundaki tutar. Karisik (yazim) kipte dovizli kaynak fiyat
+ * KENDI biriminde gosterilir — hucre $ yazarken balon ₺ net demesin. Aksi halde
+ * (tl kipi, ₺ kaynak, kaynak fiyat yok) bugunku TL gosterimi.
+ */
+export function balonTutari(
+  netPrice: number,
+  kaynakFiyat: { currency?: unknown; net?: unknown } | null | undefined,
+  karisik: boolean,
+  tlGosterim: (tl: number) => string,
+): string {
+  const pb = kaynakFiyat?.currency;
+  const net = kaynakFiyat?.net;
+  // Izgarayla AYNI gecerlilik (inceleme S1): `Number.isFinite(net)`, cevirme yok —
+  // null/metin net'te izgara ₺ yazar, balon da TL gosterir.
+  if (karisik && (pb === 'USD' || pb === 'EUR') && typeof net === 'number' && Number.isFinite(net)) {
+    return `${PARA_SEMBOLU[pb]}${paraBicim(net, 1)}`;
+  }
+  return tlGosterim(netPrice);
 }
 
 /** Kayit anindaki TL kurlari (1 birim = kac TL). */
