@@ -164,7 +164,30 @@ export function buildSampleFormat(): ExcelJS.Workbook {
   const tr2 = toplamBlokuYaz(icmal, 5);
   kurNotuYaz(icmal, tr2 + 1);
 
+  sablonBaskisi(kapak);
+  sablonBaskisi(icmal);
   return wb;
+}
+
+/**
+ * Yerlesik sablon sayfalarinin baskisi (06.10, P3): A4 dikey, genislige 1
+ * sayfa, yukseklik serbest — fiyatli ciktinin kurali (Tarif §6, `baskiAyarla`).
+ * Olculdu (COM PageSetup.Pages): ayarsiz İCMAL Letter %100'de 2 sayfaya
+ * bolunuyordu (sutunlar 4+40+18+18+18 karakter — "Toplam" ikinci sayfada).
+ * Baski alani YAZILMAZ: İCMAL satirlari bolum sayisiyla buyur, Excel'in
+ * varsayilani kullanilan alani basar. Musteri formatinin ayarina dokunulmaz.
+ */
+function sablonBaskisi(ws: ExcelJS.Worksheet): void {
+  ws.pageSetup = {
+    ...ws.pageSetup,
+    paperSize: 9,
+    orientation: 'portrait',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    horizontalCentered: true,
+    margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.6, header: 0.3, footer: 0.3 },
+  };
 }
 
 const TOPLAM_SATIRLARI: Array<[string, (typeof TOPLAM_ETIKETLERI)[number]]> = [

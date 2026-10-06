@@ -60,6 +60,20 @@ async function run() {
       wb.worksheets.map((w) => w.name).join('|'));
   }
 
+  // ══ BASKI (06.10, P3 madde 2): yerlesik KAPAK + İCMAL A4 dikey, genislige 1 sayfa ══
+  // Olculdu (COM PageSetup.Pages): İCMAL 2 sayfaya bolunuyordu (sutunlar 98 karakter,
+  // Letter %100) — 'Toplam' sutunu ikinci sayfada. Tarif §6 (fiyatli ciktinin kurali).
+  {
+    const wb = buildSampleFormat();
+    for (const ad of ['KAPAK', 'İCMAL']) {
+      const ps: any = wb.getWorksheet(ad)!.pageSetup;
+      check(`BASKI: ${ad} A4 dikey, genislige 1 sayfa (yukseklik serbest)`,
+        ps.paperSize === 9 && ps.orientation === 'portrait' && ps.fitToPage === true && ps.fitToWidth === 1 && ps.fitToHeight === 0,
+        JSON.stringify({ k: ps.paperSize, y: ps.orientation, f: ps.fitToPage, w: ps.fitToWidth, h: ps.fitToHeight }));
+      check(`BASKI: ${ad} sablonunda baski alani YOK (satirlar bolum sayisiyla buyur)`, !ps.printArea, String(ps.printArea));
+    }
+  }
+
   // ══ Onizleme donusumu: sheetToGrid ═══════════════════════════════════
   {
     const wb = buildSampleFormat();
@@ -145,6 +159,12 @@ async function run() {
     const out = new ExcelJS.Workbook();
     await out.xlsx.load(outBuf as any);
 
+    // ── BASKI: yerlesik İCMAL ayari ciktida korunur (dosyaya yazilip okunduktan sonra) ──
+    {
+      const ps: any = out.getWorksheet('İCMAL')!.pageSetup;
+      check('BASKI: ciktida İCMAL A4 genislige 1 sayfa', ps.paperSize === 9 && ps.fitToPage === true && ps.fitToWidth === 1 && ps.fitToHeight === 0,
+        JSON.stringify({ k: ps.paperSize, f: ps.fitToPage, w: ps.fitToWidth, h: ps.fitToHeight }));
+    }
     // ── SIRA: kapak + icmal BASTA, liste arkada ──
     const adlar = out.worksheets.map((w) => w.name);
     check('SIRA: KAPAK, İCMAL basta; liste arkada',
