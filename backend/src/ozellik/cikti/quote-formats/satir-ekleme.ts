@@ -117,6 +117,21 @@ function aralikMetniEkle(metin: string, hedefAdi: string, T: number, k: number, 
   return formulSatirEkle(hazir, hedefAdi, hedefAdi, T, k);
 }
 
+/** Formul hucresinin TAM degeri — `cell.value` okuyucusu 0, "" ve false
+ *  onbellegini DUSURUR (ExcelJS `_copyModel`, olculdu); model tutar. */
+export function formulDegeri(c: ExcelJS.Cell): Record<string, unknown> {
+  const m: any = c.model;
+  const d: Record<string, unknown> = {};
+  for (const a of ['formula', 'sharedFormula', 'shareType', 'ref', 'result']) if (m?.[a] !== undefined) d[a] = m[a];
+  return d;
+}
+
+/** `satirEkle` kaydi: hangi sayfaya, hangi satirin (T) altina kac satir (k).
+ *  Onbellek tazeleyicisi (`musteri-onbellegi.ts`) cikti satirini sablondakine esler. */
+export interface SatirEklemesi { sayfa: string; T: number; k: number }
+const EKLEMELER = new WeakMap<ExcelJS.Workbook, SatirEklemesi[]>();
+export const satirEklemeleri = (wb: ExcelJS.Workbook): readonly SatirEklemesi[] => EKLEMELER.get(wb) ?? [];
+
 /** Hucrenin formul metni (paylasimli bagimlida ExcelJS'in cevirisi); yoksa null. */
 function formulMetni(c: ExcelJS.Cell): string | null {
   const v: any = c.value;
@@ -154,8 +169,8 @@ function paylasimliGruplariAc(wb: ExcelJS.Workbook, hedef: ExcelJS.Worksheet, T:
       const kayar = ws === hedef && [g.c, ...g.bagimlilar].some((c) => Number(c.row) >= T);
       const degisir = metinler.some((f) => formulSatirEkle(f, ws.name, hedef.name, T, k) !== f);
       if (!kayar && !degisir) continue;
-      yazilacak.push({ c: g.c, formul: g.formul, sonuc: (g.c.value as any)?.result });
-      for (const b of g.bagimlilar) yazilacak.push({ c: b, formul: cevir(b), sonuc: (b.value as any)?.result });
+      yazilacak.push({ c: g.c, formul: g.formul, sonuc: formulDegeri(g.c).result });
+      for (const b of g.bagimlilar) yazilacak.push({ c: b, formul: cevir(b), sonuc: formulDegeri(b).result });
     }
   });
   for (const y of yazilacak) y.c.value = (y.sonuc === undefined ? { formula: y.formul } : { formula: y.formul, result: y.sonuc }) as any;
@@ -174,8 +189,25 @@ export function satirEkle(wb: ExcelJS.Workbook, hedef: ExcelJS.Worksheet, T: num
   const dn: any = (wb as any).definedNames;
   const adlarOnce = Array.isArray(dn?.model) ? JSON.parse(JSON.stringify(dn.model)) as Array<{ ranges?: unknown }> : [];
   paylasimliGruplariAc(wb, hedef, T, k);
+  // ExcelJS satir kaydirirken (`spliceRows` → `row.values`) formul onbellegindeki
+  // 0, "" ve false'u DUSURUR (olculdu, test:format-onbellek OB6): kayan formulun
+  // dogru onbellegi Korumali Gorunum'de bosalirdi — kaydirmadan once not edilir.
+  const yanlisDegerli: Array<{ r: number; c: number; sonuc: unknown }> = [];
+  hedef.eachRow({ includeEmpty: false }, (row, rn) => {
+    if (rn <= T) return;
+    row.eachCell({ includeEmpty: false }, (c, cn) => {
+      const s = formulDegeri(c).result;
+      if (c.type === ExcelJS.ValueType.Formula && (s === 0 || s === '' || s === false)) yanlisDegerli.push({ r: rn + k, c: cn, sonuc: s });
+    });
+  });
   hedef.duplicateRow(T, k, true);
+  EKLEMELER.set(wb, [...satirEklemeleri(wb), { sayfa: hedef.name, T, k }]);
   const n = satirEklemesiniYansit(wb, hedef, T, k);
+  for (const y of yanlisDegerli) {
+    const c = hedef.getCell(y.r, y.c);
+    const v = formulDegeri(c);
+    if (c.type === ExcelJS.ValueType.Formula && v.result === undefined) c.value = { ...v, result: y.sonuc } as any;
+  }
   if (adlarOnce.length) {
     // Tanimli ad araliklari hep sayfa adlidir — yalin basvuru kaydirilmaz ('').
     const yeni = adlarOnce.map((a) => ({
@@ -209,7 +241,7 @@ export function satirEklemesiniYansit(wb: ExcelJS.Workbook, hedef: ExcelJS.Works
         if (ws !== hedef && !buyuk(f).includes(hedefB)) return;
         const sablonda = ws === hedef && rn === T;
         const yeni = formulSatirEkle(f, ws.name, hedef.name, T, k, sablonda);
-        const eski: any = c.value;
+        const eski: any = formulDegeri(c);
         // Dizi formulu `ref`iyle (inceleme M1): duplicateRow hucreyi kaydirir, ref'i degil
         const ref = eski?.shareType === 'array' && typeof eski.ref === 'string' && ws === hedef
           ? aralikMetniEkle(eski.ref, hedef.name, T, k) : eski?.ref;

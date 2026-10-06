@@ -40,6 +40,7 @@ import {
   EXCEL_FORMUL_AZAMI, SAYISAL_ETIKETLER, paraOnbellekleriniTazele, SekmeBirimi, yerlesikToplamlariBirimle,
 } from '../../cikti/quote-formats/format-engine';
 import { karisikDoldur } from '../../cikti/quote-formats/format-karisik';
+import { OnbellekSonucu, musteriOnbellekleriniTazele, onbellekFotografi } from '../../cikti/quote-formats/musteri-onbellegi';
 import { StandartSayfaBilgi, standartSayfaYaz } from './standart-cikti';
 import { BIRIM_SIRASI, BIRIM_SUTUNLARI, BirimKovasi, ParaBirimi, dovizliTarafVarMi } from './cikti-karisik';
 import { paraBicimi } from './cikti-stil';
@@ -358,6 +359,8 @@ export interface ExportSonucu {
   birimliGenelToplam?: Array<{ pb: ParaBirimi; toplam: number }>;
   /** Karisik teklif: musteri formulu birimli para hucresine basvuruyor — indirme uyarisi. */
   karisikUyari?: string;
+  /** Musteri formullerinin onbellegi (06.10): formatta formul yoksa YOK. */
+  musteriOnbellegi?: OnbellekSonucu;
 }
 
 /**
@@ -380,6 +383,8 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
   const silinecek = wb.worksheets.filter((w) => roller[w.name] === 'liste');
   for (const w of silinecek) wb.removeWorksheet(w.id);
   const formatSayfalari = wb.worksheets.map((w) => w.name); // kalan = sabit
+  // Musteri formullerinin onbellegi icin YAZIMDAN ONCEKI hal (formul yoksa null)
+  const onbellekFoto = onbellekFotografi(wb);
 
   // ── 3. Teklif liste sayfalari: ORIJINAL musteri wb kopyasi + fiyat yaz ──
   // (Bulgu Raporu kok neden: grid'den uretim SILINDI — tek yol budur.)
@@ -500,9 +505,20 @@ export async function buildExportWorkbook(g: ExportGirdisi): Promise<ExportSonuc
     }
   }
 
+  // MUSTERI FORMULLERININ ONBELLEGI (06.10): musterinin kendi formulleri sablonun
+  // ESKI onbellegini tasiyordu — e-postadaki ek Korumali Gorunum'de acilir ve
+  // HESAPLAMAZ: GENEL TOPLAM 180 gorunuyordu, dogrusu 7236 (gercek Excel, COM).
+  // Ciktinin degistirdigi hucrelere dayanan formul dar degerlendiriciyle yazilir,
+  // yazilamazsa onbellegi bosaltilir + fullCalcOnLoad (bkz. musteri-onbellegi.ts).
+  const musteriOnbellegi = onbellekFoto ? musteriOnbellekleriniTazele(wb, onbellekFoto, dolan) : undefined;
+  if (musteriOnbellegi?.bosaltilan) {
+    console.warn(`[Export] musteri formulu: ${musteriOnbellegi.bosaltilan} hucrenin onbellegi bosaltildi (dar degerlendirici desteklemiyor) — Excel acilista hesaplar, Korumali Gorunum'de bos`);
+  }
+
   return {
     wb, sekmeler, dolan, formatSayfalari, listeSayfalari, eksikDeger, hataArtisi, fiyatsizSatir, yazilanDeger, beklenenDeger, yenidenHesaplanan,
     ...(birimliGenelToplam ? { birimliGenelToplam } : {}),
     ...(karisikDolum?.uyari ? { karisikUyari: karisikDolum.uyari } : {}),
+    ...(musteriOnbellegi ? { musteriOnbellegi } : {}),
   };
 }
