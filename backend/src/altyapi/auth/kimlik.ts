@@ -39,7 +39,7 @@ export function kimlikCoz(user: unknown): Kimlik {
  *  TEKLIF KIMLIGI — kimlik + TEKLIF KAPSAMI (23.09.2026, "Ekip & Izinler")
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * Emre karari: "Son teklifler & tutar" izni KAPALI alt kullanici YALNIZ KENDI
+ * Emre karari: `fiyat` yetkisi (eski "Son teklifler & tutar" izni) KAPALI alt kullanici YALNIZ KENDI
  * hazirladigi teklifleri gorur. Kapsam `Quote.userId` (YAZAR) ile daralir;
  * `firmaId` suzgeci AYNEN kalir (kapsam firma suzgecini GENISLETEMEZ).
  *

@@ -5,11 +5,18 @@ AI destekli mekanik/elektrik tesisat teklif platformu. NestJS backend + Next.js 
 
 ## Ozellik Kurallari
 
-### Kutuphaneme Aktar
-- Kullanici "Malzeme Havuzu"ndan istedigini markaya girip fiyat listesindeki malzemeleri "Kutuphaneme Aktar" butonuyla kendi kutuphanesine kopyalayabilir.
+### Firma kutuphanesine aktar (06.10'a dek "Kutuphaneme Aktar")
+- Kullanici "Malzeme Havuzu"ndan istedigini markaya girip fiyat listesindeki malzemeleri "Firma kutuphanesine aktar" butonuyla firmanin kutuphanesine kopyalayabilir. Kutuphane firma basina TEKTIR (tum uyeler ortak); sayfa adi "Firma kutuphanesi" (Emre karari 30.09, eski adi "Kutuphanem").
 - Aktarilan malzemelerde otomatik olarak `listPrice` (liste fiyati) kaynak fiyat listesinden alinir.
 - Kutuphanede "Liste Fiyati", "Iskonto (%)" ve "Net Fiyat" sutunlari gosterilir.
 - Net Fiyat = Liste Fiyati * (1 - Iskonto / 100)
+
+### Ekip Uye Yetkileri (06.10.2026 — dort izin IKI yetkiye indi)
+- Iki yetki: `fiyat` (Excel kesif, fiyat eslestirme, Firma kutuphanesi, iscilik firmalari, AI PDF analizi, teklif formatlari ve firmanin TUM teklifleri) · `dwg` (cizimden metraj). Sahip her zaman tam yetkili; rolu bilinmeyen kimlik hicbir yetkiye sahip degil (fail-closed). `fiyat` yetkisi olmayan uye YALNIZ kendi hazirladigi teklifleri gorur.
+- Kural TEK yerde: `backend/src/ozellik/firma/uye-izinleri.ts` (on yuz ikizi `frontend/ozellik/firma/ekip/izin-metinleri.ts`). Kapiyi `ErisimGuard` uygular: Excel/DWG uclari yetenekten turetilir (`YETENEK_IZNI`), digerleri `@UyeIzniGerekli('fiyat')`.
+- Davet ve yetki degistirme EN AZ BIR yetki ister (DTO + servis); davet penceresinde varsayilan secim YOK. Eski izin adi (excel/kutuphane/firmaTeklifleri) → 400 "Sayfayi yenileyip tekrar deneyin".
+- Goc `20261006100000_uye_yetkileri_fiyat_dwg`: excel → fiyat, dwg → dwg, digerleri duser (Emre karari 7, bilerek). Geri donus SIRASI goc basliginda: backend DURDUR → ters SQL → eski imaj (eski Prisma istemcisi 'fiyat'i okuyamaz). Deploy oncesi/sonrasi salt-okuma kapisi sart.
+- Kapilar: `test:ekip-izinleri` · `test:faz7-ekip` I · `test:migration` UY (ileri + ters SQL) · vitest `izin-metinleri`/`ekip-bilesenleri`/`hesabim`.
 
 ### Fitting Satiri (teklif gridi)
 - Kullanici bos satira adi ("disli fitting orani"), miktar hucresine ORANI (35) ve birim hucresine "%" yazar. Birim "%" olunca ad hucresinde "Σ satir sec" rozeti belirir ve kapsam secim modu acilir.

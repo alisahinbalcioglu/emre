@@ -13,9 +13,17 @@ import { kimlikCoz } from '../../../altyapi/auth/kimlik';
 import { ErisimGuard, GerekliYetenek } from '../../odeme/abonelik/erisim.guard';
 import { Yetenek } from '../../odeme/abonelik/erisim.servisi';
 import { KapaliHesapIzinli } from '../../../altyapi/auth/decorators/kapali-hesap-izinli.decorator';
+import { UyeIzniGerekli } from '../../../altyapi/auth/decorators/uye-izni.decorator';
 
+/**
+ * 06.10.2026 (ekip/yetki B, Emre karari 3): teklif formatlari firmanin teklif
+ * belgesidir (antet, kapak, icmal) — FIYAT yetkisine bagli, SINIF DUZEYINDE.
+ * Eskiden hicbir uye iznine bagli degildi: kutuphane izni kapali uye dogrudan
+ * adresle formati yukleyip silebiliyordu. Kapiyi `ErisimGuard` uygular.
+ */
 @Controller('quote-formats')
 @UseGuards(JwtAuthGuard, ErisimGuard)
+@UyeIzniGerekli('fiyat')
 export class QuoteFormatsController {
   constructor(private service: QuoteFormatsService) {}
 

@@ -256,7 +256,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                 "Veriler yuklenirken bir hata olustu" basiyordu. */}
             {/* 23.09.2026 — UYE IZNI KAPISI, ErisimKapisi'nin ICINDE: izin
                 listesi `/auth/me`den gelir ve o kapi yanit gelene kadar
-                cocuklari cizmez. Izni kapali alt kullanici kutuphane/DWG
+                cocuklari cizmez. Izni kapali alt kullanici fiyat/DWG
                 sayfasina girerse icerik yerine "izniniz yok" ekrani. */}
             <ErisimKapisi>
               <UyeIzniKapisi>{children}</UyeIzniKapisi>

@@ -23,7 +23,7 @@ export class LaborMatchingController {
   @RequireTier('pro')
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
   // 23.09: iscilik fiyati KUTUPHANEDEN (iscilik firmalari) gelir.
-  @UyeIzniGerekli('kutuphane')
+  @UyeIzniGerekli('fiyat')
   // 06.10: malzeme ikiziyle AYNI dizi tavani (tek tanim — dizi-tavani.ts).
   @DiziTavani(...eslestirmeKurallari('laborNames', 'işçilik adı'))
   bulkMatch(
@@ -38,7 +38,7 @@ export class LaborMatchingController {
   @Post('remember')
   @RequireTier('pro')
   @GerekliYetenek(Yetenek.TEKLIF_DUZENLE)
-  @UyeIzniGerekli('kutuphane')
+  @UyeIzniGerekli('fiyat')
   remember(
     @CurrentUser() user: any,
     @Body() body: IscilikHafizasiDto,
@@ -50,7 +50,7 @@ export class LaborMatchingController {
   @Post('reindex')
   @RequireTier('pro')
   @GerekliYetenek(Yetenek.KUTUPHANE_DUZENLE)
-  @UyeIzniGerekli('kutuphane')
+  @UyeIzniGerekli('fiyat')
   reindex(@CurrentUser() user: any) {
     return this.service.reindex(kimlikCoz(user));
   }

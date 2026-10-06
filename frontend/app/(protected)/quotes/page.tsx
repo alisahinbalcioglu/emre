@@ -60,10 +60,10 @@ export default function QuotesPage() {
    */
   const { kapali, izinVar } = useCapabilities();
   const saltOkunur = kapali?.kapali === true;
-  // 23.09.2026 — "Son teklifler & tutar" izni kapali alt kullanici: sunucu
-  // listeyi YALNIZ kendi tekliflerine daraltir (`teklifKosulu`). Not, neden
-  // az teklif gordugunu soyler; kapi degildir.
-  const yalnizKendi = !izinVar('firmaTeklifleri');
+  // 23.09.2026 — firmanin teklifleri izni (06.10'dan beri `fiyat` yetkisi)
+  // kapali alt kullanici: sunucu listeyi YALNIZ kendi tekliflerine daraltir
+  // (`teklifKosulu`). Not, neden az teklif gordugunu soyler; kapi degildir.
+  const yalnizKendi = !izinVar('fiyat');
   const [quotes, setQuotes] = useState<Quote[]>([]);
   // FAZ 7 F1b: kendi teklifimde "Hazırlayan" satırı GÖSTERİLMEZ (tek kişilik
   // firmada hiç görünmesin). Kimlik localStorage kopyasından okunur —

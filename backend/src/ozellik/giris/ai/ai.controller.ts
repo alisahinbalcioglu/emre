@@ -55,9 +55,9 @@ export class AiController {
   @GerekliYetenek(Yetenek.AI_ANALIZ) // + aboneliği yürüyor mu?
   // ⚠ 23.09.2026 (guvenlik incelemesi): yanit firmanin KUTUPHANESINDEN iskonto
   //   ve ozel fiyat tasir (`ai.service.ts` `matchWithDatabase`). Izin olmasa
-  //   Kutuphanem'i kapali uye, havuzdan aldigi adlari bir PDF'e yazip firmanin
+  //   `fiyat` yetkisi kapali uye, havuzdan aldigi adlari bir PDF'e yazip firmanin
   //   fiyatlarini okuyabilirdi.
-  @UyeIzniGerekli('kutuphane')
+  @UyeIzniGerekli('fiyat')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -79,7 +79,7 @@ export class AiController {
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   translate(@CurrentUser() user: unknown, @Body() body: CeviriIstegiDto) {
-    // 23.09: teklif OKUYAN uc → `teklifKimligiCoz` (Son teklifler izni kapsami).
+    // 23.09: teklif OKUYAN uc → `teklifKimligiCoz` (`fiyat` yetkisi kapsami).
     return this.ceviriService.teklifiCevir(teklifKimligiCoz(user), body.quoteId, body.hedefDil ?? 'en');
   }
 

@@ -23,8 +23,8 @@ import { etkinHesapKosulu } from '../firma/uyelik-kurallari';
  * vermektir. Bu yuzden her sayi, o listeyi ureten sorgunun AYNI kapsamini
  * kullanir — ikiz kural yazilmaz:
  *   teklifSayisi   → `quotes.service.ts` `findAll` → `teklifKosulu(k)` (Teklifler;
- *                    23.09: "Son teklifler" izni kapali uyede YALNIZ kendi teklifleri)
- *   malzemeSayisi  → `library.service.ts:37`  `where: { firmaId }` (Kutuphanem)
+ *                    23.09: `fiyat` yetkisi kapali uyede YALNIZ kendi teklifleri)
+ *   malzemeSayisi  → `library.service.ts:37`  `where: { firmaId }` (Firma kutuphanesi)
  *   markaSayisi    → `library.service.ts:55`  ayni sorgu + `distinct: brandId`
  *   kullaniciSayisi→ `uyelik-kurallari.ts:31` `etkinHesapKosulu()` (Ekip)
  * Sonuncusu ICERI ALINIR, KOPYALANMAZ: o dosyanin kendi yorumu "TEK TANIM:
@@ -60,7 +60,7 @@ export class PanelServisi {
         this.prisma.quote.count({ where: teklifKosulu(k) }),
         this.prisma.userLibrary.count({ where: kapsam }),
         // Marka adedi `findLibraryBrands` ile AYNI sorgudur (distinct brandId).
-        // `groupBy` daha kisa olurdu ama o zaman Kutuphanem'deki marka listesi
+        // `groupBy` daha kisa olurdu ama o zaman Firma kutuphanesindeki marka listesi
         // ile bu sayi iki FARKLI sorgudan gelirdi.
         this.prisma.userLibrary.findMany({
           where: kapsam,

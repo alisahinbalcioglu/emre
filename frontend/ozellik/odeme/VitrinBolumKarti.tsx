@@ -7,7 +7,7 @@ import { vitrinBolumBasligi, vitrinBolumHavaleBasligi, vitrinBolumu } from './vi
 /**
  * 23.09.2026 — VİTRİN BÖLÜM KARTI (kabukta, `ErisimKapisi` çizer).
  *
- * Paketsiz yeni hesap gezilemeyen bir bölüme girerse (Kütüphanem alt
+ * Paketsiz yeni hesap gezilemeyen bir bölüme girerse (Firma kütüphanesi alt
  * sayfaları, İşçilik, Teklif formatları, yeni teklif…) sayfa içeriği yerine
  * bu kart çizilir. DUVAR DEĞİL: bölümün ne işe yaradığını söyler, üstteki
  * şerit durur, menü açık kalır ("yalnızca gezsin" kararı).

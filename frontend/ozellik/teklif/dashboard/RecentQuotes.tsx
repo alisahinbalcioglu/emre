@@ -33,10 +33,11 @@ interface QuoteSummary {
 export default function RecentQuotes() {
   const [quotes, setQuotes] = useState<QuoteSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  // 23.09.2026: "Son teklifler & tutar" izni kapali alt kullaniciya sunucu
-  // YALNIZ kendi tekliflerini doner; alt baslik bunu soyler.
+  // 23.09.2026: firmanin teklifleri izni (06.10'dan beri `fiyat` yetkisi)
+  // kapali alt kullaniciya sunucu YALNIZ kendi tekliflerini doner; alt baslik
+  // bunu soyler.
   const { izinVar } = useCapabilities();
-  const yalnizKendi = !izinVar('firmaTeklifleri');
+  const yalnizKendi = !izinVar('fiyat');
 
   useEffect(() => {
     api
