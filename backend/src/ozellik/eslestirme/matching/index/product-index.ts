@@ -262,13 +262,35 @@ const KISA_KOKLER: ReadonlySet<string> = new Set(['pp', 'ppr', 'pvc', 'pex']);
  *  yumusamasi [dirsegi/dirsekler] KAPSAM DISI). */
 const CEKIM_EKI = /^(?:s?[iu]|l[ae]r[iu]?)$/;
 
+/**
+ * UNSUZ YUMUSAMASI (P2 (c), 05.10 olculdu): "dirsek" ↔ "dirseği" ↔ "dirsekler".
+ * Govde sonundaki sert unsuz (k/p/t) unluyle baslayan ekte yumusar (ğ/b/d;
+ * normalize: g/b/d). Ortak kok onek degil ve kalanlar ("k" / "gi") CEKIM_EKI'ye
+ * uymadigi icin esit sayilmiyordu. Kural DAR: ortak kok ≥ ONEK_MIN-1 harf (kok +
+ * unsuz ≥ ONEK_MIN), sert taraf YALIN ya da COGUL (-lar/-ler/-lari/-leri),
+ * yumusak taraf yalniz iyelik/belirtme (-i/-u). Disarida: -in/-e/-de vb. ekler,
+ * -li sifati, -siz olumsuzlugu, k/p/t disi unsuzler.
+ * Kulliyat (P3 + yerel satir × Pimtas + kulliyat token'lari): 35 yeni esit cift,
+ * hepsi ayni kelime (çeliği/çelik, köpüğü/köpük, dirseği/dirsek, dolabı/dolap…),
+ * yanlis pozitif 0. YALNIZ token esitligi — AILE cozumune girmez (olculdu: aile
+ * tarafinda 5 satirin 2'si yanlis yone kayiyordu). Kapi: test:unsuz-yumusamasi.
+ */
+const YUMUSAMA: Readonly<Record<string, string>> = { k: 'g', p: 'b', t: 'd' };
+const SERT_EK = /^(?:l[ae]r[iu]?)?$/;
+const YUMUSAK_EK = /^[iu]$/;
+// YUMUSAK_EK unsuzden sonra TAM BIR unlu ister: bos/eksik yumusak taraf zaten gecemez.
+function yumusamaCifti(sert: string, yumusak: string): boolean {
+  return yumusak[0] === YUMUSAMA[sert[0]] && SERT_EK.test(sert.slice(1)) && YUMUSAK_EK.test(yumusak.slice(1));
+}
+
 export function tokenEsit(a: string, b: string): boolean {
   if (a === b) return true;
   if ((a.length >= ONEK_MIN || KISA_KOKLER.has(a)) && b.startsWith(a)) return !OLUMSUZLUK_EKI.test(b.slice(a.length));
   if ((b.length >= ONEK_MIN || KISA_KOKLER.has(b)) && a.startsWith(b)) return !OLUMSUZLUK_EKI.test(a.slice(b.length));
   let k = 0;
   while (k < a.length && k < b.length && a[k] === b[k]) k++;
-  return k >= ONEK_MIN && CEKIM_EKI.test(a.slice(k)) && CEKIM_EKI.test(b.slice(k));
+  if (k >= ONEK_MIN && CEKIM_EKI.test(a.slice(k)) && CEKIM_EKI.test(b.slice(k))) return true;
+  return k >= ONEK_MIN - 1 && (yumusamaCifti(a.slice(k), b.slice(k)) || yumusamaCifti(b.slice(k), a.slice(k)));
 }
 
 /** istenen ⊆ varolan (onek toleransli) */

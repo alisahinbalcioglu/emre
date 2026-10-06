@@ -3,10 +3,10 @@
 <!-- URETILMIS DOSYA — ELLE DUZENLENMEZ. Uretici: scripts/harita-uret.mjs -->
 <!-- Kapsam tanimi: harita-kapsam-disi.txt -->
 
-Kod dosyasi: 944
-Toplam satir: 258487
+Kod dosyasi: 945
+Toplam satir: 258613
 Uc nokta: 239
-test:* scripti: 174
+test:* scripti: 175
 
 ## 1 · Dosyalar ve satir sayilari
 
@@ -140,7 +140,7 @@ test:* scripti: 174
 | `backend/src/ozellik/eslestirme/matching/dto/eslestirme-govdesi.dto.ts` | 79 |
 | `backend/src/ozellik/eslestirme/matching/gunluk-degeri.ts` | 28 |
 | `backend/src/ozellik/eslestirme/matching/index/line-parser.ts` | 340 |
-| `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 788 |
+| `backend/src/ozellik/eslestirme/matching/index/product-index.ts` | 810 |
 | `backend/src/ozellik/eslestirme/matching/index/query-engine.ts` | 1884 |
 | `backend/src/ozellik/eslestirme/matching/index/types.ts` | 314 |
 | `backend/src/ozellik/eslestirme/matching/index/vocab.ts` | 37 |
@@ -465,7 +465,7 @@ test:* scripti: 174
 | `backend/test/pk3-repo-kapsama-test.ts` | 79 |
 | `backend/test/pk9-sessiz-indeks-test.ts` | 98 |
 | `backend/test/product-index-test.ts` | 479 |
-| `backend/test/regression-all.ts` | 1110 |
+| `backend/test/regression-all.ts` | 1111 |
 | `backend/test/reindex-gunlugu-test.ts` | 91 |
 | `backend/test/s45-malzeme-aile-test.ts` | 462 |
 | `backend/test/s45-olcum.ts` | 188 |
@@ -484,6 +484,7 @@ test:* scripti: 174
 | `backend/test/tipografik-tirnak-test.ts` | 95 |
 | `backend/test/uc-kapisi-davranis-test.ts` | 352 |
 | `backend/test/uc-kapisi.ts` | 519 |
+| `backend/test/unsuz-yumusamasi-test.ts` | 103 |
 | `backend/test/urun-degil-test.ts` | 89 |
 | `backend/test/urun-indeksi-v19-test.ts` | 83 |
 | `backend/test/urun-indeksi-v20-test.ts` | 103 |
@@ -1394,6 +1395,7 @@ test:* scripti: 174
 | `backend/test/tipografik-tirnak-test.ts` | `../src/ozellik/eslestirme/matching/normalizer` `../src/ozellik/eslestirme/matching/conversion` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/uc-kapisi-davranis-test.ts` | `path` `@nestjs/core` `@prisma/client` `../src/altyapi/auth/guards/tier.guard` `../src/ozellik/odeme/abonelik/erisim.guard` `../src/ozellik/odeme/abonelik/erisim.servisi` `./yardimci/uc-envanteri` `./yardimci/bitmezse-kirmizi` `reflect-metadata` |
 | `backend/test/uc-kapisi.ts` | `path` |
+| `backend/test/unsuz-yumusamasi-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/matching.service` `../src/ozellik/eslestirme/matching/terminology.service` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/urun-degil-test.ts` | `../src/ozellik/eslestirme/matching/index/line-parser` |
 | `backend/test/urun-indeksi-v19-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/index/types` `./yardimci/bitmezse-kirmizi` |
 | `backend/test/urun-indeksi-v20-test.ts` | `../src/ozellik/eslestirme/matching/index/product-index` `../src/ozellik/eslestirme/matching/index/line-parser` `../src/ozellik/eslestirme/matching/index/query-engine` `../src/ozellik/eslestirme/matching/conversion` `../src/ozellik/eslestirme/matching/normalizer` `../src/ozellik/eslestirme/matching/index/types` `./yardimci/bitmezse-kirmizi` |
@@ -2085,6 +2087,7 @@ test:* scripti: 174
 | `backend/package.json` | `test:urun-indeksi-v20` | `ts-node test/urun-indeksi-v20-test.ts` |
 | `backend/package.json` | `test:ad-uzunlugu` | `ts-node test/ad-uzunlugu-test.ts` |
 | `backend/package.json` | `test:parantez-niteligi` | `ts-node test/parantez-niteligi-test.ts` |
+| `backend/package.json` | `test:unsuz-yumusamasi` | `ts-node test/unsuz-yumusamasi-test.ts` |
 | `backend/package.json` | `test:grid` | `ts-node test/excel-grid-test.ts` |
 | `backend/package.json` | `test:labor-sheet` | `ts-node test/labor-sheet-test.ts` |
 | `backend/package.json` | `test:kl` | `ts-node test/kl-liste-ekleme-test.ts` |
